@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <SoftwareSerial.h>
+#include <EEPROM.h>
 
 static const long STACKMAT_TIMER_BAUD_RATE = 1200;
 static const long STACKMAT_TIMER_TIMEOUT = 1000;
@@ -26,8 +27,9 @@ void setup() {
 
 void loop() {
   String data;
+
   while (stackmatSerial.available() > 9) {
-    data = stackmatSerial.readStringUntil('\r');
+    data = readStackmatString();
   }
 
   if (data.length() >= 8) {
@@ -39,10 +41,6 @@ void loop() {
   if (!isConnected) {
     Serial.println("Timer is disconnected! Make sure it is connected and turned on.");
     //NVIC_SystemReset();
-
-    while (stackmatSerial.available()) {
-      stackmatSerial.read();
-    }
 
     delay(100);
   }
@@ -68,7 +66,30 @@ void loop() {
   }
 
   lastState = currentState;
-  delay(50);
+  delay(10);
+}
+
+String readStackmatString() {
+  unsigned long startTime = millis();
+  String tmp;
+
+  while (millis() - startTime < 1000) {
+    if (stackmatSerial.available() > 0) {
+      char c = stackmatSerial.read();
+      if ((int)c == 0) {
+        return tmp;
+      }
+
+      if (c == '\r') {
+        return tmp;
+      }
+
+      tmp += c;
+      startTime = millis();
+    }
+  }
+
+  return "";
 }
 
 bool ParseTimerData(String data) {
