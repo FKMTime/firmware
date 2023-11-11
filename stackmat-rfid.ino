@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <SoftwareSerial.h>
-#include <EEPROM.h>
 
 static const long STACKMAT_TIMER_BAUD_RATE = 1200;
 static const long STACKMAT_TIMER_TIMEOUT = 1000;
@@ -23,6 +22,8 @@ bool isConnected = false;
 void setup() {
   Serial.begin(19200);
   stackmatSerial.begin(STACKMAT_TIMER_BAUD_RATE);
+
+  pinMode(LED_BUILTIN, OUTPUT);
 }
 
 void loop() {
@@ -42,7 +43,10 @@ void loop() {
     Serial.println("Timer is disconnected! Make sure it is connected and turned on.");
     //NVIC_SystemReset();
 
-    delay(100);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(50);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(50);
   }
 
   if (currentState != lastState) {
@@ -55,6 +59,7 @@ void loop() {
         break;
       case ST_Running:
         Serial.println("GO!");
+
         break;
       default:
         break;
