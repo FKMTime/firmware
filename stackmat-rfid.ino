@@ -1,8 +1,16 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <HTTPClient.h>
+#include <WiFiManager.h>
 
-const char* ssid = "EZ";
-const char* password = "WOW";
+#include <SPI.h>
+#include <MFRC522.h>
+
+#define RST_PIN D6
+#define SS_PIN D4
+
+MFRC522 mfrc522(SS_PIN, RST_PIN);
+HTTPClient https;
 
 static const long STACKMAT_TIMER_BAUD_RATE = 1200;
 static const long STACKMAT_TIMER_TIMEOUT = 1000;
@@ -22,23 +30,59 @@ bool isConnected = false;
 
 void setup() {
   Serial.begin(115200);
-  Serial0.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, -1, 255, true);
+  //Serial0.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, -1, 255, true);
   //stackmatSerial.begin(STACKMAT_TIMER_BAUD_RATE);
 
   //pinMode(LED_BUILTIN, OUTPUT);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-    }
+  WiFiManager wm;
+  //wm.resetSettings();
 
-    Serial.println("");
-    Serial.println("WiFi connected");
-    Serial.println("IP address: ");
-    Serial.println(WiFi.localIP());
+  String generatedSSID = "StackmatTimer-" + getESP32ChipID();
+  bool res = wm.autoConnect(generatedSSID.c_str(), "StackmatTimer");
+  if (!res) {
+    Serial.println("Failed to connect");
+    delay(1000);
+    ESP.restart();
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  if (https.begin("https://echo.filipton.space/r15578016868097582246")) {
+    https.addHeader("Content-Type", "text/plain");
+    int httpCode = https.POST("Hello, World!");
+    String payload = https.getString();
+    Serial.println(httpCode);
+    Serial.println(payload);
+  } else {
+    Serial.println("Unable to connect");
+  }
+
+  delay(1000);
+
+  SPI.begin();         // Init SPI bus
+  mfrc522.PCD_Init();  // Init MFRC522 card
 }
 
 void loop() {
+  // Look for new cards
+  if (!mfrc522.PICC_IsNewCardPresent()) {
+    return;
+  }
+
+  // Select one of the cards
+  if (!mfrc522.PICC_ReadCardSerial()) {
+    return;
+  }
+
+  unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
+  Serial.print("Card UID:");
+  Serial.println(cardId);
+
+  delay(1000);
+
   String data;
 
   while (Serial0.available() > 9) {
@@ -52,7 +96,7 @@ void loop() {
   isConnected = millis() - lastUpdated < STACKMAT_TIMER_TIMEOUT;
 
   if (!isConnected) {
-    Serial.println("Timer is disconnected! Make sure it is connected and turned on.");
+    //Serial.println("Timer is disconnected! Make sure it is connected and turned on.");
     //NVIC_SystemReset();
 
     /*
@@ -86,6 +130,12 @@ void loop() {
 
   lastState = currentState;
   delay(10);
+}
+
+String getESP32ChipID() {
+  uint64_t chipid = ESP.getEfuseMac();
+  String chipidStr = String((uint32_t)(chipid >> 32), HEX) + String((uint32_t)chipid, HEX);
+  return chipidStr;
 }
 
 String readStackmatString() {
