@@ -24,16 +24,20 @@ enum StackmatTimerState {
 
 StackmatTimerState currentState = ST_Reset;
 StackmatTimerState lastState = ST_Unknown;
+
+unsigned long solveSessionId = 0;
 unsigned long lastUpdated = 0;
 unsigned long timerTime = 0;
 bool isConnected = false;
 
+unsigned long finishedSolveTime = 0;
+
 void setup() {
   Serial.begin(115200);
-  //Serial0.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, -1, 255, true);
-  //stackmatSerial.begin(STACKMAT_TIMER_BAUD_RATE);
+  Serial0.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, -1, 255, true);
+  SPI.begin();
+  mfrc522.PCD_Init();
 
-  //pinMode(LED_BUILTIN, OUTPUT);
   WiFiManager wm;
   //wm.resetSettings();
 
@@ -60,28 +64,30 @@ void setup() {
     Serial.println("Unable to connect");
   }
 
-  delay(1000);
-
-  SPI.begin();         // Init SPI bus
-  mfrc522.PCD_Init();  // Init MFRC522 card
+  Serial0.flush();
 }
 
+unsigned long lastCardReadTime = 0;
 void loop() {
-  // Look for new cards
-  if (!mfrc522.PICC_IsNewCardPresent()) {
-    return;
+  if (millis() - lastCardReadTime > 1000 && mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
+    unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
+    Serial.print("Card ID: ");
+    Serial.println(cardId);
+
+    String json = "{\"cardId\": " + String(cardId) + ", \"solveTime\": " + String(finishedSolveTime) + "}";
+
+    if (https.begin("https://echo.filipton.space/r15578016868097582246")) {
+      https.addHeader("Content-Type", "text/plain");
+      int httpCode = https.POST(json);
+      String payload = https.getString();
+      Serial.println(httpCode);
+      Serial.println(payload);
+    } else {
+      Serial.println("Unable to connect");
+    }
+
+    lastCardReadTime = millis();
   }
-
-  // Select one of the cards
-  if (!mfrc522.PICC_ReadCardSerial()) {
-    return;
-  }
-
-  unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
-  Serial.print("Card UID:");
-  Serial.println(cardId);
-
-  delay(1000);
 
   String data;
 
@@ -111,13 +117,16 @@ void loop() {
     switch (currentState) {
       case ST_Stopped:
         Serial.printf("FINISH! Final time is %i:%02i.%03i!\n", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
+        finishedSolveTime = timerTime;
         break;
       case ST_Reset:
         Serial.println("Timer is reset!");
         break;
       case ST_Running:
-        Serial.println("GO!");
+        solveSessionId++;
 
+        Serial.println("Solve started!");
+        Serial.printf("Solve session ID: %i\n", solveSessionId);
         break;
       default:
         break;
