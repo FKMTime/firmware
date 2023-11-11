@@ -1,5 +1,8 @@
 #include <Arduino.h>
-#include <SoftwareSerial.h>
+#include <WiFi.h>
+
+const char* ssid = "EZ";
+const char* password = "WOW";
 
 static const long STACKMAT_TIMER_BAUD_RATE = 1200;
 static const long STACKMAT_TIMER_TIMEOUT = 1000;
@@ -11,8 +14,6 @@ enum StackmatTimerState {
   ST_Stopped = 'S'
 };
 
-SoftwareSerial stackmatSerial(1, 255, true);
-
 StackmatTimerState currentState = ST_Reset;
 StackmatTimerState lastState = ST_Unknown;
 unsigned long lastUpdated = 0;
@@ -20,16 +21,27 @@ unsigned long timerTime = 0;
 bool isConnected = false;
 
 void setup() {
-  Serial.begin(19200);
-  stackmatSerial.begin(STACKMAT_TIMER_BAUD_RATE);
+  Serial.begin(115200);
+  Serial0.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, -1, 255, true);
+  //stackmatSerial.begin(STACKMAT_TIMER_BAUD_RATE);
 
-  pinMode(LED_BUILTIN, OUTPUT);
+  //pinMode(LED_BUILTIN, OUTPUT);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+
+    Serial.println("");
+    Serial.println("WiFi connected");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
 }
 
 void loop() {
   String data;
 
-  while (stackmatSerial.available() > 9) {
+  while (Serial0.available() > 9) {
     data = readStackmatString();
   }
 
@@ -43,10 +55,12 @@ void loop() {
     Serial.println("Timer is disconnected! Make sure it is connected and turned on.");
     //NVIC_SystemReset();
 
+    /*
     digitalWrite(LED_BUILTIN, HIGH);
     delay(50);
     digitalWrite(LED_BUILTIN, LOW);
     delay(50);
+    */
   }
 
   if (currentState != lastState) {
@@ -67,7 +81,7 @@ void loop() {
   }
 
   if (currentState == ST_Running) {
-    Serial.printf("%i:%02i.%03i\n", GetInterpolatedDisplayMinutes(), GetInterpolatedDisplaySeconds(), GetInterpolatedDisplayMilliseconds());
+    Serial.printf("%i:%02i.%03i\n", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
   }
 
   lastState = currentState;
@@ -79,8 +93,8 @@ String readStackmatString() {
   String tmp;
 
   while (millis() - startTime < 1000) {
-    if (stackmatSerial.available() > 0) {
-      char c = stackmatSerial.read();
+    if (Serial0.available() > 0) {
+      char c = Serial0.read();
       if ((int)c == 0) {
         return tmp;
       }
@@ -98,8 +112,6 @@ String readStackmatString() {
 }
 
 bool ParseTimerData(String data) {
-  unsigned long preMillis = millis();
-
   StackmatTimerState state = (StackmatTimerState)data[0];
   int minutes = data.substring(1, 2).toInt();
   int seconds = data.substring(2, 4).toInt();
@@ -121,48 +133,21 @@ bool ParseTimerData(String data) {
   }
 
   currentState = state;
-  lastUpdated = preMillis;
+  lastUpdated = millis();
   timerTime = totalMs;
 
   return true;
 }
 
-uint32_t GetInterpolatedTime() {
-  if (currentState != ST_Running) {
-    return timerTime;
-  }
-
-  return timerTime + (millis() - lastUpdated);
-}
-
-
 uint8_t GetDisplayMinutes() {
   return timerTime / 60000;
 }
-
-uint8_t GetInterpolatedDisplayMinutes() {
-  return GetInterpolatedTime() / 60000;
-}
-
 uint8_t GetDisplaySeconds() {
   return (timerTime - ((timerTime / 60000) * 60000)) / 1000;
 }
-
-uint8_t GetInterpolatedDisplaySeconds() {
-  uint32_t interpolatedTime = GetInterpolatedTime();
-  return (interpolatedTime - ((interpolatedTime / 60000) * 60000)) / 1000;
-}
-
 uint16_t GetDisplayMilliseconds() {
   uint32_t time = timerTime;
   time -= ((time / 60000) * 60000);
   time -= ((time / 1000) * 1000);
   return time;
-}
-
-uint16_t GetInterpolatedDisplayMilliseconds() {
-  uint32_t interpolatedTime = GetInterpolatedTime();
-  interpolatedTime -= ((interpolatedTime / 60000) * 60000);
-  interpolatedTime -= ((interpolatedTime / 1000) * 1000);
-  return interpolatedTime;
 }
