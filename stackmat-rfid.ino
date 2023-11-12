@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiManager.h>
+#include <WebSocketsClient.h>
 
 #include <SPI.h>
 #include <MFRC522.h>
@@ -11,6 +12,7 @@
 
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 HTTPClient https;
+WebSocketsClient webSocket;
 
 static const long STACKMAT_TIMER_BAUD_RATE = 1200;
 static const long STACKMAT_TIMER_TIMEOUT = 1000;
@@ -48,6 +50,7 @@ void setup() {
   //wm.resetSettings();
 
   String generatedSSID = "StackmatTimer-" + getESP32ChipID();
+  wm.setConfigPortalTimeout(300);
   bool res = wm.autoConnect(generatedSSID.c_str(), "StackmatTimer");
   if (!res) {
     Serial.println("Failed to connect");
@@ -60,15 +63,23 @@ void setup() {
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
 
+  /*
   if (https.begin("https://echo.filipton.space/r15578016868097582246")) {
     https.addHeader("Content-Type", "text/plain");
-    int httpCode = https.POST("Hello, World!");
+    int httpCode = https.POST("Startup!");
     String payload = https.getString();
     Serial.println(httpCode);
     Serial.println(payload);
   } else {
     Serial.println("Unable to connect");
   }
+  */
+
+  //webSocket.beginSSL("gate.filipton.online", 443, "/");
+  webSocket.begin("192.168.1.38", 8080, "/");
+  webSocket.onEvent(webSocketEvent);
+  webSocket.setReconnectInterval(5000);
+  webSocket.sendTXT("Hello from ESP32!");
 
   configTime(3600, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
   Serial0.flush();
@@ -76,6 +87,8 @@ void setup() {
 
 unsigned long lastCardReadTime = 0;
 void loop() {
+  webSocket.loop();
+
   if (millis() - lastCardReadTime > 1000 && mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
     unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
     Serial.print("Card ID: ");
@@ -88,17 +101,42 @@ void loop() {
     time_t epoch;
     time(&epoch);
 
+    digitalWrite(D3, HIGH);
+    delay(50);
+    digitalWrite(D3, LOW);
+    delay(50);
+
     String json = "{\"cardId\": " + String(cardId) + ", \"solveTime\": " + String(finishedSolveTime) + ", \"espId\": \"" + getESP32ChipID() + ", \"timestamp\": " + String(epoch) + "}";
 
+    webSocket.sendTXT(json);
+    /*
     if (https.begin("https://echo.filipton.space/r15578016868097582246")) {
       https.addHeader("Content-Type", "text/plain");
+      https.setTimeout(3000);
+      https.setConnectTimeout(3000);
       int httpCode = https.POST(json);
       String payload = https.getString();
       Serial.println(httpCode);
       Serial.println(payload);
+
+      if (httpCode == 200) {
+        digitalWrite(D3, HIGH);
+        delay(50);
+        digitalWrite(D3, LOW);
+        delay(50);
+        digitalWrite(D3, HIGH);
+        delay(50);
+        digitalWrite(D3, LOW);
+        delay(50);
+        digitalWrite(D3, HIGH);
+        delay(50);
+        digitalWrite(D3, LOW);
+        delay(50);
+      }
     } else {
       Serial.println("Unable to connect");
     }
+    */
 
     lastCardReadTime = millis();
   }
@@ -152,7 +190,17 @@ void loop() {
   }
 
   lastState = currentState;
-  delay(10);
+}
+
+void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
+    if (type == WStype_TEXT) {
+        String str = (char *)payload;
+    Serial.printf("Received message: %s\n", str.c_str());
+    } else if (type == WStype_CONNECTED) {
+        Serial.println("Connected to WebSocket server");
+    } else if (type == WStype_DISCONNECTED) {
+        Serial.println("Disconnected from WebSocket server");
+    }
 }
 
 String getESP32ChipID() {
