@@ -30,6 +30,7 @@ StackmatTimerState lastState = ST_Unknown;
 unsigned long solveSessionId = 0;
 unsigned long lastUpdated = 0;
 unsigned long timerTime = 0;
+unsigned long lastTimerTime = 0;
 bool isConnected = false;
 
 unsigned long finishedSolveTime = 0;
@@ -90,6 +91,11 @@ void loop() {
   webSocket.loop();
 
   if (millis() - lastCardReadTime > 1000 && mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
+    if (currentState == ST_Running) {
+      Serial.println("Solve is running! Please stop the timer before scanning a new card.");
+      return;
+    }
+
     unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
     Serial.print("Card ID: ");
     Serial.println(cardId);
@@ -109,35 +115,6 @@ void loop() {
     String json = "{\"cardId\": " + String(cardId) + ", \"solveTime\": " + String(finishedSolveTime) + ", \"espId\": \"" + getESP32ChipID() + ", \"timestamp\": " + String(epoch) + "}";
 
     webSocket.sendTXT(json);
-    /*
-    if (https.begin("https://echo.filipton.space/r15578016868097582246")) {
-      https.addHeader("Content-Type", "text/plain");
-      https.setTimeout(3000);
-      https.setConnectTimeout(3000);
-      int httpCode = https.POST(json);
-      String payload = https.getString();
-      Serial.println(httpCode);
-      Serial.println(payload);
-
-      if (httpCode == 200) {
-        digitalWrite(D3, HIGH);
-        delay(50);
-        digitalWrite(D3, LOW);
-        delay(50);
-        digitalWrite(D3, HIGH);
-        delay(50);
-        digitalWrite(D3, LOW);
-        delay(50);
-        digitalWrite(D3, HIGH);
-        delay(50);
-        digitalWrite(D3, LOW);
-        delay(50);
-      }
-    } else {
-      Serial.println("Unable to connect");
-    }
-    */
-
     lastCardReadTime = millis();
   }
 
@@ -165,11 +142,14 @@ void loop() {
     */
   }
 
-  if (currentState != lastState) {
+  if (currentState != lastState && currentState != ST_Unknown && lastState != ST_Unknown) {
+    Serial.printf("State changed from %c to %c\n", lastState, currentState);
     switch (currentState) {
       case ST_Stopped:
         Serial.printf("FINISH! Final time is %i:%02i.%03i!\n", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
         finishedSolveTime = timerTime;
+        lastTimerTime = timerTime;
+        webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
         break;
       case ST_Reset:
         Serial.println("Timer is reset!");
@@ -186,21 +166,25 @@ void loop() {
   }
 
   if (currentState == ST_Running) {
-    Serial.printf("%i:%02i.%03i\n", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
+    if (timerTime != lastTimerTime) {
+      Serial.printf("%i:%02i.%03i\n", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
+      webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
+      lastTimerTime = timerTime;
+    }
   }
 
   lastState = currentState;
 }
 
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
-    if (type == WStype_TEXT) {
-        String str = (char *)payload;
+  if (type == WStype_TEXT) {
+    String str = (char *)payload;
     Serial.printf("Received message: %s\n", str.c_str());
-    } else if (type == WStype_CONNECTED) {
-        Serial.println("Connected to WebSocket server");
-    } else if (type == WStype_DISCONNECTED) {
-        Serial.println("Disconnected from WebSocket server");
-    }
+  } else if (type == WStype_CONNECTED) {
+    Serial.println("Connected to WebSocket server");
+  } else if (type == WStype_DISCONNECTED) {
+    Serial.println("Disconnected from WebSocket server");
+  }
 }
 
 String getESP32ChipID() {
@@ -234,6 +218,10 @@ String readStackmatString() {
 
 bool ParseTimerData(String data) {
   StackmatTimerState state = (StackmatTimerState)data[0];
+  if (data[0] != 'I' && data[0] != ' ' && data[0] != 'S') {
+    state = ST_Unknown;
+  }
+
   int minutes = data.substring(1, 2).toInt();
   int seconds = data.substring(2, 4).toInt();
   int ms = data.substring(4, 7).toInt();
