@@ -33,9 +33,15 @@ bool isConnected = false;
 unsigned long finishedSolveTime = 0;
 
 void setup() {
+  pinMode(D3, OUTPUT);
   Serial.begin(115200);
   Serial0.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, -1, 255, true);
-  SPI.begin();
+  digitalWrite(D3, HIGH);
+  delay(100);
+  digitalWrite(D3, LOW);
+  delay(100);
+
+  SPI.begin(D8, D5, D10, SS_PIN);  // FIXES SPI WEIRDNESS (D9 is connected as bootloader pin, so it is not usable in this case)
   mfrc522.PCD_Init();
 
   WiFiManager wm;
@@ -64,6 +70,7 @@ void setup() {
     Serial.println("Unable to connect");
   }
 
+  configTime(3600, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
   Serial0.flush();
 }
 
@@ -74,7 +81,14 @@ void loop() {
     Serial.print("Card ID: ");
     Serial.println(cardId);
 
-    String json = "{\"cardId\": " + String(cardId) + ", \"solveTime\": " + String(finishedSolveTime) + "}";
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) {
+      Serial.println("Failed to obtain time");
+    }
+    time_t epoch;
+    time(&epoch);
+
+    String json = "{\"cardId\": " + String(cardId) + ", \"solveTime\": " + String(finishedSolveTime) + ", \"espId\": \"" + getESP32ChipID() + ", \"timestamp\": " + String(epoch) + "}";
 
     if (https.begin("https://echo.filipton.space/r15578016868097582246")) {
       https.addHeader("Content-Type", "text/plain");
