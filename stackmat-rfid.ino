@@ -7,11 +7,12 @@
 #include <MFRC522.h>
 #include <EEPROM.h>
 #include <ArduinoJson.h>
+#include "rgb_lcd.h"
 
 #define RST_PIN D6
-#define SS_PIN D4
+#define SS_PIN D2
 #define SCK_PIN D8
-#define MISO_PIN D5
+#define MISO_PIN D3
 #define MOSI_PIN D10
 
 #define STACKMAT_TIMER_BAUD_RATE 1200
@@ -20,6 +21,7 @@
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 HTTPClient https;
 WebSocketsClient webSocket;
+rgb_lcd lcd;
 
 enum StackmatTimerState {
   ST_Unknown = 0,
@@ -49,9 +51,12 @@ void setup() {
   mfrc522.PCD_Init();
   EEPROM.begin(512);
 
-  digitalWrite(D3, HIGH);
-  delay(500);
-  digitalWrite(D3, LOW);
+  lcd.begin(16, 2);
+  lcd.clear();
+
+  lcd.print("ID: ");
+  lcd.setCursor(0, 1);
+  lcd.print(getESP32ChipID());
 
   WiFiManager wm;
   //wm.resetSettings();
@@ -65,16 +70,11 @@ void setup() {
     ESP.restart();
   }
 
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-
-  digitalWrite(D3, HIGH);
-  delay(25);
-  digitalWrite(D3, LOW);
-  delay(25);
-  digitalWrite(D3, HIGH);
-  delay(25);
-  digitalWrite(D3, LOW);
+  lcd.clear();
+  lcd.print("WiFi connected!");
+  lcd.setCursor(0, 1);
+  String ipString = String(WiFi.localIP()[0]) + "." + String(WiFi.localIP()[1]) + "." + String(WiFi.localIP()[2]) + "." + String(WiFi.localIP()[3]);
+  lcd.print(ipString);
 
   //webSocket.beginSSL("gate.filipton.online", 443, "/");
   webSocket.begin("192.168.1.38", 8080, "/");
@@ -105,17 +105,17 @@ void loop() {
     Serial.print("Card ID: ");
     Serial.println(cardId);
 
+    lcd.setCursor(0, 1);
+    lcd.print("               ");
+    lcd.setCursor(0, 1);
+    lcd.printf("ID: %lu", cardId);
+
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo)) {
       Serial.println("Failed to obtain time");
     }
     time_t epoch;
     time(&epoch);
-
-    digitalWrite(D3, HIGH);
-    delay(50);
-    digitalWrite(D3, LOW);
-    delay(50);
 
     DynamicJsonDocument doc(256);
     doc["cardId"] = cardId;
@@ -149,8 +149,12 @@ void loop() {
           Serial.printf("FINISH! Final time is %i:%02i.%03i!\n", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
           finishedSolveTime = timerTime;
           lastTimerTime = timerTime;
-          webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
 
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.printf("TIME: %i:%02i.%03i", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
+
+          //webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
           EEPROM.writeULong(4, finishedSolveTime);
           EEPROM.commit();
           break;
@@ -172,7 +176,10 @@ void loop() {
     if (currentState == ST_Running) {
       if (timerTime != lastTimerTime) {
         Serial.printf("%i:%02i.%03i\n", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
-        webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.printf("TIME: %i:%02i.%03i", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
+        //webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
         lastTimerTime = timerTime;
       }
     }
@@ -181,27 +188,16 @@ void loop() {
   }
 }
 
-void blinkDebugLed(int times, int delayTime) {
-  for (int i = 0; i < times; i++) {
-    digitalWrite(D3, HIGH);
-    delay(delayTime);
-    digitalWrite(D3, LOW);
-    delay(delayTime);
-  }
-}
-
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
   if (type == WStype_TEXT) {
     DynamicJsonDocument doc(2048);
     deserializeJson(doc, payload);
 
-    Serial.printf("Received message: %s\n", doc["espId"].as<const char*>());
+    Serial.printf("Received message: %s\n", doc["espId"].as<const char *>());
   } else if (type == WStype_CONNECTED) {
     Serial.println("Connected to WebSocket server");
-    blinkDebugLed(4, 50);
   } else if (type == WStype_DISCONNECTED) {
     Serial.println("Disconnected from WebSocket server");
-    blinkDebugLed(2, 250);
   }
 }
 
