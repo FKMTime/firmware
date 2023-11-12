@@ -3,19 +3,23 @@
 #include <HTTPClient.h>
 #include <WiFiManager.h>
 #include <WebSocketsClient.h>
-
 #include <SPI.h>
 #include <MFRC522.h>
+#include <EEPROM.h>
+#include <ArduinoJson.h>
 
 #define RST_PIN D6
 #define SS_PIN D4
+#define SCK_PIN D8
+#define MISO_PIN D5
+#define MOSI_PIN D10
+
+#define STACKMAT_TIMER_BAUD_RATE 1200
+#define STACKMAT_TIMER_TIMEOUT 1000
 
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 HTTPClient https;
 WebSocketsClient webSocket;
-
-static const long STACKMAT_TIMER_BAUD_RATE = 1200;
-static const long STACKMAT_TIMER_TIMEOUT = 1000;
 
 enum StackmatTimerState {
   ST_Unknown = 0,
@@ -29,23 +33,25 @@ StackmatTimerState lastState = ST_Unknown;
 
 unsigned long solveSessionId = 0;
 unsigned long lastUpdated = 0;
+unsigned long lastCardReadTime = 0;
+
 unsigned long timerTime = 0;
 unsigned long lastTimerTime = 0;
-bool isConnected = false;
-
 unsigned long finishedSolveTime = 0;
+
+bool isConnected = false;
 
 void setup() {
   pinMode(D3, OUTPUT);
   Serial.begin(115200);
   Serial0.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, -1, 255, true);
-  digitalWrite(D3, HIGH);
-  delay(100);
-  digitalWrite(D3, LOW);
-  delay(100);
-
-  SPI.begin(D8, D5, D10, SS_PIN);  // FIXES SPI WEIRDNESS (D9 is connected as bootloader pin, so it is not usable in this case)
+  SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
   mfrc522.PCD_Init();
+  EEPROM.begin(512);
+
+  digitalWrite(D3, HIGH);
+  delay(500);
+  digitalWrite(D3, LOW);
 
   WiFiManager wm;
   //wm.resetSettings();
@@ -59,22 +65,16 @@ void setup() {
     ESP.restart();
   }
 
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
+  Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  /*
-  if (https.begin("https://echo.filipton.space/r15578016868097582246")) {
-    https.addHeader("Content-Type", "text/plain");
-    int httpCode = https.POST("Startup!");
-    String payload = https.getString();
-    Serial.println(httpCode);
-    Serial.println(payload);
-  } else {
-    Serial.println("Unable to connect");
-  }
-  */
+  digitalWrite(D3, HIGH);
+  delay(25);
+  digitalWrite(D3, LOW);
+  delay(25);
+  digitalWrite(D3, HIGH);
+  delay(25);
+  digitalWrite(D3, LOW);
 
   //webSocket.beginSSL("gate.filipton.online", 443, "/");
   webSocket.begin("192.168.1.38", 8080, "/");
@@ -84,9 +84,14 @@ void setup() {
 
   configTime(3600, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
   Serial0.flush();
+
+  solveSessionId = EEPROM.readULong(0);
+  finishedSolveTime = EEPROM.readULong(4);
+
+  Serial.printf("Solve session ID: %i\n", solveSessionId);
+  Serial.printf("Saved finished solve time: %i\n", finishedSolveTime);
 }
 
-unsigned long lastCardReadTime = 0;
 void loop() {
   webSocket.loop();
 
@@ -112,78 +117,91 @@ void loop() {
     digitalWrite(D3, LOW);
     delay(50);
 
-    String json = "{\"cardId\": " + String(cardId) + ", \"solveTime\": " + String(finishedSolveTime) + ", \"espId\": \"" + getESP32ChipID() + ", \"timestamp\": " + String(epoch) + "}";
+    DynamicJsonDocument doc(256);
+    doc["cardId"] = cardId;
+    doc["solveTime"] = finishedSolveTime;
+    doc["espId"] = getESP32ChipID();
+    doc["timestamp"] = epoch;
+    doc["solveSessionId"] = solveSessionId;
+
+    String json;
+    serializeJson(doc, json);
 
     webSocket.sendTXT(json);
     lastCardReadTime = millis();
   }
 
   String data;
-
   while (Serial0.available() > 9) {
     data = readStackmatString();
-  }
 
-  if (data.length() >= 8) {
-    ParseTimerData(data);
+    if (data.length() >= 8) {
+      ParseTimerData(data);
+    }
   }
 
   isConnected = millis() - lastUpdated < STACKMAT_TIMER_TIMEOUT;
+  if (isConnected) {
+    if (currentState != lastState && currentState != ST_Unknown && lastState != ST_Unknown) {
+      Serial.printf("State changed from %c to %c\n", lastState, currentState);
+      switch (currentState) {
+        case ST_Stopped:
+          Serial.printf("FINISH! Final time is %i:%02i.%03i!\n", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
+          finishedSolveTime = timerTime;
+          lastTimerTime = timerTime;
+          webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
 
-  if (!isConnected) {
-    //Serial.println("Timer is disconnected! Make sure it is connected and turned on.");
-    //NVIC_SystemReset();
+          EEPROM.writeULong(4, finishedSolveTime);
+          EEPROM.commit();
+          break;
+        case ST_Reset:
+          Serial.println("Timer is reset!");
+          break;
+        case ST_Running:
+          solveSessionId++;
 
-    /*
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(50);
-    digitalWrite(LED_BUILTIN, LOW);
-    delay(50);
-    */
-  }
+          Serial.println("Solve started!");
+          Serial.printf("Solve session ID: %i\n", solveSessionId);
+          EEPROM.writeULong(0, solveSessionId);
+          break;
+        default:
+          break;
+      }
+    }
 
-  if (currentState != lastState && currentState != ST_Unknown && lastState != ST_Unknown) {
-    Serial.printf("State changed from %c to %c\n", lastState, currentState);
-    switch (currentState) {
-      case ST_Stopped:
-        Serial.printf("FINISH! Final time is %i:%02i.%03i!\n", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
-        finishedSolveTime = timerTime;
-        lastTimerTime = timerTime;
+    if (currentState == ST_Running) {
+      if (timerTime != lastTimerTime) {
+        Serial.printf("%i:%02i.%03i\n", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
         webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
-        break;
-      case ST_Reset:
-        Serial.println("Timer is reset!");
-        break;
-      case ST_Running:
-        solveSessionId++;
-
-        Serial.println("Solve started!");
-        Serial.printf("Solve session ID: %i\n", solveSessionId);
-        break;
-      default:
-        break;
+        lastTimerTime = timerTime;
+      }
     }
-  }
 
-  if (currentState == ST_Running) {
-    if (timerTime != lastTimerTime) {
-      Serial.printf("%i:%02i.%03i\n", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
-      webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
-      lastTimerTime = timerTime;
-    }
+    lastState = currentState;
   }
+}
 
-  lastState = currentState;
+void blinkDebugLed(int times, int delayTime) {
+  for (int i = 0; i < times; i++) {
+    digitalWrite(D3, HIGH);
+    delay(delayTime);
+    digitalWrite(D3, LOW);
+    delay(delayTime);
+  }
 }
 
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
   if (type == WStype_TEXT) {
-    String str = (char *)payload;
-    Serial.printf("Received message: %s\n", str.c_str());
+    DynamicJsonDocument doc(2048);
+    deserializeJson(doc, payload);
+
+    Serial.printf("Received message: %s\n", doc["espId"].as<const char*>());
   } else if (type == WStype_CONNECTED) {
     Serial.println("Connected to WebSocket server");
+    blinkDebugLed(4, 50);
   } else if (type == WStype_DISCONNECTED) {
     Serial.println("Disconnected from WebSocket server");
+    blinkDebugLed(2, 250);
   }
 }
 
