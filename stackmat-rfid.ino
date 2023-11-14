@@ -15,6 +15,10 @@
 #define MISO_PIN D3
 #define MOSI_PIN D10
 
+#define OK_BUTTON_PIN D9
+#define PLUS2_BUTTON_PIN D1
+#define DNF_BUTTON_PIN D0
+
 #define STACKMAT_TIMER_BAUD_RATE 1200
 #define STACKMAT_TIMER_TIMEOUT 1000
 
@@ -42,9 +46,13 @@ unsigned long lastTimerTime = 0;
 unsigned long finishedSolveTime = 0;
 
 bool isConnected = false;
+bool lastIsConnected = false;
 
 void setup() {
-  pinMode(D3, OUTPUT);
+  pinMode(OK_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(PLUS2_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(DNF_BUTTON_PIN, INPUT_PULLUP);
+
   Serial.begin(115200);
   Serial0.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, -1, 255, true);
   SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
@@ -142,6 +150,14 @@ void loop() {
 
   isConnected = millis() - lastUpdated < STACKMAT_TIMER_TIMEOUT;
   if (isConnected) {
+    if (!lastIsConnected) {
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Stackmat Timer");
+      lcd.setCursor(0, 1);
+      lcd.print("Connected");
+    }
+
     if (currentState != lastState && currentState != ST_Unknown && lastState != ST_Unknown) {
       Serial.printf("State changed from %c to %c\n", lastState, currentState);
       switch (currentState) {
@@ -185,6 +201,38 @@ void loop() {
     }
 
     lastState = currentState;
+  } else {
+    if (lastIsConnected) {
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Stackmat Timer");
+      lcd.setCursor(0, 1);
+      lcd.print("Disconnected");
+    }
+  }
+
+  lastIsConnected = isConnected;
+
+
+  if (digitalRead(OK_BUTTON_PIN) == LOW) {
+    Serial.println("OK button pressed!");
+    while (digitalRead(OK_BUTTON_PIN) == LOW) {
+      delay(10);
+    }
+  }
+
+  if (digitalRead(PLUS2_BUTTON_PIN) == LOW) {
+    Serial.println("+2 button pressed!");
+    while (digitalRead(PLUS2_BUTTON_PIN) == LOW) {
+        delay(10);
+    }
+  }
+
+  if (digitalRead(DNF_BUTTON_PIN) == LOW) {
+    Serial.println("DNF button pressed!");
+    while (digitalRead(DNF_BUTTON_PIN) == LOW) {
+      delay(10);
+    }
   }
 }
 
