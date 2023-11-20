@@ -34,8 +34,8 @@ enum StackmatTimerState {
   ST_Stopped = 'S'
 };
 
-StackmatTimerState currentState = ST_Reset;
-StackmatTimerState lastState = ST_Unknown;
+StackmatTimerState currentTimerState = ST_Reset;
+StackmatTimerState lastTimerState = ST_Unknown;
 
 unsigned long solveSessionId = 0;
 unsigned long lastUpdated = 0;
@@ -45,6 +45,7 @@ unsigned long timerTime = 0;
 unsigned long lastTimerTime = 0;
 unsigned long finishedSolveTime = 0;
 
+bool timeConfirmed = false;
 bool isConnected = false;
 bool lastIsConnected = false;
 
@@ -102,9 +103,63 @@ void setup() {
 
 void loop() {
   webSocket.loop();
+  cardReader();
+  stackmatReader();
 
+  if (digitalRead(OK_BUTTON_PIN) == LOW) {
+    Serial.println("OK button pressed!");
+    unsigned long pressedTime = millis();
+    while (digitalRead(OK_BUTTON_PIN) == LOW) {
+      delay(10);
+    }
+
+    if (millis() - pressedTime > 5000) {
+      Serial.println("Resettings finished solve time!");
+      finishedSolveTime = 0;
+      timeConfirmed = false;
+    } else {
+      timeConfirmed = true;
+    }
+  }
+
+  if (digitalRead(PLUS2_BUTTON_PIN) == LOW) {
+    Serial.println("+2 button pressed!");
+    //unsigned long pressedTime = millis();
+    while (digitalRead(PLUS2_BUTTON_PIN) == LOW) {
+      delay(10);
+    }
+  }
+
+  if (digitalRead(DNF_BUTTON_PIN) == LOW) {
+    Serial.println("DNF button pressed!");
+    unsigned long pressedTime = millis();
+    while (digitalRead(DNF_BUTTON_PIN) == LOW) {
+      delay(10);
+    }
+
+    if (millis() - pressedTime > 10000) {
+      Serial.println("Resetting wifi settings!");
+      WiFiManager wm;
+      wm.resetSettings();
+      delay(1000);
+      ESP.restart();
+    }
+  }
+}
+
+void cardReader() {
   if (millis() - lastCardReadTime > 1000 && mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
-    if (currentState == ST_Running) {
+    if (finishedSolveTime == 0) {
+      Serial.println("Please start the timer before scanning a card!");
+      return;
+    }
+
+    if (!timeConfirmed) {
+      Serial.println("Please confirm the solve by pressing OK button!");
+      return;
+    }
+
+    if (currentTimerState == ST_Running) {
       Serial.println("Solve is running! Please stop the timer before scanning a new card.");
       return;
     }
@@ -137,8 +192,16 @@ void loop() {
 
     webSocket.sendTXT(json);
     lastCardReadTime = millis();
-  }
 
+    // This should be done after the solve is sent to the server (after the server responds)
+    /*
+    currentState = S_NotConfirmed;
+    finishedSolveTime = 0;
+    */
+  }
+}
+
+void stackmatReader() {
   String data;
   while (Serial0.available() > 9) {
     data = readStackmatString();
@@ -158,9 +221,9 @@ void loop() {
       lcd.print("Connected");
     }
 
-    if (currentState != lastState && currentState != ST_Unknown && lastState != ST_Unknown) {
-      Serial.printf("State changed from %c to %c\n", lastState, currentState);
-      switch (currentState) {
+    if (currentTimerState != lastTimerState && currentTimerState != ST_Unknown && lastTimerState != ST_Unknown) {
+      Serial.printf("State changed from %c to %c\n", lastTimerState, currentTimerState);
+      switch (currentTimerState) {
         case ST_Stopped:
           Serial.printf("FINISH! Final time is %i:%02i.%03i!\n", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
           finishedSolveTime = timerTime;
@@ -189,7 +252,7 @@ void loop() {
       }
     }
 
-    if (currentState == ST_Running) {
+    if (currentTimerState == ST_Running) {
       if (timerTime != lastTimerTime) {
         Serial.printf("%i:%02i.%03i\n", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
         lcd.clear();
@@ -200,7 +263,7 @@ void loop() {
       }
     }
 
-    lastState = currentState;
+    lastTimerState = currentTimerState;
   } else {
     if (lastIsConnected) {
       lcd.clear();
@@ -212,28 +275,6 @@ void loop() {
   }
 
   lastIsConnected = isConnected;
-
-
-  if (digitalRead(OK_BUTTON_PIN) == LOW) {
-    Serial.println("OK button pressed!");
-    while (digitalRead(OK_BUTTON_PIN) == LOW) {
-      delay(10);
-    }
-  }
-
-  if (digitalRead(PLUS2_BUTTON_PIN) == LOW) {
-    Serial.println("+2 button pressed!");
-    while (digitalRead(PLUS2_BUTTON_PIN) == LOW) {
-        delay(10);
-    }
-  }
-
-  if (digitalRead(DNF_BUTTON_PIN) == LOW) {
-    Serial.println("DNF button pressed!");
-    while (digitalRead(DNF_BUTTON_PIN) == LOW) {
-      delay(10);
-    }
-  }
 }
 
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
@@ -303,7 +344,7 @@ bool ParseTimerData(String data) {
     state = ST_Stopped;
   }
 
-  currentState = state;
+  currentTimerState = state;
   lastUpdated = millis();
   timerTime = totalMs;
 
