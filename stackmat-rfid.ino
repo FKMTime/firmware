@@ -37,13 +37,14 @@ enum StackmatTimerState {
 StackmatTimerState currentTimerState = ST_Reset;
 StackmatTimerState lastTimerState = ST_Unknown;
 
-unsigned long solveSessionId = 0;
+int solveSessionId = 0;
 unsigned long lastUpdated = 0;
 unsigned long lastCardReadTime = 0;
 
-unsigned long timerTime = 0;
-unsigned long lastTimerTime = 0;
-unsigned long finishedSolveTime = 0;
+int timerTime = 0;
+int lastTimerTime = 0;
+int finishedSolveTime = 0;
+int timerOffset = 0;
 
 bool timeConfirmed = false;
 bool isConnected = false;
@@ -94,8 +95,8 @@ void setup() {
   configTime(3600, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
   Serial0.flush();
 
-  solveSessionId = EEPROM.readULong(0);
-  finishedSolveTime = EEPROM.readULong(4);
+  solveSessionId = EEPROM.readInt(0);
+  finishedSolveTime = EEPROM.readInt(4);
 
   Serial.printf("Solve session ID: %i\n", solveSessionId);
   Serial.printf("Saved finished solve time: %i\n", finishedSolveTime);
@@ -128,6 +129,10 @@ void loop() {
     while (digitalRead(PLUS2_BUTTON_PIN) == LOW) {
       delay(10);
     }
+
+    if (timerOffset != -1) {
+      timerOffset = timerOffset >= 16 ? 0 : timerOffset + 2;
+    }
   }
 
   if (digitalRead(DNF_BUTTON_PIN) == LOW) {
@@ -143,8 +148,12 @@ void loop() {
       wm.resetSettings();
       delay(1000);
       ESP.restart();
+    } else {
+      timerOffset = timerOffset != -1 ? -1 : 0;
     }
   }
+
+  Serial.printf("Timer offset: %i\n", timerOffset);
 }
 
 void cardReader() {
@@ -234,7 +243,7 @@ void stackmatReader() {
           lcd.printf("TIME: %i:%02i.%03i", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
 
           //webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
-          EEPROM.writeULong(4, finishedSolveTime);
+          EEPROM.writeInt(4, finishedSolveTime);
           EEPROM.commit();
           break;
         case ST_Reset:
@@ -245,7 +254,7 @@ void stackmatReader() {
 
           Serial.println("Solve started!");
           Serial.printf("Solve session ID: %i\n", solveSessionId);
-          EEPROM.writeULong(0, solveSessionId);
+          EEPROM.writeInt(0, solveSessionId);
           break;
         default:
           break;
@@ -330,7 +339,7 @@ bool ParseTimerData(String data) {
   int ms = data.substring(4, 7).toInt();
   int cheksum = (int)data[7];
 
-  unsigned long totalMs = ms + (seconds * 1000) + (minutes * 60 * 1000);
+  int totalMs = ms + (seconds * 1000) + (minutes * 60 * 1000);
   int sum = 64;
   for (int i = 0; i < 7; i++) {
     sum += data.substring(i, i + 1).toInt();
