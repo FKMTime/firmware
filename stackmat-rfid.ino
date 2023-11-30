@@ -1,6 +1,5 @@
 #include <Arduino.h>
-#include <WiFi.h>
-#include <HTTPClient.h>
+#include <ESP8266WiFi.h>
 #include <WiFiManager.h>
 #include <WebSocketsClient.h>
 #include <SPI.h>
@@ -14,6 +13,7 @@
 #define SCK_PIN D8
 #define MISO_PIN D3
 #define MOSI_PIN D10
+#define STACKMAT_TIMER_PIN D5
 
 #define OK_BUTTON_PIN D9
 #define PLUS2_BUTTON_PIN D1
@@ -23,7 +23,6 @@
 #define STACKMAT_TIMER_TIMEOUT 1000
 
 MFRC522 mfrc522(SS_PIN, RST_PIN);
-HTTPClient https;
 WebSocketsClient webSocket;
 rgb_lcd lcd;
 
@@ -55,9 +54,13 @@ void setup() {
   pinMode(PLUS2_BUTTON_PIN, INPUT_PULLUP);
   pinMode(DNF_BUTTON_PIN, INPUT_PULLUP);
 
-  Serial.begin(115200);
-  Serial0.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, -1, 255, true);
-  SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
+  //Serial.begin(115200);
+  //Serial.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, -1, 255, true);
+  Serial.pins(255, STACKMAT_TIMER_PIN);
+  Serial.begin(STACKMAT_TIMER_BAUD_RATE);
+
+  SPI.pins(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
+  SPI.begin();
   mfrc522.PCD_Init();
   EEPROM.begin(512);
 
@@ -66,12 +69,12 @@ void setup() {
 
   lcd.print("ID: ");
   lcd.setCursor(0, 1);
-  lcd.print(getESP32ChipID());
+  lcd.print(getChipID());
 
   WiFiManager wm;
   //wm.resetSettings();
 
-  String generatedSSID = "StackmatTimer-" + getESP32ChipID();
+  String generatedSSID = "StackmatTimer-" + getChipID();
   wm.setConfigPortalTimeout(300);
   bool res = wm.autoConnect(generatedSSID.c_str(), "StackmatTimer");
   if (!res) {
@@ -93,10 +96,10 @@ void setup() {
   webSocket.sendTXT("Hello from ESP32!");
 
   configTime(3600, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
-  Serial0.flush();
+  Serial.flush();
 
-  solveSessionId = EEPROM.readInt(0);
-  finishedSolveTime = EEPROM.readInt(4);
+  solveSessionId = readEEPROMInt(0);
+  finishedSolveTime = readEEPROMInt(4);
 
   Serial.printf("Solve session ID: %i\n", solveSessionId);
   Serial.printf("Saved finished solve time: %i\n", finishedSolveTime);
@@ -156,6 +159,21 @@ void loop() {
   Serial.printf("Timer offset: %i\n", timerOffset);
 }
 
+void writeEEPROMInt(int address, int value) {
+  byte lowByte = (value & 0xFF);
+  byte highByte = ((value >> 8) & 0xFF);
+
+  EEPROM.write(address, lowByte);
+  EEPROM.write(address + 1, highByte);
+}
+
+int readEEPROMInt(int address) {
+  byte lowByte = EEPROM.read(address);
+  byte highByte = EEPROM.read(address + 1);
+
+  return (lowByte | (highByte << 8));
+}
+
 void cardReader() {
   if (millis() - lastCardReadTime > 1000 && mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
     if (finishedSolveTime == 0) {
@@ -192,7 +210,7 @@ void cardReader() {
     DynamicJsonDocument doc(256);
     doc["cardId"] = cardId;
     doc["solveTime"] = finishedSolveTime;
-    doc["espId"] = getESP32ChipID();
+    doc["espId"] = getChipID();
     doc["timestamp"] = epoch;
     doc["solveSessionId"] = solveSessionId;
 
@@ -212,7 +230,7 @@ void cardReader() {
 
 void stackmatReader() {
   String data;
-  while (Serial0.available() > 9) {
+  while (Serial.available() > 9) {
     data = readStackmatString();
 
     if (data.length() >= 8) {
@@ -243,7 +261,7 @@ void stackmatReader() {
           lcd.printf("TIME: %i:%02i.%03i", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
 
           //webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
-          EEPROM.writeInt(4, finishedSolveTime);
+          writeEEPROMInt(4, finishedSolveTime);
           EEPROM.commit();
           break;
         case ST_Reset:
@@ -254,7 +272,7 @@ void stackmatReader() {
 
           Serial.println("Solve started!");
           Serial.printf("Solve session ID: %i\n", solveSessionId);
-          EEPROM.writeInt(0, solveSessionId);
+          writeEEPROMInt(0, solveSessionId);
           break;
         default:
           break;
@@ -299,8 +317,8 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
   }
 }
 
-String getESP32ChipID() {
-  uint64_t chipid = ESP.getEfuseMac();
+String getChipID() {
+  uint64_t chipid = ESP.getChipId();
   String chipidStr = String((uint32_t)(chipid >> 32), HEX) + String((uint32_t)chipid, HEX);
   return chipidStr;
 }
@@ -310,8 +328,8 @@ String readStackmatString() {
   String tmp;
 
   while (millis() - startTime < 1000) {
-    if (Serial0.available() > 0) {
-      char c = Serial0.read();
+    if (Serial.available() > 0) {
+      char c = Serial.read();
       if ((int)c == 0) {
         return tmp;
       }
