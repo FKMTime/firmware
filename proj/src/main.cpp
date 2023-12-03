@@ -8,7 +8,7 @@
 #include <WebSocketsClient.h>
 #include "rgb_lcd.h"
 
-#define RST_PIN 1
+#define RST_PIN A0
 #define SS_PIN 16
 #define SCK_PIN 14
 #define MISO_PIN 12
@@ -24,17 +24,17 @@
 #define STACKMAT_TIMER_TIMEOUT 1000
 
 String getChipID();
-// MFRC522 mfrc522(SS_PIN, RST_PIN);
+MFRC522 mfrc522(SS_PIN, RST_PIN);
 rgb_lcd lcd;
 
 void setup() {
   Serial.begin(115200);
   pinMode(2, INPUT_PULLUP);
-  pinMode(A0, INPUT);
+  pinMode(15, INPUT_PULLUP);
 
-  // SPI.pins(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
-  // SPI.begin();
-  // mfrc522.PCD_Init();
+  SPI.pins(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
+  SPI.begin();
+  mfrc522.PCD_Init();
 
   lcd.begin(16, 2);
   lcd.clear();
@@ -46,20 +46,20 @@ void setup() {
 }
 
 void loop() {
-  Serial.println(digitalRead(A0));
-  Serial.println(analogRead(A0));
+  Serial.println(digitalRead(15));
+  Serial.println(analogRead(15));
+
   delay(100);
+  if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
+    unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
+    Serial.print("Card ID: ");
+    Serial.println(cardId);
 
-  // if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
-  //   unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
-  //   Serial.print("Card ID: ");
-  //   Serial.println(cardId);
-
-  //   lcd.setCursor(0, 1);
-  //   lcd.print("               ");
-  //   lcd.setCursor(0, 1);
-  //   lcd.printf("ID: %lu", cardId);
-  // }
+    lcd.setCursor(0, 1);
+    lcd.print("               ");
+    lcd.setCursor(0, 1);
+    lcd.printf("ID: %lu", cardId);
+  }
 }
 
 String getChipID() {
