@@ -22,11 +22,11 @@
 
 String getChipID();
 void stackmatReader();
+
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 rgb_lcd lcd;
 Stackmat stackmat;
 
-StackmatTimerState currentTimerState = ST_Reset;
 StackmatTimerState lastTimerState = ST_Unknown;
 
 int solveSessionId = 0;
@@ -37,7 +37,6 @@ int finishedSolveTime = 0;
 int timerOffset = 0;
 
 bool timeConfirmed = false;
-bool isConnected = false;
 bool lastIsConnected = false;
 
 void setup() {
@@ -45,7 +44,7 @@ void setup() {
   Serial.begin(115200);
 
   Serial1.pins(255, STACKMAT_TIMER_PIN);
-  Serial1.begin(STACKMAT_TIMER_BAUD_RATE);
+  Serial1.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, SERIAL_FULL, 255, true);
   stackmat.begin(&Serial1);
 
   pinMode(2, INPUT_PULLUP);
@@ -65,6 +64,7 @@ void setup() {
 }
 
 void loop() {
+  // stackmat.loop();
   // Serial.println(digitalRead(15));
   // Serial.println(analogRead(15));
 
@@ -80,7 +80,7 @@ void loop() {
     lcd.printf("ID: %lu", cardId);
   }
 
-  stackmatReader();
+  // stackmatReader();
 }
 
 String getChipID() {
@@ -90,8 +90,7 @@ String getChipID() {
 }
 
 void stackmatReader() {
-  isConnected = millis() - lastUpdated < STACKMAT_TIMER_TIMEOUT;
-  if (isConnected) {
+  if (stackmat.connected()) {
     if (!lastIsConnected) {
       lcd.clear();
       lcd.setCursor(0, 0);
@@ -100,17 +99,17 @@ void stackmatReader() {
       lcd.print("Connected");
     }
 
-    if (currentTimerState != lastTimerState && currentTimerState != ST_Unknown && lastTimerState != ST_Unknown) {
-      Serial.printf("State changed from %c to %c\n", lastTimerState, currentTimerState);
-      switch (currentTimerState) {
+    if (stackmat.state() != lastTimerState && stackmat.state() != ST_Unknown && lastTimerState != ST_Unknown) {
+      Serial.printf("State changed from %c to %c\n", lastTimerState, stackmat.state());
+      switch (stackmat.state()) {
         case ST_Stopped:
-          Serial.printf("FINISH! Final time is %i:%02i.%03i!\n", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
-          finishedSolveTime = timerTime;
-          lastTimerTime = timerTime;
+          Serial.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+          finishedSolveTime = stackmat.time();
+          lastTimerTime = stackmat.time();
 
           lcd.clear();
           lcd.setCursor(0, 0);
-          lcd.printf("TIME: %i:%02i.%03i", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
+          lcd.printf("TIME: %i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
 
           //webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
           // writeEEPROMInt(4, finishedSolveTime);
@@ -131,18 +130,18 @@ void stackmatReader() {
       }
     }
 
-    if (currentTimerState == ST_Running) {
-      if (timerTime != lastTimerTime) {
-        Serial.printf("%i:%02i.%03i\n", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
+    if (stackmat.state() == ST_Running) {
+      if (stackmat.time() != lastTimerTime) {
+        Serial.printf("%i:%02i.%03i\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
         lcd.clear();
         lcd.setCursor(0, 0);
-        lcd.printf("TIME: %i:%02i.%03i", GetDisplayMinutes(), GetDisplaySeconds(), GetDisplayMilliseconds());
+        lcd.printf("TIME: %i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
         //webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
-        lastTimerTime = timerTime;
+        lastTimerTime = stackmat.time();
       }
     }
 
-    lastTimerState = currentTimerState;
+    lastTimerState = stackmat.state();
   } else {
     if (lastIsConnected) {
       lcd.clear();
@@ -153,5 +152,5 @@ void stackmatReader() {
     }
   }
 
-  lastIsConnected = isConnected;
+  lastIsConnected = stackmat.connected();
 }
