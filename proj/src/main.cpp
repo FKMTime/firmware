@@ -6,6 +6,7 @@
 #include <ArduinoJson.h>
 #include <WiFiManager.h>
 #include <WebSocketsClient.h>
+#include <SoftwareSerial.h>
 
 #include "stackmat.h"
 #include "rgb_lcd.h"
@@ -15,14 +16,15 @@
 #define SCK_PIN 14
 #define MISO_PIN 12
 #define MOSI_PIN 13
-#define STACKMAT_TIMER_PIN 1
-#define OK_BUTTON_PIN D9
-#define PLUS2_BUTTON_PIN D1
-#define DNF_BUTTON_PIN D0
+#define STACKMAT_TIMER_PIN 2
+#define OK_BUTTON_PIN 3
+#define PLUS2_BUTTON_PIN 15
+#define DNF_BUTTON_PIN 0
 
 String getChipID();
 void stackmatReader();
 
+SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 rgb_lcd lcd;
 Stackmat stackmat;
@@ -40,14 +42,12 @@ bool timeConfirmed = false;
 bool lastIsConnected = false;
 
 void setup() {
-  Serial.pins(255, 3);
-  Serial.begin(115200);
+  Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, 1);
 
-  Serial1.pins(255, STACKMAT_TIMER_PIN);
-  Serial1.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, SERIAL_FULL, 255, true);
-  stackmat.begin(&Serial1);
+  stackmatSerial.begin(1200);
+  stackmat.begin(&stackmatSerial);
 
-  pinMode(2, INPUT_PULLUP);
+  pinMode(3, INPUT_PULLUP);
   pinMode(15, INPUT_PULLUP);
 
   SPI.pins(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
