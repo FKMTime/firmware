@@ -12,7 +12,6 @@ void Stackmat::loop() {
     String data;
     while (serial->available() > 9) {
         data = ReadStackmatString();
-        Serial.println(data);
 
         if (data.length() >= 8) {
             ParseTimerData(data);

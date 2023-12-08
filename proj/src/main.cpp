@@ -64,7 +64,7 @@ void setup() {
 }
 
 void loop() {
-  // stackmat.loop();
+  stackmat.loop();
   // Serial.println(digitalRead(15));
   // Serial.println(analogRead(15));
 
@@ -80,7 +80,7 @@ void loop() {
     lcd.printf("ID: %lu", cardId);
   }
 
-  // stackmatReader();
+  stackmatReader();
 }
 
 String getChipID() {
