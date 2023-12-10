@@ -8,6 +8,7 @@
 #include <WebSocketsClient.h>
 #include <SoftwareSerial.h>
 
+#include "utils.hpp"
 #include "stackmat.h"
 #include "rgb_lcd.h"
 
@@ -21,13 +22,14 @@
 #define PLUS2_BUTTON_PIN 15
 #define DNF_BUTTON_PIN 0
 
-String getChipID();
 void stackmatReader();
+void lcdLoop();
 
 SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
 MFRC522 mfrc522(SS_PIN, RST_PIN);
-rgb_lcd lcd;
+WebSocketsClient webSocket;
 Stackmat stackmat;
+rgb_lcd lcd;
 
 StackmatTimerState lastTimerState = ST_Unknown;
 
@@ -41,7 +43,8 @@ int timerOffset = 0;
 bool timeConfirmed = false;
 bool lastIsConnected = false;
 
-void setup() {
+void setup()
+{
   Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, 1);
 
   stackmatSerial.begin(1200);
@@ -58,18 +61,49 @@ void setup() {
   lcd.clear();
 
   lcd.print("ID: ");
-  lcd.setCursor(0, 1);
+  lcd.setCursor(0, 0);
   lcd.print(getChipID());
+  lcd.setCursor(0, 1);
+  lcd.print("Connecting...");
 
+  WiFiManager wm;
+  // wm.resetSettings();
+
+  String generatedSSID = "StackmatTimer-" + getChipID();
+  wm.setConfigPortalTimeout(300);
+  bool res = wm.autoConnect(generatedSSID.c_str(), "StackmatTimer");
+  if (!res)
+  {
+    Serial.println("Failed to connect to wifi... Restarting!");
+    delay(1500);
+    ESP.restart();
+
+    return;
+  }
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("WiFi connected!");
+
+  String ipString = String(WiFi.localIP()[0]) + "." + String(WiFi.localIP()[1]) + "." + String(WiFi.localIP()[2]) + "." + String(WiFi.localIP()[3]);
+  lcd.print(ipString);
+
+  // webSocket.begin("192.168.1.38", 8080, "/");
+  // webSocket.onEvent(webSocketEvent);
+  // webSocket.setReconnectInterval(5000);
+  // webSocket.sendTXT("TODO: init msg");
+
+  configTime(3600, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
 }
 
-void loop() {
+void loop()
+{
   stackmat.loop();
-  // Serial.println(digitalRead(15));
-  // Serial.println(analogRead(15));
+  lcdLoop();
 
   delay(20);
-  if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
+  if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial())
+  {
     unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
     Serial.print("Card ID: ");
     Serial.println(cardId);
@@ -83,15 +117,16 @@ void loop() {
   stackmatReader();
 }
 
-String getChipID() {
-  uint64_t chipid = ESP.getChipId();
-  String chipidStr = String((uint32_t)(chipid >> 32), HEX) + String((uint32_t)chipid, HEX);
-  return chipidStr;
+void lcdLoop()
+{
 }
 
-void stackmatReader() {
-  if (stackmat.connected()) {
-    if (!lastIsConnected) {
+void stackmatReader()
+{
+  if (stackmat.connected())
+  {
+    if (!lastIsConnected)
+    {
       lcd.clear();
       lcd.setCursor(0, 0);
       lcd.print("Stackmat Timer");
@@ -99,51 +134,58 @@ void stackmatReader() {
       lcd.print("Connected");
     }
 
-    if (stackmat.state() != lastTimerState && stackmat.state() != ST_Unknown && lastTimerState != ST_Unknown) {
+    if (stackmat.state() != lastTimerState && stackmat.state() != ST_Unknown && lastTimerState != ST_Unknown)
+    {
       Serial.printf("State changed from %c to %c\n", lastTimerState, stackmat.state());
-      switch (stackmat.state()) {
-        case ST_Stopped:
-          Serial.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
-          finishedSolveTime = stackmat.time();
-          lastTimerTime = stackmat.time();
+      switch (stackmat.state())
+      {
+      case ST_Stopped:
+        Serial.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+        finishedSolveTime = stackmat.time();
+        lastTimerTime = stackmat.time();
 
-          lcd.clear();
-          lcd.setCursor(0, 0);
-          lcd.printf("TIME: %i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.printf("TIME: %i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
 
-          //webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
-          // writeEEPROMInt(4, finishedSolveTime);
-          // EEPROM.commit();
-          break;
-        case ST_Reset:
-          Serial.println("Timer is reset!");
-          break;
-        case ST_Running:
-          solveSessionId++;
+        // webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
+        //  writeEEPROMInt(4, finishedSolveTime);
+        //  EEPROM.commit();
+        break;
+      case ST_Reset:
+        Serial.println("Timer is reset!");
+        break;
+      case ST_Running:
+        solveSessionId++;
 
-          Serial.println("Solve started!");
-          Serial.printf("Solve session ID: %i\n", solveSessionId);
-          // writeEEPROMInt(0, solveSessionId);
-          break;
-        default:
-          break;
+        Serial.println("Solve started!");
+        Serial.printf("Solve session ID: %i\n", solveSessionId);
+        // writeEEPROMInt(0, solveSessionId);
+        break;
+      default:
+        break;
       }
     }
 
-    if (stackmat.state() == ST_Running) {
-      if (stackmat.time() != lastTimerTime) {
+    if (stackmat.state() == ST_Running)
+    {
+      if (stackmat.time() != lastTimerTime)
+      {
         Serial.printf("%i:%02i.%03i\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
         lcd.clear();
         lcd.setCursor(0, 0);
         lcd.printf("TIME: %i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
-        //webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
+        // webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
         lastTimerTime = stackmat.time();
       }
     }
 
     lastTimerState = stackmat.state();
-  } else {
-    if (lastIsConnected) {
+  }
+  else
+  {
+    if (lastIsConnected)
+    {
       lcd.clear();
       lcd.setCursor(0, 0);
       lcd.print("Stackmat Timer");
