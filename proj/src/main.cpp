@@ -22,6 +22,7 @@
 #define PLUS2_BUTTON_PIN 15
 #define DNF_BUTTON_PIN 0
 
+void webSocketEvent(WStype_t type, uint8_t *payload, size_t length);
 void stackmatReader();
 void lcdLoop();
 
@@ -36,9 +37,7 @@ StackmatTimerState lastTimerState = ST_Unknown;
 int solveSessionId = 0;
 unsigned long lastCardReadTime = 0;
 
-int lastTimerTime = 0;
 int finishedSolveTime = 0;
-int timerOffset = 0;
 
 bool timeConfirmed = false;
 bool lastIsConnected = false;
@@ -50,8 +49,9 @@ void setup()
   stackmatSerial.begin(1200);
   stackmat.begin(&stackmatSerial);
 
-  pinMode(3, INPUT_PULLUP);
-  pinMode(15, INPUT_PULLUP);
+  pinMode(PLUS2_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(DNF_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(OK_BUTTON_PIN, INPUT_PULLUP);
 
   SPI.pins(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
   SPI.begin();
@@ -88,10 +88,16 @@ void setup()
   String ipString = String(WiFi.localIP()[0]) + "." + String(WiFi.localIP()[1]) + "." + String(WiFi.localIP()[2]) + "." + String(WiFi.localIP()[3]);
   lcd.print(ipString);
 
-  // webSocket.begin("192.168.1.38", 8080, "/");
-  // webSocket.onEvent(webSocketEvent);
-  // webSocket.setReconnectInterval(5000);
-  // webSocket.sendTXT("TODO: init msg");
+  webSocket.begin("192.168.1.38", 8080, "/");
+  webSocket.onEvent(webSocketEvent);
+  webSocket.setReconnectInterval(5000);
+
+  DynamicJsonDocument doc(256);
+  doc["esp_id"] = getChipID();
+
+  String json;
+  serializeJson(doc, json);
+  webSocket.sendTXT(json);
 
   configTime(3600, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
 }
@@ -112,6 +118,25 @@ void loop()
     lcd.print("               ");
     lcd.setCursor(0, 1);
     lcd.printf("ID: %lu", cardId);
+
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo))
+    {
+      Serial.println("Failed to obtain time");
+    }
+    time_t epoch;
+    time(&epoch);
+
+    DynamicJsonDocument doc(256);
+    doc["solve_time"] = finishedSolveTime;
+    doc["card_id"] = cardId;
+    doc["esp_id"] = getChipID();
+    doc["timestamp"] = epoch;
+    doc["session_id"] = solveSessionId;
+
+    String json;
+    serializeJson(doc, json);
+    webSocket.sendTXT(json);
   }
 
   stackmatReader();
@@ -123,67 +148,7 @@ void lcdLoop()
 
 void stackmatReader()
 {
-  if (stackmat.connected())
-  {
-    if (!lastIsConnected)
-    {
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("Stackmat Timer");
-      lcd.setCursor(0, 1);
-      lcd.print("Connected");
-    }
-
-    if (stackmat.state() != lastTimerState && stackmat.state() != ST_Unknown && lastTimerState != ST_Unknown)
-    {
-      Serial.printf("State changed from %c to %c\n", lastTimerState, stackmat.state());
-      switch (stackmat.state())
-      {
-      case ST_Stopped:
-        Serial.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
-        finishedSolveTime = stackmat.time();
-        lastTimerTime = stackmat.time();
-
-        lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.printf("TIME: %i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
-
-        // webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
-        //  writeEEPROMInt(4, finishedSolveTime);
-        //  EEPROM.commit();
-        break;
-      case ST_Reset:
-        Serial.println("Timer is reset!");
-        break;
-      case ST_Running:
-        solveSessionId++;
-
-        Serial.println("Solve started!");
-        Serial.printf("Solve session ID: %i\n", solveSessionId);
-        // writeEEPROMInt(0, solveSessionId);
-        break;
-      default:
-        break;
-      }
-    }
-
-    if (stackmat.state() == ST_Running)
-    {
-      if (stackmat.time() != lastTimerTime)
-      {
-        Serial.printf("%i:%02i.%03i\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
-        lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.printf("TIME: %i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
-        // webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
-        lastTimerTime = stackmat.time();
-      }
-    }
-
-    lastTimerState = stackmat.state();
-  }
-  else
-  {
+  if (!stackmat.connected()) {
     if (lastIsConnected)
     {
       lcd.clear();
@@ -191,8 +156,71 @@ void stackmatReader()
       lcd.print("Stackmat Timer");
       lcd.setCursor(0, 1);
       lcd.print("Disconnected");
+
+      lastIsConnected = false;
+    }
+
+    return;
+  }
+
+  if (stackmat.state() != lastTimerState && stackmat.state() != ST_Unknown && lastTimerState != ST_Unknown)
+  {
+    Serial.printf("State changed from %c to %c\n", lastTimerState, stackmat.state());
+    switch (stackmat.state())
+    {
+      case ST_Stopped:
+        Serial.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+        finishedSolveTime = stackmat.time();
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.printf("TIME: %i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+        // webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
+        writeEEPROMInt(4, finishedSolveTime);
+        EEPROM.commit();
+        break;
+
+      case ST_Reset:
+        Serial.println("Timer reset!");
+        break;
+
+      case ST_Running:
+        solveSessionId++;
+        Serial.println("Solve started!");
+        Serial.printf("Solve session ID: %i\n", solveSessionId);
+        writeEEPROMInt(0, solveSessionId);
+        break;
+
+      default:
+        break;
     }
   }
 
+  if (stackmat.state() == ST_Running)
+  {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.printf("TIME: %i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+  }
+
+  lastTimerState = stackmat.state();
   lastIsConnected = stackmat.connected();
+}
+
+void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
+{
+  if (type == WStype_TEXT)
+  {
+    // DynamicJsonDocument doc(2048);
+    // deserializeJson(doc, payload);
+
+    // Serial.printf("Received message: %s\n", doc["espId"].as<const char *>());
+  }
+  else if (type == WStype_CONNECTED)
+  {
+    Serial.println("Connected to WebSocket server");
+  }
+  else if (type == WStype_DISCONNECTED)
+  {
+    Serial.println("Disconnected from WebSocket server");
+  }
 }
