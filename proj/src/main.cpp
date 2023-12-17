@@ -40,7 +40,7 @@ unsigned long lastCardReadTime = 0;
 int finishedSolveTime = 0;
 
 bool timeConfirmed = false;
-bool lastIsConnected = false;
+bool lastIsConnected = true;
 
 void setup()
 {
@@ -92,20 +92,14 @@ void setup()
   webSocket.onEvent(webSocketEvent);
   webSocket.setReconnectInterval(5000);
 
-  DynamicJsonDocument doc(256);
-  doc["esp_id"] = getChipID();
-
-  String json;
-  serializeJson(doc, json);
-  webSocket.sendTXT(json);
-
   configTime(3600, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
 }
 
 void loop()
 {
+  webSocket.loop();
   stackmat.loop();
-  lcdLoop();
+  // lcdLoop();
 
   delay(20);
   if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial())
@@ -128,11 +122,11 @@ void loop()
     time(&epoch);
 
     DynamicJsonDocument doc(256);
-    doc["solve_time"] = finishedSolveTime;
-    doc["card_id"] = cardId;
-    doc["esp_id"] = getChipID();
-    doc["timestamp"] = epoch;
-    doc["session_id"] = solveSessionId;
+    doc["solve"]["solve_time"] = finishedSolveTime;
+    doc["solve"]["card_id"] = cardId;
+    doc["solve"]["esp_id"] = ESP.getChipId();
+    doc["solve"]["timestamp"] = epoch;
+    doc["solve"]["session_id"] = solveSessionId;
 
     String json;
     serializeJson(doc, json);
@@ -161,6 +155,10 @@ void stackmatReader()
     }
 
     return;
+  }
+
+  if(stackmat.connected() && !lastIsConnected) {
+    lcd.clear();
   }
 
   if (stackmat.state() != lastTimerState && stackmat.state() != ST_Unknown && lastTimerState != ST_Unknown)
@@ -208,19 +206,24 @@ void stackmatReader()
 
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 {
-  if (type == WStype_TEXT)
-  {
+  if (type == WStype_TEXT) {
     // DynamicJsonDocument doc(2048);
     // deserializeJson(doc, payload);
 
     // Serial.printf("Received message: %s\n", doc["espId"].as<const char *>());
   }
-  else if (type == WStype_CONNECTED)
-  {
+  else if (type == WStype_CONNECTED) {
+    DynamicJsonDocument doc(256);
+    doc["connect"]["esp_id"] = ESP.getChipId();
+
+    String json;
+    serializeJson(doc, json);
+    Serial.println(json);
+    webSocket.sendTXT(json);
+
     Serial.println("Connected to WebSocket server");
   }
-  else if (type == WStype_DISCONNECTED)
-  {
+  else if (type == WStype_DISCONNECTED) {
     Serial.println("Disconnected from WebSocket server");
   }
 }
