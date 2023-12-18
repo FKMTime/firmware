@@ -23,7 +23,7 @@
 #define DNF_BUTTON_PIN 0
 
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length);
-void stackmatReader();
+void stackmatLoop();
 void lcdLoop();
 void buttonsLoop();
 
@@ -33,20 +33,23 @@ WebSocketsClient webSocket;
 Stackmat stackmat;
 rgb_lcd lcd;
 
-StackmatTimerState lastTimerState = ST_Unknown;
-
-int solveSessionId = 0;
-unsigned long lastCardReadTime = 0;
-
-int finishedSolveTime = 0;
-
-int timerOffset = 0;
-bool timeConfirmed = false;
-bool lastIsConnected = true;
+GlobalState state;
+bool stateHasChanged = false;
+unsigned long lcdLastDraw = 0;
 
 void setup()
 {
   Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, 1);
+
+  // LOAD SOLVE SESSION ID, FINISHED SOLVE TIME FROM EEPROM
+  state.solveSessionId = 0;
+  state.finishedSolveTime = -1;
+  state.timeOffset = 0;
+  state.timeConfirmed = false;
+  state.lastCardReadTime = 0;
+  state.solverCardId = 0;
+  state.solverName = "";
+  stateHasChanged = true;
 
   stackmatSerial.begin(1200);
   stackmat.begin(&stackmatSerial);
@@ -86,6 +89,7 @@ void setup()
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("WiFi connected!");
+  lcd.setCursor(0, 1);
 
   String ipString = String(WiFi.localIP()[0]) + "." + String(WiFi.localIP()[1]) + "." + String(WiFi.localIP()[2]) + "." + String(WiFi.localIP()[3]);
   lcd.print(ipString);
@@ -97,14 +101,13 @@ void setup()
   configTime(3600, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
 }
 
-void loop()
-{
+void loop() {
   webSocket.loop();
   stackmat.loop();
-  // lcdLoop();
+  lcdLoop();
   buttonsLoop();
 
-  if (timeConfirmed && mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial())
+  if (state.timeConfirmed && mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial())
   {
     unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
     Serial.print("Card ID: ");
@@ -136,14 +139,41 @@ void loop()
     serializeJson(doc, json);
     webSocket.sendTXT(json);
 
-    timeConfirmed = false;
+    state.timeConfirmed = false;
   }
 
-  stackmatReader();
+  stackmatLoop();
 }
 
-void lcdLoop()
-{
+void lcdLoop() {
+  if (!stateHasChanged || millis() - lcdLastDraw < 50) return;
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  if (state.finishedSolveTime > 0) { // AFTER TIMER IS STOPPED (AFTER TIMER WAS RUNNING)
+    lcd.printf("%i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+    if(state.timeOffset == -1) {
+      lcd.printf(" DNF");
+    } else if (state.timeOffset > 0) {
+      lcd.printf(" +%d", state.timeOffset);
+    }
+    
+    if (state.solverName.length() > 0) {
+      lcd.setCursor(0, 1);
+      lcd.printf("%s", state.solverName.c_str());
+    }
+  } else if (!stackmat.connected()) { // TIMER DISCONNECTED
+    lcd.print("Stackmat Timer");
+    lcd.setCursor(0, 1);
+    lcd.print("Disconnected");
+  } else if (stackmat.state() == StackmatTimerState::ST_Running) { // TIMER IS RUNNING
+    lcd.printf("TIME: %i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+  } else {
+    lcd.print("UNHANDLED STATE");
+  }
+
+  lcdLastDraw = millis();
+  stateHasChanged = false;
 }
 
 void buttonsLoop() {
@@ -151,16 +181,18 @@ void buttonsLoop() {
     Serial.println("OK button pressed!");
     unsigned long pressedTime = millis();
     while (digitalRead(OK_BUTTON_PIN) == LOW) {
-      delay(10);
+      delay(50);
     }
 
     if (millis() - pressedTime > 5000) {
       // THIS SHOULD BE ON +2 BTN
       Serial.println("Resettings finished solve time!");
-      finishedSolveTime = 0;
-      timeConfirmed = false;
+      state.finishedSolveTime = -1;
+      state.timeConfirmed = false;
+      stateHasChanged = true;
     } else {
-      timeConfirmed = true;
+      state.timeConfirmed = true;
+      stateHasChanged = true;
     }
   }
 
@@ -168,11 +200,12 @@ void buttonsLoop() {
     Serial.println("+2 button pressed!");
     //unsigned long pressedTime = millis();
     while (digitalRead(PLUS2_BUTTON_PIN) == HIGH) {
-      delay(10);
+      delay(50);
     }
 
-    if (timerOffset != -1) {
-      timerOffset = timerOffset >= 16 ? 0 : timerOffset + 2;
+    if (state.timeOffset != -1) {
+      state.timeOffset = state.timeOffset >= 16 ? 0 : state.timeOffset + 2;
+      stateHasChanged = true;
     }
   }
 
@@ -180,7 +213,7 @@ void buttonsLoop() {
     Serial.println("DNF button pressed!");
     unsigned long pressedTime = millis();
     while (digitalRead(DNF_BUTTON_PIN) == LOW) {
-      delay(10);
+      delay(50);
     }
 
     if (millis() - pressedTime > 10000) {
@@ -190,45 +223,24 @@ void buttonsLoop() {
       delay(1000);
       ESP.restart();
     } else {
-      timerOffset = timerOffset != -1 ? -1 : 0;
+      state.timeOffset = state.timeOffset != -1 ? -1 : 0;
+      stateHasChanged = true;
     }
   }
 }
 
-void stackmatReader()
+void stackmatLoop()
 {
-  if (!stackmat.connected()) {
-    if (lastIsConnected)
-    {
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("Stackmat Timer");
-      lcd.setCursor(0, 1);
-      lcd.print("Disconnected");
-
-      lastIsConnected = false;
-    }
-
-    return;
-  }
-
-  if(stackmat.connected() && !lastIsConnected) {
-    lcd.clear();
-  }
-
-  if (stackmat.state() != lastTimerState && stackmat.state() != ST_Unknown && lastTimerState != ST_Unknown)
+  if (stackmat.state() != state.lastTiemrState && stackmat.state() != ST_Unknown && state.lastTiemrState != ST_Unknown)
   {
-    Serial.printf("State changed from %c to %c\n", lastTimerState, stackmat.state());
+    Serial.printf("State changed from %c to %c\n", state.lastTiemrState, stackmat.state());
     switch (stackmat.state())
     {
       case ST_Stopped:
         Serial.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
-        finishedSolveTime = stackmat.time();
-        lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.printf("TIME: %i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
-        // webSocket.sendTXT("{\"time\": " + String(timerTime) + "}");
-        writeEEPROMInt(4, finishedSolveTime);
+        state.finishedSolveTime = stackmat.time();
+
+        writeEEPROMInt(4, state.finishedSolveTime);
         EEPROM.commit();
         break;
 
@@ -237,26 +249,29 @@ void stackmatReader()
         break;
 
       case ST_Running:
-        solveSessionId++;
+        state.solveSessionId++;
+        state.finishedSolveTime = -1;
+
         Serial.println("Solve started!");
-        Serial.printf("Solve session ID: %i\n", solveSessionId);
-        writeEEPROMInt(0, solveSessionId);
+        Serial.printf("Solve session ID: %i\n", state.solveSessionId);
+        writeEEPROMInt(0, state.solveSessionId);
         break;
 
       default:
         break;
     }
+
+    stateHasChanged = true;
   }
 
-  if (stackmat.state() == ST_Running)
-  {
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.printf("TIME: %i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+  if (stackmat.state() == StackmatTimerState::ST_Running) {
+    stateHasChanged = true;
+  } else if (stackmat.connected() != state.stackmatConnected) {
+    state.stackmatConnected = stackmat.connected();
+    stateHasChanged = true;
   }
 
-  lastTimerState = stackmat.state();
-  lastIsConnected = stackmat.connected();
+  state.lastTiemrState = stackmat.state();
 }
 
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
@@ -265,8 +280,13 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
     DynamicJsonDocument doc(2048);
     deserializeJson(doc, payload);
 
-    if (doc["card_info_response"]) {
-      Serial.println(doc["card_info_response"]["name"]);
+    if (doc.containsKey("card_info_response")) {
+      String name = doc["card_info_response"]["name"];
+      unsigned long cardId = doc["card_info_response"]["card_id"];
+
+      state.solverName = name;
+      state.solverCardId = cardId;
+      stateHasChanged = true;
     }
 
     // Serial.printf("Received message: %s\n", doc["espId"].as<const char *>());

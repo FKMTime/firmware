@@ -1,5 +1,23 @@
 #include <Arduino.h>
 #include <EEPROM.h>
+#include <stackmat.h>
+
+struct GlobalState {
+  // TIMER INTERNALS
+  int solveSessionId;
+  int finishedSolveTime;
+  int timeOffset;
+  bool timeConfirmed;
+  unsigned long solverCardId;
+  String solverName;
+
+  // STACKMAT
+  StackmatTimerState lastTiemrState;
+  bool stackmatConnected;
+
+  // RFID
+  unsigned long lastCardReadTime;
+};
 
 String getChipID() {
   uint64_t chipid = ESP.getChipId();
