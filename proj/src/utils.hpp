@@ -7,7 +7,6 @@ struct GlobalState {
   int solveSessionId;
   int finishedSolveTime;
   int timeOffset;
-  bool timeConfirmed;
   unsigned long solverCardId;
   String solverName;
 

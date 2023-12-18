@@ -26,6 +26,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length);
 void stackmatLoop();
 void lcdLoop();
 void buttonsLoop();
+void sendSolve();
 
 SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
 MFRC522 mfrc522(SS_PIN, RST_PIN);
@@ -45,7 +46,6 @@ void setup()
   state.solveSessionId = 0;
   state.finishedSolveTime = -1;
   state.timeOffset = 0;
-  state.timeConfirmed = false;
   state.lastCardReadTime = 0;
   state.solverCardId = 0;
   state.solverName = "";
@@ -107,28 +107,28 @@ void loop() {
   lcdLoop();
   buttonsLoop();
 
-  if (state.timeConfirmed && mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial())
+  if (state.finishedSolveTime > 0 && millis() - state.lastCardReadTime > 1500 && 
+      mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial())
   {
+    state.lastCardReadTime = millis();
+
     unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
     Serial.print("Card ID: ");
     Serial.println(cardId);
 
-    lcd.setCursor(0, 1);
-    lcd.print("               ");
-    lcd.setCursor(0, 1);
-    lcd.printf("ID: %lu", cardId);
-
-    struct tm timeinfo;
-    if (!getLocalTime(&timeinfo))
-    {
-      Serial.println("Failed to obtain time");
-    }
-    time_t epoch;
-    time(&epoch);
-
     DynamicJsonDocument doc(256);
     doc["card_info_request"]["card_id"] = cardId;
     doc["card_info_request"]["esp_id"] = ESP.getChipId();
+
+    // struct tm timeinfo;
+    // if (!getLocalTime(&timeinfo))
+    // {
+    //   Serial.println("Failed to obtain time");
+    // }
+    // time_t epoch;
+    // time(&epoch);
+
+    
     // doc["solve"]["solve_time"] = finishedSolveTime;
     // doc["solve"]["card_id"] = cardId;
     // doc["solve"]["esp_id"] = ESP.getChipId();
@@ -138,8 +138,6 @@ void loop() {
     String json;
     serializeJson(doc, json);
     webSocket.sendTXT(json);
-
-    state.timeConfirmed = false;
   }
 
   stackmatLoop();
@@ -163,13 +161,13 @@ void lcdLoop() {
       lcd.printf("%s", state.solverName.c_str());
     }
   } else if (!stackmat.connected()) { // TIMER DISCONNECTED
-    lcd.print("Stackmat Timer");
+    lcd.printf("    Stackmat    ");
     lcd.setCursor(0, 1);
-    lcd.print("Disconnected");
+    lcd.print("  Disconnected  ");
   } else if (stackmat.state() == StackmatTimerState::ST_Running) { // TIMER IS RUNNING
-    lcd.printf("TIME: %i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+    lcd.printf("%i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
   } else {
-    lcd.print("UNHANDLED STATE");
+    lcd.printf("    Stackmat    ");
   }
 
   lcdLastDraw = millis();
@@ -177,7 +175,7 @@ void lcdLoop() {
 }
 
 void buttonsLoop() {
-    if (digitalRead(OK_BUTTON_PIN) == LOW) {
+  if (digitalRead(OK_BUTTON_PIN) == LOW) {
     Serial.println("OK button pressed!");
     unsigned long pressedTime = millis();
     while (digitalRead(OK_BUTTON_PIN) == LOW) {
@@ -188,10 +186,9 @@ void buttonsLoop() {
       // THIS SHOULD BE ON +2 BTN
       Serial.println("Resettings finished solve time!");
       state.finishedSolveTime = -1;
-      state.timeConfirmed = false;
       stateHasChanged = true;
     } else {
-      state.timeConfirmed = true;
+      sendSolve();
       stateHasChanged = true;
     }
   }
@@ -274,6 +271,29 @@ void stackmatLoop()
   state.lastTiemrState = stackmat.state();
 }
 
+void sendSolve() {
+  if (state.finishedSolveTime == -1) return;
+
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo))
+  {
+    Serial.println("Failed to obtain time");
+  }
+  time_t epoch;
+  time(&epoch);
+  
+  DynamicJsonDocument doc(256);
+  doc["solve"]["solve_time"] = state.finishedSolveTime;
+  doc["solve"]["card_id"] = state.solverCardId;
+  doc["solve"]["esp_id"] = ESP.getChipId();
+  doc["solve"]["timestamp"] = epoch;
+  doc["solve"]["session_id"] = state.solveSessionId;
+
+  String json;
+  serializeJson(doc, json);
+  webSocket.sendTXT(json);
+}
+
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 {
   if (type == WStype_TEXT) {
@@ -286,6 +306,18 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 
       state.solverName = name;
       state.solverCardId = cardId;
+      stateHasChanged = true;
+    } else if (doc.containsKey("solve_confirm")) {
+      if (doc["solve_confirm"]["card_id"] != state.solverCardId || 
+          doc["solve_confirm"]["esp_id"] != ESP.getChipId() || 
+          doc["solve_confirm"]["session_id"] != state.solveSessionId) {
+        Serial.println("Wrong solve confirm frame!");
+        return;
+      }
+
+      state.finishedSolveTime = -1;
+      state.solverCardId = 0;
+      state.solverName = "";
       stateHasChanged = true;
     }
 
