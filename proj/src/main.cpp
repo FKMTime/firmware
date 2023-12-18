@@ -124,11 +124,13 @@ void loop()
     time(&epoch);
 
     DynamicJsonDocument doc(256);
-    doc["solve"]["solve_time"] = finishedSolveTime;
-    doc["solve"]["card_id"] = cardId;
-    doc["solve"]["esp_id"] = ESP.getChipId();
-    doc["solve"]["timestamp"] = epoch;
-    doc["solve"]["session_id"] = solveSessionId;
+    doc["card_info_request"]["card_id"] = cardId;
+    doc["card_info_request"]["esp_id"] = ESP.getChipId();
+    // doc["solve"]["solve_time"] = finishedSolveTime;
+    // doc["solve"]["card_id"] = cardId;
+    // doc["solve"]["esp_id"] = ESP.getChipId();
+    // doc["solve"]["timestamp"] = epoch;
+    // doc["solve"]["session_id"] = solveSessionId;
 
     String json;
     serializeJson(doc, json);
@@ -260,8 +262,12 @@ void stackmatReader()
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 {
   if (type == WStype_TEXT) {
-    // DynamicJsonDocument doc(2048);
-    // deserializeJson(doc, payload);
+    DynamicJsonDocument doc(2048);
+    deserializeJson(doc, payload);
+
+    if (doc["card_info_response"]) {
+      Serial.println(doc["card_info_response"]["name"]);
+    }
 
     // Serial.printf("Received message: %s\n", doc["espId"].as<const char *>());
   }
