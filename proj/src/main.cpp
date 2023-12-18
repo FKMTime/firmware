@@ -25,6 +25,7 @@
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length);
 void stackmatReader();
 void lcdLoop();
+void buttonsLoop();
 
 SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
 MFRC522 mfrc522(SS_PIN, RST_PIN);
@@ -39,6 +40,7 @@ unsigned long lastCardReadTime = 0;
 
 int finishedSolveTime = 0;
 
+int timerOffset = 0;
 bool timeConfirmed = false;
 bool lastIsConnected = true;
 
@@ -100,9 +102,9 @@ void loop()
   webSocket.loop();
   stackmat.loop();
   // lcdLoop();
+  buttonsLoop();
 
-  delay(20);
-  if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial())
+  if (timeConfirmed && mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial())
   {
     unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
     Serial.print("Card ID: ");
@@ -131,6 +133,8 @@ void loop()
     String json;
     serializeJson(doc, json);
     webSocket.sendTXT(json);
+
+    timeConfirmed = false;
   }
 
   stackmatReader();
@@ -138,6 +142,55 @@ void loop()
 
 void lcdLoop()
 {
+}
+
+void buttonsLoop() {
+    if (digitalRead(OK_BUTTON_PIN) == LOW) {
+    Serial.println("OK button pressed!");
+    unsigned long pressedTime = millis();
+    while (digitalRead(OK_BUTTON_PIN) == LOW) {
+      delay(10);
+    }
+
+    if (millis() - pressedTime > 5000) {
+      // THIS SHOULD BE ON +2 BTN
+      Serial.println("Resettings finished solve time!");
+      finishedSolveTime = 0;
+      timeConfirmed = false;
+    } else {
+      timeConfirmed = true;
+    }
+  }
+
+  if (digitalRead(PLUS2_BUTTON_PIN) == HIGH) {
+    Serial.println("+2 button pressed!");
+    //unsigned long pressedTime = millis();
+    while (digitalRead(PLUS2_BUTTON_PIN) == HIGH) {
+      delay(10);
+    }
+
+    if (timerOffset != -1) {
+      timerOffset = timerOffset >= 16 ? 0 : timerOffset + 2;
+    }
+  }
+
+  if (digitalRead(DNF_BUTTON_PIN) == LOW) {
+    Serial.println("DNF button pressed!");
+    unsigned long pressedTime = millis();
+    while (digitalRead(DNF_BUTTON_PIN) == LOW) {
+      delay(10);
+    }
+
+    if (millis() - pressedTime > 10000) {
+      Serial.println("Resetting wifi settings!");
+      WiFiManager wm;
+      wm.resetSettings();
+      delay(1000);
+      ESP.restart();
+    } else {
+      timerOffset = timerOffset != -1 ? -1 : 0;
+    }
+  }
 }
 
 void stackmatReader()
@@ -218,7 +271,6 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 
     String json;
     serializeJson(doc, json);
-    Serial.println(json);
     webSocket.sendTXT(json);
 
     Serial.println("Connected to WebSocket server");
