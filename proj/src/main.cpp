@@ -29,7 +29,7 @@ void buttonsLoop();
 void sendSolve();
 
 SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
-MFRC522 mfrc522(SS_PIN, RST_PIN);
+MFRC522 mfrc522(SS_PIN, UNUSED_PIN); // UNUSED_PIN means that reset is done by software side of that chip
 WebSocketsClient webSocket;
 Stackmat stackmat;
 rgb_lcd lcd;
