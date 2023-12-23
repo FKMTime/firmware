@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <EEPROM.h>
+#include <tuple>
 #include <stackmat.h>
 
 struct GlobalState {
@@ -37,4 +38,36 @@ int readEEPROMInt(int address) {
   byte highByte = EEPROM.read(address + 1);
 
   return (lowByte | (highByte << 8));
+}
+
+std::tuple<string, int, string> parseWsUrl(string url) {
+  int port;
+  string path;
+
+  if (url.rfind("ws://", 0) == 0) {
+    url = url.substr(5);
+    port = 80;
+  } else if (url.rfind("wss://", 0) == 0) {
+    url = url.substr(6);
+    port = 443;
+  } else {
+    std::cout << "Invalid protocol" << std::endl;
+  }
+
+  int pathSplitPos = url.find("/");
+  if (pathSplitPos == string::npos) {
+    pathSplitPos = url.length();
+    url = url + "/";
+  }
+
+  path = url.substr(pathSplitPos);
+  url = url.substr(0, pathSplitPos);
+
+  int portSplitPos = url.rfind(":");
+  if (portSplitPos != string::npos) {
+    port = stoi(url.substr(portSplitPos + 1));
+    url = url.substr(0, portSplitPos);
+  }
+
+  return {url, port, path};
 }

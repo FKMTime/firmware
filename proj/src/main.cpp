@@ -22,6 +22,8 @@
 #define PLUS2_BUTTON_PIN 15
 #define DNF_BUTTON_PIN 0
 
+const WS_URL = "ws://192.168.1.38:8080";
+
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length);
 void stackmatLoop();
 void lcdLoop();
@@ -94,7 +96,8 @@ void setup()
   String ipString = String(WiFi.localIP()[0]) + "." + String(WiFi.localIP()[1]) + "." + String(WiFi.localIP()[2]) + "." + String(WiFi.localIP()[3]);
   lcd.print(ipString);
 
-  webSocket.begin("192.168.1.38", 8080, "/");
+  auto [ host, port, path ] = parseWsUrl(WS_URL);
+  webSocket.begin(host, port, path);
   webSocket.onEvent(webSocketEvent);
   webSocket.setReconnectInterval(5000);
 
