@@ -40,9 +40,9 @@ int readEEPROMInt(int address) {
   return (lowByte | (highByte << 8));
 }
 
-std::tuple<string, int, string> parseWsUrl(string url) {
+std::tuple<std::string, int, std::string> parseWsUrl(std::string url) {
   int port;
-  string path;
+  std::string path;
 
   if (url.rfind("ws://", 0) == 0) {
     url = url.substr(5);
@@ -51,11 +51,11 @@ std::tuple<string, int, string> parseWsUrl(string url) {
     url = url.substr(6);
     port = 443;
   } else {
-    std::cout << "Invalid protocol" << std::endl;
+    return {"", -1, ""};
   }
 
   int pathSplitPos = url.find("/");
-  if (pathSplitPos == string::npos) {
+  if ((std::size_t)pathSplitPos == std::string::npos) {
     pathSplitPos = url.length();
     url = url + "/";
   }
@@ -64,7 +64,7 @@ std::tuple<string, int, string> parseWsUrl(string url) {
   url = url.substr(0, pathSplitPos);
 
   int portSplitPos = url.rfind(":");
-  if (portSplitPos != string::npos) {
+  if ((std::size_t)portSplitPos != std::string::npos) {
     port = stoi(url.substr(portSplitPos + 1));
     url = url.substr(0, portSplitPos);
   }
