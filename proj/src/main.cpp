@@ -28,6 +28,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length);
 void stackmatLoop();
 void lcdLoop();
 void buttonsLoop();
+void rfidLoop();
 void sendSolve();
 
 SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
@@ -109,41 +110,8 @@ void loop() {
   stackmat.loop();
   lcdLoop();
   buttonsLoop();
-
-  if (state.finishedSolveTime > 0 && millis() - state.lastCardReadTime > 1500 && 
-      mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial())
-  {
-    state.lastCardReadTime = millis();
-
-    unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
-    Serial.print("Card ID: ");
-    Serial.println(cardId);
-
-    DynamicJsonDocument doc(256);
-    doc["card_info_request"]["card_id"] = cardId;
-    doc["card_info_request"]["esp_id"] = ESP.getChipId();
-
-    // struct tm timeinfo;
-    // if (!getLocalTime(&timeinfo))
-    // {
-    //   Serial.println("Failed to obtain time");
-    // }
-    // time_t epoch;
-    // time(&epoch);
-
-    
-    // doc["solve"]["solve_time"] = finishedSolveTime;
-    // doc["solve"]["card_id"] = cardId;
-    // doc["solve"]["esp_id"] = ESP.getChipId();
-    // doc["solve"]["timestamp"] = epoch;
-    // doc["solve"]["session_id"] = solveSessionId;
-
-    String json;
-    serializeJson(doc, json);
-    webSocket.sendTXT(json);
-  }
-
   stackmatLoop();
+  rfidLoop();
 }
 
 void lcdLoop() {
@@ -226,6 +194,41 @@ void buttonsLoop() {
       state.timeOffset = state.timeOffset != -1 ? -1 : 0;
       stateHasChanged = true;
     }
+  }
+}
+
+void rfidLoop() {
+  if (state.finishedSolveTime > 0 && millis() - state.lastCardReadTime > 1500 && 
+      mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial())
+  {
+    state.lastCardReadTime = millis();
+
+    unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
+    Serial.print("Card ID: ");
+    Serial.println(cardId);
+
+    DynamicJsonDocument doc(256);
+    doc["card_info_request"]["card_id"] = cardId;
+    doc["card_info_request"]["esp_id"] = ESP.getChipId();
+
+    // struct tm timeinfo;
+    // if (!getLocalTime(&timeinfo))
+    // {
+    //   Serial.println("Failed to obtain time");
+    // }
+    // time_t epoch;
+    // time(&epoch);
+
+    
+    // doc["solve"]["solve_time"] = finishedSolveTime;
+    // doc["solve"]["card_id"] = cardId;
+    // doc["solve"]["esp_id"] = ESP.getChipId();
+    // doc["solve"]["timestamp"] = epoch;
+    // doc["solve"]["session_id"] = solveSessionId;
+
+    String json;
+    serializeJson(doc, json);
+    webSocket.sendTXT(json);
   }
 }
 
