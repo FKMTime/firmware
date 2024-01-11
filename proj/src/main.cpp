@@ -11,6 +11,7 @@
 #include "utils.hpp"
 #include "stackmat.h"
 #include "rgb_lcd.h"
+#include "ws_logger.h"
 
 #define RST_PIN A0
 #define SS_PIN 16
@@ -36,6 +37,7 @@ MFRC522 mfrc522(SS_PIN, UNUSED_PIN); // UNUSED_PIN means that reset is done by s
 WebSocketsClient webSocket;
 Stackmat stackmat;
 rgb_lcd lcd;
+WsLogger logger;
 
 GlobalState state;
 bool stateHasChanged = false;
@@ -44,6 +46,7 @@ unsigned long lcdLastDraw = 0;
 void setup()
 {
   Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, 1);
+  logger.begin(&Serial, 5000);
 
   // LOAD SOLVE SESSION ID, FINISHED SOLVE TIME FROM EEPROM
   state.solveSessionId = 0;
@@ -82,7 +85,7 @@ void setup()
   bool res = wm.autoConnect(generatedSSID.c_str(), "StackmatTimer");
   if (!res)
   {
-    Serial.println("Failed to connect to wifi... Restarting!");
+    logger.println("Failed to connect to wifi... Restarting!");
     delay(1500);
     ESP.restart();
 
@@ -101,6 +104,7 @@ void setup()
   webSocket.begin(host.c_str(), port, path.c_str());
   webSocket.onEvent(webSocketEvent);
   webSocket.setReconnectInterval(5000);
+  logger.setWsClient(&webSocket);
 
   configTime(3600, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
 }
@@ -108,6 +112,7 @@ void setup()
 void loop() {
   webSocket.loop();
   stackmat.loop();
+  logger.loop();
   lcdLoop();
   buttonsLoop();
   stackmatLoop();
@@ -150,7 +155,7 @@ void lcdLoop() {
 
 void buttonsLoop() {
   if (digitalRead(OK_BUTTON_PIN) == LOW) {
-    Serial.println("OK button pressed!");
+    logger.println("OK button pressed!");
     unsigned long pressedTime = millis();
     while (digitalRead(OK_BUTTON_PIN) == LOW) {
       delay(50);
@@ -158,7 +163,7 @@ void buttonsLoop() {
 
     if (millis() - pressedTime > 5000) {
       // THIS SHOULD BE ON +2 BTN
-      Serial.println("Resettings finished solve time!");
+      logger.println("Resettings finished solve time!");
       state.finishedSolveTime = -1;
       stateHasChanged = true;
     } else {
@@ -168,7 +173,7 @@ void buttonsLoop() {
   }
 
   if (digitalRead(PLUS2_BUTTON_PIN) == HIGH) {
-    Serial.println("+2 button pressed!");
+    logger.println("+2 button pressed!");
     //unsigned long pressedTime = millis();
     while (digitalRead(PLUS2_BUTTON_PIN) == HIGH) {
       delay(50);
@@ -181,14 +186,14 @@ void buttonsLoop() {
   }
 
   if (digitalRead(DNF_BUTTON_PIN) == LOW) {
-    Serial.println("DNF button pressed!");
+    logger.println("DNF button pressed!");
     unsigned long pressedTime = millis();
     while (digitalRead(DNF_BUTTON_PIN) == LOW) {
       delay(50);
     }
 
     if (millis() - pressedTime > 10000) {
-      Serial.println("Resetting wifi settings!");
+      logger.println("Resetting wifi settings!");
       WiFiManager wm;
       wm.resetSettings();
       delay(1000);
@@ -207,17 +212,16 @@ void rfidLoop() {
     state.lastCardReadTime = millis();
 
     unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
-    Serial.print("Card ID: ");
-    Serial.println(cardId);
+    logger.printf("Card ID: %lu\n", cardId);
 
-    DynamicJsonDocument doc(256);
+    JsonDocument doc;
     doc["card_info_request"]["card_id"] = cardId;
     doc["card_info_request"]["esp_id"] = ESP.getChipId();
 
     // struct tm timeinfo;
     // if (!getLocalTime(&timeinfo))
     // {
-    //   Serial.println("Failed to obtain time");
+    //   logger.println("Failed to obtain time");
     // }
     // time_t epoch;
     // time(&epoch);
@@ -239,13 +243,13 @@ void stackmatLoop()
 {
   if (stackmat.state() != state.lastTiemrState && stackmat.state() != ST_Unknown && state.lastTiemrState != ST_Unknown)
   {
-    Serial.printf("State changed from %c to %c\n", state.lastTiemrState, stackmat.state());
+    logger.printf("State changed from %c to %c\n", state.lastTiemrState, stackmat.state());
     switch (stackmat.state())
     {
       case ST_Stopped:
         if (state.finishedSolveTime > 0) break;
 
-        Serial.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+        logger.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
         state.finishedSolveTime = stackmat.time();
 
         writeEEPROMInt(4, state.finishedSolveTime);
@@ -253,7 +257,7 @@ void stackmatLoop()
         break;
 
       case ST_Reset:
-        Serial.println("Timer reset!");
+        logger.println("Timer reset!");
         break;
 
       case ST_Running:
@@ -261,8 +265,8 @@ void stackmatLoop()
         state.solveSessionId++;
         state.finishedSolveTime = -1;
 
-        Serial.println("Solve started!");
-        Serial.printf("Solve session ID: %i\n", state.solveSessionId);
+        logger.println("Solve started!");
+        logger.printf("Solve session ID: %i\n", state.solveSessionId);
         writeEEPROMInt(0, state.solveSessionId);
         break;
 
@@ -289,12 +293,12 @@ void sendSolve() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo))
   {
-    Serial.println("Failed to obtain time");
+    logger.println("Failed to obtain time");
   }
   time_t epoch;
   time(&epoch);
   
-  DynamicJsonDocument doc(256);
+  JsonDocument doc;
   doc["solve"]["solve_time"] = state.finishedSolveTime;
   doc["solve"]["card_id"] = state.solverCardId;
   doc["solve"]["esp_id"] = ESP.getChipId();
@@ -309,7 +313,7 @@ void sendSolve() {
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 {
   if (type == WStype_TEXT) {
-    DynamicJsonDocument doc(2048);
+    JsonDocument doc;
     deserializeJson(doc, payload);
 
     if (doc.containsKey("card_info_response")) {
@@ -323,7 +327,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       if (doc["solve_confirm"]["card_id"] != state.solverCardId || 
           doc["solve_confirm"]["esp_id"] != ESP.getChipId() || 
           doc["solve_confirm"]["session_id"] != state.solveSessionId) {
-        Serial.println("Wrong solve confirm frame!");
+        logger.println("Wrong solve confirm frame!");
         return;
       }
 
@@ -333,19 +337,19 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       stateHasChanged = true;
     }
 
-    // Serial.printf("Received message: %s\n", doc["espId"].as<const char *>());
+    // logger.printf("Received message: %s\n", doc["espId"].as<const char *>());
   }
   else if (type == WStype_CONNECTED) {
-    DynamicJsonDocument doc(256);
+    JsonDocument doc;
     doc["connect"]["esp_id"] = ESP.getChipId();
 
     String json;
     serializeJson(doc, json);
     webSocket.sendTXT(json);
 
-    Serial.println("Connected to WebSocket server");
+    logger.println("Connected to WebSocket server");
   }
   else if (type == WStype_DISCONNECTED) {
-    Serial.println("Disconnected from WebSocket server");
+    logger.println("Disconnected from WebSocket server");
   }
 }
