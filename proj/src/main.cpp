@@ -120,7 +120,10 @@ void lcdLoop() {
   lcd.clear();
   lcd.setCursor(0, 0);
   if (state.finishedSolveTime > 0) { // AFTER TIMER IS STOPPED (AFTER TIMER WAS RUNNING)
-    lcd.printf("%i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+    uint8_t minutes = state.finishedSolveTime / 60000;
+    uint8_t seconds = (state.finishedSolveTime % 60000) / 1000;
+    uint16_t ms = state.finishedSolveTime % 1000;
+    lcd.printf("%i:%02i.%03i", minutes, seconds, ms);
     if(state.timeOffset == -1) {
       lcd.printf(" DNF");
     } else if (state.timeOffset > 0) {
@@ -240,6 +243,8 @@ void stackmatLoop()
     switch (stackmat.state())
     {
       case ST_Stopped:
+        if (state.finishedSolveTime > 0) break;
+
         Serial.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
         state.finishedSolveTime = stackmat.time();
 
@@ -252,6 +257,7 @@ void stackmatLoop()
         break;
 
       case ST_Running:
+        if (state.finishedSolveTime > 0) break;
         state.solveSessionId++;
         state.finishedSolveTime = -1;
 

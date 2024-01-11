@@ -24,14 +24,11 @@ uint8_t Stackmat::displayMinutes() {
 }
 
 uint8_t Stackmat::displaySeconds() {
-  return (timerTime - ((timerTime / 60000) * 60000)) / 1000;
+  return (timerTime % 60000) / 1000;
 }
 
 uint16_t Stackmat::displayMilliseconds() {
-  uint32_t time = timerTime;
-  time -= ((time / 60000) * 60000);
-  time -= ((time / 1000) * 1000);
-  return time;
+  return timerTime % 1000;
 }
 
 StackmatTimerState Stackmat::state() {
