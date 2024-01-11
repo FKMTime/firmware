@@ -17,8 +17,8 @@
 #define SCK_PIN 14
 #define MISO_PIN 12
 #define MOSI_PIN 13
-#define STACKMAT_TIMER_PIN 2
-#define OK_BUTTON_PIN 3
+#define STACKMAT_TIMER_PIN 3
+#define OK_BUTTON_PIN 2
 #define PLUS2_BUTTON_PIN 15
 #define DNF_BUTTON_PIN 0
 
