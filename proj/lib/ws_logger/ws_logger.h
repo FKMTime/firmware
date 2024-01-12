@@ -14,6 +14,7 @@ class WsLogger {
     WsLogger();
     void begin(Stream *_serial, unsigned long _sendInterval);
     void setWsClient(WebSocketsClient *_wsClient);
+    void setMaxSize(int logsSize);
     void loop();
 
     void println(String msg);
@@ -25,6 +26,7 @@ class WsLogger {
 
     unsigned long lastSent = 0;
     unsigned long sendInterval = 5000;
+    int maxLogsSize = 100;
     std::vector<logData> logs;
 
     void log(String msg);

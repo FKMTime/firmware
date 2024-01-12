@@ -10,11 +10,15 @@ void WsLogger::setWsClient(WebSocketsClient *_wsClient) {
     wsClient = _wsClient;
 }
 
+void WsLogger::setMaxSize(int logsSize) {
+    maxLogsSize = logsSize;
+}
+
 void WsLogger::loop() {
     if (millis() - lastSent < sendInterval) return;
     lastSent = millis();
 
-    if (logs.size() == 0) return;
+    if (logs.size() == 0 || wsClient == NULL || wsClient->isConnected()) return;
     JsonDocument logsArrDoc;
     JsonArray arr = logsArrDoc.to<JsonArray>();
 
@@ -47,6 +51,8 @@ void WsLogger::log(String msg) {
 
     logs.push_back(data);
     serial->println(msg);
+
+    if(logs.size() > maxLogsSize) logs.erase(logs.begin());
 }
 
 void WsLogger::println(String msg) {
