@@ -9,6 +9,7 @@ struct GlobalState {
   int finishedSolveTime;
   int timeOffset;
   unsigned long solverCardId;
+  unsigned long judgeCardId;
   String solverName;
 
   // STACKMAT
@@ -19,25 +20,71 @@ struct GlobalState {
   unsigned long lastCardReadTime;
 };
 
+struct SavedState {
+  int solveSessionId;
+  int finishedSolveTime;
+  int timeOffset;
+  unsigned long solverCardId;
+  unsigned long judgeCardId;
+};
+
+void stateDefault(GlobalState *state) {
+  state->solveSessionId = 0;
+  state->finishedSolveTime = -1;
+  state->timeOffset = 0;
+  state->solverCardId = 0;
+  state->judgeCardId = 0;
+}
+
+void saveState(GlobalState state) {
+  SavedState s;
+  s.solveSessionId = state.solveSessionId;
+  s.finishedSolveTime = state.finishedSolveTime;
+  s.timeOffset = state.timeOffset;
+  s.solverCardId = state.solverCardId;
+  s.judgeCardId = state.judgeCardId;
+
+  byte* buff = (byte*)malloc(sizeof(SavedState));
+  memcpy(&buff, &s, sizeof(SavedState));
+  
+  EEPROM.write(0, sizeof(SavedState));
+  int offset = 1;
+
+  for(unsigned int i = 0; i < sizeof(SavedState); i++) {
+    EEPROM.write(i + offset, buff[i]);
+  }
+
+  EEPROM.commit();
+}
+
+void readState(GlobalState *state) {
+  unsigned int size = EEPROM.read(0);
+  if (size != sizeof(SavedState)) {
+    Logger.println("Loading default state...");
+    stateDefault(state);
+    return;
+  }
+
+  int offset = 1;
+  byte* buff = (byte*)malloc(sizeof(SavedState));
+  for (unsigned int i = 0; i < sizeof(SavedState); i++) {
+    buff[i] = EEPROM.read(i + offset);
+  }
+
+  SavedState _state;
+  memcpy(&_state, &buff, sizeof(SavedState));
+
+  state->solveSessionId = _state.solverCardId;
+  state->finishedSolveTime = _state.finishedSolveTime;
+  state->timeOffset = _state.timeOffset;
+  state->solverCardId = _state.solverCardId;
+  state->judgeCardId = _state.judgeCardId;
+}
+
 String getChipID() {
   uint64_t chipid = ESP.getChipId();
   String chipidStr = String((uint32_t)(chipid >> 32), HEX) + String((uint32_t)chipid, HEX);
   return chipidStr;
-}
-
-void writeEEPROMInt(int address, int value) {
-  byte lowByte = (value & 0xFF);
-  byte highByte = ((value >> 8) & 0xFF);
-
-  EEPROM.write(address, lowByte);
-  EEPROM.write(address + 1, highByte);
-}
-
-int readEEPROMInt(int address) {
-  byte lowByte = EEPROM.read(address);
-  byte highByte = EEPROM.read(address + 1);
-
-  return (lowByte | (highByte << 8));
 }
 
 std::tuple<std::string, int, std::string> parseWsUrl(std::string url) {
