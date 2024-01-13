@@ -32,4 +32,6 @@ class WsLogger {
     void log(String msg);
 };
 
+extern WsLogger Logger;
+
 #endif
