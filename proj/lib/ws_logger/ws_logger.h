@@ -3,6 +3,13 @@
 
 #include <WebSocketsClient.h>
 #include <ArduinoJson.h>
+#include <vector>
+
+#ifdef ARDUINO_ARCH_ESP32
+  #define ESP_ID() ESP.getEfuseMac()
+#else
+  #define ESP_ID() ESP.getChipId()
+#endif
 
 struct logData {
     unsigned long millis;

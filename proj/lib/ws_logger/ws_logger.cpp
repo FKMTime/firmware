@@ -32,7 +32,7 @@ void WsLogger::loop() {
     }
 
     JsonDocument doc;
-    doc["logs"]["esp_id"] = ESP.getChipId();
+    doc["logs"]["esp_id"] = ESP_ID(); // make it with setter
     doc["logs"]["logs"] = logsArrDoc;
 
     if (wsClient != NULL) {

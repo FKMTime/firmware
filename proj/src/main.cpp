@@ -1,12 +1,21 @@
+#ifdef ARDUINO_ARCH_ESP32
+  #include <WiFi.h>
+
+  #define ESP_ID() ESP.getEfuseMac()
+#else
+  #include <ESP8266WiFi.h>
+  #include <SoftwareSerial.h>
+
+  #define ESP_ID() ESP.getChipId()
+#endif
+
 #include <Arduino.h>
-#include <ESP8266WiFi.h>
 #include <SPI.h>
 #include <MFRC522.h>
 #include <EEPROM.h>
 #include <ArduinoJson.h>
 #include <WiFiManager.h>
 #include <WebSocketsClient.h>
-#include <SoftwareSerial.h>
 
 #include "utils.hpp"
 #include "stackmat.h"
@@ -32,7 +41,6 @@ void buttonsLoop();
 void rfidLoop();
 void sendSolve();
 
-SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
 MFRC522 mfrc522(SS_PIN, UNUSED_PIN); // UNUSED_PIN means that reset is done by software side of that chip
 WebSocketsClient webSocket;
 Stackmat stackmat;
@@ -44,7 +52,12 @@ unsigned long lcdLastDraw = 0;
 
 void setup()
 {
-  Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, 1);
+  #ifdef ARDUINO_ARCH_ESP32
+    Serial.begin(115200);
+  #else
+    Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, 1);
+  #endif
+
   Logger.begin(&Serial, 5000);
 
   // LOAD SOLVE SESSION ID, FINISHED SOLVE TIME FROM EEPROM
@@ -53,15 +66,26 @@ void setup()
   state.solverName = "";
   stateHasChanged = true;
 
-  stackmatSerial.begin(1200);
-  stackmat.begin(&stackmatSerial);
+  #ifdef ARDUINO_ARCH_ESP32
+    Serial1.setPins(STACKMAT_TIMER_PIN, 255);
+    Serial1.begin(STACKMAT_TIMER_BAUD_RATE);
+    stackmat.begin(&Serial1);
+  #else
+    SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
+    stackmatSerial.begin(STACKMAT_TIMER_BAUD_RATE);
+    stackmat.begin(&stackmatSerial);
+  #endif
 
   pinMode(PLUS2_BUTTON_PIN, INPUT_PULLUP);
   pinMode(DNF_BUTTON_PIN, INPUT_PULLUP);
   pinMode(OK_BUTTON_PIN, INPUT_PULLUP);
 
-  SPI.pins(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
-  SPI.begin();
+  #ifdef ARDUINO_ARCH_ESP32
+    SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
+  #else
+    SPI.pins(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
+    SPI.begin();
+  #endif
   mfrc522.PCD_Init();
 
   lcd.begin(16, 2);
@@ -96,7 +120,12 @@ void setup()
   String ipString = String(WiFi.localIP()[0]) + "." + String(WiFi.localIP()[1]) + "." + String(WiFi.localIP()[2]) + "." + String(WiFi.localIP()[3]);
   lcd.print(ipString);
 
-  auto [ host, port, path ] = parseWsUrl(WS_URL);
+  std::string host, path;
+  int port;
+
+  auto wsRes = parseWsUrl(WS_URL);
+  std::tie(host, port, path) = wsRes;
+
   webSocket.begin(host.c_str(), port, path.c_str());
   webSocket.onEvent(webSocketEvent);
   webSocket.setReconnectInterval(5000);
@@ -213,7 +242,7 @@ void rfidLoop() {
 
     JsonDocument doc;
     doc["card_info_request"]["card_id"] = cardId;
-    doc["card_info_request"]["esp_id"] = ESP.getChipId();
+    doc["card_info_request"]["esp_id"] = ESP_ID();
 
     // struct tm timeinfo;
     // if (!getLocalTime(&timeinfo))
@@ -226,7 +255,7 @@ void rfidLoop() {
     
     // doc["solve"]["solve_time"] = finishedSolveTime;
     // doc["solve"]["card_id"] = cardId;
-    // doc["solve"]["esp_id"] = ESP.getChipId();
+    // doc["solve"]["esp_id"] = ESP_ID();
     // doc["solve"]["timestamp"] = epoch;
     // doc["solve"]["session_id"] = solveSessionId;
 
@@ -299,7 +328,7 @@ void sendSolve() {
   JsonDocument doc;
   doc["solve"]["solve_time"] = state.finishedSolveTime;
   doc["solve"]["card_id"] = state.solverCardId;
-  doc["solve"]["esp_id"] = ESP.getChipId();
+  doc["solve"]["esp_id"] = ESP_ID();
   doc["solve"]["timestamp"] = epoch;
   doc["solve"]["session_id"] = state.solveSessionId;
 
@@ -323,7 +352,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       stateHasChanged = true;
     } else if (doc.containsKey("solve_confirm")) {
       if (doc["solve_confirm"]["card_id"] != state.solverCardId || 
-          doc["solve_confirm"]["esp_id"] != ESP.getChipId() || 
+          doc["solve_confirm"]["esp_id"] != ESP_ID() || 
           doc["solve_confirm"]["session_id"] != state.solveSessionId) {
         Logger.println("Wrong solve confirm frame!");
         return;
@@ -339,7 +368,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
   }
   else if (type == WStype_CONNECTED) {
     JsonDocument doc;
-    doc["connect"]["esp_id"] = ESP.getChipId();
+    doc["connect"]["esp_id"] = ESP_ID();
 
     String json;
     serializeJson(doc, json);

@@ -97,7 +97,7 @@ void readState(GlobalState *state) {
 }
 
 String getChipID() {
-  uint64_t chipid = ESP.getChipId();
+  uint64_t chipid = ESP_ID();
   String chipidStr = String((uint32_t)(chipid >> 32), HEX) + String((uint32_t)chipid, HEX);
   return chipidStr;
 }
