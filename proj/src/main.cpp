@@ -141,6 +141,7 @@ void lcdLoop() {
     lcd.print("  Disconnected  ");
   } else if (stackmat.state() == StackmatTimerState::ST_Running) { // TIMER IS RUNNING
     lcd.printf("%i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+    Logger.printf("%i:%02i.%03i\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
   } else {
     lcd.printf("    Stackmat    ");
   }
@@ -248,6 +249,7 @@ void stackmatLoop()
         Logger.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
         state.finishedSolveTime = stackmat.time();
 
+        saveState(state);
         // writeEEPROMInt(4, state.finishedSolveTime);
         // EEPROM.commit();
         break;

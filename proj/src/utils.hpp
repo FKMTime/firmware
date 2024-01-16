@@ -2,6 +2,7 @@
 #include <EEPROM.h>
 #include <tuple>
 #include <stackmat.h>
+#include "ws_logger.h"
 
 struct GlobalState {
   // TIMER INTERNALS
@@ -44,6 +45,13 @@ void saveState(GlobalState state) {
   s.solverCardId = state.solverCardId;
   s.judgeCardId = state.judgeCardId;
 
+  Logger.println("State to save:");
+  Logger.printf("SessId: %d\n", s.solveSessionId);
+  Logger.printf("Last Time: %d\n",s.finishedSolveTime);
+  Logger.printf("Time offset: %d\n", s.timeOffset);
+  Logger.printf("Solver CID: %lu\n", s.solverCardId);
+  Logger.printf("Judge CID: %lu\n", s.judgeCardId);
+
   byte* buff = (byte*)malloc(sizeof(SavedState));
   memcpy(&buff, &s, sizeof(SavedState));
   
@@ -74,11 +82,18 @@ void readState(GlobalState *state) {
   SavedState _state;
   memcpy(&_state, &buff, sizeof(SavedState));
 
-  state->solveSessionId = _state.solverCardId;
+  state->solveSessionId = _state.solveSessionId;
   state->finishedSolveTime = _state.finishedSolveTime;
   state->timeOffset = _state.timeOffset;
   state->solverCardId = _state.solverCardId;
   state->judgeCardId = _state.judgeCardId;
+
+  Logger.println("Loaded state:");
+  Logger.printf("SessId: %d\n", _state.solveSessionId);
+  Logger.printf("Last Time: %d\n", _state.finishedSolveTime);
+  Logger.printf("Time offset: %d\n", _state.timeOffset);
+  Logger.printf("Solver CID: %lu\n", _state.solverCardId);
+  Logger.printf("Judge CID: %lu\n", _state.judgeCardId);
 }
 
 String getChipID() {
