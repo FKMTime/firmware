@@ -22,15 +22,27 @@
 #include "rgb_lcd.h"
 #include "ws_logger.h"
 
-#define RST_PIN A0
-#define SS_PIN 16
-#define SCK_PIN 14
-#define MISO_PIN 12
-#define MOSI_PIN 13
-#define STACKMAT_TIMER_PIN 3
-#define OK_BUTTON_PIN 2
-#define PLUS2_BUTTON_PIN 15
-#define DNF_BUTTON_PIN 0
+#ifdef ARDUINO_ARCH_ESP32
+  #define RST_PIN D6
+  #define SS_PIN D2
+  #define SCK_PIN D8
+  #define MISO_PIN D3
+  #define MOSI_PIN D10
+  #define STACKMAT_TIMER_PIN D7
+  #define OK_BUTTON_PIN D9
+  #define PLUS2_BUTTON_PIN D1
+  #define DNF_BUTTON_PIN D0
+#else
+  #define RST_PIN A0
+  #define SS_PIN 16
+  #define SCK_PIN 14
+  #define MISO_PIN 12
+  #define MOSI_PIN 13
+  #define STACKMAT_TIMER_PIN 3
+  #define OK_BUTTON_PIN 2
+  #define PLUS2_BUTTON_PIN 15
+  #define DNF_BUTTON_PIN 0
+#endif
 
 const std::string WS_URL = "ws://192.168.1.38:8080";
 
@@ -67,8 +79,7 @@ void setup()
   stateHasChanged = true;
 
   #ifdef ARDUINO_ARCH_ESP32
-    Serial1.setPins(STACKMAT_TIMER_PIN, 255);
-    Serial1.begin(STACKMAT_TIMER_BAUD_RATE);
+    Serial0.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, STACKMAT_TIMER_PIN, 255, true);
     stackmat.begin(&Serial1);
   #else
     SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
