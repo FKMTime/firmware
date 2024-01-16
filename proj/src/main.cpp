@@ -70,6 +70,7 @@ void setup()
     Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, 1);
   #endif
 
+  EEPROM.begin(512);
   Logger.begin(&Serial, 5000);
 
   // LOAD SOLVE SESSION ID, FINISHED SOLVE TIME FROM EEPROM
@@ -80,7 +81,7 @@ void setup()
 
   #ifdef ARDUINO_ARCH_ESP32
     Serial0.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, STACKMAT_TIMER_PIN, 255, true);
-    stackmat.begin(&Serial1);
+    stackmat.begin(&Serial0);
   #else
     SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
     stackmatSerial.begin(STACKMAT_TIMER_BAUD_RATE);
@@ -181,7 +182,7 @@ void lcdLoop() {
     lcd.print("  Disconnected  ");
   } else if (stackmat.state() == StackmatTimerState::ST_Running) { // TIMER IS RUNNING
     lcd.printf("%i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
-    Logger.printf("%i:%02i.%03i\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+    // Logger.printf("%i:%02i.%03i\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
   } else {
     lcd.printf("    Stackmat    ");
   }
@@ -209,10 +210,10 @@ void buttonsLoop() {
     }
   }
 
-  if (digitalRead(PLUS2_BUTTON_PIN) == HIGH) {
+  if (digitalRead(PLUS2_BUTTON_PIN) == LOW) {
     Logger.println("+2 button pressed!");
     //unsigned long pressedTime = millis();
-    while (digitalRead(PLUS2_BUTTON_PIN) == HIGH) {
+    while (digitalRead(PLUS2_BUTTON_PIN) == LOW) {
       delay(50);
     }
 

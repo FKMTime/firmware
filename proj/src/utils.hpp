@@ -52,35 +52,22 @@ void saveState(GlobalState state) {
   Logger.printf("Solver CID: %lu\n", s.solverCardId);
   Logger.printf("Judge CID: %lu\n", s.judgeCardId);
 
-  byte* buff = (byte*)malloc(sizeof(SavedState));
-  memcpy(&buff, &s, sizeof(SavedState));
-  
-  EEPROM.write(0, sizeof(SavedState));
-  int offset = 1;
-
-  for(unsigned int i = 0; i < sizeof(SavedState); i++) {
-    EEPROM.write(i + offset, buff[i]);
-  }
-
+  EEPROM.write(0, (uint8_t)sizeof(SavedState));
+  EEPROM.put(1, s);
   EEPROM.commit();
 }
 
 void readState(GlobalState *state) {
-  unsigned int size = EEPROM.read(0);
+  uint8_t size = EEPROM.read(0);
+  Logger.printf("read Size: %d\n", size);
   if (size != sizeof(SavedState)) {
     Logger.println("Loading default state...");
     stateDefault(state);
     return;
   }
 
-  int offset = 1;
-  byte* buff = (byte*)malloc(sizeof(SavedState));
-  for (unsigned int i = 0; i < sizeof(SavedState); i++) {
-    buff[i] = EEPROM.read(i + offset);
-  }
-
   SavedState _state;
-  memcpy(&_state, &buff, sizeof(SavedState));
+  EEPROM.get(1, _state);
 
   state->solveSessionId = _state.solveSessionId;
   state->finishedSolveTime = _state.finishedSolveTime;
