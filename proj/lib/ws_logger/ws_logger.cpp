@@ -50,13 +50,13 @@ void WsLogger::log(String msg) {
     data.msg = msg;
 
     logs.push_back(data);
-    serial->println(msg);
+    serial->print(msg);
 
     if(logs.size() > (unsigned)maxLogsSize) logs.erase(logs.begin());
 }
 
 void WsLogger::println(String msg) {
-    log(msg);
+    log(msg + "\n");
 }
 
 // From: Serial.printf
