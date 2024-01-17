@@ -29,7 +29,7 @@
   #define MISO_PIN D3
   #define MOSI_PIN D10
   #define STACKMAT_TIMER_PIN D7
-  #define OK_BUTTON_PIN D9
+  // #define OK_BUTTON_PIN D9
   #define PLUS2_BUTTON_PIN D1
   #define DNF_BUTTON_PIN D0
 #else
@@ -39,7 +39,7 @@
   #define MISO_PIN 12
   #define MOSI_PIN 13
   #define STACKMAT_TIMER_PIN 3
-  #define OK_BUTTON_PIN 2
+  // #define OK_BUTTON_PIN 2
   #define PLUS2_BUTTON_PIN 15
   #define DNF_BUTTON_PIN 0
 #endif
@@ -90,7 +90,7 @@ void setup()
 
   pinMode(PLUS2_BUTTON_PIN, INPUT_PULLUP);
   pinMode(DNF_BUTTON_PIN, INPUT_PULLUP);
-  pinMode(OK_BUTTON_PIN, INPUT_PULLUP);
+  // pinMode(OK_BUTTON_PIN, INPUT_PULLUP);
 
   #ifdef ARDUINO_ARCH_ESP32
     SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
@@ -158,10 +158,11 @@ void loop() {
 
 void lcdLoop() {
   if (!stateHasChanged || millis() - lcdLastDraw < 50) return;
+  stateHasChanged = false;
 
   lcd.clear();
   lcd.setCursor(0, 0);
-  if (state.finishedSolveTime > 0) { // AFTER TIMER IS STOPPED (AFTER TIMER WAS RUNNING)
+  if (state.finishedSolveTime > 0) { // AFTER TIMER IS STOPPED
     uint8_t minutes = state.finishedSolveTime / 60000;
     uint8_t seconds = (state.finishedSolveTime % 60000) / 1000;
     uint16_t ms = state.finishedSolveTime % 1000;
@@ -172,7 +173,10 @@ void lcdLoop() {
       lcd.printf(" +%d", state.timeOffset);
     }
     
-    if (state.solverName.length() > 0) {
+    if (state.solverCardId == 0) {
+      lcd.setCursor(0, 1);
+      lcd.printf("Scan card");
+    } else if (state.solverCardId > 0 && state.judgeCardId == 0) {
       lcd.setCursor(0, 1);
       lcd.printf("%s", state.solverName.c_str());
     }
@@ -188,27 +192,26 @@ void lcdLoop() {
   }
 
   lcdLastDraw = millis();
-  stateHasChanged = false;
 }
 
 void buttonsLoop() {
-  if (digitalRead(OK_BUTTON_PIN) == LOW) {
-    Logger.println("OK button pressed!");
-    unsigned long pressedTime = millis();
-    while (digitalRead(OK_BUTTON_PIN) == LOW) {
-      delay(50);
-    }
+  // if (digitalRead(OK_BUTTON_PIN) == LOW) {
+  //   Logger.println("OK button pressed!");
+  //   unsigned long pressedTime = millis();
+  //   while (digitalRead(OK_BUTTON_PIN) == LOW) {
+  //     delay(50);
+  //   }
 
-    if (millis() - pressedTime > 5000) {
-      // THIS SHOULD BE ON +2 BTN
-      Logger.println("Resettings finished solve time!");
-      state.finishedSolveTime = -1;
-      stateHasChanged = true;
-    } else {
-      sendSolve();
-      stateHasChanged = true;
-    }
-  }
+  //   if (millis() - pressedTime > 5000) {
+  //     // THIS SHOULD BE ON +2 BTN
+  //     Logger.println("Resettings finished solve time!");
+  //     state.finishedSolveTime = -1;
+  //     stateHasChanged = true;
+  //   } else {
+  //     sendSolve();
+  //     stateHasChanged = true;
+  //   }
+  // }
 
   if (digitalRead(PLUS2_BUTTON_PIN) == LOW) {
     Logger.println("+2 button pressed!");
@@ -244,7 +247,7 @@ void buttonsLoop() {
 }
 
 void rfidLoop() {
-  if (state.finishedSolveTime > 0 && millis() - state.lastCardReadTime > 1500 && 
+  if (state.finishedSolveTime > 0 && millis() - state.lastCardReadTime > 500 && 
       mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial())
   {
     state.lastCardReadTime = millis();
@@ -255,21 +258,6 @@ void rfidLoop() {
     JsonDocument doc;
     doc["card_info_request"]["card_id"] = cardId;
     doc["card_info_request"]["esp_id"] = ESP_ID();
-
-    // struct tm timeinfo;
-    // if (!getLocalTime(&timeinfo))
-    // {
-    //   Logger.println("Failed to obtain time");
-    // }
-    // time_t epoch;
-    // time(&epoch);
-
-    
-    // doc["solve"]["solve_time"] = finishedSolveTime;
-    // doc["solve"]["card_id"] = cardId;
-    // doc["solve"]["esp_id"] = ESP_ID();
-    // doc["solve"]["timestamp"] = epoch;
-    // doc["solve"]["session_id"] = solveSessionId;
 
     String json;
     serializeJson(doc, json);
@@ -359,8 +347,17 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       String name = doc["card_info_response"]["name"];
       unsigned long cardId = doc["card_info_response"]["card_id"];
 
-      state.solverName = name;
-      state.solverCardId = cardId;
+      // here just check card type (if its judge's or player's)
+      if (state.solverCardId == 0) {
+        state.solverName = name;
+        state.solverCardId = cardId;
+      } else if(state.solverCardId > 0 && state.judgeCardId == 0) { 
+        //judge is always scanning his card last
+        state.judgeCardId = cardId;
+
+        sendSolve();
+      }
+
       stateHasChanged = true;
     } else if (doc.containsKey("solve_confirm")) {
       if (doc["solve_confirm"]["card_id"] != state.solverCardId || 
@@ -372,6 +369,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 
       state.finishedSolveTime = -1;
       state.solverCardId = 0;
+      state.judgeCardId = 0;
       state.solverName = "";
       stateHasChanged = true;
     }

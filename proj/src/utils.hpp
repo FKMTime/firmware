@@ -27,7 +27,6 @@ struct SavedState {
   int timeOffset;
   unsigned long solverCardId;
   unsigned long judgeCardId;
-  int clearState; // random field to clear state
 };
 
 void stateDefault(GlobalState *state) {
