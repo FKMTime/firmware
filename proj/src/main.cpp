@@ -23,16 +23,14 @@
 #include "ws_logger.h"
 
 #ifdef ARDUINO_ARCH_ESP32
-  #define RST_PIN D6
   #define SS_PIN D2
-  #define SCK_PIN D8
   #define MISO_PIN D3
   #define MOSI_PIN D10
+  #define SCK_PIN D8
   #define STACKMAT_TIMER_PIN D7
   #define PLUS2_BUTTON_PIN D1
   #define DNF_BUTTON_PIN D0
 #else
-  #define RST_PIN A0
   #define SS_PIN 16
   #define SCK_PIN 14
   #define MISO_PIN 12
