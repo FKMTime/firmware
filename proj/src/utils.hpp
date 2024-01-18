@@ -45,13 +45,6 @@ void saveState(GlobalState state) {
   s.solverCardId = state.solverCardId;
   s.judgeCardId = state.judgeCardId;
 
-  Logger.println("State to save:");
-  Logger.printf("SessId: %d\n", s.solveSessionId);
-  Logger.printf("Last Time: %d\n",s.finishedSolveTime);
-  Logger.printf("Time offset: %d\n", s.timeOffset);
-  Logger.printf("Solver CID: %lu\n", s.solverCardId);
-  Logger.printf("Judge CID: %lu\n", s.judgeCardId);
-
   EEPROM.write(0, (uint8_t)sizeof(SavedState));
   EEPROM.put(1, s);
   EEPROM.commit();
@@ -74,13 +67,6 @@ void readState(GlobalState *state) {
   state->timeOffset = _state.timeOffset;
   state->solverCardId = _state.solverCardId;
   state->judgeCardId = _state.judgeCardId;
-
-  Logger.println("Loaded state:");
-  Logger.printf("SessId: %d\n", _state.solveSessionId);
-  Logger.printf("Last Time: %d\n", _state.finishedSolveTime);
-  Logger.printf("Time offset: %d\n", _state.timeOffset);
-  Logger.printf("Solver CID: %lu\n", _state.solverCardId);
-  Logger.printf("Judge CID: %lu\n", _state.judgeCardId);
 }
 
 String getChipID() {

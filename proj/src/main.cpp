@@ -29,7 +29,6 @@
   #define MISO_PIN D3
   #define MOSI_PIN D10
   #define STACKMAT_TIMER_PIN D7
-  // #define OK_BUTTON_PIN D9
   #define PLUS2_BUTTON_PIN D1
   #define DNF_BUTTON_PIN D0
 #else
@@ -39,11 +38,11 @@
   #define MISO_PIN 12
   #define MOSI_PIN 13
   #define STACKMAT_TIMER_PIN 3
-  // #define OK_BUTTON_PIN 2
   #define PLUS2_BUTTON_PIN 15
   #define DNF_BUTTON_PIN 0
 #endif
 
+// TODO: change ws url
 const std::string WS_URL = "ws://192.168.1.38:8080";
 
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length);
@@ -59,7 +58,7 @@ Stackmat stackmat;
 rgb_lcd lcd;
 
 GlobalState state;
-bool stateHasChanged = false;
+bool stateHasChanged = true;
 unsigned long lcdLastDraw = 0;
 
 void setup()
@@ -72,12 +71,7 @@ void setup()
 
   EEPROM.begin(512);
   Logger.begin(&Serial, 5000);
-
-  // LOAD SOLVE SESSION ID, FINISHED SOLVE TIME FROM EEPROM
   readState(&state);
-
-  state.solverName = "";
-  stateHasChanged = true;
 
   #ifdef ARDUINO_ARCH_ESP32
     Serial0.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, STACKMAT_TIMER_PIN, 255, true);
@@ -90,7 +84,6 @@ void setup()
 
   pinMode(PLUS2_BUTTON_PIN, INPUT_PULLUP);
   pinMode(DNF_BUTTON_PIN, INPUT_PULLUP);
-  // pinMode(OK_BUTTON_PIN, INPUT_PULLUP);
 
   #ifdef ARDUINO_ARCH_ESP32
     SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
@@ -186,7 +179,6 @@ void lcdLoop() {
     lcd.print("  Disconnected  ");
   } else if (stackmat.state() == StackmatTimerState::ST_Running) { // TIMER IS RUNNING
     lcd.printf("%i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
-    // Logger.printf("%i:%02i.%03i\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
   } else {
     lcd.printf("    Stackmat    ");
   }
@@ -195,34 +187,25 @@ void lcdLoop() {
 }
 
 void buttonsLoop() {
-  // if (digitalRead(OK_BUTTON_PIN) == LOW) {
-  //   Logger.println("OK button pressed!");
-  //   unsigned long pressedTime = millis();
-  //   while (digitalRead(OK_BUTTON_PIN) == LOW) {
-  //     delay(50);
-  //   }
-
-  //   if (millis() - pressedTime > 5000) {
-  //     // THIS SHOULD BE ON +2 BTN
-  //     Logger.println("Resettings finished solve time!");
-  //     state.finishedSolveTime = -1;
-  //     stateHasChanged = true;
-  //   } else {
-  //     sendSolve();
-  //     stateHasChanged = true;
-  //   }
-  // }
-
   if (digitalRead(PLUS2_BUTTON_PIN) == LOW) {
     Logger.println("+2 button pressed!");
-    //unsigned long pressedTime = millis();
+    unsigned long pressedTime = millis();
     while (digitalRead(PLUS2_BUTTON_PIN) == LOW) {
       delay(50);
     }
 
-    if (state.timeOffset != -1) {
-      state.timeOffset = state.timeOffset >= 16 ? 0 : state.timeOffset + 2;
-      stateHasChanged = true;
+    if (millis() - pressedTime > 5000) {
+        Logger.println("Resettings finished solve time!");
+        state.timeOffset = 0;
+        state.finishedSolveTime = -1;
+        state.solverCardId = 0;
+        state.judgeCardId = 0;
+        stateHasChanged = true;
+    } else { 
+        if (state.timeOffset != -1) {
+            state.timeOffset = state.timeOffset >= 16 ? 0 : state.timeOffset + 2;
+            stateHasChanged = true;
+        }
     }
   }
 
@@ -233,7 +216,7 @@ void buttonsLoop() {
       delay(50);
     }
 
-    if (millis() - pressedTime > 10000) {
+    if (millis() - pressedTime > 5000) {
       Logger.println("Resetting wifi settings!");
       WiFiManager wm;
       wm.resetSettings();
