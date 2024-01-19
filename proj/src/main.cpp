@@ -67,7 +67,7 @@ void setup()
     Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, 1);
   #endif
 
-  EEPROM.begin(512);
+  EEPROM.begin(128);
   Logger.begin(&Serial, 5000);
   readState(&state);
 
@@ -153,10 +153,12 @@ void lcdLoop() {
 
   lcd.clear();
   lcd.setCursor(0, 0);
-  if (state.finishedSolveTime > 0) { // AFTER TIMER IS STOPPED
+  if (state.finishedSolveTime > 0 && state.solverCardId > 0) { // after timer is stopped and solver scanned his card
     uint8_t minutes = state.finishedSolveTime / 60000;
     uint8_t seconds = (state.finishedSolveTime % 60000) / 1000;
     uint16_t ms = state.finishedSolveTime % 1000;
+
+    lcd.setCursor(0, 0);
     lcd.printf("%i:%02i.%03i", minutes, seconds, ms);
     if(state.timeOffset == -1) {
       lcd.printf(" DNF");
@@ -164,21 +166,35 @@ void lcdLoop() {
       lcd.printf(" +%d", state.timeOffset);
     }
     
-    if (state.solverCardId == 0) {
+    if (state.solverCardId > 0 && state.judgeCardId == 0) {
       lcd.setCursor(0, 1);
-      lcd.printf("Scan card");
-    } else if (state.solverCardId > 0 && state.judgeCardId == 0) {
-      lcd.setCursor(0, 1);
-      lcd.printf("%s", state.solverName.c_str());
+      lcd.printf("Awaiting judge");
     }
-  } else if (!stackmat.connected()) { // TIMER DISCONNECTED
+  } 
+  // else if (!stackmat.connected()) {
+  //   lcd.setCursor(0, 0);
+  //   lcd.printf("    Stackmat    ");
+  //   lcd.setCursor(0, 1);
+  //   lcd.print("  Disconnected  ");
+  // } 
+  else if (stackmat.state() == StackmatTimerState::ST_Running && state.solverCardId > 0) { // timer running and solver scanned his card
+    lcd.setCursor(0, 0);
+    lcd.printf("%i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+  } else if (state.solverCardId > 0) {
+    lcd.setCursor(0, 0);
+    lcd.printf("     Solver     ");
+    lcd.setCursor(0, 1);
+    lcd.printf(centerString(state.solverName, 16).c_str());
+  } else if (state.solverCardId == 0) {
+    lcd.setCursor(0, 0);
     lcd.printf("    Stackmat    ");
     lcd.setCursor(0, 1);
-    lcd.print("  Disconnected  ");
-  } else if (stackmat.state() == StackmatTimerState::ST_Running) { // TIMER IS RUNNING
-    lcd.printf("%i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+    lcd.printf("Awaiting solver");
   } else {
+    lcd.setCursor(0, 0);
     lcd.printf("    Stackmat    ");
+    lcd.setCursor(0, 1);
+    lcd.printf("Unhandled state!");
   }
 
   lcdLastDraw = millis();
@@ -228,10 +244,11 @@ void buttonsLoop() {
 }
 
 void rfidLoop() {
-  if (state.finishedSolveTime > 0 && millis() - state.lastCardReadTime > 500 && 
+  if (millis() - state.lastCardReadTime > 500 && 
       mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial())
   {
     state.lastCardReadTime = millis();
+    if (state.solverCardId > 0 && state.judgeCardId > 0) return; // if both card were already scanned
 
     unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
     Logger.printf("Card ID: %lu\n", cardId);
@@ -254,7 +271,7 @@ void stackmatLoop()
     switch (stackmat.state())
     {
       case ST_Stopped:
-        if (state.finishedSolveTime > 0) break;
+        if (state.solverCardId == 0 || state.finishedSolveTime > 0) break;
 
         Logger.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
         state.finishedSolveTime = stackmat.time();
@@ -269,9 +286,12 @@ void stackmatLoop()
         break;
 
       case ST_Running:
-        if (state.finishedSolveTime > 0) break;
+        if (state.solverCardId == 0 || state.finishedSolveTime > 0) break;
         state.solveSessionId++;
         state.finishedSolveTime = -1;
+        state.timeOffset = 0;
+        state.solverCardId = 0;
+        state.judgeCardId = 0;
 
         Logger.println("Solve started!");
         Logger.printf("Solve session ID: %i\n", state.solveSessionId);
@@ -327,16 +347,14 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
     if (doc.containsKey("card_info_response")) {
       String name = doc["card_info_response"]["name"];
       unsigned long cardId = doc["card_info_response"]["card_id"];
+      bool isJudge = doc["card_info_response"]["is_judge"];
 
-      // here just check card type (if its judge's or player's)
-      if (state.solverCardId == 0) {
+      if (isJudge && state.solverCardId > 0 /* && state.finishedSolveTime > 0 */) {
+        state.judgeCardId = cardId;
+        sendSolve();
+      } else if(!isJudge && state.solverCardId == 0) {
         state.solverName = name;
         state.solverCardId = cardId;
-      } else if(state.solverCardId > 0 && state.judgeCardId == 0) { 
-        //judge is always scanning his card last
-        state.judgeCardId = cardId;
-
-        sendSolve();
       }
 
       stateHasChanged = true;

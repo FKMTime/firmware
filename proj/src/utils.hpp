@@ -106,3 +106,18 @@ std::tuple<std::string, int, std::string> parseWsUrl(std::string url) {
 
   return {url, port, path};
 }
+
+String centerString(String str, int size) {
+  int padSize = size - str.length();
+  if (padSize <= 0) return str;
+
+  int padLeft = padSize / 2;
+  int padRight = padSize - padLeft;
+
+  String tmp;
+  for (int i = 0; i < padLeft; i++) tmp += " ";
+  tmp += str;
+  for (int i = 0; i < padRight; i++) tmp += " ";
+
+  return tmp;
+}
