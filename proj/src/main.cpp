@@ -59,6 +59,8 @@ GlobalState state;
 bool stateHasChanged = true;
 unsigned long lcdLastDraw = 0;
 
+bool lastWebsocketState = false;
+
 void setup()
 {
   #ifdef ARDUINO_ARCH_ESP32
@@ -145,6 +147,11 @@ void loop() {
   buttonsLoop();
   stackmatLoop();
   rfidLoop();
+
+  if (lastWebsocketState != webSocket.isConnected()) {
+    lastWebsocketState = webSocket.isConnected();
+    stateHasChanged = true;
+  }
 }
 
 void lcdLoop() {
@@ -153,12 +160,15 @@ void lcdLoop() {
 
   lcd.clear();
   lcd.setCursor(0, 0);
-  if (state.finishedSolveTime > 0 && state.solverCardId > 0) { // after timer is stopped and solver scanned his card
+  if (!webSocket.isConnected()) {
+    lcd.printf("     Server     ");
+    lcd.setCursor(0, 1);
+    lcd.print("  Disconnected  ");
+  } else if (state.finishedSolveTime > 0 && state.solverCardId > 0) { // after timer is stopped and solver scanned his card
     uint8_t minutes = state.finishedSolveTime / 60000;
     uint8_t seconds = (state.finishedSolveTime % 60000) / 1000;
     uint16_t ms = state.finishedSolveTime % 1000;
 
-    lcd.setCursor(0, 0);
     lcd.printf("%i:%02i.%03i", minutes, seconds, ms);
     if(state.timeOffset == -1) {
       lcd.printf(" DNF");
@@ -172,26 +182,21 @@ void lcdLoop() {
     }
   } 
   // else if (!stackmat.connected()) {
-  //   lcd.setCursor(0, 0);
   //   lcd.printf("    Stackmat    ");
   //   lcd.setCursor(0, 1);
   //   lcd.print("  Disconnected  ");
   // } 
   else if (stackmat.state() == StackmatTimerState::ST_Running && state.solverCardId > 0) { // timer running and solver scanned his card
-    lcd.setCursor(0, 0);
     lcd.printf("%i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
   } else if (state.solverCardId > 0) {
-    lcd.setCursor(0, 0);
     lcd.printf("     Solver     ");
     lcd.setCursor(0, 1);
     lcd.printf(centerString(state.solverName, 16).c_str());
   } else if (state.solverCardId == 0) {
-    lcd.setCursor(0, 0);
     lcd.printf("    Stackmat    ");
     lcd.setCursor(0, 1);
     lcd.printf("Awaiting solver");
   } else {
-    lcd.setCursor(0, 0);
     lcd.printf("    Stackmat    ");
     lcd.setCursor(0, 1);
     lcd.printf("Unhandled state!");
@@ -231,6 +236,7 @@ void buttonsLoop() {
     }
 
     if (millis() - pressedTime > 5000) {
+      // TODO: REMOVE THIS
       Logger.println("Resetting wifi settings!");
       WiFiManager wm;
       wm.resetSettings();
