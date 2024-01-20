@@ -9,14 +9,14 @@ void Stackmat::begin(Stream *_serial) {
 }
 
 void Stackmat::loop() {
-    String data;
-    while (serial->available() > 9) {
-        data = ReadStackmatString();
+  String data;
+  while (serial->available() > 9) {
+    data = ReadStackmatString();
 
-        if (data.length() >= 8) {
-            ParseTimerData(data);
-        }
+    if (data.length() >= 8) {
+      ParseTimerData(data);
     }
+  }
 }
 
 uint8_t Stackmat::displayMinutes() {

@@ -31,7 +31,7 @@
   #define PLUS2_BUTTON_PIN D1
   #define DNF_BUTTON_PIN D0
 #elif defined(ESP8266)
-  #define SS_PIN 15
+  #define SS_PIN 16
   #define SCK_PIN 14
   #define MISO_PIN 12
   #define MOSI_PIN 13
@@ -49,6 +49,10 @@ void lcdLoop();
 void buttonsLoop();
 void rfidLoop();
 void sendSolve();
+
+#if defined(ESP8266)
+  SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
+#endif
 
 MFRC522 mfrc522(SS_PIN, UNUSED_PIN); // UNUSED_PIN means that reset is done by software side of that chip
 WebSocketsClient webSocket;
@@ -77,7 +81,6 @@ void setup()
     Serial0.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, STACKMAT_TIMER_PIN, 255, true);
     stackmat.begin(&Serial0);
   #elif defined(ESP8266)
-    SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
     stackmatSerial.begin(STACKMAT_TIMER_BAUD_RATE);
     stackmat.begin(&stackmatSerial);
   #endif
