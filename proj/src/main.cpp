@@ -23,7 +23,7 @@
 #include "ws_logger.h"
 
 #if defined(ESP32)
-  #define SS_PIN D2
+  #define CS_PIN D2
   #define MISO_PIN D3
   #define MOSI_PIN D10
   #define SCK_PIN D8
@@ -31,12 +31,12 @@
   #define PLUS2_BUTTON_PIN D1
   #define DNF_BUTTON_PIN D0
 #elif defined(ESP8266)
-  #define SS_PIN 16
+  #define CS_PIN 15
   #define SCK_PIN 14
   #define MISO_PIN 12
   #define MOSI_PIN 13
   #define STACKMAT_TIMER_PIN 3
-  #define PLUS2_BUTTON_PIN 16
+  #define PLUS2_BUTTON_PIN 2 // TODO: change this to something else
   #define DNF_BUTTON_PIN 0
 #endif
 
@@ -54,7 +54,7 @@ void sendSolve();
   SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
 #endif
 
-MFRC522 mfrc522(SS_PIN, UNUSED_PIN); // UNUSED_PIN means that reset is done by software side of that chip
+MFRC522 mfrc522(CS_PIN, UNUSED_PIN); // UNUSED_PIN means that reset is done by software side of that chip
 WebSocketsClient webSocket;
 Stackmat stackmat;
 rgb_lcd lcd;
@@ -89,9 +89,9 @@ void setup()
   pinMode(DNF_BUTTON_PIN, INPUT_PULLUP);
 
   #if defined(ESP32)
-    SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
+    SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, CS_PIN);
   #elif defined(ESP8266)
-    SPI.pins(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
+    SPI.pins(SCK_PIN, MISO_PIN, MOSI_PIN, CS_PIN);
     SPI.begin();
   #endif
   mfrc522.PCD_Init();
