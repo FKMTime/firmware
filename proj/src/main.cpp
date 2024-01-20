@@ -1,8 +1,8 @@
-#ifdef ARDUINO_ARCH_ESP32
+#if defined(ESP32)
   #include <WiFi.h>
 
   #define ESP_ID() ESP.getEfuseMac()
-#else
+#elif defined(ESP8266)
   #include <ESP8266WiFi.h>
   #include <SoftwareSerial.h>
 
@@ -22,7 +22,7 @@
 #include "rgb_lcd.h"
 #include "ws_logger.h"
 
-#ifdef ARDUINO_ARCH_ESP32
+#if defined(ESP32)
   #define SS_PIN D2
   #define MISO_PIN D3
   #define MOSI_PIN D10
@@ -30,7 +30,7 @@
   #define STACKMAT_TIMER_PIN D7
   #define PLUS2_BUTTON_PIN D1
   #define DNF_BUTTON_PIN D0
-#else
+#elif defined(ESP8266)
   #define SS_PIN 15
   #define SCK_PIN 14
   #define MISO_PIN 12
@@ -63,9 +63,9 @@ bool lastWebsocketState = false;
 
 void setup()
 {
-  #ifdef ARDUINO_ARCH_ESP32
+  #if defined(ESP32)
     Serial.begin(115200);
-  #else
+  #elif defined(ESP8266)
     Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, 1);
   #endif
 
@@ -73,10 +73,10 @@ void setup()
   Logger.begin(&Serial, 5000);
   readState(&state);
 
-  #ifdef ARDUINO_ARCH_ESP32
+  #if defined(ESP32)
     Serial0.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, STACKMAT_TIMER_PIN, 255, true);
     stackmat.begin(&Serial0);
-  #else
+  #elif defined(ESP8266)
     SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
     stackmatSerial.begin(STACKMAT_TIMER_BAUD_RATE);
     stackmat.begin(&stackmatSerial);
@@ -85,9 +85,9 @@ void setup()
   pinMode(PLUS2_BUTTON_PIN, INPUT_PULLUP);
   pinMode(DNF_BUTTON_PIN, INPUT_PULLUP);
 
-  #ifdef ARDUINO_ARCH_ESP32
+  #if defined(ESP32)
     SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
-  #else
+  #elif defined(ESP8266)
     SPI.pins(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
     SPI.begin();
   #endif

@@ -5,9 +5,9 @@
 #include <ArduinoJson.h>
 #include <vector>
 
-#ifdef ARDUINO_ARCH_ESP32
+#if defined(ESP32)
   #define ESP_ID() ESP.getEfuseMac()
-#else
+#elif defined(ESP8266)
   #define ESP_ID() ESP.getChipId()
 #endif
 
