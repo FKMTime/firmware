@@ -2,6 +2,6 @@
 #ifndef __VERSION_H__
 #define __VERSION_H__
 
-#define FIRMWARE_VERSION "5cbf2ed5"
+#define FIRMWARE_VERSION "e4b9c20d"
 
 #endif

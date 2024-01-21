@@ -1,10 +1,12 @@
 #if defined(ESP32)
   #include <WiFi.h>
+  #include <Update.h>
 
   #define ESP_ID() ESP.getEfuseMac()
 #elif defined(ESP8266)
   #include <ESP8266WiFi.h>
   #include <SoftwareSerial.h>
+  #include <Updater.h>
 
   #define ESP_ID() ESP.getChipId()
 #endif

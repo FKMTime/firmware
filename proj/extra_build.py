@@ -19,7 +19,7 @@ Import("env")
 
 import os
 
-versionHash = os.popen("find ./platformio.ini ./src ./lib ./include -type f -print0 | sort -z | xargs -0 sha1sum | grep -v ./src/version.cpp | sha1sum | awk '{print $1}'").read()
+versionHash = os.popen("find ./platformio.ini ./src ./lib ./include -type f -print0 | sort -z | xargs -0 sha1sum | grep -v ./src/version.h | sha1sum | awk '{print $1}'").read()
 version = versionHash[0:8]
 versionPath = os.path.join(env["PROJECT_DIR"], "src", "version.h")
 versionString = """
