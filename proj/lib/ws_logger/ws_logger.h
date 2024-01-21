@@ -6,9 +6,9 @@
 #include <vector>
 
 #if defined(ESP32)
-  #define ESP_ID() ESP.getEfuseMac()
+  #define ESP_ID() (unsigned long)ESP.getEfuseMac()
 #elif defined(ESP8266)
-  #define ESP_ID() ESP.getChipId()
+  #define ESP_ID() (unsigned long)ESP.getChipId()
 #endif
 
 struct logData {

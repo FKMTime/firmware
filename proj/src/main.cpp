@@ -2,13 +2,15 @@
   #include <WiFi.h>
   #include <Update.h>
 
-  #define ESP_ID() ESP.getEfuseMac()
+  #define ESP_ID() (unsigned long)ESP.getEfuseMac()
+  #define CHIP "esp32"
 #elif defined(ESP8266)
   #include <ESP8266WiFi.h>
   #include <SoftwareSerial.h>
   #include <Updater.h>
 
-  #define ESP_ID() ESP.getChipId()
+  #define ESP_ID() (unsigned long)ESP.getChipId()
+  #define CHIP "esp8266"
 #endif
 
 #include <Arduino.h>
@@ -65,8 +67,10 @@ rgb_lcd lcd;
 GlobalState state;
 bool stateHasChanged = true;
 unsigned long lcdLastDraw = 0;
-
 bool lastWebsocketState = false;
+
+// updater stuff (OTA)
+int sketchSize = 0;
 
 void setup()
 {
@@ -79,6 +83,10 @@ void setup()
   EEPROM.begin(128);
   Logger.begin(&Serial, 5000);
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
+  Logger.printf("TEST: %s\n", FIRMWARE_VERSION);
+  Logger.printf("TEST: %s\n", FIRMWARE_VERSION);
+  Logger.printf("TEST: %s\n", FIRMWARE_VERSION);
+  Logger.printf("TEST: %s\n", FIRMWARE_VERSION);
 
   readState(&state);
 
@@ -139,7 +147,10 @@ void setup()
   auto wsRes = parseWsUrl(WS_URL);
   std::tie(host, port, path) = wsRes;
 
-  webSocket.begin(host.c_str(), port, path.c_str());
+  char finalPath[128];
+  snprintf(finalPath, 128, "%s?id=%lu&ver=%s", path.c_str(), ESP_ID(), FIRMWARE_VERSION);
+
+  webSocket.begin(host.c_str(), port, finalPath);
   webSocket.onEvent(webSocketEvent);
   webSocket.setReconnectInterval(5000);
   Logger.setWsClient(&webSocket);
@@ -385,17 +396,53 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       state.judgeCardId = 0;
       state.solverName = "";
       stateHasChanged = true;
+    } else if (doc.containsKey("start_update")) {
+      if (doc["start_update"]["esp_id"] != ESP_ID() || doc["start_update"]["version"] == FIRMWARE_VERSION) {
+        Logger.println("Cannot start update!");
+        return;
+      }
+
+      sketchSize = doc["start_update"]["size"];
+      unsigned long maxSketchSize = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+
+      Logger.printf("[Update] Max Sketch Size: %lu | Sketch size: %d\n", maxSketchSize, sketchSize);
+      if (!Update.begin(maxSketchSize)) {
+        Update.printError(Serial);
+        ESP.restart();
+      }
     }
 
     // Logger.printf("Received message: %s\n", doc["espId"].as<const char *>());
   }
-  else if (type == WStype_CONNECTED) {
-    JsonDocument doc;
-    doc["connect"]["esp_id"] = ESP_ID();
+  else if (type == WStype_BIN) {
+    Logger.printf("[Update] got binary length: %u\n", length);
+    if (Update.write(payload, length) != length) {
+      Update.printError(Serial);
+      ESP.restart();
+    }
 
-    String json;
-    serializeJson(doc, json);
-    webSocket.sendTXT(json);
+    yield();
+    sketchSize -= length;
+    Logger.printf("[Update] Sketch size left: %u\n", sketchSize);
+    if (sketchSize <= 0) {
+      if (Update.end(true)) {
+        Logger.printf("[Update] Success!!! Rebooting...\n");
+        delay(5);
+        yield();
+        ESP.restart();
+      } else {
+        Update.printError(Serial);
+        ESP.restart();
+      }
+    }
+  }
+  else if (type == WStype_CONNECTED) {
+    // JsonDocument doc;
+    // doc["connect"]["esp_id"] = ESP_ID();
+
+    // String json;
+    // serializeJson(doc, json);
+    // webSocket.sendTXT(json);
 
     Logger.println("Connected to WebSocket server");
   }
