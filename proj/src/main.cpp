@@ -83,10 +83,6 @@ void setup()
   EEPROM.begin(128);
   Logger.begin(&Serial, 5000);
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
-  Logger.printf("TEST: %s\n", FIRMWARE_VERSION);
-  Logger.printf("TEST: %s\n", FIRMWARE_VERSION);
-  Logger.printf("TEST: %s\n", FIRMWARE_VERSION);
-  Logger.printf("TEST: %s\n", FIRMWARE_VERSION);
 
   readState(&state);
 
@@ -415,7 +411,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
     // Logger.printf("Received message: %s\n", doc["espId"].as<const char *>());
   }
   else if (type == WStype_BIN) {
-    Logger.printf("[Update] got binary length: %u\n", length);
+    Serial.printf("[Update] got binary length: %u\n", length);
     if (Update.write(payload, length) != length) {
       Update.printError(Serial);
       ESP.restart();
@@ -423,7 +419,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 
     yield();
     sketchSize -= length;
-    Logger.printf("[Update] Sketch size left: %u\n", sketchSize);
+    Serial.printf("[Update] Sketch size left: %u\n", sketchSize);
     if (sketchSize <= 0) {
       if (Update.end(true)) {
         Logger.printf("[Update] Success!!! Rebooting...\n");

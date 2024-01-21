@@ -17,12 +17,20 @@ Import("env")
 
 # env.AddBuildMiddleware(insert_firmware_version)
 
-import os
+import os, time
 
-versionHash = os.popen("find ./platformio.ini ./src ./lib ./include -type f -print0 | sort -z | xargs -0 sha1sum | grep -v ./src/version.h | sha1sum | awk '{print $1}'").read()
-version = versionHash[0:8]
-versionPath = os.path.join(env["PROJECT_DIR"], "src", "version.h")
-versionString = """
+sameHash = False
+filesHash = os.popen("find ./platformio.ini ./src ./lib ./include -type f -print0 | sort -z | xargs -0 sha1sum | grep -v ./src/version.h | sha1sum | awk '{print $1}'").read().strip()
+try:
+    with open(".versum", "r") as file:
+        sameHash = filesHash == file.read().strip()
+except:
+    print(".versum doesn't exists! Building...")
+
+if not sameHash:
+    version = format(int(time.time()), 'x')
+    versionPath = os.path.join(env["PROJECT_DIR"], "src", "version.h")
+    versionString = """
 #ifndef __VERSION_H__
 #define __VERSION_H__
 
@@ -31,7 +39,8 @@ versionString = """
 #endif
 """.format(version = version)
 
-with open(versionPath, "w") as file:
-    file.write(versionString)
+    with open(versionPath, "w") as file:
+        file.write(versionString)
 
-# 
+    with open(".versum", "w") as file:
+        file.write(filesHash.strip())
