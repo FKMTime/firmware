@@ -19,17 +19,12 @@ Import("env")
 
 import os, time
 
-version = "0"
-
 def after_build(source, target, env):
+    version = os.popen("cat src/version.h | grep \"FIRMWARE_VERSION\" | cut -d'\"' -f 2").read().strip()
     bin_name = f"{env['BOARD_MCU']}.{version}.bin"
-    os.popen(f"mkdir -p ./build ; cp {source[0].get_abspath()} ./build/{bin_name} ; gzip -9 ./build/{bin_name}")
-
-    print(bin_name, source[0].get_abspath())
+    os.popen(f"mkdir -p ./build ; cp {source[0].get_abspath()} ./build/{bin_name}")
 
 def generate_version():
-    global version
-
     filesHash = os.popen("find ./platformio.ini ./src ./lib ./include -type f -print0 | sort -z | xargs -0 sha1sum | grep -v ./src/version.h | sha1sum | awk '{print $1}'").read().strip()
     try:
         with open(".versum", "r") as file:

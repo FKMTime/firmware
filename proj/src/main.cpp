@@ -3,7 +3,7 @@
   #include <Update.h>
 
   #define ESP_ID() (unsigned long)ESP.getEfuseMac()
-  #define CHIP "esp32"
+  #define CHIP "esp32c3"
 #elif defined(ESP8266)
   #include <ESP8266WiFi.h>
   #include <SoftwareSerial.h>
@@ -71,6 +71,7 @@ bool lastWebsocketState = false;
 
 // updater stuff (OTA)
 int sketchSize = 0;
+bool update = false;
 
 void setup()
 {
@@ -115,7 +116,6 @@ void setup()
   lcd.print("Connecting...");
 
   WiFiManager wm;
-  // wm.resetSettings();
 
   String generatedSSID = "StackmatTimer-" + getChipID();
   wm.setConfigPortalTimeout(300);
@@ -125,8 +125,6 @@ void setup()
     Logger.println("Failed to connect to wifi... Restarting!");
     delay(1500);
     ESP.restart();
-
-    return;
   }
 
   lcd.clear();
@@ -155,13 +153,16 @@ void setup()
 }
 
 void loop() {
-  Logger.loop();
   webSocket.loop();
-  stackmat.loop();
-  lcdLoop();
-  buttonsLoop();
-  stackmatLoop();
-  rfidLoop();
+
+  if (!update) {
+    Logger.loop();
+    stackmat.loop();
+    lcdLoop();
+    buttonsLoop();
+    stackmatLoop();
+    rfidLoop();
+  }
 
   if (lastWebsocketState != webSocket.isConnected()) {
     lastWebsocketState = webSocket.isConnected();
@@ -298,8 +299,6 @@ void stackmatLoop()
         state.finishedSolveTime = stackmat.time();
 
         saveState(state);
-        // writeEEPROMInt(4, state.finishedSolveTime);
-        // EEPROM.commit();
         break;
 
       case ST_Reset:
@@ -316,7 +315,6 @@ void stackmatLoop()
 
         Logger.println("Solve started!");
         Logger.printf("Solve session ID: %i\n", state.solveSessionId);
-        // writeEEPROMInt(0, state.solveSessionId);
         break;
 
       default:
@@ -406,12 +404,12 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
         Update.printError(Serial);
         ESP.restart();
       }
-    }
 
-    // Logger.printf("Received message: %s\n", doc["espId"].as<const char *>());
+      update = true;
+    }
   }
   else if (type == WStype_BIN) {
-    Serial.printf("[Update] got binary length: %u\n", length);
+    // Serial.printf("[Update] got binary length: %u\n", length);
     if (Update.write(payload, length) != length) {
       Update.printError(Serial);
       ESP.restart();
@@ -419,7 +417,8 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 
     yield();
     sketchSize -= length;
-    Serial.printf("[Update] Sketch size left: %u\n", sketchSize);
+    // Serial.printf("[Update] Sketch size left: %u\n", sketchSize);
+
     if (sketchSize <= 0) {
       if (Update.end(true)) {
         Logger.printf("[Update] Success!!! Rebooting...\n");
@@ -431,15 +430,10 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
         ESP.restart();
       }
     }
+
+    webSocket.sendBIN((uint8_t *)NULL, 0);
   }
   else if (type == WStype_CONNECTED) {
-    // JsonDocument doc;
-    // doc["connect"]["esp_id"] = ESP_ID();
-
-    // String json;
-    // serializeJson(doc, json);
-    // webSocket.sendTXT(json);
-
     Logger.println("Connected to WebSocket server");
   }
   else if (type == WStype_DISCONNECTED) {
