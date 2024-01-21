@@ -19,15 +19,25 @@ Import("env")
 
 import os, time
 
-sameHash = False
-filesHash = os.popen("find ./platformio.ini ./src ./lib ./include -type f -print0 | sort -z | xargs -0 sha1sum | grep -v ./src/version.h | sha1sum | awk '{print $1}'").read().strip()
-try:
-    with open(".versum", "r") as file:
-        sameHash = filesHash == file.read().strip()
-except:
-    print(".versum doesn't exists! Building...")
+version = "0"
 
-if not sameHash:
+def after_build(source, target, env):
+    bin_name = f"{env['BOARD_MCU']}.{version}.bin"
+    os.popen(f"mkdir -p ./build ; cp {source[0].get_abspath()} ./build/{bin_name} ; gzip -9 ./build/{bin_name}")
+
+    print(bin_name, source[0].get_abspath())
+
+def generate_version():
+    global version
+
+    filesHash = os.popen("find ./platformio.ini ./src ./lib ./include -type f -print0 | sort -z | xargs -0 sha1sum | grep -v ./src/version.h | sha1sum | awk '{print $1}'").read().strip()
+    try:
+        with open(".versum", "r") as file:
+            if filesHash == file.read().strip():
+                return
+    except:
+        print(".versum doesn't exists! Building...")
+
     version = format(int(time.time()), 'x')
     versionPath = os.path.join(env["PROJECT_DIR"], "src", "version.h")
     versionString = """
@@ -41,6 +51,8 @@ if not sameHash:
 
     with open(versionPath, "w") as file:
         file.write(versionString)
-
     with open(".versum", "w") as file:
         file.write(filesHash.strip())
+
+env.AddPostAction("buildprog", after_build)
+generate_version()
