@@ -17,6 +17,7 @@
 #include <WiFiManager.h>
 #include <WebSocketsClient.h>
 
+#include "version.h"
 #include "utils.hpp"
 #include "stackmat.h"
 #include "rgb_lcd.h"
@@ -75,6 +76,8 @@ void setup()
 
   EEPROM.begin(128);
   Logger.begin(&Serial, 5000);
+  Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
+
   readState(&state);
 
   #if defined(ESP32)
