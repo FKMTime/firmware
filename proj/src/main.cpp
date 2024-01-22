@@ -162,18 +162,15 @@ void setup()
 }
 
 void loop() {
-  if (update) {
-    webSocket.loop();
-    return;
-  }
-
   webSocket.loop();
-  Logger.loop();
-  stackmat.loop();
-  lcdLoop();
-  buttonsLoop();
-  stackmatLoop();
-  rfidLoop();
+  if (!update) {
+    Logger.loop();
+    stackmat.loop();
+    lcdLoop();
+    buttonsLoop();
+    stackmatLoop();
+    rfidLoop();
+  }
 
   if (lastWebsocketState != webSocket.isConnected()) {
     lastWebsocketState = webSocket.isConnected();
@@ -422,6 +419,9 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       }
 
       update = true;
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.printf("Updating...");
     }
   }
   else if (type == WStype_BIN) {
