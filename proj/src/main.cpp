@@ -1,6 +1,7 @@
 #if defined(ESP32)
   #include <WiFi.h>
   #include <Update.h>
+  #include <ESPmDNS.h>
 
   #define ESP_ID() (unsigned long)ESP.getEfuseMac()
   #define CHIP "esp32c3"
@@ -16,6 +17,7 @@
   #include <ESP8266WiFi.h>
   #include <SoftwareSerial.h>
   #include <Updater.h>
+  #include <ESP8266mDNS.h>
 
   #define ESP_ID() (unsigned long)ESP.getChipId()
   #define CHIP "esp8266"
@@ -43,8 +45,8 @@
 #include "rgb_lcd.h"
 #include "ws_logger.h"
 
-// TODO: change ws url
-const std::string WS_URL = "ws://192.168.1.38:8080";
+// TODO: set this to default ws (on vps)
+String wsURL = "ws://192.168.1.38:8080";
 
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length);
 void stackmatLoop();
@@ -71,6 +73,7 @@ bool lastWebsocketState = false;
 int sketchSize = 0;
 bool update = false;
 
+char hostString[16] = {0};
 void setup()
 {
   #if defined(ESP32)
@@ -124,18 +127,27 @@ void setup()
     ESP.restart();
   }
 
-  String ipString = String(WiFi.localIP()[0]) + "." + String(WiFi.localIP()[1]) + "." + String(WiFi.localIP()[2]) + "." + String(WiFi.localIP()[3]);
+  if (!MDNS.begin("random")) {
+    Logger.printf("Failed to setup MDNS!");
+  }
+
+  int n = MDNS.queryService("stackmat", "tcp");
+  if (n > 0) {
+    Logger.printf("Found stackmat MDNS:\n Hostname: %s, IP: %s, PORT: %d\n", MDNS.hostname(0).c_str(), MDNS.IP(0).toString().c_str(), MDNS.port(0));
+    wsURL = MDNS.hostname(0);
+  }
+  MDNS.end();
 
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("WiFi connected!");
   lcd.setCursor(0, 1);
-  lcd.print(ipString);
+  lcd.print(WiFi.localIP().toString());
 
   std::string host, path;
   int port;
 
-  auto wsRes = parseWsUrl(WS_URL);
+  auto wsRes = parseWsUrl(wsURL.c_str());
   std::tie(host, port, path) = wsRes;
 
   char finalPath[128];
@@ -180,11 +192,11 @@ void lcdLoop() {
     lcd.setCursor(0, 1);
     lcd.print("  Disconnected  ");
   } 
-  // else if (!stackmat.connected()) {
-  //   lcd.printf("    Stackmat    ");
-  //   lcd.setCursor(0, 1);
-  //   lcd.print("  Disconnected  ");
-  // } 
+  else if (!stackmat.connected()) {
+    lcd.printf("    Stackmat    ");
+    lcd.setCursor(0, 1);
+    lcd.print("  Disconnected  ");
+  } 
   else if (state.finishedSolveTime > 0 && state.solverCardId > 0) { // after timer is stopped and solver scanned his card
     uint8_t minutes = state.finishedSolveTime / 60000;
     uint8_t seconds = (state.finishedSolveTime % 60000) / 1000;
@@ -390,6 +402,11 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       state.solverName = "";
       stateHasChanged = true;
     } else if (doc.containsKey("start_update")) {
+      if (update) {
+        // if already updating, restart esp
+        ESP.restart();
+      }
+
       if (doc["start_update"]["esp_id"] != ESP_ID() || doc["start_update"]["version"] == FIRMWARE_VERSION) {
         Logger.println("Cannot start update!");
         return;
