@@ -4,6 +4,14 @@
 
   #define ESP_ID() (unsigned long)ESP.getEfuseMac()
   #define CHIP "esp32c3"
+
+  #define CS_PIN D2
+  #define MISO_PIN D3
+  #define MOSI_PIN D10
+  #define SCK_PIN D8
+  #define STACKMAT_TIMER_PIN D7
+  #define PLUS2_BUTTON_PIN D1
+  #define DNF_BUTTON_PIN D0
 #elif defined(ESP8266)
   #include <ESP8266WiFi.h>
   #include <SoftwareSerial.h>
@@ -11,6 +19,14 @@
 
   #define ESP_ID() (unsigned long)ESP.getChipId()
   #define CHIP "esp8266"
+
+  #define CS_PIN 15
+  #define SCK_PIN 14
+  #define MISO_PIN 12
+  #define MOSI_PIN 13
+  #define STACKMAT_TIMER_PIN 3
+  #define PLUS2_BUTTON_PIN 2 // TODO: change this to something else
+  #define DNF_BUTTON_PIN 0
 #endif
 
 #include <Arduino.h>
@@ -27,24 +43,6 @@
 #include "rgb_lcd.h"
 #include "ws_logger.h"
 
-#if defined(ESP32)
-  #define CS_PIN D2
-  #define MISO_PIN D3
-  #define MOSI_PIN D10
-  #define SCK_PIN D8
-  #define STACKMAT_TIMER_PIN D7
-  #define PLUS2_BUTTON_PIN D1
-  #define DNF_BUTTON_PIN D0
-#elif defined(ESP8266)
-  #define CS_PIN 15
-  #define SCK_PIN 14
-  #define MISO_PIN 12
-  #define MOSI_PIN 13
-  #define STACKMAT_TIMER_PIN 3
-  #define PLUS2_BUTTON_PIN 2 // TODO: change this to something else
-  #define DNF_BUTTON_PIN 0
-#endif
-
 // TODO: change ws url
 const std::string WS_URL = "ws://192.168.1.38:8080";
 
@@ -59,7 +57,7 @@ void sendSolve();
   SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
 #endif
 
-MFRC522 mfrc522(CS_PIN, UNUSED_PIN); // UNUSED_PIN means that reset is done by software side of that chip
+MFRC522 mfrc522(CS_PIN, UNUSED_PIN);
 WebSocketsClient webSocket;
 Stackmat stackmat;
 rgb_lcd lcd;
@@ -109,11 +107,10 @@ void setup()
   lcd.begin(16, 2);
   lcd.clear();
 
-  lcd.print("ID: ");
   lcd.setCursor(0, 0);
-  lcd.print(getChipID());
+  lcd.printf("ID: %s", getChipID().c_str());
   lcd.setCursor(0, 1);
-  lcd.print("Connecting...");
+  lcd.printf("VER: %s", FIRMWARE_VERSION);
 
   WiFiManager wm;
 
@@ -127,12 +124,12 @@ void setup()
     ESP.restart();
   }
 
+  String ipString = String(WiFi.localIP()[0]) + "." + String(WiFi.localIP()[1]) + "." + String(WiFi.localIP()[2]) + "." + String(WiFi.localIP()[3]);
+
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("WiFi connected!");
   lcd.setCursor(0, 1);
-
-  String ipString = String(WiFi.localIP()[0]) + "." + String(WiFi.localIP()[1]) + "." + String(WiFi.localIP()[2]) + "." + String(WiFi.localIP()[3]);
   lcd.print(ipString);
 
   std::string host, path;
@@ -153,16 +150,18 @@ void setup()
 }
 
 void loop() {
-  webSocket.loop();
-
-  if (!update) {
-    Logger.loop();
-    stackmat.loop();
-    lcdLoop();
-    buttonsLoop();
-    stackmatLoop();
-    rfidLoop();
+  if (update) {
+    webSocket.loop();
+    return;
   }
+
+  webSocket.loop();
+  Logger.loop();
+  stackmat.loop();
+  lcdLoop();
+  buttonsLoop();
+  stackmatLoop();
+  rfidLoop();
 
   if (lastWebsocketState != webSocket.isConnected()) {
     lastWebsocketState = webSocket.isConnected();
@@ -368,7 +367,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       unsigned long cardId = doc["card_info_response"]["card_id"];
       bool isJudge = doc["card_info_response"]["is_judge"];
 
-      if (isJudge && state.solverCardId > 0 /* && state.finishedSolveTime > 0 */) {
+      if (isJudge && state.solverCardId > 0 && state.finishedSolveTime > 0) {
         state.judgeCardId = cardId;
         sendSolve();
       } else if(!isJudge && state.solverCardId == 0) {
@@ -409,7 +408,6 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
     }
   }
   else if (type == WStype_BIN) {
-    // Serial.printf("[Update] got binary length: %u\n", length);
     if (Update.write(payload, length) != length) {
       Update.printError(Serial);
       ESP.restart();
@@ -417,8 +415,6 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 
     yield();
     sketchSize -= length;
-    // Serial.printf("[Update] Sketch size left: %u\n", sketchSize);
-
     if (sketchSize <= 0) {
       if (Update.end(true)) {
         Logger.printf("[Update] Success!!! Rebooting...\n");
