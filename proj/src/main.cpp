@@ -318,7 +318,6 @@ void stackmatLoop()
         state.solveSessionId++;
         state.finishedSolveTime = -1;
         state.timeOffset = 0;
-        state.solverCardId = 0;
         state.judgeCardId = 0;
 
         Logger.println("Solve started!");
@@ -397,6 +396,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       state.solverCardId = 0;
       state.judgeCardId = 0;
       state.solverName = "";
+      saveState(state);
       stateHasChanged = true;
     } else if (doc.containsKey("start_update")) {
       if (update) {
@@ -432,6 +432,11 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 
     yield();
     sketchSize -= length;
+    lcd.setCursor(0,1);
+    lcd.printf("                "); // clear second line
+    lcd.setCursor(0,1);
+    lcd.printf("Left: %d", sketchSize);
+
     if (sketchSize <= 0) {
       if (Update.end(true)) {
         Logger.printf("[Update] Success!!! Rebooting...\n");

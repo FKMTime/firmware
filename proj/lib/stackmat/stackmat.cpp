@@ -1,5 +1,4 @@
 #include <Arduino.h>
-
 #include "stackmat.h"
 
 Stackmat::Stackmat() {}
