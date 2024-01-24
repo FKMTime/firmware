@@ -1,7 +1,6 @@
 #if defined(ESP32)
   #include <WiFi.h>
   #include <Update.h>
-  #include <ESPmDNS.h>
 
   #define ESP_ID() (unsigned long)ESP.getEfuseMac()
   #define CHIP "esp32c3"
@@ -17,7 +16,6 @@
   #include <ESP8266WiFi.h>
   #include <SoftwareSerial.h>
   #include <Updater.h>
-  #include <ESP8266mDNS.h>
 
   #define ESP_ID() (unsigned long)ESP.getChipId()
   #define CHIP "esp8266"
@@ -45,8 +43,7 @@
 #include "rgb_lcd.h"
 #include "ws_logger.h"
 
-// TODO: set this to default ws (on vps)
-String wsURL = "ws://192.168.1.38:8080";
+String wsURL = "";
 
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length);
 void stackmatLoop();
@@ -127,16 +124,7 @@ void setup()
     ESP.restart();
   }
 
-  if (!MDNS.begin("random")) {
-    Logger.printf("Failed to setup MDNS!");
-  }
-
-  int n = MDNS.queryService("stackmat", "tcp");
-  if (n > 0) {
-    Logger.printf("Found stackmat MDNS:\n Hostname: %s, IP: %s, PORT: %d\n", MDNS.hostname(0).c_str(), MDNS.IP(0).toString().c_str(), MDNS.port(0));
-    wsURL = MDNS.hostname(0);
-  }
-  MDNS.end();
+  wsURL = getWsUrl();
 
   lcd.clear();
   lcd.setCursor(0, 0);
@@ -456,5 +444,6 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
   }
   else if (type == WStype_DISCONNECTED) {
     Logger.println("Disconnected from WebSocket server");
+    wsURL = getWsUrl();
   }
 }

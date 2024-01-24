@@ -4,6 +4,12 @@
 #include <stackmat.h>
 #include "ws_logger.h"
 
+#if defined(ESP32)
+ #include <ESPmDNS.h>
+#elif defined(ESP8266)
+ #include <ESP8266mDNS.h>
+#endif
+
 struct GlobalState {
   // TIMER INTERNALS
   int solveSessionId;
@@ -120,4 +126,20 @@ String centerString(String str, int size) {
   for (int i = 0; i < padRight; i++) tmp += " ";
 
   return tmp;
+}
+
+
+String getWsUrl() {
+  if (!MDNS.begin("random")) {
+    Logger.printf("Failed to setup MDNS!");
+  }
+
+  int n = MDNS.queryService("stackmat", "tcp");
+  if (n > 0) {
+    Logger.printf("Found stackmat MDNS:\n Hostname: %s, IP: %s, PORT: %d\n", MDNS.hostname(0).c_str(), MDNS.IP(0).toString().c_str(), MDNS.port(0));
+    return MDNS.hostname(0);
+  }
+  MDNS.end();
+
+  return "ws://0.0.0.0:0/";
 }
