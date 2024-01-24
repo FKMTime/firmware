@@ -124,13 +124,17 @@ void setup()
     ESP.restart();
   }
 
-  wsURL = getWsUrl();
-
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("WiFi connected!");
+  lcd.printf("%s", centerString("Stackmat", 16).c_str());
   lcd.setCursor(0, 1);
-  lcd.print(WiFi.localIP().toString());
+  lcd.printf("%s", centerString("Looking for MDNS", 16).c_str());
+
+  while(true) {
+    wsURL = getWsUrl();
+    if (wsURL.length() > 0) break;
+    delay(1000);
+  }
 
   std::string host, path;
   int port;
@@ -444,6 +448,5 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
   }
   else if (type == WStype_DISCONNECTED) {
     Logger.println("Disconnected from WebSocket server");
-    wsURL = getWsUrl();
   }
 }

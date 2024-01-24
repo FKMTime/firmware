@@ -141,5 +141,5 @@ String getWsUrl() {
   }
   MDNS.end();
 
-  return "ws://0.0.0.0:0/";
+  return "";
 }
