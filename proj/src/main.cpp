@@ -10,6 +10,7 @@
   #define MOSI_PIN D10
   #define SCK_PIN D8
   #define STACKMAT_TIMER_PIN D7
+  #define STACKMAT_DISPLAY_PIN D6
   #define PLUS2_BUTTON_PIN D1
   #define DNF_BUTTON_PIN D0
 #elif defined(ESP8266)
@@ -25,6 +26,7 @@
   #define MISO_PIN 12
   #define MOSI_PIN 13
   #define STACKMAT_TIMER_PIN 3
+  #define STACKMAT_DISPLAY_PIN 16
   #define PLUS2_BUTTON_PIN 2 // TODO: change this to something else
   #define DNF_BUTTON_PIN 0
 #endif
@@ -53,7 +55,7 @@ void rfidLoop();
 void sendSolve();
 
 #if defined(ESP8266)
-  SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
+  SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, STACKMAT_DISPLAY_PIN, true);
 #endif
 
 MFRC522 mfrc522(CS_PIN, UNUSED_PIN);
@@ -86,11 +88,11 @@ void setup()
   readState(&state);
 
   #if defined(ESP32)
-    Serial0.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, STACKMAT_TIMER_PIN, 255, true);
-    stackmat.begin(&Serial0);
+    Serial0.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, STACKMAT_TIMER_PIN, STACKMAT_DISPLAY_PIN, true);
+    stackmat.begin(&Serial0, true);
   #elif defined(ESP8266)
     stackmatSerial.begin(STACKMAT_TIMER_BAUD_RATE);
-    stackmat.begin(&stackmatSerial);
+    stackmat.begin(&stackmatSerial, true);
   #endif
 
   pinMode(PLUS2_BUTTON_PIN, INPUT_PULLUP);
@@ -159,9 +161,13 @@ void loop() {
     Logger.loop();
     stackmat.loop();
     lcdLoop();
-    buttonsLoop();
     stackmatLoop();
-    rfidLoop();
+
+    // functions that are useless while timer is running:
+    if(stackmat.state() != ST_Running) {
+      buttonsLoop();
+      rfidLoop();
+    }
   }
 
   if (lastWebsocketState != webSocket.isConnected()) {
@@ -180,13 +186,7 @@ void lcdLoop() {
     lcd.printf("     Server     ");
     lcd.setCursor(0, 1);
     lcd.print("  Disconnected  ");
-  } 
-  else if (!stackmat.connected()) {
-    lcd.printf("    Stackmat    ");
-    lcd.setCursor(0, 1);
-    lcd.print("  Disconnected  ");
-  } 
-  else if (state.finishedSolveTime > 0 && state.solverCardId > 0) { // after timer is stopped and solver scanned his card
+  } else if (state.finishedSolveTime > 0 && state.solverCardId > 0) { // after timer is stopped and solver scanned his card
     uint8_t minutes = state.finishedSolveTime / 60000;
     uint8_t seconds = (state.finishedSolveTime % 60000) / 1000;
     uint16_t ms = state.finishedSolveTime % 1000;
@@ -202,6 +202,10 @@ void lcdLoop() {
       lcd.setCursor(0, 1);
       lcd.printf("Awaiting judge");
     }
+  } else if (!stackmat.connected()) {
+    lcd.printf("    Stackmat    ");
+    lcd.setCursor(0, 1);
+    lcd.print("  Disconnected  ");
   } else if (stackmat.state() == StackmatTimerState::ST_Running && state.solverCardId > 0) { // timer running and solver scanned his card
     lcd.printf("%i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
   } else if (state.solverCardId > 0) {

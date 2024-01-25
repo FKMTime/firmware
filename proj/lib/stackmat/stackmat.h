@@ -14,7 +14,7 @@ enum StackmatTimerState {
 class Stackmat {
   public:
     Stackmat();
-    void begin(Stream *_serial);
+    void begin(Stream *_serial, bool _resend = false);
     void loop();
 
     uint8_t displayMinutes();
@@ -29,6 +29,7 @@ class Stackmat {
     StackmatTimerState currentTimerState = ST_Reset;
     unsigned long lastUpdated = 0;
     int timerTime = 0;
+    bool resend = false;
     Stream *serial;
 
     String ReadStackmatString();

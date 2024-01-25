@@ -3,8 +3,9 @@
 
 Stackmat::Stackmat() {}
 
-void Stackmat::begin(Stream *_serial) {
+void Stackmat::begin(Stream *_serial, bool _resend) {
     serial = _serial;
+    resend = _resend;
 }
 
 void Stackmat::loop() {
@@ -49,11 +50,13 @@ String Stackmat::ReadStackmatString() {
   while (millis() - startTime < 1000) {
     if (serial->available() > 0) {
       char c = serial->read();
+
       if ((int)c == 0) {
         return tmp;
       }
 
       if (c == '\r') {
+        if (resend) serial->printf("%s\r", tmp.c_str());
         return tmp;
       }
 
