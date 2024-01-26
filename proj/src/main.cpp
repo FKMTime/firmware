@@ -15,7 +15,7 @@
   #define DNF_BUTTON_PIN D0
 #elif defined(ESP8266)
   #include <ESP8266WiFi.h>
-  #include <SoftwareSerial.h>
+  // #include <SoftwareSerial.h>
   #include <Updater.h>
 
   #define ESP_ID() (unsigned long)ESP.getChipId()
@@ -38,6 +38,7 @@
 #include <ArduinoJson.h>
 #include <WiFiManager.h>
 #include <WebSocketsClient.h>
+#include <CstmSoftwareSerial.h>
 
 #include "version.h"
 #include "utils.hpp"
@@ -54,10 +55,7 @@ void buttonsLoop();
 void rfidLoop();
 void sendSolve();
 
-#if defined(ESP8266)
-  SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, STACKMAT_DISPLAY_PIN, true);
-#endif
-
+SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
 MFRC522 mfrc522(CS_PIN, UNUSED_PIN);
 WebSocketsClient webSocket;
 Stackmat stackmat;
@@ -92,14 +90,11 @@ void setup()
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
 
   readState(&state);
+  pinMode(STACKMAT_DISPLAY_PIN, OUTPUT);
 
-  #if defined(ESP32)
-    Serial0.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, STACKMAT_TIMER_PIN, STACKMAT_DISPLAY_PIN, true);
-    stackmat.begin(&Serial0, true);
-  #elif defined(ESP8266)
-    stackmatSerial.begin(STACKMAT_TIMER_BAUD_RATE);
-    stackmat.begin(&stackmatSerial, true);
-  #endif
+  stackmatSerial.begin(STACKMAT_TIMER_BAUD_RATE);
+  stackmatSerial.setResend(STACKMAT_DISPLAY_PIN);
+  stackmat.begin(&stackmatSerial);
 
   pinMode(PLUS2_BUTTON_PIN, INPUT_PULLUP);
   pinMode(DNF_BUTTON_PIN, INPUT_PULLUP);
@@ -159,8 +154,7 @@ void setup()
   Logger.setWsClient(&webSocket);
 
   configTime(3600, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
-
-  attachInterruptArg(digitalPinToInterrupt(STACKMAT_TIMER_PIN), reinterpret_cast<void (*)(void*)>(rxTest), NULL, CHANGE);
+  // attachInterrupt(digitalPinToInterrupt(STACKMAT_TIMER_PIN), rxTest, CHANGE);
 }
 
 void loop() {
