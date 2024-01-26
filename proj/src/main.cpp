@@ -70,12 +70,6 @@ bool lastWebsocketState = false;
 int sketchSize = 0;
 bool update = false;
 
-void IRAM_ATTR rxTest() {
-  bool val = digitalRead(STACKMAT_TIMER_PIN);
-  // Logger.printf("%d", val);
-  digitalWrite(STACKMAT_DISPLAY_PIN, val);
-}
-
 char hostString[16] = {0};
 void setup()
 {
@@ -154,7 +148,6 @@ void setup()
   Logger.setWsClient(&webSocket);
 
   configTime(3600, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
-  // attachInterrupt(digitalPinToInterrupt(STACKMAT_TIMER_PIN), rxTest, CHANGE);
 }
 
 void loop() {
