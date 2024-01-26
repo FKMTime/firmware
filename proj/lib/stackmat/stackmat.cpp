@@ -11,6 +11,7 @@ void Stackmat::begin(Stream *_serial, bool _resend) {
 void Stackmat::loop() {
   String data;
   while (serial->available() > 9) {
+    yield();
     data = ReadStackmatString();
 
     if (data.length() >= 8) {
@@ -50,13 +51,12 @@ String Stackmat::ReadStackmatString() {
   while (millis() - startTime < 1000) {
     if (serial->available() > 0) {
       char c = serial->read();
-
+      // if (resend) serial->write(c);
       if ((int)c == 0) {
         return tmp;
       }
 
       if (c == '\r') {
-        if (resend) serial->printf("%s\r", tmp.c_str());
         return tmp;
       }
 
