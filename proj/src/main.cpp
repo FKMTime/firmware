@@ -13,6 +13,7 @@
   #define STACKMAT_DISPLAY_PIN D6
   #define PLUS2_BUTTON_PIN D1
   #define DNF_BUTTON_PIN D0
+  #define SUBMIT_BUTTON_PIN D9
 #elif defined(ESP8266)
   #include <ESP8266WiFi.h>
   #include <Updater.h>
@@ -26,8 +27,9 @@
   #define MOSI_PIN 13
   #define STACKMAT_TIMER_PIN 3
   #define STACKMAT_DISPLAY_PIN 16
-  #define PLUS2_BUTTON_PIN 2 // TODO: change this to something else
+  #define PLUS2_BUTTON_PIN 2
   #define DNF_BUTTON_PIN 0
+  #define SUBMIT_BUTTON_PIN 1
 #endif
 
 #include <Arduino.h>
@@ -75,7 +77,7 @@ void setup()
   #if defined(ESP32)
     Serial.begin(115200);
   #elif defined(ESP8266)
-    Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, 1);
+    Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, 1); //IT WONT WORK, because im setting that pin as input (TODO: debug mode)
   #endif
 
   Logger.begin(&Serial, 5000);
@@ -85,12 +87,14 @@ void setup()
   readState(&state);
 
   pinMode(STACKMAT_DISPLAY_PIN, OUTPUT);
+  pinMode(PLUS2_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(DNF_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(SUBMIT_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(A0, INPUT);
+
   stackmatSerial.begin(STACKMAT_TIMER_BAUD_RATE);
   stackmatSerial.setResend(STACKMAT_DISPLAY_PIN);
   stackmat.begin(&stackmatSerial);
-
-  pinMode(PLUS2_BUTTON_PIN, INPUT_PULLUP);
-  pinMode(DNF_BUTTON_PIN, INPUT_PULLUP);
 
   #if defined(ESP32)
     SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, CS_PIN);
@@ -192,7 +196,10 @@ void lcdLoop() {
       lcd.printf(" +%d", state.timeOffset);
     }
     
-    if (state.solverCardId > 0 && state.judgeCardId == 0) {
+    if (!state.timeConfirmed) {
+      lcd.setCursor(0, 1);
+      lcd.printf("Confirm the time");
+    } else if (state.judgeCardId == 0) {
       lcd.setCursor(0, 1);
       lcd.printf("Awaiting judge");
     }
@@ -233,6 +240,7 @@ void buttonsLoop() {
         state.finishedSolveTime = -1;
         state.solverCardId = 0;
         state.judgeCardId = 0;
+        state.timeConfirmed = false;
         stateHasChanged = true;
     } else { 
         if (state.timeOffset != -1) {
@@ -258,6 +266,19 @@ void buttonsLoop() {
       ESP.restart();
     } else {
       state.timeOffset = state.timeOffset != -1 ? -1 : 0;
+      stateHasChanged = true;
+    }
+  }
+
+  if (digitalRead(SUBMIT_BUTTON_PIN) == LOW) {
+    Logger.println("Submit button pressed!");
+    // unsigned long pressedTime = millis();
+    while (digitalRead(SUBMIT_BUTTON_PIN) == LOW) {
+      delay(50);
+    }
+
+    if (state.finishedSolveTime > 0 && state.solverCardId > 0) {
+      state.timeConfirmed = true;
       stateHasChanged = true;
     }
   }
@@ -309,6 +330,7 @@ void stackmatLoop()
         state.finishedSolveTime = -1;
         state.timeOffset = 0;
         state.judgeCardId = 0;
+        state.timeConfirmed = false;
 
         Logger.println("Solve started!");
         Logger.printf("Solve session ID: %i\n", state.solveSessionId);
@@ -365,7 +387,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       unsigned long cardId = doc["card_info_response"]["card_id"];
       bool isJudge = doc["card_info_response"]["is_judge"];
 
-      if (isJudge && state.solverCardId > 0 && state.finishedSolveTime > 0) {
+      if (isJudge && state.solverCardId > 0 && state.finishedSolveTime > 0 && state.timeConfirmed) {
         state.judgeCardId = cardId;
         sendSolve();
       } else if(!isJudge && state.solverCardId == 0) {
@@ -390,7 +412,6 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       stateHasChanged = true;
     } else if (doc.containsKey("start_update")) {
       if (update) {
-        // if already updating, restart esp
         ESP.restart();
       }
 

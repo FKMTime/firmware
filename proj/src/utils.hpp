@@ -19,6 +19,8 @@ struct GlobalState {
   unsigned long judgeCardId;
   String solverName;
 
+  bool timeConfirmed;
+
   // STACKMAT
   StackmatTimerState lastTiemrState;
   bool stackmatConnected;
