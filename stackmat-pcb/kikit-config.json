@@ -8,6 +8,7 @@
         "type": "full"
     },
     "cuts": {
-        "type": "vcuts"
+        "type": "vcuts",
+        "layer": "F.Fab"
     }
 }
