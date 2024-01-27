@@ -1,8 +1,8 @@
 {
     "layout": {
         "type": "grid",
-        "rows": 2,
-        "columns": 1
+        "rows": 3,
+        "cols": 2
     },
     "tabs": {
         "type": "full"
