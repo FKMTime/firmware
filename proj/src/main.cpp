@@ -243,7 +243,7 @@ void buttonsLoop() {
         state.timeConfirmed = false;
         stateHasChanged = true;
     } else { 
-        if (state.timeOffset != -1) {
+        if (state.timeOffset != -1 && !state.timeConfirmed) {
             state.timeOffset = state.timeOffset >= 16 ? 0 : state.timeOffset + 2;
             stateHasChanged = true;
         }
@@ -265,8 +265,10 @@ void buttonsLoop() {
       delay(1000);
       ESP.restart();
     } else {
-      state.timeOffset = state.timeOffset != -1 ? -1 : 0;
-      stateHasChanged = true;
+      if (!state.timeConfirmed) {
+        state.timeOffset = state.timeOffset != -1 ? -1 : 0;
+        stateHasChanged = true;
+      }
     }
   }
 
@@ -388,8 +390,9 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       unsigned long cardId = doc["card_info_response"]["card_id"];
       bool isJudge = doc["card_info_response"]["is_judge"];
 
-      if (isJudge && state.solverCardId > 0 && state.finishedSolveTime > 0 && state.timeConfirmed) {
+      if (isJudge && state.solverCardId > 0 && state.finishedSolveTime > 0 && state.timeConfirmed && millis() - state.lastTimeSent > 1500) {
         state.judgeCardId = cardId;
+        state.lastTimeSent = millis();
         sendSolve();
       } else if(!isJudge && state.solverCardId == 0) {
         state.solverName = name;

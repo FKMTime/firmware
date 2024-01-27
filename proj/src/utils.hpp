@@ -21,6 +21,7 @@ struct GlobalState {
 
   bool timeStarted;
   bool timeConfirmed;
+  unsigned long lastTimeSent;
 
   // STACKMAT
   StackmatTimerState lastTiemrState;
