@@ -15,7 +15,6 @@
   #define DNF_BUTTON_PIN D0
 #elif defined(ESP8266)
   #include <ESP8266WiFi.h>
-  // #include <SoftwareSerial.h>
   #include <Updater.h>
 
   #define ESP_ID() (unsigned long)ESP.getChipId()
@@ -79,13 +78,13 @@ void setup()
     Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, 1);
   #endif
 
-  EEPROM.begin(128);
   Logger.begin(&Serial, 5000);
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
 
+  EEPROM.begin(128);
   readState(&state);
-  pinMode(STACKMAT_DISPLAY_PIN, OUTPUT);
 
+  pinMode(STACKMAT_DISPLAY_PIN, OUTPUT);
   stackmatSerial.begin(STACKMAT_TIMER_BAUD_RATE);
   stackmatSerial.setResend(STACKMAT_DISPLAY_PIN);
   stackmat.begin(&stackmatSerial);

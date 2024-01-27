@@ -1,0 +1,13 @@
+{
+    "layout": {
+        "type": "grid",
+        "rows": 2,
+        "columns": 1
+    },
+    "tabs": {
+        "type": "full"
+    },
+    "cuts": {
+        "type": "vcuts"
+    }
+}
