@@ -19,6 +19,7 @@ struct GlobalState {
   unsigned long judgeCardId;
   String solverName;
 
+  bool timeStarted;
   bool timeConfirmed;
 
   // STACKMAT
@@ -34,7 +35,6 @@ struct SavedState {
   int finishedSolveTime;
   int timeOffset;
   unsigned long solverCardId;
-  unsigned long judgeCardId;
 };
 
 void stateDefault(GlobalState *state) {
@@ -42,7 +42,6 @@ void stateDefault(GlobalState *state) {
   state->finishedSolveTime = -1;
   state->timeOffset = 0;
   state->solverCardId = 0;
-  state->judgeCardId = 0;
 }
 
 void saveState(GlobalState state) {
@@ -51,7 +50,6 @@ void saveState(GlobalState state) {
   s.finishedSolveTime = state.finishedSolveTime;
   s.timeOffset = state.timeOffset;
   s.solverCardId = state.solverCardId;
-  s.judgeCardId = state.judgeCardId;
 
   EEPROM.write(0, (uint8_t)sizeof(SavedState));
   EEPROM.put(1, s);
@@ -74,7 +72,6 @@ void readState(GlobalState *state) {
   state->finishedSolveTime = _state.finishedSolveTime;
   state->timeOffset = _state.timeOffset;
   state->solverCardId = _state.solverCardId;
-  state->judgeCardId = _state.judgeCardId;
 }
 
 String getChipID() {

@@ -308,11 +308,11 @@ void stackmatLoop()
 {
   if (stackmat.state() != state.lastTiemrState && stackmat.state() != ST_Unknown && state.lastTiemrState != ST_Unknown)
   {
-    Logger.printf("State changed from %c to %c\n", state.lastTiemrState, stackmat.state());
+    // Logger.printf("State changed from %c to %c\n", state.lastTiemrState, stackmat.state());
     switch (stackmat.state())
     {
       case ST_Stopped:
-        if (state.solverCardId == 0 || state.finishedSolveTime > 0) break;
+        if (!state.timeStarted || state.solverCardId == 0 || state.finishedSolveTime > 0) break;
 
         Logger.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
         state.finishedSolveTime = stackmat.time();
@@ -321,7 +321,7 @@ void stackmatLoop()
         break;
 
       case ST_Reset:
-        Logger.println("Timer reset!");
+        // Logger.println("Timer reset!");
         break;
 
       case ST_Running:
@@ -331,6 +331,7 @@ void stackmatLoop()
         state.timeOffset = 0;
         state.judgeCardId = 0;
         state.timeConfirmed = false;
+        state.timeStarted = true;
 
         Logger.println("Solve started!");
         Logger.printf("Solve session ID: %i\n", state.solveSessionId);
@@ -408,6 +409,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       state.solverCardId = 0;
       state.judgeCardId = 0;
       state.solverName = "";
+      state.timeStarted = false;
       saveState(state);
       stateHasChanged = true;
     } else if (doc.containsKey("start_update")) {
