@@ -29,9 +29,6 @@
   #define DELEGATE_BUTTON_PIN 15
 #endif
 
-#define DELEGAT_BUTTON_HOLD_TIME 3000
-#define DNF_BUTTON_HOLD_TIME 1000
-
 #include <Arduino.h>
 #include <SPI.h>
 #include <MFRC522.h>
@@ -44,32 +41,20 @@
 #include "version.h"
 #include "utils.hpp"
 #include "stackmat.h"
-#include "rgb_lcd.h"
 #include "ws_logger.h"
+#include "lcd.hpp"
+#include "buttons.hpp"
+#include "state.hpp"
+#include "ws.hpp"
 
-String wsURL = "";
-
-void webSocketEvent(WStype_t type, uint8_t *payload, size_t length);
 void stackmatLoop();
-void lcdLoop();
-void buttonsLoop();
 void rfidLoop();
-void sendSolve(bool delegate = false);
 
 SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
 MFRC522 mfrc522(CS_PIN, UNUSED_PIN);
-WebSocketsClient webSocket;
 Stackmat stackmat;
-rgb_lcd lcd;
 
-GlobalState state;
-bool stateHasChanged = true;
-unsigned long lcdLastDraw = 0;
 bool lastWebsocketState = false;
-
-// updater stuff (OTA)
-int sketchSize = 0;
-bool update = false;
 
 char hostString[16] = {0};
 void setup()
@@ -106,49 +91,11 @@ void setup()
   lcd.clear();
 
   lcd.setCursor(0, 0);
-  lcd.printf("ID: %s", getChipID().c_str());
+  lcd.printf("ID: %s", getChipHex().c_str());
   lcd.setCursor(0, 1);
   lcd.printf("VER: %s", FIRMWARE_VERSION);
 
-  WiFiManager wm;
-
-  String generatedSSID = "StackmatTimer-" + getChipID();
-  wm.setConfigPortalTimeout(300);
-  bool res = wm.autoConnect(generatedSSID.c_str(), "StackmatTimer");
-  if (!res)
-  {
-    Logger.println("Failed to connect to wifi... Restarting!");
-    delay(1500);
-    ESP.restart();
-  }
-
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.printf("%s", centerString("Stackmat", 16).c_str());
-  lcd.setCursor(0, 1);
-  lcd.printf("%s", centerString("Looking for MDNS", 16).c_str());
-
-  while(true) {
-    wsURL = getWsUrl();
-    if (wsURL.length() > 0) break;
-    delay(1000);
-  }
-
-  std::string host, path;
-  int port;
-
-  auto wsRes = parseWsUrl(wsURL.c_str());
-  std::tie(host, port, path) = wsRes;
-
-  char finalPath[128];
-  snprintf(finalPath, 128, "%s?id=%lu&ver=%s&chip=%s", path.c_str(), ESP_ID(), FIRMWARE_VERSION, CHIP);
-
-  webSocket.begin(host.c_str(), port, finalPath);
-  webSocket.onEvent(webSocketEvent);
-  webSocket.setReconnectInterval(5000);
-  Logger.setWsClient(&webSocket);
-
-  configTime(3600, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
+  netInit();
 }
 
 void loop() {
@@ -156,158 +103,26 @@ void loop() {
   if (!update) {
     Logger.loop();
     stackmat.loop();
-    lcdLoop();
     stackmatLoop();
 
     // functions that are useless while timer is running:
     if(stackmat.state() != ST_Running) {
-      buttonsLoop();
+      buttonsLoop(stackmat);
       rfidLoop();
     }
+
 
     // it will only occur when time was sent but not processed by server (because of error)
     if (state.finishedSolveTime > 0 && state.judgeCardId > 0 && millis() - state.lastTimeSent > 1500) {
       state.judgeCardId = 0;
     }
+    
+    lcdLoop(webSocket, stackmat);
   }
 
   if (lastWebsocketState != webSocket.isConnected()) {
     lastWebsocketState = webSocket.isConnected();
-    stateHasChanged = true;
-  }
-}
-
-void lcdLoop() {
-  if (!stateHasChanged || millis() - lcdLastDraw < 50) return;
-  stateHasChanged = false;
-
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  if (!webSocket.isConnected()) {
-    lcd.printf("     Server     ");
-    lcd.setCursor(0, 1);
-    lcd.print("  Disconnected  ");
-  } else if (state.finishedSolveTime > 0 && state.solverCardId > 0) { // after timer is stopped and solver scanned his card
-    uint8_t minutes = state.finishedSolveTime / 60000;
-    uint8_t seconds = (state.finishedSolveTime % 60000) / 1000;
-    uint16_t ms = state.finishedSolveTime % 1000;
-
-    lcd.printf("%i:%02i.%03i", minutes, seconds, ms);
-    if(state.timeOffset == -1) {
-      lcd.printf(" DNF");
-    } else if (state.timeOffset > 0) {
-      lcd.printf(" +%d", state.timeOffset);
-    }
-    
-    if (!state.timeConfirmed) {
-      lcd.setCursor(0, 1);
-      lcd.printf("Confirm the time");
-    } else if (state.judgeCardId == 0) {
-      lcd.setCursor(0, 1);
-      lcd.printf("Awaiting judge");
-    }
-  } else if (!stackmat.connected()) {
-    lcd.printf("    Stackmat    ");
-    lcd.setCursor(0, 1);
-    lcd.print("  Disconnected  ");
-  } else if (stackmat.state() == StackmatTimerState::ST_Running && state.solverCardId > 0) { // timer running and solver scanned his card
-    lcd.printf("%i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
-  } else if (state.solverCardId > 0) {
-    lcd.printf("     Solver     ");
-    lcd.setCursor(0, 1);
-    lcd.printf(centerString(state.solverName, 16).c_str());
-  } else if (state.solverCardId == 0) {
-    lcd.printf("    Stackmat    ");
-    lcd.setCursor(0, 1);
-    lcd.printf("Awaiting solver");
-  } else {
-    lcd.printf("    Stackmat    ");
-    lcd.setCursor(0, 1);
-    lcd.printf("Unhandled state!");
-  }
-
-  lcdLastDraw = millis();
-}
-
-void buttonsLoop() {
-  if (digitalRead(PENALTY_BUTTON_PIN) == LOW) {
-    Logger.println("Penalty button pressed!");
-    unsigned long pressedTime = millis();
-    while (digitalRead(PENALTY_BUTTON_PIN) == LOW && millis() - pressedTime <= DNF_BUTTON_HOLD_TIME) {
-      webSocket.loop(); // to prevent disconnects
-      delay(50);
-    }
-
-    if(state.timeConfirmed || state.finishedSolveTime <= 0) return;
-    if (millis() - pressedTime > DNF_BUTTON_HOLD_TIME) {
-      state.timeOffset = state.timeOffset != -1 ? -1 : 0;
-      stateHasChanged = true;
-      lcdLoop();
-    } else { 
-      state.timeOffset = (state.timeOffset >= 16 || state.timeOffset == -1) ? 0 : state.timeOffset + 2;
-      stateHasChanged = true;
-    }
-
-    while (digitalRead(PENALTY_BUTTON_PIN) == LOW) {
-      webSocket.loop(); // to prevent disconnects
-      delay(50);
-    }
-  }
-
-  if (digitalRead(SUBMIT_BUTTON_PIN) == LOW) {
-    Logger.println("Submit button pressed!");
-    unsigned long pressedTime = millis();
-    while (digitalRead(SUBMIT_BUTTON_PIN) == LOW) {
-      delay(50);
-    }
-
-    if (millis() - pressedTime > 5000) {
-      // TODO: REMOVE THIS
-      Logger.println("Resetting wifi settings!");
-      WiFiManager wm;
-      wm.resetSettings();
-      delay(1000);
-      ESP.restart();
-    } else {
-      if (state.finishedSolveTime > 0 && state.solverCardId > 0) {
-        state.timeConfirmed = true;
-        stateHasChanged = true;
-      }
-    }
-  }
-
-  if (digitalRead(DELEGATE_BUTTON_PIN) == HIGH && state.finishedSolveTime > 0) {
-    Logger.println("Delegat button pressed!");
-    unsigned long pressedTime = millis();
-
-    lcd.clear();
-    while (digitalRead(DELEGATE_BUTTON_PIN) == HIGH && millis() - pressedTime <= DELEGAT_BUTTON_HOLD_TIME) {
-      webSocket.loop(); // to prevent disconnects
-      delay(100);
-
-      lcd.setCursor(0, 0);
-      lcd.printf("Delegat");
-      lcd.setCursor(0, 1);
-      lcd.printf("Za %lu sekund!", ((DELEGAT_BUTTON_HOLD_TIME + 1000) - (millis() - pressedTime)) / 1000);
-    }
-
-    stateHasChanged = true;
-
-    if(millis() - pressedTime > DELEGAT_BUTTON_HOLD_TIME) {
-      Logger.printf("Wzywanie rozpoczete!");
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.printf("Delegat wezwany");
-      lcd.setCursor(0, 1);
-      lcd.printf("Pusc przycisk");
-
-      sendSolve(true);
-    }
-
-    while (digitalRead(DELEGATE_BUTTON_PIN) == HIGH) {
-      webSocket.loop(); // to prevent disconnects
-      delay(50);
-    }
+    lcdChange();
   }
 }
 
@@ -368,136 +183,15 @@ void stackmatLoop()
         break;
     }
 
-    stateHasChanged = true;
+    lcdChange();
   }
 
   if (stackmat.state() == StackmatTimerState::ST_Running) {
-    stateHasChanged = true;
+    lcdChange();
   } else if (stackmat.connected() != state.stackmatConnected) {
     state.stackmatConnected = stackmat.connected();
-    stateHasChanged = true;
+    lcdChange();
   }
 
   state.lastTiemrState = stackmat.state();
-}
-
-void sendSolve(bool delegate) {
-  if (state.finishedSolveTime == -1) return;
-
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo))
-  {
-    Logger.println("Failed to obtain time");
-  }
-  time_t epoch;
-  time(&epoch);
-  
-  JsonDocument doc;
-  doc["solve"]["solve_time"] = state.finishedSolveTime;
-  doc["solve"]["offset"] = state.timeOffset;
-  doc["solve"]["card_id"] = state.solverCardId;
-  doc["solve"]["esp_id"] = ESP_ID();
-  doc["solve"]["timestamp"] = epoch;
-  doc["solve"]["session_id"] = state.solveSessionId;
-  doc["solve"]["delegate"] = delegate;
-
-  String json;
-  serializeJson(doc, json);
-  webSocket.sendTXT(json);
-}
-
-void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
-{
-  if (type == WStype_TEXT) {
-    JsonDocument doc;
-    deserializeJson(doc, payload);
-
-    if (doc.containsKey("card_info_response")) {
-      String name = doc["card_info_response"]["name"];
-      unsigned long cardId = doc["card_info_response"]["card_id"];
-      bool isJudge = doc["card_info_response"]["is_judge"];
-
-      if (isJudge && state.solverCardId > 0 && state.finishedSolveTime > 0 && state.timeConfirmed && millis() - state.lastTimeSent > 1500) {
-        state.judgeCardId = cardId;
-        state.lastTimeSent = millis();
-        sendSolve();
-      } else if(!isJudge && state.solverCardId == 0) {
-        state.solverName = name;
-        state.solverCardId = cardId;
-      }
-
-      stateHasChanged = true;
-    } else if (doc.containsKey("solve_confirm")) {
-      if (doc["solve_confirm"]["card_id"] != state.solverCardId || 
-          doc["solve_confirm"]["esp_id"] != ESP_ID() || 
-          doc["solve_confirm"]["session_id"] != state.solveSessionId) {
-        Logger.println("Wrong solve confirm frame!");
-        return;
-      }
-
-      state.finishedSolveTime = -1;
-      state.solverCardId = 0;
-      state.judgeCardId = 0;
-      state.solverName = "";
-      state.timeStarted = false;
-      saveState(state);
-      stateHasChanged = true;
-    } else if (doc.containsKey("start_update")) {
-      if (update) {
-        ESP.restart();
-      }
-
-      if (doc["start_update"]["esp_id"] != ESP_ID() || doc["start_update"]["version"] == FIRMWARE_VERSION) {
-        Logger.println("Cannot start update!");
-        return;
-      }
-
-      sketchSize = doc["start_update"]["size"];
-      unsigned long maxSketchSize = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
-
-      Logger.printf("[Update] Max Sketch Size: %lu | Sketch size: %d\n", maxSketchSize, sketchSize);
-      if (!Update.begin(maxSketchSize)) {
-        Update.printError(Serial);
-        ESP.restart();
-      }
-
-      update = true;
-      lcd.clear();
-      lcd.setCursor(0,0);
-      lcd.printf("Updating...");
-    }
-  }
-  else if (type == WStype_BIN) {
-    if (Update.write(payload, length) != length) {
-      Update.printError(Serial);
-      ESP.restart();
-    }
-
-    yield();
-    sketchSize -= length;
-    lcd.setCursor(0,1);
-    lcd.printf("                "); // clear second line
-    lcd.setCursor(0,1);
-    lcd.printf("Left: %d", sketchSize);
-
-    if (sketchSize <= 0) {
-      if (Update.end(true)) {
-        Logger.printf("[Update] Success!!! Rebooting...\n");
-        delay(5);
-        yield();
-        ESP.restart();
-      } else {
-        Update.printError(Serial);
-        ESP.restart();
-      }
-    }
-
-    webSocket.sendBIN((uint8_t *)NULL, 0);
-  }
-  else if (type == WStype_CONNECTED) {
-    Logger.println("Connected to WebSocket server");
-  }
-  else if (type == WStype_DISCONNECTED) {
-    Logger.println("Disconnected from WebSocket server");
-  }
 }

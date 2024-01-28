@@ -1,8 +1,11 @@
+#ifndef __UTILS_HPP_
+#define __UTILS_HPP_
+
 #include <Arduino.h>
-#include <EEPROM.h>
 #include <tuple>
 #include <stackmat.h>
 #include "ws_logger.h"
+#include "state.hpp"
 
 #if defined(ESP32)
  #include <ESPmDNS.h>
@@ -10,72 +13,7 @@
  #include <ESP8266mDNS.h>
 #endif
 
-struct GlobalState {
-  // TIMER INTERNALS
-  int solveSessionId;
-  int finishedSolveTime;
-  int timeOffset;
-  unsigned long solverCardId;
-  unsigned long judgeCardId;
-  String solverName;
-
-  bool timeStarted;
-  bool timeConfirmed;
-  unsigned long lastTimeSent;
-
-  // STACKMAT
-  StackmatTimerState lastTiemrState;
-  bool stackmatConnected;
-
-  // RFID
-  unsigned long lastCardReadTime;
-};
-
-struct SavedState {
-  int solveSessionId;
-  int finishedSolveTime;
-  int timeOffset;
-  unsigned long solverCardId;
-};
-
-void stateDefault(GlobalState *state) {
-  state->solveSessionId = 0;
-  state->finishedSolveTime = -1;
-  state->timeOffset = 0;
-  state->solverCardId = 0;
-}
-
-void saveState(GlobalState state) {
-  SavedState s;
-  s.solveSessionId = state.solveSessionId;
-  s.finishedSolveTime = state.finishedSolveTime;
-  s.timeOffset = state.timeOffset;
-  s.solverCardId = state.solverCardId;
-
-  EEPROM.write(0, (uint8_t)sizeof(SavedState));
-  EEPROM.put(1, s);
-  EEPROM.commit();
-}
-
-void readState(GlobalState *state) {
-  uint8_t size = EEPROM.read(0);
-  Logger.printf("read Size: %d\n", size);
-  if (size != sizeof(SavedState)) {
-    Logger.println("Loading default state...");
-    stateDefault(state);
-    return;
-  }
-
-  SavedState _state;
-  EEPROM.get(1, _state);
-
-  state->solveSessionId = _state.solveSessionId;
-  state->finishedSolveTime = _state.finishedSolveTime;
-  state->timeOffset = _state.timeOffset;
-  state->solverCardId = _state.solverCardId;
-}
-
-String getChipID() {
+String getChipHex() {
   uint64_t chipid = ESP_ID();
   String chipidStr = String((uint32_t)(chipid >> 32), HEX) + String((uint32_t)chipid, HEX);
   return chipidStr;
@@ -128,7 +66,6 @@ String centerString(String str, int size) {
   return tmp;
 }
 
-
 String getWsUrl() {
   if (!MDNS.begin("random")) {
     Logger.printf("Failed to setup MDNS!");
@@ -143,3 +80,30 @@ String getWsUrl() {
 
   return "";
 }
+
+void sendSolve(WebSocketsClient webSocket, bool delegate) {
+  if (state.finishedSolveTime == -1) return;
+
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo))
+  {
+    Logger.println("Failed to obtain time");
+  }
+  time_t epoch;
+  time(&epoch);
+  
+  JsonDocument doc;
+  doc["solve"]["solve_time"] = state.finishedSolveTime;
+  doc["solve"]["offset"] = state.timeOffset;
+  doc["solve"]["card_id"] = state.solverCardId;
+  doc["solve"]["esp_id"] = ESP_ID();
+  doc["solve"]["timestamp"] = epoch;
+  doc["solve"]["session_id"] = state.solveSessionId;
+  doc["solve"]["delegate"] = delegate;
+
+  String json;
+  serializeJson(doc, json);
+  webSocket.sendTXT(json);
+}
+
+#endif
