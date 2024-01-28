@@ -1,15 +1,27 @@
 #ifndef __WS_HPP__
 #define __WS_HPP__
 
-#include <WebSocketsClient.h>
-#include "state.hpp"
+#if defined(ESP32)
+  #include <WiFi.h>
+  #include <Update.h>
+
+  #define CHIP "esp32c3"
+#elif defined(ESP8266)
+  #include <ESP8266WiFi.h>
+  #include <Updater.h>
+
+  #define CHIP "esp8266"
+#endif
+
+#include <WiFiManager.h>
+
+#include "globals.hpp"
 #include "utils.hpp"
 #include "lcd.hpp"
 
 inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length);
 
 String wsURL = "";
-WebSocketsClient webSocket;
 
 // updater stuff (OTA)
 int sketchSize = 0;

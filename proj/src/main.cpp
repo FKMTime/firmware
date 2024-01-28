@@ -1,9 +1,5 @@
 #if defined(ESP32)
-  #include <WiFi.h>
-  #include <Update.h>
-
   #define ESP_ID() (unsigned long)ESP.getEfuseMac()
-  #define CHIP "esp32c3"
 
   #define CS_PIN D2
   #define MISO_PIN D3
@@ -13,11 +9,7 @@
   #define PENALTY_BUTTON_PIN D1
   #define SUBMIT_BUTTON_PIN D0
 #elif defined(ESP8266)
-  #include <ESP8266WiFi.h>
-  #include <Updater.h>
-
   #define ESP_ID() (unsigned long)ESP.getChipId()
-  #define CHIP "esp8266"
 
   #define CS_PIN 16
   #define SCK_PIN 14
@@ -34,25 +26,21 @@
 #include <MFRC522.h>
 #include <EEPROM.h>
 #include <ArduinoJson.h>
-#include <WiFiManager.h>
-#include <WebSocketsClient.h>
 #include <CstmSoftwareSerial.h>
 
 #include "version.h"
 #include "utils.hpp"
-#include "stackmat.h"
 #include "ws_logger.h"
+#include "ws.hpp"
 #include "lcd.hpp"
 #include "buttons.hpp"
-#include "state.hpp"
-#include "ws.hpp"
+#include "globals.hpp"
 
 void stackmatLoop();
 void rfidLoop();
 
 SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
 MFRC522 mfrc522(CS_PIN, UNUSED_PIN);
-Stackmat stackmat;
 
 bool lastWebsocketState = false;
 
@@ -107,7 +95,7 @@ void loop() {
 
     // functions that are useless while timer is running:
     if(stackmat.state() != ST_Running) {
-      buttonsLoop(stackmat);
+      buttonsLoop();
       rfidLoop();
     }
 
@@ -117,7 +105,7 @@ void loop() {
       state.judgeCardId = 0;
     }
     
-    lcdLoop(webSocket, stackmat);
+    lcdLoop();
   }
 
   if (lastWebsocketState != webSocket.isConnected()) {

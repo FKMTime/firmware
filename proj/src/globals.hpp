@@ -1,10 +1,22 @@
-#ifndef __STATE_HPP__
-#define __STATE_HPP__
+#ifndef __GLOBALS_HPP__
+#define __GLOBALS_HPP__
 
+#include <WebSocketsClient.h>
 #include <Arduino.h>
 #include <EEPROM.h>
 #include "stackmat.h"
+#include "rgb_lcd.h"
 
+// Global websockets variable
+WebSocketsClient webSocket;
+
+// Global lcd variable
+rgb_lcd lcd;
+
+// Global stackmat variable
+Stackmat stackmat;
+
+// Global state variable
 struct GlobalState {
   // TIMER INTERNALS
   int solveSessionId;

@@ -1,13 +1,12 @@
 #ifndef __BUTTONS_HPP__
 #define __BUTTONS_HPP__
 
-#include "state.hpp"
-#include "ws.hpp"
+#include "globals.hpp"
 
 #define DELEGAT_BUTTON_HOLD_TIME 3000
 #define DNF_BUTTON_HOLD_TIME 1000
 
-inline void buttonsLoop(Stackmat stackmat) {
+inline void buttonsLoop() {
   if (digitalRead(PENALTY_BUTTON_PIN) == LOW) {
     Logger.println("Penalty button pressed!");
     unsigned long pressedTime = millis();
@@ -20,7 +19,7 @@ inline void buttonsLoop(Stackmat stackmat) {
     if (millis() - pressedTime > DNF_BUTTON_HOLD_TIME) {
       state.timeOffset = state.timeOffset != -1 ? -1 : 0;
       lcdChange();
-      lcdLoop(webSocket, stackmat);
+      lcdLoop();
     } else { 
       state.timeOffset = (state.timeOffset >= 16 || state.timeOffset == -1) ? 0 : state.timeOffset + 2;
       lcdChange();

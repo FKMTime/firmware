@@ -1,10 +1,8 @@
 #ifndef __LCD_HPP__
 #define __LCD_HPP__
 
-#include "rgb_lcd.h"
-#include "state.hpp"
+#include "globals.hpp"
 
-rgb_lcd lcd;
 bool stateHasChanged = true;
 unsigned long lcdLastDraw = 0;
 
@@ -12,7 +10,7 @@ inline void lcdChange() {
     stateHasChanged = true;
 }
 
-inline void lcdLoop(WebSocketsClient webSocket, Stackmat stackmat) {
+inline void lcdLoop() {
   if (!stateHasChanged || millis() - lcdLastDraw < 50) return;
   stateHasChanged = false;
 
