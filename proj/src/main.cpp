@@ -57,7 +57,7 @@ void setup()
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
 
   EEPROM.begin(128);
-  readState(&state);
+  readState();
 
   pinMode(PENALTY_BUTTON_PIN, INPUT_PULLUP);
   pinMode(SUBMIT_BUTTON_PIN, INPUT_PULLUP);
@@ -147,7 +147,7 @@ void stackmatLoop()
         Logger.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
         state.finishedSolveTime = stackmat.time();
 
-        saveState(state);
+        saveState();
         break;
 
       case ST_Reset:

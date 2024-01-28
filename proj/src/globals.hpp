@@ -45,14 +45,14 @@ struct SavedState {
   unsigned long solverCardId;
 };
 
-void stateDefault(GlobalState *state) {
-  state->solveSessionId = 0;
-  state->finishedSolveTime = -1;
-  state->timeOffset = 0;
-  state->solverCardId = 0;
+void stateDefault() {
+  state.solveSessionId = 0;
+  state.finishedSolveTime = -1;
+  state.timeOffset = 0;
+  state.solverCardId = 0;
 }
 
-void saveState(GlobalState state) {
+void saveState() {
   SavedState s;
   s.solveSessionId = state.solveSessionId;
   s.finishedSolveTime = state.finishedSolveTime;
@@ -64,22 +64,22 @@ void saveState(GlobalState state) {
   EEPROM.commit();
 }
 
-void readState(GlobalState *state) {
+void readState() {
   uint8_t size = EEPROM.read(0);
   Logger.printf("read Size: %d\n", size);
   if (size != sizeof(SavedState)) {
     Logger.println("Loading default state...");
-    stateDefault(state);
+    stateDefault();
     return;
   }
 
   SavedState _state;
   EEPROM.get(1, _state);
 
-  state->solveSessionId = _state.solveSessionId;
-  state->finishedSolveTime = _state.finishedSolveTime;
-  state->timeOffset = _state.timeOffset;
-  state->solverCardId = _state.solverCardId;
+  state.solveSessionId = _state.solveSessionId;
+  state.finishedSolveTime = _state.finishedSolveTime;
+  state.timeOffset = _state.timeOffset;
+  state.solverCardId = _state.solverCardId;
 }
 
 #endif

@@ -84,7 +84,7 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       if (isJudge && state.solverCardId > 0 && state.finishedSolveTime > 0 && state.timeConfirmed && millis() - state.lastTimeSent > 1500) {
         state.judgeCardId = cardId;
         state.lastTimeSent = millis();
-        sendSolve(webSocket, false);
+        sendSolve(false);
       } else if(!isJudge && state.solverCardId == 0) {
         state.solverName = name;
         state.solverCardId = cardId;
@@ -104,7 +104,7 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       state.judgeCardId = 0;
       state.solverName = "";
       state.timeStarted = false;
-      saveState(state);
+      saveState();
       lcdChange();
     } else if (doc.containsKey("start_update")) {
       if (update) {

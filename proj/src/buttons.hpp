@@ -11,7 +11,8 @@ inline void buttonsLoop() {
     Logger.println("Penalty button pressed!");
     unsigned long pressedTime = millis();
     while (digitalRead(PENALTY_BUTTON_PIN) == LOW && millis() - pressedTime <= DNF_BUTTON_HOLD_TIME) {
-      webSocket.loop(); // to prevent disconnects
+      webSocket.loop();
+      stackmat.loop();
       delay(50);
     }
 
@@ -26,7 +27,8 @@ inline void buttonsLoop() {
     }
 
     while (digitalRead(PENALTY_BUTTON_PIN) == LOW) {
-      webSocket.loop(); // to prevent disconnects
+      webSocket.loop();
+      stackmat.loop();
       delay(50);
     }
   }
@@ -59,7 +61,8 @@ inline void buttonsLoop() {
 
     lcd.clear();
     while (digitalRead(DELEGATE_BUTTON_PIN) == HIGH && millis() - pressedTime <= DELEGAT_BUTTON_HOLD_TIME) {
-      webSocket.loop(); // to prevent disconnects
+      webSocket.loop();
+      stackmat.loop();
       delay(100);
 
       lcd.setCursor(0, 0);
@@ -78,11 +81,12 @@ inline void buttonsLoop() {
       lcd.setCursor(0, 1);
       lcd.printf("Pusc przycisk");
 
-      sendSolve(webSocket, true);
+      sendSolve(true);
     }
 
     while (digitalRead(DELEGATE_BUTTON_PIN) == HIGH) {
-      webSocket.loop(); // to prevent disconnects
+      webSocket.loop();
+      stackmat.loop();
       delay(50);
     }
   }

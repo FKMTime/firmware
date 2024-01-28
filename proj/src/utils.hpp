@@ -81,7 +81,7 @@ String getWsUrl() {
   return "";
 }
 
-void sendSolve(WebSocketsClient webSocket, bool delegate) {
+void sendSolve(bool delegate) {
   if (state.finishedSolveTime == -1) return;
 
   struct tm timeinfo;
