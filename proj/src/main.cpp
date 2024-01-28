@@ -26,7 +26,7 @@
   #define STACKMAT_TIMER_PIN 3
   #define PENALTY_BUTTON_PIN 0
   #define SUBMIT_BUTTON_PIN 2
-  #define DELEGAT_BUTTON_PIN 15
+  #define DELEGATE_BUTTON_PIN 15
 #endif
 
 #define DELEGAT_BUTTON_HOLD_TIME 3000
@@ -88,7 +88,7 @@ void setup()
 
   pinMode(PENALTY_BUTTON_PIN, INPUT_PULLUP);
   pinMode(SUBMIT_BUTTON_PIN, INPUT_PULLUP);
-  pinMode(DELEGAT_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(DELEGATE_BUTTON_PIN, INPUT_PULLUP);
 
   stackmatSerial.begin(STACKMAT_TIMER_BAUD_RATE);
   // stackmatSerial.setResend(STACKMAT_DISPLAY_PIN);
@@ -276,12 +276,12 @@ void buttonsLoop() {
     }
   }
 
-  if (digitalRead(DELEGAT_BUTTON_PIN) == HIGH && state.finishedSolveTime > 0) {
+  if (digitalRead(DELEGATE_BUTTON_PIN) == HIGH && state.finishedSolveTime > 0) {
     Logger.println("Delegat button pressed!");
     unsigned long pressedTime = millis();
 
     lcd.clear();
-    while (digitalRead(DELEGAT_BUTTON_PIN) == HIGH && millis() - pressedTime <= DELEGAT_BUTTON_HOLD_TIME) {
+    while (digitalRead(DELEGATE_BUTTON_PIN) == HIGH && millis() - pressedTime <= DELEGAT_BUTTON_HOLD_TIME) {
       webSocket.loop(); // to prevent disconnects
       delay(100);
 
@@ -304,7 +304,7 @@ void buttonsLoop() {
       sendSolve(true);
     }
 
-    while (digitalRead(DELEGAT_BUTTON_PIN) == HIGH) {
+    while (digitalRead(DELEGATE_BUTTON_PIN) == HIGH) {
       webSocket.loop(); // to prevent disconnects
       delay(50);
     }
