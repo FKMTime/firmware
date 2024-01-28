@@ -10,9 +10,8 @@
   #define MOSI_PIN D10
   #define SCK_PIN D8
   #define STACKMAT_TIMER_PIN D7
-  #define PLUS2_BUTTON_PIN D1
-  #define DNF_BUTTON_PIN D0
-  #define SUBMIT_BUTTON_PIN D9
+  #define PENALTY_BUTTON_PIN D1
+  #define SUBMIT_BUTTON_PIN D0
 #elif defined(ESP8266)
   #include <ESP8266WiFi.h>
   #include <Updater.h>
@@ -20,15 +19,18 @@
   #define ESP_ID() (unsigned long)ESP.getChipId()
   #define CHIP "esp8266"
 
-  #define CS_PIN 15
+  #define CS_PIN 16
   #define SCK_PIN 14
   #define MISO_PIN 12
   #define MOSI_PIN 13
   #define STACKMAT_TIMER_PIN 3
-  #define PLUS2_BUTTON_PIN 2
-  #define DNF_BUTTON_PIN 0
-  #define SUBMIT_BUTTON_PIN 16
+  #define PENALTY_BUTTON_PIN 0
+  #define SUBMIT_BUTTON_PIN 2
+  #define DELEGAT_BUTTON_PIN 15
 #endif
+
+#define DELEGAT_BUTTON_HOLD_TIME 3000
+#define DNF_BUTTON_HOLD_TIME 1000
 
 #include <Arduino.h>
 #include <SPI.h>
@@ -52,7 +54,7 @@ void stackmatLoop();
 void lcdLoop();
 void buttonsLoop();
 void rfidLoop();
-void sendSolve();
+void sendSolve(bool delegate = false);
 
 SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
 MFRC522 mfrc522(CS_PIN, UNUSED_PIN);
@@ -84,10 +86,9 @@ void setup()
   EEPROM.begin(128);
   readState(&state);
 
-  pinMode(STACKMAT_DISPLAY_PIN, OUTPUT);
-  pinMode(PLUS2_BUTTON_PIN, INPUT_PULLUP);
-  pinMode(DNF_BUTTON_PIN, INPUT_PULLUP);
-  pinMode(SUBMIT_BUTTON_PIN, INPUT);
+  pinMode(PENALTY_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(SUBMIT_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(DELEGAT_BUTTON_PIN, INPUT_PULLUP);
 
   stackmatSerial.begin(STACKMAT_TIMER_BAUD_RATE);
   // stackmatSerial.setResend(STACKMAT_DISPLAY_PIN);
@@ -163,6 +164,11 @@ void loop() {
       buttonsLoop();
       rfidLoop();
     }
+
+    // it will only occur when time was sent but not processed by server (because of error)
+    if (state.finishedSolveTime > 0 && state.judgeCardId > 0 && millis() - state.lastTimeSent > 1500) {
+      state.judgeCardId = 0;
+    }
   }
 
   if (lastWebsocketState != webSocket.isConnected()) {
@@ -224,48 +230,34 @@ void lcdLoop() {
 }
 
 void buttonsLoop() {
-  if (digitalRead(PLUS2_BUTTON_PIN) == LOW && digitalRead(DNF_BUTTON_PIN) == LOW) {
-    Logger.println("Submit button pressed!");
-    // unsigned long pressedTime = millis();
-    while (digitalRead(PLUS2_BUTTON_PIN) == LOW && digitalRead(DNF_BUTTON_PIN) == LOW) {
+  if (digitalRead(PENALTY_BUTTON_PIN) == LOW) {
+    Logger.println("Penalty button pressed!");
+    unsigned long pressedTime = millis();
+    while (digitalRead(PENALTY_BUTTON_PIN) == LOW && millis() - pressedTime <= DNF_BUTTON_HOLD_TIME) {
+      webSocket.loop(); // to prevent disconnects
       delay(50);
     }
 
-    if (state.finishedSolveTime > 0 && state.solverCardId > 0) {
-      state.timeConfirmed = true;
+    if(state.timeConfirmed || state.finishedSolveTime <= 0) return;
+    if (millis() - pressedTime > DNF_BUTTON_HOLD_TIME) {
+      state.timeOffset = state.timeOffset != -1 ? -1 : 0;
+      stateHasChanged = true;
+      lcdLoop();
+    } else { 
+      state.timeOffset = (state.timeOffset >= 16 || state.timeOffset == -1) ? 0 : state.timeOffset + 2;
       stateHasChanged = true;
     }
 
-    return;
-  }
-
-  if (digitalRead(PLUS2_BUTTON_PIN) == LOW) {
-    Logger.println("+2 button pressed!");
-    unsigned long pressedTime = millis();
-    while (digitalRead(PLUS2_BUTTON_PIN) == LOW) {
+    while (digitalRead(PENALTY_BUTTON_PIN) == LOW) {
+      webSocket.loop(); // to prevent disconnects
       delay(50);
     }
-
-    if (millis() - pressedTime > 5000) {
-        Logger.println("Resettings finished solve time!");
-        state.timeOffset = 0;
-        state.finishedSolveTime = -1;
-        state.solverCardId = 0;
-        state.judgeCardId = 0;
-        state.timeConfirmed = false;
-        stateHasChanged = true;
-    } else { 
-        if (state.timeOffset != -1 && !state.timeConfirmed) {
-            state.timeOffset = state.timeOffset >= 16 ? 0 : state.timeOffset + 2;
-            stateHasChanged = true;
-        }
-    }
   }
 
-  if (digitalRead(DNF_BUTTON_PIN) == LOW) {
-    Logger.println("DNF button pressed!");
+  if (digitalRead(SUBMIT_BUTTON_PIN) == LOW) {
+    Logger.println("Submit button pressed!");
     unsigned long pressedTime = millis();
-    while (digitalRead(DNF_BUTTON_PIN) == LOW) {
+    while (digitalRead(SUBMIT_BUTTON_PIN) == LOW) {
       delay(50);
     }
 
@@ -277,10 +269,44 @@ void buttonsLoop() {
       delay(1000);
       ESP.restart();
     } else {
-      if (!state.timeConfirmed) {
-        state.timeOffset = state.timeOffset != -1 ? -1 : 0;
+      if (state.finishedSolveTime > 0 && state.solverCardId > 0) {
+        state.timeConfirmed = true;
         stateHasChanged = true;
       }
+    }
+  }
+
+  if (digitalRead(DELEGAT_BUTTON_PIN) == HIGH && state.finishedSolveTime > 0) {
+    Logger.println("Delegat button pressed!");
+    unsigned long pressedTime = millis();
+
+    lcd.clear();
+    while (digitalRead(DELEGAT_BUTTON_PIN) == HIGH && millis() - pressedTime <= DELEGAT_BUTTON_HOLD_TIME) {
+      webSocket.loop(); // to prevent disconnects
+      delay(100);
+
+      lcd.setCursor(0, 0);
+      lcd.printf("Delegat");
+      lcd.setCursor(0, 1);
+      lcd.printf("Za %lu sekund!", ((DELEGAT_BUTTON_HOLD_TIME + 1000) - (millis() - pressedTime)) / 1000);
+    }
+
+    stateHasChanged = true;
+
+    if(millis() - pressedTime > DELEGAT_BUTTON_HOLD_TIME) {
+      Logger.printf("Wzywanie rozpoczete!");
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.printf("Delegat wezwany");
+      lcd.setCursor(0, 1);
+      lcd.printf("Pusc przycisk");
+
+      sendSolve(true);
+    }
+
+    while (digitalRead(DELEGAT_BUTTON_PIN) == HIGH) {
+      webSocket.loop(); // to prevent disconnects
+      delay(50);
     }
   }
 }
@@ -355,7 +381,7 @@ void stackmatLoop()
   state.lastTiemrState = stackmat.state();
 }
 
-void sendSolve() {
+void sendSolve(bool delegate) {
   if (state.finishedSolveTime == -1) return;
 
   struct tm timeinfo;
@@ -368,10 +394,12 @@ void sendSolve() {
   
   JsonDocument doc;
   doc["solve"]["solve_time"] = state.finishedSolveTime;
+  doc["solve"]["offset"] = state.timeOffset;
   doc["solve"]["card_id"] = state.solverCardId;
   doc["solve"]["esp_id"] = ESP_ID();
   doc["solve"]["timestamp"] = epoch;
   doc["solve"]["session_id"] = state.solveSessionId;
+  doc["solve"]["delegate"] = delegate;
 
   String json;
   serializeJson(doc, json);
