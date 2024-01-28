@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "stackmat.h"
+#include "ws_logger.h"
 
 Stackmat::Stackmat() {}
 
@@ -55,6 +56,7 @@ String Stackmat::ReadStackmatString() {
       }
 
       if (c == '\r') {
+        Logger.println(tmp);
         return tmp;
       }
 
