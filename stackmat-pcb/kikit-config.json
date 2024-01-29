@@ -1,12 +1,13 @@
 {
     "layout": {
         "type": "grid",
-        "rows": 2,
-        "cols": 1,
-        "space": "2mm"
+        "rows": 3,
+        "cols": 2,
+        "space": "0.8mm"
     },
     "tabs": {
-        "type": "full"
+        "type": "fixed",
+        "width": "10mm"
     },
     "cuts": {
         "type": "mousebites",
