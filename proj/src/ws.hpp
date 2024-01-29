@@ -25,6 +25,7 @@ String wsURL = "";
 
 // updater stuff (OTA)
 int sketchSize = 0;
+int sketchSizeRemaining = 0;
 bool update = false;
 
 // inits wifimanager and websockets client
@@ -116,10 +117,10 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
         return;
       }
 
-      sketchSize = doc["start_update"]["size"];
+      sketchSize = sketchSizeRemaining = doc["start_update"]["size"];
       unsigned long maxSketchSize = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
 
-      Logger.printf("[Update] Max Sketch Size: %lu | Sketch size: %d\n", maxSketchSize, sketchSize);
+      Logger.printf("[Update] Max Sketch Size: %lu | Sketch size: %d\n", maxSketchSize, sketchSizeRemaining);
       if (!Update.begin(maxSketchSize)) {
         Update.printError(Serial);
         ESP.restart();
@@ -138,13 +139,19 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
     }
 
     yield();
-    sketchSize -= length;
-    lcd.setCursor(0,1);
-    lcd.printf("                "); // clear second line
-    lcd.setCursor(0,1);
-    lcd.printf("Left: %d", sketchSize);
+    sketchSizeRemaining -= length;
+    int percentage = ((sketchSize - sketchSizeRemaining) * 100) / sketchSize;
 
-    if (sketchSize <= 0) {
+    lcd.setCursor(0,0);
+    lcd.printf("                ");
+    lcd.setCursor(0,0);
+    lcd.printf("Updating (%d%%)", percentage);
+    lcd.setCursor(0,1);
+    lcd.printf("                ");
+    lcd.setCursor(0,1);
+    lcd.printf("Left: %d", sketchSizeRemaining);
+
+    if (sketchSizeRemaining <= 0) {
       if (Update.end(true)) {
         Logger.printf("[Update] Success!!! Rebooting...\n");
         delay(5);
