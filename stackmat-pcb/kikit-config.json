@@ -1,14 +1,17 @@
 {
     "layout": {
         "type": "grid",
-        "rows": 3,
-        "cols": 2
+        "rows": 2,
+        "cols": 1,
+        "space": "2mm"
     },
     "tabs": {
         "type": "full"
     },
     "cuts": {
-        "type": "vcuts",
-        //"layer": "F.Fab"
+        "type": "mousebites",
+        "drill": "0.5mm",
+        "spacing": "1mm",
+        "offset": "0mm"
     }
 }

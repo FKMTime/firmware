@@ -6190,6 +6190,9 @@
     (stroke (width 0.239863) (type solid)) (layer "B.SilkS") (tstamp ffe439e4-7641-49bb-a0e4-858372660d4b))
   (gr_rect (start 66.502 74.63) (end 117.102 108.56)
     (stroke (width 0.1) (type default)) (fill none) (layer "Edge.Cuts") (tstamp d2bf51a3-00ad-41e8-96bb-4ab5f2ec97f7))
+  (gr_text "rev1.0" (at 66.825 108.2) (layer "F.SilkS") (tstamp 4da7efc5-6238-47f3-ad6d-ee64acc0fc51)
+    (effects (font (size 1 1) (thickness 0.15)) (justify left bottom))
+  )
 
   (segment (start 114.77 106.215) (end 114.83 106.275) (width 0.25) (layer "F.Cu") (net 1) (tstamp 1be2bfb4-78a1-4c63-82fe-7055f38a0a17))
   (segment (start 85.06 103.8) (end 85.24 103.62) (width 0.25) (layer "F.Cu") (net 1) (tstamp 1f726267-03be-4d3e-8796-9a854808cf3b))
