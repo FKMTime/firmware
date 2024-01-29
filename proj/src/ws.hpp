@@ -130,6 +130,8 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       lcd.clear();
       lcd.setCursor(0,0);
       lcd.printf("Updating...");
+
+      webSocket.sendBIN((uint8_t *)NULL, 0);
     }
   }
   else if (type == WStype_BIN) {
