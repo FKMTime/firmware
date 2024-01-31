@@ -110,31 +110,6 @@ void lcdCursor(int _x, int _y) {
   lcd.setCursor(x, y);
 }
 
-void lcdPrintf(const char *format, ...) {
-    va_list arg;
-    va_start(arg, format);
-    char temp[64];
-    char* buffer = temp;
-    size_t len = vsnprintf(temp, sizeof(temp), format, arg);
-    va_end(arg);
-    if (len > sizeof(temp) - 1) {
-        buffer = new (std::nothrow) char[len + 1];
-        if (!buffer) {
-            return;
-        }
-        va_start(arg, format);
-        vsnprintf(buffer, len + 1, format, arg);
-        va_end(arg);
-    }
-
-    // buff here
-    
-
-    if (buffer != temp) {
-        delete[] buffer;
-    }
-}
-
 /// @brief 
 /// @param str string to print
 /// @param fillBlank if string should be padded with spaces (blanks) to the end of screen
@@ -174,6 +149,30 @@ void printToScreen(char* str, bool fillBlank = true, PrintAligment aligment = AL
   x += strl;
   if (x >= LCD_SIZE_X) x = LCD_SIZE_X - 1;
   lcd.setCursor(x, y);
+}
+
+void lcdPrintf(int line, bool fillBlank, PrintAligment aligment, const char *format, ...) {
+    va_list arg;
+    va_start(arg, format);
+    char temp[64];
+    char* buffer = temp;
+    size_t len = vsnprintf(temp, sizeof(temp), format, arg);
+    va_end(arg);
+    if (len > sizeof(temp) - 1) {
+        buffer = new (std::nothrow) char[len + 1];
+        if (!buffer) {
+            return;
+        }
+        va_start(arg, format);
+        vsnprintf(buffer, len + 1, format, arg);
+        va_end(arg);
+    }
+
+    printToScreen(buffer, fillBlank, aligment);
+
+    if (buffer != temp) {
+        delete[] buffer;
+    }
 }
 
 #endif
