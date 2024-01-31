@@ -146,8 +146,9 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
     if (sketchSizeRemaining <= 0) {
       if (Update.end(true)) {
         Logger.printf("[Update] Success!!! Rebooting...\n");
+        webSocket.loop();
+
         delay(5);
-        yield();
         ESP.restart();
       } else {
         Update.printError(Serial);

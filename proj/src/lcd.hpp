@@ -124,12 +124,15 @@ void printToScreen(char* str, bool fillBlank = true, PrintAligment aligment = AL
     case ALIGN_RIGHT:
       leftOffset = LCD_SIZE_X - strl;
       break;
+    case ALIGN_NEXTTO:
+      leftOffset = x;
+      break;
   }
   if (leftOffset < 0) leftOffset = 0;
 
   int strI = 0;
   for(int i = 0; i < LCD_SIZE_X; i++) {
-    if(fillBlank && (i < leftOffset || i >= leftOffset + strl)) {
+    if(fillBlank && ((i < leftOffset && aligment != ALIGN_NEXTTO) || i >= leftOffset + strl)) {
       lcdBuff[y][i] = ' ';
       lcd.setCursor(i, y);
       lcd.print(' ');
@@ -149,7 +152,7 @@ void printToScreen(char* str, bool fillBlank = true, PrintAligment aligment = AL
     }
   }
 
-  x += leftOffset + strl;
+  x = leftOffset + strl;
   if (x >= LCD_SIZE_X) x = LCD_SIZE_X - 1;
   lcd.setCursor(x, y);
 }
