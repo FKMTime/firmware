@@ -133,10 +133,13 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
   else if (type == WStype_BIN) {
     if (Update.write(payload, length) != length) {
       Update.printError(Serial);
+      Logger.printf("[Update] (lensum) Error! Rebooting...\n");
+      webSocket.loop();
+        
+      delay(250);
       ESP.restart();
     }
 
-    yield();
     sketchSizeRemaining -= length;
     int percentage = ((sketchSize - sketchSizeRemaining) * 100) / sketchSize;
 
@@ -144,14 +147,22 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
     lcdPrintf(1, true, ALIGN_LEFT, "Left: %d", sketchSizeRemaining);
 
     if (sketchSizeRemaining <= 0) {
+      Logger.printf("[Update] Left 0, delay 1s\n");
+      webSocket.loop();
+      delay(1000);
+
       if (Update.end(true)) {
         Logger.printf("[Update] Success!!! Rebooting...\n");
         webSocket.loop();
 
-        delay(5);
+        delay(250);
         ESP.restart();
       } else {
         Update.printError(Serial);
+        Logger.printf("[Update] Error! Rebooting...\n");
+        webSocket.loop();
+        
+        delay(250);
         ESP.restart();
       }
     }
