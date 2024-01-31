@@ -7,7 +7,7 @@
 #include "globals.hpp"
 
 char lcdBuff[LCD_SIZE_Y][LCD_SIZE_X];
-uint8_t x, y = 0;
+int x, y = 0;
 
 bool stateHasChanged = true;
 unsigned long lcdLastDraw = 0;
@@ -103,7 +103,7 @@ void lcdClearLine(uint8_t line) {
 }
 
 // Sets position of cursor
-void lcdCursor(uint8_t _x, uint8_t _y) {
+void lcdCursor(int _x, int _y) {
   x = _x;
   y = _y;
 
@@ -128,7 +128,7 @@ void lcdPrintf(const char *format, ...) {
     }
 
     // buff here
-
+    
 
     if (buffer != temp) {
         delete[] buffer;
@@ -140,9 +140,7 @@ void lcdPrintf(const char *format, ...) {
 /// @param fillBlank if string should be padded with spaces (blanks) to the end of screen
 /// @param aligment text aligment (left/center/right)
 void printToScreen(char* str, bool fillBlank = true, PrintAligment aligment = ALIGN_LEFT) {
-  char tmpBuff[LCD_SIZE_X];
-  size_t strl = strlen(str);
-
+  int strl = strlen(str);
   int leftOffset = 0;
   switch(aligment) {
     case 0:
@@ -158,14 +156,24 @@ void printToScreen(char* str, bool fillBlank = true, PrintAligment aligment = AL
   if (leftOffset < 0) leftOffset = 0;
 
   for(int i = 0; i < LCD_SIZE_X; i++) {
-    if (fillBlank) lcd[y][i] = ' ';
-
     if(i + leftOffset < LCD_SIZE_X) {
-      if(strl > i) lcd[y][i + leftOffset] = str[i];
+      if(strl > i && str[i] != lcdBuff[y][i + leftOffset]) {
+          lcdBuff[y][i + leftOffset] = str[i];
+          lcd.setCursor(i, y);
+          lcd.print(str[i]);
+      }
+    } else if (fillBlank && (i < leftOffset || i > leftOffset + strl)) {
+      if(lcdBuff[y][i] != ' ') {
+        lcdBuff[y][i] = ' ';
+        lcd.setCursor(i, y);
+        lcd.print(' ');
+      }
     }
   }
 
-  // lcd.print(tmpBuff);
+  x += strl;
+  if (x >= LCD_SIZE_X) x = LCD_SIZE_X - 1;
+  lcd.setCursor(x, y);
 }
 
 #endif
