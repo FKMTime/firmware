@@ -65,21 +65,16 @@ inline void buttonsLoop() {
       stackmat.loop();
       delay(100);
 
-      lcd.setCursor(0, 0);
-      lcd.printf("Delegat");
-      lcd.setCursor(0, 1);
-      lcd.printf("Za %lu sekund!", ((DELEGAT_BUTTON_HOLD_TIME + 1000) - (millis() - pressedTime)) / 1000);
+      lcdPrintf(0, true, ALIGN_CENTER, "Delegat");
+      lcdPrintf(1, true, ALIGN_CENTER, "Za %lu sekund!", ((DELEGAT_BUTTON_HOLD_TIME + 1000) - (millis() - pressedTime)) / 1000);
     }
 
     lcdChange();
 
     if(millis() - pressedTime > DELEGAT_BUTTON_HOLD_TIME) {
       Logger.printf("Wzywanie rozpoczete!");
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.printf("Delegat wezwany");
-      lcd.setCursor(0, 1);
-      lcd.printf("Pusc przycisk");
+      lcdPrintf(0, true, ALIGN_CENTER, "Delegat wezwany");
+      lcdPrintf(1, true, ALIGN_CENTER, "Pusc przycisk");
 
       sendSolve(true);
     }

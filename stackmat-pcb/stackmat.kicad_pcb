@@ -6197,7 +6197,7 @@
   (gr_text "rev1.1" (at 66.925 107.9) (layer "F.SilkS") (tstamp 4da7efc5-6238-47f3-ad6d-ee64acc0fc51)
     (effects (font (size 1 1) (thickness 0.15)) (justify left bottom))
   )
-  (gr_text "DBG1" (at 115.1 89) (layer "F.SilkS") (tstamp d384230e-94f7-44da-90ff-3e4e8110f009)
+  (gr_text "DBG" (at 115.1 89) (layer "F.SilkS") (tstamp d384230e-94f7-44da-90ff-3e4e8110f009)
     (effects (font (size 0.8 0.8) (thickness 0.15)))
   )
 

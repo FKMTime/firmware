@@ -6,6 +6,7 @@
 
 #include "globals.hpp"
 
+
 char lcdBuff[LCD_SIZE_Y][LCD_SIZE_X];
 int x, y = 0;
 
@@ -15,8 +16,12 @@ unsigned long lcdLastDraw = 0;
 enum PrintAligment {
   ALIGN_LEFT = 0,
   ALIGN_CENTER = 1,
-  ALIGN_RIGHT = 2
+  ALIGN_RIGHT = 2,
+  ALIGN_NEXTTO = 3 // ALIGN AFTER LAST TEXT
 };
+
+void lcdPrintf(int line, bool fillBlank, PrintAligment aligment, const char *format, ...);
+void lcdClearLine(uint8_t line);
 
 inline void lcdChange() {
   stateHasChanged = true;
@@ -26,49 +31,41 @@ inline void lcdLoop() {
   if (!stateHasChanged || millis() - lcdLastDraw < 50) return;
   stateHasChanged = false;
 
-  lcd.clear();
-  lcd.setCursor(0, 0);
   if (!webSocket.isConnected()) {
-    lcd.printf("     Server     ");
-    lcd.setCursor(0, 1);
-    lcd.print("  Disconnected  ");
+    lcdPrintf(0, true, ALIGN_CENTER, "Server");
+    lcdPrintf(1, true, ALIGN_CENTER, "Disconnected");
   } else if (state.finishedSolveTime > 0 && state.solverCardId > 0) { // after timer is stopped and solver scanned his card
     uint8_t minutes = state.finishedSolveTime / 60000;
     uint8_t seconds = (state.finishedSolveTime % 60000) / 1000;
     uint16_t ms = state.finishedSolveTime % 1000;
 
-    lcd.printf("%i:%02i.%03i", minutes, seconds, ms);
+    lcdPrintf(0, true, ALIGN_LEFT, "%i:%02i.%03i", minutes, seconds, ms);
     if(state.timeOffset == -1) {
-      lcd.printf(" DNF");
+      lcdPrintf(0, false, ALIGN_RIGHT, " DNF");
     } else if (state.timeOffset > 0) {
-      lcd.printf(" +%d", state.timeOffset);
+      lcdPrintf(0, false, ALIGN_RIGHT, " +%d", state.timeOffset);
     }
     
     if (!state.timeConfirmed) {
-      lcd.setCursor(0, 1);
-      lcd.printf("Confirm the time");
+      lcdPrintf(1, true, ALIGN_RIGHT, "Confirm the time");
     } else if (state.judgeCardId == 0) {
-      lcd.setCursor(0, 1);
-      lcd.printf("Awaiting judge");
+      lcdPrintf(1, true, ALIGN_RIGHT, "Awaiting judge");
     }
   } else if (!stackmat.connected()) {
-    lcd.printf("    Stackmat    ");
-    lcd.setCursor(0, 1);
-    lcd.print("  Disconnected  ");
+    lcdPrintf(0, true, ALIGN_CENTER, "Stackmat");
+    lcdPrintf(1, true, ALIGN_CENTER, "Disconnected");
   } else if (stackmat.state() == StackmatTimerState::ST_Running && state.solverCardId > 0) { // timer running and solver scanned his card
-    lcd.printf("%i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+    lcdPrintf(0, true, ALIGN_CENTER, "%i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+    lcdClearLine(1);
   } else if (state.solverCardId > 0) {
-    lcd.printf("     Solver     ");
-    lcd.setCursor(0, 1);
-    lcd.printf(centerString(state.solverName, 16).c_str());
+    lcdPrintf(0, true, ALIGN_CENTER, "Solver");
+    lcdPrintf(1, true, ALIGN_CENTER, state.solverName.c_str());
   } else if (state.solverCardId == 0) {
-    lcd.printf("    Stackmat    ");
-    lcd.setCursor(0, 1);
-    lcd.printf("Awaiting solver");
+    lcdPrintf(0, true, ALIGN_CENTER, "Stackmat");
+    lcdPrintf(1, true, ALIGN_CENTER, "Awaiting solver");
   } else {
-    lcd.printf("    Stackmat    ");
-    lcd.setCursor(0, 1);
-    lcd.printf("Unhandled state!");
+    lcdPrintf(0, true, ALIGN_CENTER, "Stackmat");
+    lcdPrintf(1, true, ALIGN_CENTER, "Unhandled state!");
   }
 
   lcdLastDraw = millis();
@@ -118,40 +115,48 @@ void printToScreen(char* str, bool fillBlank = true, PrintAligment aligment = AL
   int strl = strlen(str);
   int leftOffset = 0;
   switch(aligment) {
-    case 0:
+    case ALIGN_LEFT:
       leftOffset = 0;
       break;
-    case 1:
+    case ALIGN_CENTER:
       leftOffset = (LCD_SIZE_X - strl) / 2;
       break;
-    case 2:
+    case ALIGN_RIGHT:
       leftOffset = LCD_SIZE_X - strl;
       break;
   }
   if (leftOffset < 0) leftOffset = 0;
 
+  int strI = 0;
   for(int i = 0; i < LCD_SIZE_X; i++) {
-    if(i + leftOffset < LCD_SIZE_X) {
-      if(strl > i && str[i] != lcdBuff[y][i + leftOffset]) {
-          lcdBuff[y][i + leftOffset] = str[i];
-          lcd.setCursor(i, y);
-          lcd.print(str[i]);
-      }
-    } else if (fillBlank && (i < leftOffset || i > leftOffset + strl)) {
-      if(lcdBuff[y][i] != ' ') {
-        lcdBuff[y][i] = ' ';
+    if(fillBlank && (i < leftOffset || i >= leftOffset + strl)) {
+      lcdBuff[y][i] = ' ';
+      lcd.setCursor(i, y);
+      lcd.print(' ');
+
+      continue;
+    }
+
+    if(i >= leftOffset && strI < strl) {
+      if(lcdBuff[y][i] != str[strI]) {
+        lcdBuff[y][i] = str[strI];
         lcd.setCursor(i, y);
-        lcd.print(' ');
+        lcd.print(str[strI]);
+
       }
+
+      strI++;
     }
   }
 
-  x += strl;
+  x += leftOffset + strl;
   if (x >= LCD_SIZE_X) x = LCD_SIZE_X - 1;
   lcd.setCursor(x, y);
 }
 
 void lcdPrintf(int line, bool fillBlank, PrintAligment aligment, const char *format, ...) {
+    if (y < 0 || y >= LCD_SIZE_Y) return;
+    
     va_list arg;
     va_start(arg, format);
     char temp[64];
@@ -168,6 +173,7 @@ void lcdPrintf(int line, bool fillBlank, PrintAligment aligment, const char *for
         va_end(arg);
     }
 
+    y = line;
     printToScreen(buffer, fillBlank, aligment);
 
     if (buffer != temp) {

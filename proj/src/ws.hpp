@@ -42,11 +42,8 @@ inline void netInit() {
         ESP.restart();
     }
 
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.printf("%s", centerString("Stackmat", 16).c_str());
-    lcd.setCursor(0, 1);
-    lcd.printf("%s", centerString("Looking for MDNS", 16).c_str());
+    lcdPrintf(0, true, ALIGN_CENTER, "Stackmat");
+    lcdPrintf(1, true, ALIGN_CENTER, "Looking for MDNS");
 
     while(true) {
         wsURL = getWsUrl();
@@ -127,9 +124,8 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       }
 
       update = true;
-      lcd.clear();
-      lcd.setCursor(0,0);
-      lcd.printf("Updating...");
+      lcdPrintf(0, true, ALIGN_LEFT, "Updating");
+      lcdClearLine(1);
 
       webSocket.sendBIN((uint8_t *)NULL, 0);
     }
@@ -144,14 +140,8 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
     sketchSizeRemaining -= length;
     int percentage = ((sketchSize - sketchSizeRemaining) * 100) / sketchSize;
 
-    lcd.setCursor(0,0);
-    lcd.printf("                ");
-    lcd.setCursor(0,0);
-    lcd.printf("Updating (%d%%)", percentage);
-    lcd.setCursor(0,1);
-    lcd.printf("                ");
-    lcd.setCursor(0,1);
-    lcd.printf("Left: %d", sketchSizeRemaining);
+    lcdPrintf(0, true, ALIGN_LEFT, "Updating (%d%%)", percentage);
+    lcdPrintf(1, true, ALIGN_LEFT, "Left: %d", sketchSizeRemaining);
 
     if (sketchSizeRemaining <= 0) {
       if (Update.end(true)) {

@@ -76,12 +76,10 @@ void setup()
   mfrc522.PCD_Init();
 
   lcd.begin(16, 2);
-  lcd.clear();
+  lcdClear();
 
-  lcd.setCursor(0, 0);
-  lcd.printf("ID: %s", getChipHex().c_str());
-  lcd.setCursor(0, 1);
-  lcd.printf("VER: %s", FIRMWARE_VERSION);
+  lcdPrintf(0, true, ALIGN_LEFT, "ID: %s", getChipHex().c_str());
+  lcdPrintf(1, true, ALIGN_LEFT, "VER: %s", FIRMWARE_VERSION);
 
   netInit();
 }
