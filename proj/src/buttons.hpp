@@ -7,7 +7,7 @@
 #define DNF_BUTTON_HOLD_TIME 1000
 
 inline void buttonsLoop() {
-  if (digitalRead(PENALTY_BUTTON_PIN) == LOW) {
+  if (digitalRead(PENALTY_BUTTON_PIN) == LOW && !sleepMode) {
     Logger.println("Penalty button pressed!");
     unsigned long pressedTime = millis();
     while (digitalRead(PENALTY_BUTTON_PIN) == LOW && millis() - pressedTime <= DNF_BUTTON_HOLD_TIME) {
@@ -34,7 +34,14 @@ inline void buttonsLoop() {
   }
 
   if (digitalRead(SUBMIT_BUTTON_PIN) == LOW) {
-    if(sleepMode) restoreFromSleep();
+    if(sleepMode) {
+      restoreFromSleep();
+      while (digitalRead(SUBMIT_BUTTON_PIN) == LOW) {
+        delay(50);
+      }
+
+      return;
+    }
 
     Logger.println("Submit button pressed!");
     unsigned long pressedTime = millis();
@@ -57,7 +64,7 @@ inline void buttonsLoop() {
     }
   }
 
-  if (digitalRead(DELEGATE_BUTTON_PIN) == HIGH && state.finishedSolveTime > 0) {
+  if (digitalRead(DELEGATE_BUTTON_PIN) == HIGH && state.finishedSolveTime > 0 && !sleepMode) {
     Logger.println("Delegat button pressed!");
     unsigned long pressedTime = millis();
 

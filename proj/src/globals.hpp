@@ -1,7 +1,7 @@
 #ifndef __GLOBALS_HPP__
 #define __GLOBALS_HPP__
 
-#define SLEEP_TIME 30000 //30s for testing
+#define SLEEP_TIME 1800000 //30m
 
 #include <LiquidCrystal_I2C.h>
 #include <WebSocketsClient.h>
