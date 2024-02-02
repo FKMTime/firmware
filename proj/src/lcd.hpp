@@ -35,10 +35,14 @@ inline void lcdChange() {
 
 inline void lcdLoop() {
   unsigned long timeSinceLastDraw = millis() - lcdLastDraw;
-  if (timeSinceLastDraw > SLEEP_TIME) {
-    WiFi.forceSleepBegin(0);
+  if (timeSinceLastDraw > SLEEP_TIME && !stateHasChanged) {
+
+    lcdPrintf(0, true, ALIGN_CENTER, "Sleep mode");
+    lcdPrintf(1, true, ALIGN_CENTER, "Submit to wake");
+
     lcd.noBacklight();
     sleepMode = true;
+    WiFi.forceSleepBegin(0);
     return;
   }
 
@@ -89,7 +93,7 @@ void restoreFromSleep() {
   WiFi.forceSleepWake();
   lcd.backlight();
   sleepMode = false;
-  lcdLastDraw = millis() - 50; // to update quickly
+  stateHasChanged = true;
 }
 
 // Clears screen and sets cursor on (0, 0)

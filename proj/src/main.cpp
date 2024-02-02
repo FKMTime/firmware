@@ -86,6 +86,7 @@ void setup()
 
 void loop() {
   if (sleepMode) {
+    delay(100);
     buttonsLoop();
     return;
   }
@@ -118,9 +119,11 @@ void loop() {
 }
 
 void rfidLoop() {
+
   if (millis() - state.lastCardReadTime > 500 && 
       mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial())
   {
+  Logger.printf("curr: %lu | last: %lu \n", millis(), state.lastCardReadTime);
     state.lastCardReadTime = millis();
     if (state.solverCardId > 0 && state.judgeCardId > 0) return; // if both card were already scanned
 
