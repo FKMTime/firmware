@@ -23,6 +23,12 @@ enum PrintAligment {
 void lcdPrintf(int line, bool fillBlank, PrintAligment aligment, const char *format, ...);
 void lcdClearLine(uint8_t line);
 
+inline void lcdInit() {
+  lcd.init();
+  lcd.backlight();
+  lcd.home();
+}
+
 inline void lcdChange() {
   stateHasChanged = true;
 }
@@ -153,7 +159,7 @@ void printToScreen(char* str, bool fillBlank = true, PrintAligment aligment = AL
   }
 
   x = leftOffset + strl;
-  if (x >= LCD_SIZE_X) x = LCD_SIZE_X - 1;
+  if (x >= LCD_SIZE_X) x = LCD_SIZE_X;
   lcd.setCursor(x, y);
 }
 

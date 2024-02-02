@@ -75,7 +75,7 @@ void setup()
   #endif
   mfrc522.PCD_Init();
 
-  lcd.begin(16, 2);
+  lcdInit();
   lcdClear();
 
   lcdPrintf(0, true, ALIGN_LEFT, "ID: %s", getChipHex().c_str());

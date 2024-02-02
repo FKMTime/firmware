@@ -1,17 +1,17 @@
 #ifndef __GLOBALS_HPP__
 #define __GLOBALS_HPP__
 
+#include <LiquidCrystal_I2C.h>
 #include <WebSocketsClient.h>
 #include <Arduino.h>
 #include <EEPROM.h>
 #include "stackmat.h"
-#include "rgb_lcd.h"
 
 // Global websockets variable
 WebSocketsClient webSocket;
 
 // Global lcd variable
-rgb_lcd lcd;
+LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 // Global stackmat variable
 Stackmat stackmat;
