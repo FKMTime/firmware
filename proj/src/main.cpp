@@ -85,6 +85,11 @@ void setup()
 }
 
 void loop() {
+  if (sleepMode) {
+    buttonsLoop();
+    return;
+  }
+
   webSocket.loop();
   if (!update) {
     Logger.loop();

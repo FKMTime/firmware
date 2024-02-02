@@ -34,7 +34,15 @@ inline void lcdChange() {
 }
 
 inline void lcdLoop() {
-  if (!stateHasChanged || millis() - lcdLastDraw < 50) return;
+  unsigned long timeSinceLastDraw = millis() - lcdLastDraw;
+  if (timeSinceLastDraw > SLEEP_TIME) {
+    WiFi.forceSleepBegin(0);
+    lcd.noBacklight();
+    sleepMode = true;
+    return;
+  }
+
+  if (!stateHasChanged || timeSinceLastDraw < 50) return;
   stateHasChanged = false;
 
   if (!webSocket.isConnected()) {
@@ -75,6 +83,13 @@ inline void lcdLoop() {
   }
 
   lcdLastDraw = millis();
+}
+
+void restoreFromSleep() {
+  WiFi.forceSleepWake();
+  lcd.backlight();
+  sleepMode = false;
+  lcdLastDraw = millis() - 50; // to update quickly
 }
 
 // Clears screen and sets cursor on (0, 0)

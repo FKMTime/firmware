@@ -1,6 +1,8 @@
 #ifndef __GLOBALS_HPP__
 #define __GLOBALS_HPP__
 
+#define SLEEP_TIME 30000 //30s for testing
+
 #include <LiquidCrystal_I2C.h>
 #include <WebSocketsClient.h>
 #include <Arduino.h>
@@ -37,6 +39,8 @@ struct GlobalState {
   // RFID
   unsigned long lastCardReadTime;
 } state;
+
+bool sleepMode = false;
 
 struct SavedState {
   int solveSessionId;

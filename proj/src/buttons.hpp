@@ -34,6 +34,8 @@ inline void buttonsLoop() {
   }
 
   if (digitalRead(SUBMIT_BUTTON_PIN) == LOW) {
+    if(sleepMode) restoreFromSleep();
+
     Logger.println("Submit button pressed!");
     unsigned long pressedTime = millis();
     while (digitalRead(SUBMIT_BUTTON_PIN) == LOW) {
