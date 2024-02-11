@@ -26,7 +26,7 @@ struct GlobalState {
   int timeOffset;
   unsigned long solverCardId;
   unsigned long judgeCardId;
-  String solverName;
+  String solverDisplay;
 
   bool timeStarted;
   bool timeConfirmed;

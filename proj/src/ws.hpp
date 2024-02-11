@@ -75,22 +75,21 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
     deserializeJson(doc, payload);
 
     if (doc.containsKey("card_info_response")) {
-      String name = doc["card_info_response"]["name"];
+      String display = doc["card_info_response"]["display"];
       unsigned long cardId = doc["card_info_response"]["card_id"];
-      bool isJudge = doc["card_info_response"]["is_judge"];
 
-      if (isJudge && state.solverCardId > 0 && state.finishedSolveTime > 0 && state.timeConfirmed && millis() - state.lastTimeSent > 1500) {
+      if (state.solverCardId > 0 && state.solverCardId != cardId && state.finishedSolveTime > 0 && state.timeConfirmed && millis() - state.lastTimeSent > 1500) {
         state.judgeCardId = cardId;
         state.lastTimeSent = millis();
         sendSolve(false);
-      } else if(!isJudge && state.solverCardId == 0) {
-        state.solverName = name;
+      } else if(state.solverCardId == 0) {
+        state.solverDisplay = display;
         state.solverCardId = cardId;
       }
 
       lcdChange();
     } else if (doc.containsKey("solve_confirm")) {
-      if (doc["solve_confirm"]["card_id"] != state.solverCardId || 
+      if (doc["solve_confirm"]["solver_id"] != state.solverCardId || 
           doc["solve_confirm"]["esp_id"] != ESP_ID() || 
           doc["solve_confirm"]["session_id"] != state.solveSessionId) {
         Logger.println("Wrong solve confirm frame!");
@@ -100,7 +99,7 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       state.finishedSolveTime = -1;
       state.solverCardId = 0;
       state.judgeCardId = 0;
-      state.solverName = "";
+      state.solverDisplay = "";
       state.timeStarted = false;
       saveState();
       lcdChange();

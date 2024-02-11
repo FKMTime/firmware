@@ -95,7 +95,8 @@ void sendSolve(bool delegate) {
   JsonDocument doc;
   doc["solve"]["solve_time"] = state.finishedSolveTime;
   doc["solve"]["offset"] = state.timeOffset;
-  doc["solve"]["card_id"] = state.solverCardId;
+  doc["solve"]["solver_id"] = state.solverCardId;
+  doc["solve"]["judge_id"] = state.judgeCardId;
   doc["solve"]["esp_id"] = ESP_ID();
   doc["solve"]["timestamp"] = epoch;
   doc["solve"]["session_id"] = state.solveSessionId;

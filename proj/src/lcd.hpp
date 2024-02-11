@@ -77,7 +77,7 @@ inline void lcdLoop() {
     lcdClearLine(1);
   } else if (state.solverCardId > 0) {
     lcdPrintf(0, true, ALIGN_CENTER, "Solver");
-    lcdPrintf(1, true, ALIGN_CENTER, state.solverName.c_str());
+    lcdPrintf(1, true, ALIGN_CENTER, state.solverDisplay.c_str());
   } else if (state.solverCardId == 0) {
     lcdPrintf(0, true, ALIGN_CENTER, "Stackmat");
     lcdPrintf(1, true, ALIGN_CENTER, "Awaiting solver");
