@@ -2,6 +2,7 @@
 #define __BUTTONS_HPP__
 
 #include "globals.hpp"
+#include "translations.h"
 
 #define DELEGAT_BUTTON_HOLD_TIME 3000
 #define DNF_BUTTON_HOLD_TIME 1000
@@ -65,28 +66,28 @@ inline void buttonsLoop() {
   }
 
   if (digitalRead(DELEGATE_BUTTON_PIN) == HIGH && state.finishedSolveTime > 0 && !sleepMode) {
-    Logger.println("Delegat button pressed!");
+    Logger.println("Delegate button pressed!");
     unsigned long pressedTime = millis();
 
-    lcd.clear();
+    lcdClear();
     while (digitalRead(DELEGATE_BUTTON_PIN) == HIGH && millis() - pressedTime <= DELEGAT_BUTTON_HOLD_TIME) {
       webSocket.loop();
       stackmat.loop();
       delay(100);
 
-      lcdPrintf(0, true, ALIGN_CENTER, "Delegat");
-      lcdPrintf(1, true, ALIGN_CENTER, "Za %lu sekund!", ((DELEGAT_BUTTON_HOLD_TIME + 1000) - (millis() - pressedTime)) / 1000);
+      lcdPrintf(0, true, ALIGN_CENTER, TR_DELEGATE_HEADER);
+      lcdPrintf(1, true, ALIGN_CENTER, TR_DELEGATE_COUNTDOWN, ((DELEGAT_BUTTON_HOLD_TIME + 1000) - (millis() - pressedTime)) / 1000);
     }
 
-    lcdChange();
-
     if(millis() - pressedTime > DELEGAT_BUTTON_HOLD_TIME) {
-      Logger.printf("Wzywanie rozpoczete!");
-      lcdPrintf(0, true, ALIGN_CENTER, "Delegat wezwany");
-      lcdPrintf(1, true, ALIGN_CENTER, "Pusc przycisk");
+      Logger.printf("Delegate called!");
+      lcdPrintf(0, true, ALIGN_CENTER, TR_DELEGATE_CALLED_TOP);
+      lcdPrintf(1, true, ALIGN_CENTER, TR_DELEGATE_CALLED_BOTTOM);
 
       sendSolve(true);
     }
+
+    lcdChange();
 
     while (digitalRead(DELEGATE_BUTTON_PIN) == HIGH) {
       webSocket.loop();

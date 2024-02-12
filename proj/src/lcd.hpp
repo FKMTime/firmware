@@ -8,6 +8,7 @@
 #define SCROLLER_SETBACK 1000
 
 #include "globals.hpp"
+#include "translations.h"
 
 char scrollerBuff[MAX_SCROLLER_LINE];
 int scrollX = 1;
@@ -30,6 +31,7 @@ enum PrintAligment {
 };
 
 void lcdPrintf(int line, bool fillBlank, PrintAligment aligment, const char *format, ...);
+void printToScreen(char* str, bool fillBlank, PrintAligment aligment);
 void lcdClearLine(int line);
 void lcdScroller(int line, const char *str);
 void scrollLoop();
@@ -66,8 +68,8 @@ inline void lcdLoop() {
   stateHasChanged = false;
 
   if (!webSocket.isConnected()) {
-    lcdPrintf(0, true, ALIGN_CENTER, "Server");
-    lcdPrintf(1, true, ALIGN_CENTER, "Disconnected");
+    lcdPrintf(0, true, ALIGN_CENTER, TR_SERVER_HEADER);
+    lcdPrintf(1, true, ALIGN_CENTER, TR_DISCONNECTED);
   } else if (state.finishedSolveTime > 0 && state.solverCardId > 0) { // after timer is stopped and solver scanned his card
     uint8_t minutes = state.finishedSolveTime / 60000;
     uint8_t seconds = (state.finishedSolveTime % 60000) / 1000;
@@ -81,25 +83,25 @@ inline void lcdLoop() {
     }
     
     if (!state.timeConfirmed) {
-      lcdPrintf(1, true, ALIGN_RIGHT, "Confirm the time");
+      lcdPrintf(1, true, ALIGN_RIGHT, TR_CONFIRM_TIME);
     } else if (state.judgeCardId == 0) {
-      lcdPrintf(1, true, ALIGN_RIGHT, "Awaiting judge");
+      lcdPrintf(1, true, ALIGN_RIGHT, TR_AWAITING_JUDGE);
     }
   } else if (!stackmat.connected()) {
-    lcdPrintf(0, true, ALIGN_CENTER, "Stackmat");
-    lcdPrintf(1, true, ALIGN_CENTER, "Disconnected");
+    lcdPrintf(0, true, ALIGN_CENTER, TR_STACKMAT_HEADER);
+    lcdPrintf(1, true, ALIGN_CENTER, TR_DISCONNECTED);
   } else if (stackmat.state() == StackmatTimerState::ST_Running && state.solverCardId > 0) { // timer running and solver scanned his card
     lcdPrintf(0, true, ALIGN_CENTER, "%i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
     lcdClearLine(1);
   } else if (state.solverCardId > 0) {
-    lcdPrintf(0, true, ALIGN_CENTER, "Solver");
-    lcdScroller(1, state.solverDisplay.c_str());
+    lcdPrintf(0, true, ALIGN_CENTER, TR_SOLVER);
+    lcdPrintf(1, true, ALIGN_CENTER, state.solverDisplay.c_str());
   } else if (state.solverCardId == 0) {
-    lcdPrintf(0, true, ALIGN_CENTER, "Stackmat");
-    lcdPrintf(1, true, ALIGN_CENTER, "Awaiting solver");
+    lcdPrintf(0, true, ALIGN_CENTER, TR_AWAITING_SOLVER_TOP);
+    lcdPrintf(1, true, ALIGN_CENTER, TR_AWAITING_SOLVER_BOTTOM);
   } else {
-    lcdPrintf(0, true, ALIGN_CENTER, "Stackmat");
-    lcdPrintf(1, true, ALIGN_CENTER, "Unhandled state!");
+    lcdPrintf(0, true, ALIGN_CENTER, TR_STACKMAT_HEADER);
+    lcdPrintf(1, true, ALIGN_CENTER, TR_UNHANDLED_STATE);
   }
 
   lcdLastDraw = millis();
@@ -174,10 +176,8 @@ void scrollLoop() {
     buff[i] = scrollerBuff[i + scrollX];
   }
   buff[LCD_SIZE_X] = '\0';
-
-  int line = scrollerLine;
-  lcdPrintf(line, true, ALIGN_LEFT, buff);
-  scrollerLine = line;
+  y = scrollerLine;
+  printToScreen(buff, true, ALIGN_LEFT);
 }
 
 void lcdScroller(int line, const char *str) {
@@ -192,10 +192,13 @@ void lcdScroller(int line, const char *str) {
 
   if (changed) {
     scrollX = 0;
+    scrollerLine = line;
+    y = line;
     scrollDir = true;
     memcpy(scrollerBuff, str, strl + 1);
-    lcdPrintf(line, true, ALIGN_LEFT, str);
-    scrollerLine = line; // it must be after lcdPrintf, because that function zeroes scrollerLine
+    char lineBuff[LCD_SIZE_X];
+    memcpy(lineBuff, str, strl + 1);
+    printToScreen(lineBuff, true, ALIGN_LEFT);
     scrollerLen = strl;
   }
 }
@@ -248,10 +251,6 @@ void printToScreen(char* str, bool fillBlank = true, PrintAligment aligment = AL
   x = leftOffset + strl;
   if (x >= LCD_SIZE_X) x = LCD_SIZE_X;
   lcd.setCursor(x, y);
-
-  if (y == scrollerLine) {
-    scrollerLine = -1;
-  }
 }
 
 void lcdPrintf(int line, bool fillBlank, PrintAligment aligment, const char *format, ...) {
@@ -274,7 +273,10 @@ void lcdPrintf(int line, bool fillBlank, PrintAligment aligment, const char *for
     }
 
     y = line;
-    printToScreen(buffer, fillBlank, aligment);
+    if (line == scrollerLine) scrollerLine = -1;
+
+    if (len > LCD_SIZE_X) lcdScroller(line, buffer);
+    else printToScreen(buffer, fillBlank, aligment);
 
     if (buffer != temp) {
         delete[] buffer;
