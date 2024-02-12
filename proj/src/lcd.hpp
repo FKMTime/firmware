@@ -156,20 +156,8 @@ void lcdCursor(int _x, int _y) {
 
 void scrollLoop() {
   int maxScroll = constrain(scrollerLen - 16, 0, MAX_SCROLLER_LINE - 16);
-
-  bool dirChanged = false;
-  if(scrollX <= 0) {
-    scrollDir = true;
-    dirChanged = true;
-  } else if(scrollX >= maxScroll) {
-    scrollDir = false;
-    dirChanged = true;
-  }
-
-  if (maxScroll > 0) scrollX += scrollDir ? 1 : -1;
-  else scrollX = 0;
-
-  if (dirChanged) return;
+  if(scrollX <= 0) scrollDir = true;
+  else if(scrollX >= maxScroll) scrollDir = false;
 
   char buff[LCD_SIZE_X + 1];
   for(int i = 0; i < LCD_SIZE_X; i++) {
@@ -178,6 +166,9 @@ void scrollLoop() {
   buff[LCD_SIZE_X] = '\0';
   y = scrollerLine;
   printToScreen(buff, true, ALIGN_LEFT);
+
+  if (maxScroll > 0) scrollX += scrollDir ? 1 : -1;
+  else scrollX = 0;
 }
 
 void lcdScroller(int line, const char *str) {
@@ -189,6 +180,7 @@ void lcdScroller(int line, const char *str) {
       changed = true;
     }
   }
+  Logger.printf("strl: %d | changed: %d\n", strl, changed);
 
   if (changed) {
     scrollX = 0;

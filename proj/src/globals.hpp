@@ -41,6 +41,7 @@ struct GlobalState {
 } state;
 
 bool sleepMode = false;
+bool primaryLangauge = true;
 
 struct SavedState {
   int solveSessionId;

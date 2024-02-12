@@ -77,7 +77,9 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
     if (doc.containsKey("card_info_response")) {
       String display = doc["card_info_response"]["display"];
       unsigned long cardId = doc["card_info_response"]["card_id"];
-
+      String countryIso2 = doc["card_info_response"]["country_iso2"];
+      countryIso2.toLowerCase();
+      
       if (state.solverCardId > 0 && state.solverCardId != cardId && state.finishedSolveTime > 0 && state.timeConfirmed && millis() - state.lastTimeSent > 1500) {
         state.judgeCardId = cardId;
         state.lastTimeSent = millis();
@@ -85,6 +87,7 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       } else if(state.solverCardId == 0) {
         state.solverDisplay = display;
         state.solverCardId = cardId;
+        primaryLangauge = countryIso2 != "pl";
       }
 
       lcdChange();
@@ -127,6 +130,23 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       lcdClearLine(1);
 
       webSocket.sendBIN((uint8_t *)NULL, 0);
+    } else if (doc.containsKey("solve_entry_error")) {
+      if (doc["solve_entry_error"]["esp_id"] != ESP_ID()) {
+        Logger.println("Wrong solve entry error frame!");
+        return;
+      }
+
+      String errorMessage = doc["solve_entry_error"]["error"];
+      Logger.printf("Solve entry error: %s\n", errorMessage.c_str());
+
+      lcdPrintf(0, true, ALIGN_CENTER, TR_SOLVE_ENTRY_HEADER);
+      lcdPrintf(1, true, ALIGN_CENTER, errorMessage.c_str());
+      while (digitalRead(SUBMIT_BUTTON_PIN) == LOW) {
+        webSocket.loop();
+        stackmat.loop();
+        Logger.loop();
+        delay(50);
+      }
     }
   }
   else if (type == WStype_BIN) {
