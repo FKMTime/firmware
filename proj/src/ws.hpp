@@ -141,12 +141,6 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 
       lcdPrintf(0, true, ALIGN_CENTER, TR_SOLVE_ENTRY_HEADER);
       lcdPrintf(1, true, ALIGN_CENTER, errorMessage.c_str());
-      while (digitalRead(SUBMIT_BUTTON_PIN) == LOW) {
-        webSocket.loop();
-        stackmat.loop();
-        Logger.loop();
-        delay(50);
-      }
     }
   }
   else if (type == WStype_BIN) {
