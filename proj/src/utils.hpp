@@ -107,4 +107,25 @@ void sendSolve(bool delegate) {
   webSocket.sendTXT(json);
 }
 
+String displayTime(uint8_t m, uint8_t s, uint16_t ms) {
+  String tmp = "";
+  if (m > 0) {
+    tmp += m;
+    tmp += ":";
+
+    char sBuff[6];
+    sprintf(sBuff, "%02d", s);
+    tmp += String(sBuff);
+  } else {
+    tmp += s;
+  }
+
+  char msBuff[6];
+  sprintf(msBuff, "%03d", ms);
+
+  tmp += ".";
+  tmp += String(msBuff);
+  return tmp;
+}
+
 #endif

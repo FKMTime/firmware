@@ -75,7 +75,7 @@ inline void lcdLoop() {
     uint8_t seconds = (state.finishedSolveTime % 60000) / 1000;
     uint16_t ms = state.finishedSolveTime % 1000;
 
-    lcdPrintf(0, true, ALIGN_LEFT, "%i:%02i.%03i", minutes, seconds, ms);
+    lcdPrintf(0, true, ALIGN_LEFT, "%s", displayTime(minutes, seconds, ms).c_str());
     if(state.timeOffset == -1) {
       lcdPrintf(0, false, ALIGN_RIGHT, " DNF");
     } else if (state.timeOffset > 0) {
@@ -91,7 +91,7 @@ inline void lcdLoop() {
     lcdPrintf(0, true, ALIGN_CENTER, TR_STACKMAT_HEADER);
     lcdPrintf(1, true, ALIGN_CENTER, TR_DISCONNECTED);
   } else if (stackmat.state() == StackmatTimerState::ST_Running && state.solverCardId > 0) { // timer running and solver scanned his card
-    lcdPrintf(0, true, ALIGN_CENTER, "%i:%02i.%03i", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+    lcdPrintf(0, true, ALIGN_CENTER, "%s", displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds()).c_str());
     lcdClearLine(1);
   } else if (state.solverCardId > 0) {
     lcdPrintf(0, true, ALIGN_CENTER, TR_SOLVER);
@@ -180,7 +180,6 @@ void lcdScroller(int line, const char *str) {
       changed = true;
     }
   }
-  Logger.printf("strl: %d | changed: %d\n", strl, changed);
 
   if (changed) {
     scrollX = 0;
