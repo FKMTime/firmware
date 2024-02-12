@@ -3,9 +3,18 @@
 
 #define LCD_SIZE_X 16
 #define LCD_SIZE_Y 2
+#define MAX_SCROLLER_LINE 64
+#define SCROLLER_SPEED 500
+#define SCROLLER_SETBACK 1000
 
 #include "globals.hpp"
 
+char scrollerBuff[MAX_SCROLLER_LINE];
+int scrollX = 1;
+int scrollerLen = 0;
+int scrollerLine = -1;
+bool scrollDir = true; // true to right | false to left
+unsigned long lastScrollerTime = 0;
 
 char lcdBuff[LCD_SIZE_Y][LCD_SIZE_X];
 int x, y = 0;
@@ -21,7 +30,9 @@ enum PrintAligment {
 };
 
 void lcdPrintf(int line, bool fillBlank, PrintAligment aligment, const char *format, ...);
-void lcdClearLine(uint8_t line);
+void lcdClearLine(int line);
+void lcdScroller(int line, const char *str);
+void scrollLoop();
 
 inline void lcdInit() {
   lcd.init();
@@ -44,6 +55,11 @@ inline void lcdLoop() {
     sleepMode = true;
     WiFi.forceSleepBegin(0);
     return;
+  }
+
+  if(scrollerLine > -1 && millis() - lastScrollerTime > SCROLLER_SPEED) {
+    scrollLoop();
+    lastScrollerTime = millis();
   }
 
   if (!stateHasChanged || timeSinceLastDraw < 50) return;
@@ -77,7 +93,7 @@ inline void lcdLoop() {
     lcdClearLine(1);
   } else if (state.solverCardId > 0) {
     lcdPrintf(0, true, ALIGN_CENTER, "Solver");
-    lcdPrintf(1, true, ALIGN_CENTER, state.solverDisplay.c_str());
+    lcdScroller(1, state.solverDisplay.c_str());
   } else if (state.solverCardId == 0) {
     lcdPrintf(0, true, ALIGN_CENTER, "Stackmat");
     lcdPrintf(1, true, ALIGN_CENTER, "Awaiting solver");
@@ -110,7 +126,7 @@ void lcdClear() {
 }
 
 // Clears line and sets cursor at the begging of cleared line
-void lcdClearLine(uint8_t line) {
+void lcdClearLine(int line) {
   if (line < 0 || line >= LCD_SIZE_Y) return;
 
   lcd.setCursor(0, line);
@@ -122,6 +138,10 @@ void lcdClearLine(uint8_t line) {
   lcd.setCursor(0, line);
   x = 0;
   y = line;
+
+  if (line == scrollerLine) {
+    scrollerLine = -1;
+  }
 }
 
 // Sets position of cursor
@@ -130,6 +150,54 @@ void lcdCursor(int _x, int _y) {
   y = _y;
 
   lcd.setCursor(x, y);
+}
+
+void scrollLoop() {
+  int maxScroll = constrain(scrollerLen - 16, 0, MAX_SCROLLER_LINE - 16);
+
+  bool dirChanged = false;
+  if(scrollX <= 0) {
+    scrollDir = true;
+    dirChanged = true;
+  } else if(scrollX >= maxScroll) {
+    scrollDir = false;
+    dirChanged = true;
+  }
+
+  if (maxScroll > 0) scrollX += scrollDir ? 1 : -1;
+  else scrollX = 0;
+
+  if (dirChanged) return;
+
+  char buff[LCD_SIZE_X + 1];
+  for(int i = 0; i < LCD_SIZE_X; i++) {
+    buff[i] = scrollerBuff[i + scrollX];
+  }
+  buff[LCD_SIZE_X] = '\0';
+
+  int line = scrollerLine;
+  lcdPrintf(line, true, ALIGN_LEFT, buff);
+  scrollerLine = line;
+}
+
+void lcdScroller(int line, const char *str) {
+  int strl = constrain(strlen(str), 0, MAX_SCROLLER_LINE);
+  bool changed = line != scrollerLine;
+
+  for(int i = 0; i < strl; i++) {
+    if(scrollerBuff[i] != str[i]) {
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    scrollX = 0;
+    scrollDir = true;
+    memcpy(scrollerBuff, str, strl + 1);
+    lcdPrintf(line, true, ALIGN_LEFT, str);
+    scrollerLine = line; // it must be after lcdPrintf, because that function zeroes scrollerLine
+    scrollerLen = strl;
+  }
 }
 
 /// @brief 
@@ -180,6 +248,10 @@ void printToScreen(char* str, bool fillBlank = true, PrintAligment aligment = AL
   x = leftOffset + strl;
   if (x >= LCD_SIZE_X) x = LCD_SIZE_X;
   lcd.setCursor(x, y);
+
+  if (y == scrollerLine) {
+    scrollerLine = -1;
+  }
 }
 
 void lcdPrintf(int line, bool fillBlank, PrintAligment aligment, const char *format, ...) {
