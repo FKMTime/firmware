@@ -2,7 +2,6 @@ version: '3.3'
 
 services:
   backend:
-    network_mode: host
     image: filipton/fkm-backend:latest
     build: ./backend
     volumes:
@@ -10,10 +9,12 @@ services:
     environment:
       - PORT=8080
       - FIRMWARE_DIR=./firmware
-      - API_URL=http://api:5000
+      - API_URL=http://localhost:5000
+    network_mode: host
 
 # NOTE: replace this with actual api
   api:
+    container_name: api
     image: filipton/fkm-api
     build: ./backend/test-api
     ports:
