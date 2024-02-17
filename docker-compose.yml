@@ -1,8 +1,23 @@
 version: '3.3'
 
 services:
+  bind9:
+    image: ubuntu/bind9
+    container_name: dns
+    environment:
+      - BIND9_USER=root
+      - TZ=Europe/Warsaw
+    ports: 
+      - "53:53"
+      - "53:53/udp"
+    volumes:
+      - ./dns-config:/etc/bind
+    restart: unless-stopped
+
   backend:
     image: filipton/fkm-backend:latest
+    container_name: backend
+    network_mode: host
     build: ./backend
     volumes:
       - ./proj/build:/app/firmware
@@ -10,12 +25,13 @@ services:
       - PORT=8080
       - FIRMWARE_DIR=./firmware
       - API_URL=http://localhost:5000
-    network_mode: host
+    restart: unless-stopped
 
 # NOTE: replace this with actual api
   api:
-    container_name: api
     image: filipton/fkm-api
+    container_name: api
     build: ./backend/test-api
     ports:
       - 5000:5000
+    restart: unless-stopped

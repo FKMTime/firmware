@@ -1,0 +1,14 @@
+$TTL 2d
+
+$ORIGIN fkm.lan.
+
+@      IN  SOA fkm.lan. ns.fkm.lan. (
+             2022052603  ; serial
+             12h     ; refresh
+             15m     ; retry
+             3w      ; expire
+             2h )     ; minimum TTL
+;
+@ IN NS ns.fkm.lan.
+ns IN A 192.168.1.53
+fkm.lan. IN A 192.168.1.53
