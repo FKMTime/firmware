@@ -6,7 +6,7 @@
 // EN / PL
 #define TR_STACKMAT_HEADER "Timer"
 #define TR_SERVER_HEADER "Server"
-#define TR_DISCONNECTED (primaryLangauge ? "Disconnected" : "Rozlaczony")
+#define TR_DISCONNECTED (primaryLangauge ? "Disconnected" : "Odlaczony")
 #define TR_SOLVER (primaryLangauge ? "Competitor" : "Zawodnik")
 #define TR_CONFIRM_TIME (primaryLangauge ? "Confirm the time" : "Potwierdz czas")
 #define TR_AWAITING_JUDGE (primaryLangauge ? "Scan the judge's card" : "Zeskanuj karte sedziego")
