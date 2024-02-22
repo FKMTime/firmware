@@ -136,6 +136,11 @@ void rfidLoop() {
     String json;
     serializeJson(doc, json);
     webSocket.sendTXT(json);
+
+    // send websocket data before RFID halt
+    webSocket.loop();
+
+    mfrc522.PICC_HaltA();
   }
 }
 
