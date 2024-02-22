@@ -47,11 +47,18 @@ inline void buttonsLoop() {
     Logger.println("Submit button pressed!");
     unsigned long pressedTime = millis();
     while (digitalRead(SUBMIT_BUTTON_PIN) == LOW) {
+      stackmat.loop();
+      webSocket.loop();
       delay(50);
     }
 
-    if (millis() - pressedTime > 5000) {
-      // TODO: REMOVE THIS
+    if (millis() - pressedTime > 5000 && millis() - pressedTime < 15000) {
+      if (state.solverCardId > 0 && !state.timeStarted) {
+        state.solverCardId = 0;
+        state.solverDisplay = "";
+        lcdChange();
+      }
+    } else if (millis() - pressedTime > 15000) {
       Logger.println("Resetting wifi settings!");
       WiFiManager wm;
       wm.resetSettings();

@@ -88,6 +88,12 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
         state.solverDisplay = display;
         state.solverCardId = cardId;
         primaryLangauge = countryIso2 != "pl";
+
+        if (state.lastFinishedSolveTime != stackmat.time()) {
+          state.timeStarted = true;
+          state.finishedSolveTime = stackmat.time();
+          state.lastFinishedSolveTime = state.finishedSolveTime;
+        }
       }
 
       lcdChange();

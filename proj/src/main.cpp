@@ -156,6 +156,7 @@ void stackmatLoop()
 
         Logger.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
         state.finishedSolveTime = stackmat.time();
+        state.lastFinishedSolveTime = state.finishedSolveTime;
 
         saveState();
         break;

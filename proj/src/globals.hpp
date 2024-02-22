@@ -22,6 +22,7 @@ Stackmat stackmat;
 struct GlobalState {
   // TIMER INTERNALS
   int solveSessionId;
+  int lastFinishedSolveTime;
   int finishedSolveTime;
   int timeOffset;
   unsigned long solverCardId;
