@@ -33,6 +33,8 @@ struct GlobalState {
   bool timeConfirmed;
   unsigned long lastTimeSent;
 
+  bool errored;
+
   // STACKMAT
   StackmatTimerState lastTiemrState;
   bool stackmatConnected;

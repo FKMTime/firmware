@@ -143,10 +143,22 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       }
 
       String errorMessage = doc["solve_entry_error"]["error"];
+      bool shouldResetTime = doc["solve_entry_error"]["should_reset_time"];
       Logger.printf("Solve entry error: %s\n", errorMessage.c_str());
+
+      if (shouldResetTime) {
+        state.finishedSolveTime = -1;
+        state.solverCardId = 0;
+        state.judgeCardId = 0;
+        state.solverDisplay = "";
+        state.timeStarted = false;
+        saveState();
+      }
 
       lcdPrintf(0, true, ALIGN_CENTER, TR_SOLVE_ENTRY_HEADER);
       lcdPrintf(1, true, ALIGN_CENTER, errorMessage.c_str());
+
+      state.errored = true;
     }
   }
   else if (type == WStype_BIN) {

@@ -52,6 +52,11 @@ inline void buttonsLoop() {
       delay(50);
     }
 
+    if (state.errored) {
+      state.errored = false;
+      lcdChange();
+    }
+
     if (millis() - pressedTime > 5000 && millis() - pressedTime < 15000) {
       if (state.solverCardId > 0 && !state.timeStarted) {
         state.solverCardId = 0;
