@@ -58,7 +58,7 @@ inline void netInit() {
     std::tie(host, port, path) = wsRes;
 
     char finalPath[128];
-    snprintf(finalPath, 128, "%s?id=%lu&ver=%s&chip=%s", path.c_str(), ESP_ID(), FIRMWARE_VERSION, CHIP);
+    snprintf(finalPath, 128, "%s?id=%lu&ver=%s&chip=%s&bt=%s", path.c_str(), ESP_ID(), FIRMWARE_VERSION, CHIP, BUILD_TIME);
 
     webSocket.begin(host.c_str(), port, finalPath);
     webSocket.onEvent(webSocketEvent);

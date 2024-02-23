@@ -1,2 +1,2 @@
 #!/bin/bash
-pio run -t build -e esp12f
+pio run -e esp12f

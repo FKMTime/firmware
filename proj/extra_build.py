@@ -21,7 +21,8 @@ import os, time
 
 def after_build(source, target, env):
     version = os.popen("cat src/version.h | grep \"FIRMWARE_VERSION\" | cut -d'\"' -f 2").read().strip()
-    bin_name = f"{env['BOARD_MCU']}.{version}.bin"
+    buildTime = os.popen("cat src/version.h | grep \"BUILD_TIME\" | cut -d'\"' -f 2").read().strip()
+    bin_name = f"{env['BOARD_MCU']}.{version}.{buildTime}.bin"
     os.popen(f"mkdir -p ./build ; cp {source[0].get_abspath()} ./build/{bin_name}")
 
 def generate_version():
@@ -33,16 +34,18 @@ def generate_version():
     except:
         print(".versum doesn't exists! Building...")
 
-    version = format(int(time.time()), 'x')
+    version = filesHash[:8]
+    buildTime = format(int(time.time()), 'x')
     versionPath = os.path.join(env["PROJECT_DIR"], "src", "version.h")
     versionString = """
 #ifndef __VERSION_H__
 #define __VERSION_H__
 
 #define FIRMWARE_VERSION "{version}"
+#define BUILD_TIME "{buildTime}"
 
 #endif
-""".format(version = version)
+""".format(version = version, buildTime = buildTime)
 
     with open(versionPath, "w") as file:
         file.write(versionString)
