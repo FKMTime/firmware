@@ -106,6 +106,7 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       }
 
       state.finishedSolveTime = -1;
+      state.timeOffset = 0;
       state.solverCardId = 0;
       state.judgeCardId = 0;
       state.solverDisplay = "";
