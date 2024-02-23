@@ -32,4 +32,6 @@ jobs:
           artifacts: "./proj/build/*.bin"
           generateReleaseNotes: true
           skipIfReleaseExists: true
+          makeLatest: true
           tag: ${{ env.VERSION }}
+          token: ${{ secrets.GH_TOKEN }}
