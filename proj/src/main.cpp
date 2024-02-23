@@ -55,6 +55,7 @@ void setup()
 
   Logger.begin(&Serial, 5000);
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
+  Logger.printf("Build time: %s\n", BUILD_TIME);
 
   EEPROM.begin(128);
   readState();
