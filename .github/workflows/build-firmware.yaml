@@ -21,6 +21,8 @@ jobs:
         with:
           python-version: '3.9'
       - name: Build PlatformIO Project
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: bash ./build.sh
         working-directory: ./proj
       - name: Read version
