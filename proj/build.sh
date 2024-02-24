@@ -2,7 +2,7 @@
 
 # If token is in env, then check if latest release hash is the same as the current files hash, 
 # if it is stop the build, if it is not continue the build
-if [ -z "$GH_TOKEN" ]; then
+if [ ! -z "$GH_TOKEN" ]; then
     FILES_HASH=$(find ./platformio.ini ./src ./lib ./include -type f -print0 | sort -fdz | xargs -0 sha1sum | grep -v ./src/version.h | sha1sum | awk '{print $1}')
     FILES_HASH=${FILES_HASH:0:8}
 
@@ -11,7 +11,8 @@ if [ -z "$GH_TOKEN" ]; then
 
     if [ "$FILES_HASH" == "$RELEASE_HASH" ]; then
         echo "No changes in the files, stopping the build"
-        echo "::error::No changes in the files, stopping the build"
+        echo "SKIP_BUILD=1" >> $GITHUB_ENV
+
         exit 0
     fi
 fi

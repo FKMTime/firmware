@@ -26,8 +26,10 @@ jobs:
         run: bash ./build.sh
         working-directory: ./proj
       - name: Read version
+        if: ${{ env.SKIP_BUILD != '1' }}
         run: echo "VERSION=$(head -c 8 ./proj/.versum)" >> $GITHUB_ENV
       - uses: ncipollo/release-action@v1
+        if: ${{ env.SKIP_BUILD != '1' }}
         with:
           artifacts: "./proj/build/*.bin"
           generateReleaseNotes: true
