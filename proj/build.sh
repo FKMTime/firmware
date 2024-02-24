@@ -7,7 +7,8 @@ if [ ! -z "$GH_TOKEN" ]; then
     FILES_HASH=${FILES_HASH:0:8}
 
     JSON=$(curl -s -L -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/repos/filipton/fkm-timer/releases/latest)
-    RELEASE_HASH=$(echo $JSON | jq -r '.name')
+    RELEASE_HASH=$(echo $JSON | jq -r '.name' | cut -d'-' -f2)
+    echo "Files hash: $FILES_HASH Release hash: $RELEASE_HASH"
 
     if [ "$FILES_HASH" == "$RELEASE_HASH" ]; then
         echo "No changes in the files, stopping the build"
