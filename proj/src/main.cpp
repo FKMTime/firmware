@@ -124,7 +124,6 @@ void rfidLoop() {
   if (millis() - state.lastCardReadTime > 500 && 
       mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial())
   {
-    state.lastCardReadTime = millis();
     if (state.solverCardId > 0 && state.judgeCardId > 0) return; // if both card were already scanned
 
     unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
@@ -142,6 +141,7 @@ void rfidLoop() {
     webSocket.loop();
 
     mfrc522.PICC_HaltA();
+    state.lastCardReadTime = millis();
   }
 }
 
