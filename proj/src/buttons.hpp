@@ -5,9 +5,22 @@
 #include "translations.h"
 
 #define DELEGAT_BUTTON_HOLD_TIME 3000
-#define DNF_BUTTON_HOLD_TIME 1000
+#define DNF_BUTTON_HOLD_TIME 1000 // ON PENALTY BUTTON (TIME TO HOLD PNALTY TO INPUT DNF)
+#define RESET_SOVLER_HOLD_TIME 5000 // ON SUBMIT BUTTON (RESETS SOLVER IF TIME HASNT STARTED YET)
+#define RESET_WIFI_HOLD_TIME 15000 // ON SUBMIT BUTTON
+#define TIMER_RESET_HOLD_TIME 15000 // ON PENALY BUTTON
+
+inline void penaltyButton();
+inline void submitButton();
+inline void delegateButton();
 
 inline void buttonsLoop() {
+  penaltyButton();
+  submitButton();
+  delegateButton();
+}
+
+inline void penaltyButton() {
   if (digitalRead(PENALTY_BUTTON_PIN) == LOW && !sleepMode) {
     Logger.println("Penalty button pressed!");
     unsigned long pressedTime = millis();
@@ -32,8 +45,24 @@ inline void buttonsLoop() {
       stackmat.loop();
       delay(50);
     }
-  }
 
+    // it will reset timer state (like current solver, judge, time, etc.)
+    if (millis() - pressedTime > TIMER_RESET_HOLD_TIME) {
+      state.solverCardId = 0;
+      state.solverDisplay = "";
+      state.judgeCardId = 0;
+      state.finishedSolveTime = 0;
+      state.timeConfirmed = false;
+      state.timeOffset = 0;
+      state.timeStarted = false;
+      state.lastFinishedSolveTime = 0;
+
+      lcdChange();
+    }
+  }
+}
+
+inline void submitButton() {
   if (digitalRead(SUBMIT_BUTTON_PIN) == LOW) {
     if(sleepMode) {
       restoreFromSleep();
@@ -57,13 +86,13 @@ inline void buttonsLoop() {
       lcdChange();
     }
 
-    if (millis() - pressedTime > 5000 && millis() - pressedTime < 15000) {
+    if (millis() - pressedTime > RESET_SOVLER_HOLD_TIME && millis() - pressedTime < RESET_WIFI_HOLD_TIME) {
       if (state.solverCardId > 0 && !state.timeStarted) {
         state.solverCardId = 0;
         state.solverDisplay = "";
         lcdChange();
       }
-    } else if (millis() - pressedTime > 15000) {
+    } else if (millis() - pressedTime > RESET_WIFI_HOLD_TIME) {
       Logger.println("Resetting wifi settings!");
       WiFiManager wm;
       wm.resetSettings();
@@ -76,7 +105,9 @@ inline void buttonsLoop() {
       }
     }
   }
+}
 
+inline void delegateButton() {
   if (digitalRead(DELEGATE_BUTTON_PIN) == HIGH && state.finishedSolveTime > 0 && !sleepMode) {
     Logger.println("Delegate button pressed!");
     unsigned long pressedTime = millis();

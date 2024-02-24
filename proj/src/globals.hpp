@@ -36,7 +36,7 @@ struct GlobalState {
   bool errored;
 
   // STACKMAT
-  StackmatTimerState lastTiemrState;
+  StackmatTimerState lastTimerState;
   bool stackmatConnected;
 
   // RFID

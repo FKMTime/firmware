@@ -147,7 +147,7 @@ void rfidLoop() {
 
 void stackmatLoop()
 {
-  if (stackmat.state() != state.lastTiemrState && stackmat.state() != ST_Unknown && state.lastTiemrState != ST_Unknown)
+  if (stackmat.state() != state.lastTimerState && stackmat.state() != ST_Unknown && state.lastTimerState != ST_Unknown)
   {
     // Logger.printf("State changed from %c to %c\n", state.lastTiemrState, stackmat.state());
     switch (stackmat.state())
@@ -193,5 +193,5 @@ void stackmatLoop()
     lcdChange();
   }
 
-  state.lastTiemrState = stackmat.state();
+  state.lastTimerState = stackmat.state();
 }
