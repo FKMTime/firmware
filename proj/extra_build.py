@@ -26,7 +26,7 @@ def after_build(source, target, env):
     os.popen(f"mkdir -p ./build ; cp {source[0].get_abspath()} ./build/{bin_name}")
 
 def generate_version():
-    filesHash = os.popen("find ./platformio.ini ./src ./lib ./include -type f -print0 | sort -fdz | xargs -0 sha1sum | grep -v ./src/version.h | sha1sum | awk '{print $1}'").read().strip()
+    filesHash = os.popen("bash ./hash.sh").read().strip()
     try:
         with open(".versum", "r") as file:
             if filesHash == file.read().strip():
