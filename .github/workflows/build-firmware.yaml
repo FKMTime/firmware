@@ -11,6 +11,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/cache@v4
         with:
           path: |
@@ -18,17 +19,25 @@ jobs:
             ~/.cache/pip
             ~/.platformio/.cache
           key: ${{ runner.os }}-pio-new2
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.9'
+
       - name: Build PlatformIO Project
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: bash ./build.sh
         working-directory: ./proj
+
       - name: Read version
         if: ${{ env.SKIP_BUILD != '1' }}
         run: echo "VERSION=$(head -c 8 ./proj/.versum)" >> $GITHUB_ENV
+
+      - name: Read build time
+        if: ${{ env.SKIP_BUILD != '1' }}
+        run: echo "BUILD_TIME=$(printf "%d\n" "0x$(cat ./proj/src/version.h | grep 'BUILD_TIME' | cut -d'"' -f 2)")" >> $GITHUB_ENV
+
       - uses: ncipollo/release-action@v1
         if: ${{ env.SKIP_BUILD != '1' }}
         with:
@@ -36,5 +45,5 @@ jobs:
           generateReleaseNotes: true
           skipIfReleaseExists: true
           makeLatest: true
-          tag: ${{ env.VERSION }}
+          tag: ${{ env.BUILD_TIME }}-${{ env.VERSION }}
           token: ${{ secrets.GH_TOKEN }}
