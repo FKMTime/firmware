@@ -98,8 +98,8 @@ void loop() {
     stackmat.loop();
     stackmatLoop();
 
-    // functions that are useless while timer is running:
-    if(stackmat.state() != ST_Running) {
+    // functions that are useless while timer is running (only when time isn't set yet)
+    if(stackmat.state() != ST_Running && state.finishedSolveTime <= 0) {
       buttonsLoop();
       rfidLoop();
     }
