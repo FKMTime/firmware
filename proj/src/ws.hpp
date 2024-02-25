@@ -19,6 +19,10 @@
 #include "utils.hpp"
 #include "lcd.hpp"
 
+
+#define WIFI_SSID_PREFIX "FkmTimer-"
+#define WIFI_PASSWORD "FkmTimer"
+
 inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length);
 
 String wsURL = "";
@@ -32,9 +36,9 @@ bool update = false;
 inline void netInit() {
     WiFiManager wm;
 
-    String generatedSSID = "StackmatTimer-" + getChipHex();
+    String generatedSSID = WIFI_SSID_PREFIX + getChipHex();
     wm.setConfigPortalTimeout(300);
-    bool res = wm.autoConnect(generatedSSID.c_str(), "StackmatTimer");
+    bool res = wm.autoConnect(generatedSSID.c_str(), WIFI_PASSWORD);
     if (!res)
     {
         Logger.println("Failed to connect to wifi... Restarting!");
@@ -42,7 +46,7 @@ inline void netInit() {
         ESP.restart();
     }
 
-    lcdPrintf(0, true, ALIGN_CENTER, "Stackmat");
+    lcdPrintf(0, true, ALIGN_CENTER, "FKM");
     lcdPrintf(1, true, ALIGN_CENTER, "Looking for MDNS");
 
     while(true) {
