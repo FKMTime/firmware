@@ -51,11 +51,11 @@ inline void penaltyButton() {
       state.solverCardId = 0;
       state.solverDisplay = "";
       state.judgeCardId = 0;
-      state.finishedSolveTime = 0;
+      state.finishedSolveTime = -1;
       state.timeConfirmed = false;
       state.timeOffset = 0;
       state.timeStarted = false;
-      state.lastFinishedSolveTime = 0;
+      state.lastFinishedSolveTime = -1;
 
       lcdChange();
     }

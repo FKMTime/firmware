@@ -186,7 +186,7 @@ void stackmatLoop()
     lcdChange();
   }
 
-  if (stackmat.state() == StackmatTimerState::ST_Running) {
+  if (stackmat.state() == StackmatTimerState::ST_Running && state.finishedSolveTime <= 0) {
     lcdChange();
   } else if (stackmat.connected() != state.stackmatConnected) {
     state.stackmatConnected = stackmat.connected();
