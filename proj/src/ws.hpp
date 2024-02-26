@@ -94,6 +94,7 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
         primaryLangauge = countryIso2 != "pl";
 
         if (state.lastFinishedSolveTime != stackmat.time()) {
+          state.solveSessionId++;
           state.timeStarted = true;
           state.finishedSolveTime = stackmat.time();
           state.lastFinishedSolveTime = state.finishedSolveTime;
@@ -115,6 +116,7 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       state.judgeCardId = 0;
       state.solverDisplay = "";
       state.timeStarted = false;
+      state.timeConfirmed = false;
       saveState();
       lcdChange();
     } else if (doc.containsKey("start_update")) {
