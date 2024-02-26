@@ -5,16 +5,12 @@ if [ ! -f ./kikit-config.json ]; then
     exit 1
 fi
 
-if ! command -v kikit &> /dev/null
-then
-    echo "kikit not found, installing..."
-    pip3 install kikit
-fi
-
+# use kikit in docker
+kikit="docker run --rm -v $(pwd):/files filipton/kikit-kicad:8.0"
 mkdir -p ./output
 
-kikit panelize -p ./kikit-config.json ./stackmat.kicad_pcb ./panel.kicad_pcb
-kikit fab jlcpcb ./panel.kicad_pcb ./output
+$kikit panelize -p ./kikit-config.json ./fkm.kicad_pcb ./panel.kicad_pcb
+$kikit fab jlcpcb ./panel.kicad_pcb ./output
 
 echo -e "\n\n"
 echo "Done!"
