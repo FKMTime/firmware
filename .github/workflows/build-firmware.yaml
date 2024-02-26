@@ -28,7 +28,7 @@ jobs:
 
       - name: Build PlatformIO Project
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: bash ./build.sh
         working-directory: ./proj
 
@@ -48,4 +48,4 @@ jobs:
           skipIfReleaseExists: true
           makeLatest: true
           tag: ${{ env.BUILD_TIME }}-${{ env.VERSION }}
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ github.token }}
