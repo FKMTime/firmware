@@ -2,23 +2,22 @@
 #define __WS_HPP__
 
 #if defined(ESP32)
-  #include <WiFi.h>
-  #include <Update.h>
+#include <Update.h>
+#include <WiFi.h>
 
-  #define CHIP "esp32c3"
+#define CHIP "esp32c3"
 #elif defined(ESP8266)
-  #include <ESP8266WiFi.h>
-  #include <Updater.h>
+#include <ESP8266WiFi.h>
+#include <Updater.h>
 
-  #define CHIP "esp8266"
+#define CHIP "esp8266"
 #endif
 
 #include <WiFiManager.h>
 
 #include "globals.hpp"
-#include "utils.hpp"
 #include "lcd.hpp"
-
+#include "utils.hpp"
 
 #define WIFI_SSID_PREFIX "FkmTimer-"
 #define WIFI_PASSWORD "FkmTimer"
@@ -34,46 +33,46 @@ bool update = false;
 
 // inits wifimanager and websockets client
 inline void netInit() {
-    WiFiManager wm;
+  WiFiManager wm;
 
-    String generatedSSID = WIFI_SSID_PREFIX + getChipHex();
-    wm.setConfigPortalTimeout(300);
-    bool res = wm.autoConnect(generatedSSID.c_str(), WIFI_PASSWORD);
-    if (!res)
-    {
-        Logger.println("Failed to connect to wifi... Restarting!");
-        delay(1500);
-        ESP.restart();
-    }
+  String generatedSSID = WIFI_SSID_PREFIX + getChipHex();
+  wm.setConfigPortalTimeout(300);
+  bool res = wm.autoConnect(generatedSSID.c_str(), WIFI_PASSWORD);
+  if (!res) {
+    Logger.println("Failed to connect to wifi... Restarting!");
+    delay(1500);
+    ESP.restart();
+  }
 
-    lcdPrintf(0, true, ALIGN_CENTER, "FKM");
-    lcdPrintf(1, true, ALIGN_CENTER, "Looking for MDNS");
+  lcdPrintf(0, true, ALIGN_CENTER, "FKM");
+  lcdPrintf(1, true, ALIGN_CENTER, "Looking for MDNS");
 
-    while(true) {
-        wsURL = getWsUrl();
-        if (wsURL.length() > 0) break;
-        delay(1000);
-    }
+  while (true) {
+    wsURL = getWsUrl();
+    if (wsURL.length() > 0)
+      break;
+    delay(1000);
+  }
 
-    std::string host, path;
-    int port;
+  std::string host, path;
+  int port;
 
-    auto wsRes = parseWsUrl(wsURL.c_str());
-    std::tie(host, port, path) = wsRes;
+  auto wsRes = parseWsUrl(wsURL.c_str());
+  std::tie(host, port, path) = wsRes;
 
-    char finalPath[128];
-    snprintf(finalPath, 128, "%s?id=%lu&ver=%s&chip=%s&bt=%s", path.c_str(), ESP_ID(), FIRMWARE_VERSION, CHIP, BUILD_TIME);
+  char finalPath[128];
+  snprintf(finalPath, 128, "%s?id=%lu&ver=%s&chip=%s&bt=%s", path.c_str(),
+           ESP_ID(), FIRMWARE_VERSION, CHIP, BUILD_TIME);
 
-    webSocket.begin(host.c_str(), port, finalPath);
-    webSocket.onEvent(webSocketEvent);
-    webSocket.setReconnectInterval(5000);
-    Logger.setWsClient(&webSocket);
+  webSocket.begin(host.c_str(), port, finalPath);
+  webSocket.onEvent(webSocketEvent);
+  webSocket.setReconnectInterval(5000);
+  Logger.setWsClient(&webSocket);
 
-    configTime(3600, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
+  configTime(3600, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
 }
 
-inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
-{
+inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
   if (type == WStype_TEXT) {
     JsonDocument doc;
     deserializeJson(doc, payload);
@@ -83,12 +82,16 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       unsigned long cardId = doc["card_info_response"]["card_id"];
       String countryIso2 = doc["card_info_response"]["country_iso2"];
       countryIso2.toLowerCase();
-      
-      if (state.solverCardId > 0 && state.solverCardId != cardId && state.finishedSolveTime > 0 && state.timeConfirmed && millis() - state.lastTimeSent > 1500) {
-        state.judgeCardId = cardId;
+
+      if (state.solverCardId > 0 && state.judgeCardId > 0 &&
+          state.solverCardId == cardId && state.finishedSolveTime > 0 &&
+          state.timeConfirmed && millis() - state.lastTimeSent > 1500) {
         state.lastTimeSent = millis();
         sendSolve(false);
-      } else if(state.solverCardId == 0) {
+      } else if (state.solverCardId > 0 && state.solverCardId != cardId &&
+                 state.finishedSolveTime > 0) {
+        state.judgeCardId = cardId;
+      } else if (state.solverCardId == 0) {
         state.solverDisplay = display;
         state.solverCardId = cardId;
         primaryLangauge = countryIso2 != "pl";
@@ -103,8 +106,8 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 
       lcdChange();
     } else if (doc.containsKey("solve_confirm")) {
-      if (doc["solve_confirm"]["solver_id"] != state.solverCardId || 
-          doc["solve_confirm"]["esp_id"] != ESP_ID() || 
+      if (doc["solve_confirm"]["solver_id"] != state.solverCardId ||
+          doc["solve_confirm"]["esp_id"] != ESP_ID() ||
           doc["solve_confirm"]["session_id"] != state.solveSessionId) {
         Logger.println("Wrong solve confirm frame!");
         return;
@@ -124,15 +127,18 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
         ESP.restart();
       }
 
-      if (doc["start_update"]["esp_id"] != ESP_ID() || doc["start_update"]["version"] == FIRMWARE_VERSION) {
+      if (doc["start_update"]["esp_id"] != ESP_ID() ||
+          doc["start_update"]["version"] == FIRMWARE_VERSION) {
         Logger.println("Cannot start update!");
         return;
       }
 
       sketchSize = sketchSizeRemaining = doc["start_update"]["size"];
-      unsigned long maxSketchSize = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+      unsigned long maxSketchSize =
+          (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
 
-      Logger.printf("[Update] Max Sketch Size: %lu | Sketch size: %d\n", maxSketchSize, sketchSizeRemaining);
+      Logger.printf("[Update] Max Sketch Size: %lu | Sketch size: %d\n",
+                    maxSketchSize, sketchSizeRemaining);
       if (!Update.begin(maxSketchSize)) {
         Update.printError(Serial);
         ESP.restart();
@@ -167,13 +173,12 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 
       state.errored = true;
     }
-  }
-  else if (type == WStype_BIN) {
+  } else if (type == WStype_BIN) {
     if (Update.write(payload, length) != length) {
       Update.printError(Serial);
       Logger.printf("[Update] (lensum) Error! Rebooting...\n");
       webSocket.loop();
-        
+
       delay(250);
       ESP.restart();
     }
@@ -199,18 +204,16 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
         Update.printError(Serial);
         Logger.printf("[Update] Error! Rebooting...\n");
         webSocket.loop();
-        
+
         delay(250);
         ESP.restart();
       }
     }
 
     webSocket.sendBIN((uint8_t *)NULL, 0);
-  }
-  else if (type == WStype_CONNECTED) {
+  } else if (type == WStype_CONNECTED) {
     Logger.println("Connected to WebSocket server");
-  }
-  else if (type == WStype_DISCONNECTED) {
+  } else if (type == WStype_DISCONNECTED) {
     Logger.println("Disconnected from WebSocket server");
   }
 }
