@@ -83,14 +83,14 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       String countryIso2 = doc["card_info_response"]["country_iso2"];
       countryIso2.toLowerCase();
 
-      if (state.solverCardId > 0 && state.judgeCardId > 0 && state.solverCardId == cardId && millis() - state.lastTimeSent > 1500) {
+      if (state.competitorCardId > 0 && state.judgeCardId > 0 && state.competitorCardId == cardId && millis() - state.lastTimeSent > 1500) {
         state.lastTimeSent = millis();
         sendSolve(false);
-      } else if (state.solverCardId > 0 && state.solverCardId != cardId && state.finishedSolveTime > 0 && state.timeConfirmed) {
+      } else if (state.competitorCardId > 0 && state.competitorCardId != cardId && state.finishedSolveTime > 0 && state.timeConfirmed) {
         state.judgeCardId = cardId;
-      } else if (state.solverCardId == 0) {
-        state.solverDisplay = display;
-        state.solverCardId = cardId;
+      } else if (state.competitorCardId == 0) {
+        state.competitorDisplay = display;
+        state.competitorCardId = cardId;
         primaryLangauge = countryIso2 != "pl";
 
         if (state.lastFinishedSolveTime != stackmat.time()) {
@@ -103,7 +103,7 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
 
       lcdChange();
     } else if (doc.containsKey("solve_confirm")) {
-      if (doc["solve_confirm"]["solver_id"] != state.solverCardId ||
+      if (doc["solve_confirm"]["competitor_id"] != state.competitorCardId ||
           doc["solve_confirm"]["esp_id"] != ESP_ID() ||
           doc["solve_confirm"]["session_id"] != state.solveSessionId) {
         Logger.println("Wrong solve confirm frame!");
@@ -112,9 +112,9 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
 
       state.finishedSolveTime = -1;
       state.timeOffset = 0;
-      state.solverCardId = 0;
+      state.competitorCardId = 0;
       state.judgeCardId = 0;
-      state.solverDisplay = "";
+      state.competitorDisplay = "";
       state.timeStarted = false;
       state.timeConfirmed = false;
       saveState();
@@ -158,9 +158,9 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
 
       if (shouldResetTime) {
         state.finishedSolveTime = -1;
-        state.solverCardId = 0;
+        state.competitorCardId = 0;
         state.judgeCardId = 0;
-        state.solverDisplay = "";
+        state.competitorDisplay = "";
         state.timeStarted = false;
         saveState();
       }

@@ -6,18 +6,34 @@
 
 #define DELEGAT_BUTTON_HOLD_TIME 3000
 #define DNF_BUTTON_HOLD_TIME 1000 // ON PENALTY BUTTON (TIME TO HOLD PNALTY TO INPUT DNF)
-#define RESET_SOVLER_HOLD_TIME 5000 // ON SUBMIT BUTTON (RESETS SOLVER IF TIME HASNT STARTED YET)
+#define RESET_COMPETITOR_HOLD_TIME 5000 // ON SUBMIT BUTTON (RESETS COMPETITOR IF TIME HASNT STARTED YET)
 #define RESET_WIFI_HOLD_TIME 15000 // ON SUBMIT BUTTON
-#define TIMER_RESET_HOLD_TIME 15000 // ON PENALY BUTTON
+#define TIMER_RESET_HOLD_TIME 15000 // ON PENALYY BUTTON
 
 inline void penaltyButton();
 inline void submitButton();
 inline void delegateButton();
+inline void debugButton();
 
 inline void buttonsLoop() {
+  debugButton();
   penaltyButton();
   submitButton();
   delegateButton();
+}
+
+// "Snapshot" debug button, click delegate and penalty buttons at the same time
+// to send debug info (about state) to the backend
+inline void debugButton() {
+  if (digitalRead(DELEGATE_BUTTON_PIN) == HIGH && digitalRead(PENALTY_BUTTON_PIN) == LOW) {
+    logState();
+
+    while(digitalRead(DELEGATE_BUTTON_PIN) == HIGH || digitalRead(PENALTY_BUTTON_PIN) == LOW) {
+      webSocket.loop();
+      stackmat.loop();
+      delay(50);
+    }
+  }
 }
 
 inline void penaltyButton() {
@@ -46,10 +62,10 @@ inline void penaltyButton() {
       delay(50);
     }
 
-    // it will reset timer state (like current solver, judge, time, etc.)
+    // it will reset timer state (like current competitor, judge, time, etc.)
     if (millis() - pressedTime > TIMER_RESET_HOLD_TIME) {
-      state.solverCardId = 0;
-      state.solverDisplay = "";
+      state.competitorCardId = 0;
+      state.competitorDisplay = "";
       state.judgeCardId = 0;
       state.finishedSolveTime = -1;
       state.timeConfirmed = false;
@@ -80,9 +96,9 @@ inline void submitButton() {
       webSocket.loop();
       delay(50);
 
-      if (state.solverCardId > 0 && !state.timeStarted && millis() - pressedTime > RESET_SOVLER_HOLD_TIME) {
-        state.solverCardId = 0;
-        state.solverDisplay = "";
+      if (state.competitorCardId > 0 && !state.timeStarted && millis() - pressedTime > RESET_COMPETITOR_HOLD_TIME) {
+        state.competitorCardId = 0;
+        state.competitorDisplay = "";
         lcdChange();
         lcdLoop(); // refresh lcd
       }
@@ -100,7 +116,7 @@ inline void submitButton() {
       delay(1000);
       ESP.restart();
     } else {
-      if (state.finishedSolveTime > 0 && state.solverCardId > 0) {
+      if (state.finishedSolveTime > 0 && state.competitorCardId > 0) {
         state.timeConfirmed = true;
         lcdChange();
       }

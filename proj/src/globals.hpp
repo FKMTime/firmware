@@ -25,9 +25,9 @@ struct GlobalState {
   int lastFinishedSolveTime;
   int finishedSolveTime;
   int timeOffset;
-  unsigned long solverCardId;
+  unsigned long competitorCardId;
   unsigned long judgeCardId;
-  String solverDisplay;
+  String competitorDisplay;
 
   bool timeStarted;
   bool timeConfirmed;
@@ -50,14 +50,14 @@ struct SavedState {
   int solveSessionId;
   int finishedSolveTime;
   int timeOffset;
-  unsigned long solverCardId;
+  unsigned long competitorCardId;
 };
 
 void stateDefault() {
   state.solveSessionId = 0;
   state.finishedSolveTime = -1;
   state.timeOffset = 0;
-  state.solverCardId = 0;
+  state.competitorCardId = 0;
 }
 
 void saveState() {
@@ -65,7 +65,7 @@ void saveState() {
   s.solveSessionId = state.solveSessionId;
   s.finishedSolveTime = state.finishedSolveTime;
   s.timeOffset = state.timeOffset;
-  s.solverCardId = state.solverCardId;
+  s.competitorCardId = state.competitorCardId;
 
   EEPROM.write(0, (uint8_t)sizeof(SavedState));
   EEPROM.put(1, s);
@@ -87,7 +87,7 @@ void readState() {
   state.solveSessionId = _state.solveSessionId;
   state.finishedSolveTime = _state.finishedSolveTime;
   state.timeOffset = _state.timeOffset;
-  state.solverCardId = _state.solverCardId;
+  state.competitorCardId = _state.competitorCardId;
 }
 
 /// @brief Simple debug tool, for checking the state
@@ -97,9 +97,9 @@ void logState() {
   Logger.printf("Last finished time: %lu\n", state.lastFinishedSolveTime);
   Logger.printf("Finished time: %lu\n", state.finishedSolveTime);
   Logger.printf("Time offset: %lu\n", state.timeOffset);
-  Logger.printf("Solver card: %lu\n", state.solverCardId);
+  Logger.printf("Competitor card: %lu\n", state.competitorCardId);
   Logger.printf("Judge card: %lu\n", state.judgeCardId);
-  Logger.printf("Solver display: \"%s\"\n", state.solverDisplay);
+  Logger.printf("Competitor display: \"%s\"\n", state.competitorDisplay);
   Logger.printf("Time started: %lu\n", state.timeStarted);
   Logger.printf("Time confirmed: %lu\n", state.timeConfirmed);
   Logger.printf("Last time sent: %lu\n", state.lastTimeSent);

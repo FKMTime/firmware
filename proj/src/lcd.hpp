@@ -70,7 +70,7 @@ inline void lcdLoop() {
   if (!webSocket.isConnected()) {
     lcdPrintf(0, true, ALIGN_CENTER, TR_SERVER_HEADER);
     lcdPrintf(1, true, ALIGN_CENTER, TR_DISCONNECTED);
-  } else if (state.finishedSolveTime > 0 && state.solverCardId > 0) { // after timer is stopped and solver scanned his card
+  } else if (state.finishedSolveTime > 0 && state.competitorCardId > 0) { // after timer is stopped and competitor scanned his card
     uint8_t minutes = state.finishedSolveTime / 60000;
     uint8_t seconds = (state.finishedSolveTime % 60000) / 1000;
     uint16_t ms = state.finishedSolveTime % 1000;
@@ -86,21 +86,21 @@ inline void lcdLoop() {
       lcdPrintf(1, true, ALIGN_RIGHT, TR_CONFIRM_TIME);
     } else if (state.judgeCardId == 0) {
       lcdPrintf(1, true, ALIGN_RIGHT, TR_AWAITING_JUDGE);
-    } else if(state.judgeCardId > 0 && state.solverCardId > 0) {
-      lcdPrintf(1, true, ALIGN_RIGHT, TR_AWAITING_SOLVER_AGAIN);
+    } else if(state.judgeCardId > 0 && state.competitorCardId > 0) {
+      lcdPrintf(1, true, ALIGN_RIGHT, TR_AWAITING_COMPETITOR_AGAIN);
     }
   } else if (!stackmat.connected()) {
     lcdPrintf(0, true, ALIGN_CENTER, TR_STACKMAT_HEADER);
     lcdPrintf(1, true, ALIGN_CENTER, TR_DISCONNECTED);
-  } else if (stackmat.state() == StackmatTimerState::ST_Running && state.solverCardId > 0) { // timer running and solver scanned his card
+  } else if (stackmat.state() == StackmatTimerState::ST_Running && state.competitorCardId > 0) { // timer running and competitor scanned his card
     lcdPrintf(0, true, ALIGN_CENTER, "%s", displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds()).c_str());
     lcdClearLine(1);
-  } else if (state.solverCardId > 0) {
-    lcdPrintf(0, true, ALIGN_CENTER, TR_SOLVER);
-    lcdPrintf(1, true, ALIGN_CENTER, state.solverDisplay.c_str());
-  } else if (state.solverCardId == 0) {
-    lcdPrintf(0, true, ALIGN_CENTER, TR_AWAITING_SOLVER_TOP);
-    lcdPrintf(1, true, ALIGN_CENTER, TR_AWAITING_SOLVER_BOTTOM);
+  } else if (state.competitorCardId > 0) {
+    lcdPrintf(0, true, ALIGN_CENTER, TR_COMPETITOR);
+    lcdPrintf(1, true, ALIGN_CENTER, state.competitorDisplay.c_str());
+  } else if (state.competitorCardId == 0) {
+    lcdPrintf(0, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_TOP);
+    lcdPrintf(1, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_BOTTOM);
   } else {
     lcdPrintf(0, true, ALIGN_CENTER, TR_STACKMAT_HEADER);
     lcdPrintf(1, true, ALIGN_CENTER, TR_UNHANDLED_STATE);
