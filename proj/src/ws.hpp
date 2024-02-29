@@ -83,13 +83,10 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       String countryIso2 = doc["card_info_response"]["country_iso2"];
       countryIso2.toLowerCase();
 
-      if (state.solverCardId > 0 && state.judgeCardId > 0 &&
-          state.solverCardId == cardId && state.finishedSolveTime > 0 &&
-          state.timeConfirmed && millis() - state.lastTimeSent > 1500) {
+      if (state.solverCardId > 0 && state.judgeCardId > 0 && state.solverCardId == cardId && millis() - state.lastTimeSent > 1500) {
         state.lastTimeSent = millis();
         sendSolve(false);
-      } else if (state.solverCardId > 0 && state.solverCardId != cardId &&
-                 state.finishedSolveTime > 0) {
+      } else if (state.solverCardId > 0 && state.solverCardId != cardId && state.finishedSolveTime > 0 && state.timeConfirmed) {
         state.judgeCardId = cardId;
       } else if (state.solverCardId == 0) {
         state.solverDisplay = display;

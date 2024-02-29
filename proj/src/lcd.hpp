@@ -86,6 +86,8 @@ inline void lcdLoop() {
       lcdPrintf(1, true, ALIGN_RIGHT, TR_CONFIRM_TIME);
     } else if (state.judgeCardId == 0) {
       lcdPrintf(1, true, ALIGN_RIGHT, TR_AWAITING_JUDGE);
+    } else if(state.judgeCardId > 0 && state.solverCardId > 0) {
+      lcdPrintf(1, true, ALIGN_RIGHT, TR_AWAITING_SOLVER_AGAIN);
     }
   } else if (!stackmat.connected()) {
     lcdPrintf(0, true, ALIGN_CENTER, TR_STACKMAT_HEADER);

@@ -106,7 +106,7 @@ void loop() {
 
 
     // it will only occur when time was sent but not processed by server (because of error)
-    if (state.finishedSolveTime > 0 && state.judgeCardId > 0 && millis() - state.lastTimeSent > 1500) {
+    if (state.errored && state.finishedSolveTime > 0 && state.judgeCardId > 0 && millis() - state.lastTimeSent > 1500) {
       state.judgeCardId = 0;
     }
     
@@ -124,8 +124,6 @@ void rfidLoop() {
   if (millis() - state.lastCardReadTime > 500 && 
       mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial())
   {
-    if (state.solverCardId > 0 && state.judgeCardId > 0) return; // if both card were already scanned
-
     unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
     Logger.printf("Card ID: %lu\n", cardId);
 

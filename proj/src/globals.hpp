@@ -90,4 +90,23 @@ void readState() {
   state.solverCardId = _state.solverCardId;
 }
 
+/// @brief Simple debug tool, for checking the state
+void logState() {
+  Logger.println("Current state:");
+  Logger.printf("Solve sess id: %lu\n", state.solveSessionId);
+  Logger.printf("Last finished time: %lu\n", state.lastFinishedSolveTime);
+  Logger.printf("Finished time: %lu\n", state.finishedSolveTime);
+  Logger.printf("Time offset: %lu\n", state.timeOffset);
+  Logger.printf("Solver card: %lu\n", state.solverCardId);
+  Logger.printf("Judge card: %lu\n", state.judgeCardId);
+  Logger.printf("Solver display: \"%s\"\n", state.solverDisplay);
+  Logger.printf("Time started: %lu\n", state.timeStarted);
+  Logger.printf("Time confirmed: %lu\n", state.timeConfirmed);
+  Logger.printf("Last time sent: %lu\n", state.lastTimeSent);
+  Logger.printf("Errored: %lu\n", state.errored);
+  Logger.printf("Last timer state: %lu\n", state.lastTimerState);
+  Logger.printf("Stackmat connected: %lu\n", state.stackmatConnected);
+  Logger.printf("Last card read: %lu\n\n", state.lastCardReadTime);
+}
+
 #endif
