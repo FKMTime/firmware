@@ -21,6 +21,6 @@
 #define TR_DELEGATE_CALLED_TOP (primaryLangauge ? "Delegate called" : "Delegat wezwany")
 #define TR_DELEGATE_CALLED_BOTTOM (primaryLangauge ? "Release button" : "Pusc przycisk")
 
-#define TR_SOLVE_ENTRY_HEADER "Error"
+#define TR_ERROR_HEADER "Error"
 
 #endif
