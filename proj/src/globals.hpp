@@ -61,7 +61,7 @@ void stateDefault() {
 }
 
 void saveState() {
-  SavedState s;
+  SavedState s = {0};
   s.solveSessionId = state.solveSessionId;
   s.finishedSolveTime = state.finishedSolveTime;
   s.timeOffset = state.timeOffset;
@@ -81,7 +81,7 @@ void readState() {
     return;
   }
 
-  SavedState _state;
+  SavedState _state = {0};
   EEPROM.get(1, _state);
 
   state.solveSessionId = _state.solveSessionId;
@@ -93,19 +93,19 @@ void readState() {
 /// @brief Simple debug tool, for checking the state
 void logState() {
   Logger.println("Current state:");
-  Logger.printf("Solve sess id: %lu\n", state.solveSessionId);
-  Logger.printf("Last finished time: %lu\n", state.lastFinishedSolveTime);
-  Logger.printf("Finished time: %lu\n", state.finishedSolveTime);
-  Logger.printf("Time offset: %lu\n", state.timeOffset);
+  Logger.printf("Solve sess id: %d\n", state.solveSessionId);
+  Logger.printf("Last finished time: %d\n", state.lastFinishedSolveTime);
+  Logger.printf("Finished time: %d\n", state.finishedSolveTime);
+  Logger.printf("Time offset: %d\n", state.timeOffset);
   Logger.printf("Competitor card: %lu\n", state.competitorCardId);
   Logger.printf("Judge card: %lu\n", state.judgeCardId);
   Logger.printf("Competitor display: \"%s\"\n", state.competitorDisplay);
-  Logger.printf("Time started: %lu\n", state.timeStarted);
-  Logger.printf("Time confirmed: %lu\n", state.timeConfirmed);
+  Logger.printf("Time started: %d\n", state.timeStarted);
+  Logger.printf("Time confirmed: %d\n", state.timeConfirmed);
   Logger.printf("Last time sent: %lu\n", state.lastTimeSent);
-  Logger.printf("Errored: %lu\n", state.errored);
+  Logger.printf("Errored: %d\n", state.errored);
   Logger.printf("Last timer state: %lu\n", state.lastTimerState);
-  Logger.printf("Stackmat connected: %lu\n", state.stackmatConnected);
+  Logger.printf("Stackmat connected: %d\n", state.stackmatConnected);
   Logger.printf("Last card read: %lu\n\n", state.lastCardReadTime);
 }
 
