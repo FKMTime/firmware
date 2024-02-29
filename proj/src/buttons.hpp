@@ -79,6 +79,13 @@ inline void submitButton() {
       stackmat.loop();
       webSocket.loop();
       delay(50);
+
+      if (state.solverCardId > 0 && !state.timeStarted && millis() - pressedTime > RESET_SOVLER_HOLD_TIME) {
+        state.solverCardId = 0;
+        state.solverDisplay = "";
+        lcdChange();
+        lcdLoop(); // refresh lcd
+      }
     }
 
     if (state.errored) {
@@ -86,13 +93,7 @@ inline void submitButton() {
       lcdChange();
     }
 
-    if (millis() - pressedTime > RESET_SOVLER_HOLD_TIME && millis() - pressedTime < RESET_WIFI_HOLD_TIME) {
-      if (state.solverCardId > 0 && !state.timeStarted) {
-        state.solverCardId = 0;
-        state.solverDisplay = "";
-        lcdChange();
-      }
-    } else if (millis() - pressedTime > RESET_WIFI_HOLD_TIME) {
+    if (millis() - pressedTime > RESET_WIFI_HOLD_TIME) {
       Logger.println("Resetting wifi settings!");
       WiFiManager wm;
       wm.resetSettings();
