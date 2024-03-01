@@ -97,6 +97,7 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
           state.solveSessionId++;
           state.timeStarted = true;
           state.timeConfirmed = false;
+          state.timeOffset = 0;
           state.finishedSolveTime = stackmat.time();
           state.lastFinishedSolveTime = state.finishedSolveTime;
         }
