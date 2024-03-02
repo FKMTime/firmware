@@ -22,15 +22,15 @@ Stackmat stackmat;
 struct GlobalState {
   // TIMER INTERNALS
   int solveSessionId;
-  int lastFinishedSolveTime;
-  int finishedSolveTime;
-  int timeOffset;
+  int lastFinishedSolveTime = -1;
+  int finishedSolveTime = -1;
+  int timeOffset = 0;
   unsigned long competitorCardId;
   unsigned long judgeCardId;
   String competitorDisplay;
 
-  bool timeStarted;
-  bool timeConfirmed;
+  bool timeStarted = false;
+  bool timeConfirmed = false;
   unsigned long lastTimeSent;
 
   bool errored;
@@ -88,6 +88,7 @@ void readState() {
   state.finishedSolveTime = _state.finishedSolveTime;
   state.timeOffset = _state.timeOffset;
   state.competitorCardId = _state.competitorCardId;
+  state.timeStarted = state.finishedSolveTime > 0;
 }
 
 /// @brief Simple debug tool, for checking the state
