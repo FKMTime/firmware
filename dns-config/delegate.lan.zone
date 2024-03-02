@@ -1,14 +1,14 @@
 $TTL 2d
 
-$ORIGIN fkm.lan.
+$ORIGIN delegate.lan.
 
-@      IN  SOA fkm.lan. ns.fkm.lan. (
+@      IN  SOA delegate.lan. ns.delegate.lan. (
              2022052603  ; serial
              12h     ; refresh
              15m     ; retry
              3w      ; expire
              2h )     ; minimum TTL
 ;
-@ IN NS ns.fkm.lan.
+@ IN NS ns.delegate.lan.
 ns IN A 127.0.0.1
-fkm.lan. IN A 127.0.0.1
+delegate.lan. IN A 127.0.0.1
