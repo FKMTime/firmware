@@ -26,6 +26,9 @@ services:
       - FIRMWARE_DIR=./firmware
       - API_URL=http://localhost:5000
     restart: unless-stopped
+    dns:
+      - 127.0.0.1
+      - 1.1.1.1
 
 # NOTE: replace this with actual api
   api:
