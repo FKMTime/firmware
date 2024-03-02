@@ -10,5 +10,5 @@ $ORIGIN delegate.lan.
              2h )     ; minimum TTL
 ;
 @ IN NS ns.delegate.lan.
-ns IN A 127.0.0.1
-delegate.lan. IN A 127.0.0.1
+ns IN A ${SERVER_IP}
+delegate.lan. IN A ${SERVER_IP}

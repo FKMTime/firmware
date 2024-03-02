@@ -10,5 +10,5 @@ $ORIGIN fkm.lan.
              2h )     ; minimum TTL
 ;
 @ IN NS ns.fkm.lan.
-ns IN A 127.0.0.1
-fkm.lan. IN A 127.0.0.1
+ns IN A ${SERVER_IP}
+fkm.lan. IN A ${SERVER_IP}

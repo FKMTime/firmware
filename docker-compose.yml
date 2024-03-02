@@ -2,16 +2,16 @@ version: '3.3'
 
 services:
   bind9:
-    image: ubuntu/bind9
+    image: filipton/fkm-dns:latest
     container_name: dns
+    build: ./dns
     environment:
       - BIND9_USER=root
       - TZ=Europe/Warsaw
+      - SERVER_IP=127.0.0.1
     ports: 
       - "53:53"
       - "53:53/udp"
-    volumes:
-      - ./dns-config:/etc/bind
     restart: unless-stopped
 
   backend:
