@@ -24,7 +24,7 @@ services:
     environment:
       - PORT=8080
       - FIRMWARE_DIR=./firmware
-      - API_URL=http://localhost:5000
+      - API_URL=http://localhost:5001
     restart: unless-stopped
     dns:
       - 127.0.0.1
@@ -36,5 +36,5 @@ services:
     container_name: api
     build: ./backend/test-api
     ports:
-      - 5000:5000
+      - 5001:5000
     restart: unless-stopped

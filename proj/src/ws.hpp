@@ -78,6 +78,8 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
     deserializeJson(doc, payload);
 
     if (doc.containsKey("card_info_response")) {
+      state.lastCardReadTime = millis();
+
       String display = doc["card_info_response"]["display"];
       unsigned long cardId = doc["card_info_response"]["card_id"];
       String countryIso2 = doc["card_info_response"]["country_iso2"];

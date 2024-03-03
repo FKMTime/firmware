@@ -46,6 +46,6 @@ jobs:
           artifacts: "./proj/build/*.bin"
           generateReleaseNotes: true
           skipIfReleaseExists: true
-          makeLatest: true
+          prerelease: true
           tag: ${{ env.BUILD_TIME }}-${{ env.VERSION }}
           token: ${{ github.token }}
