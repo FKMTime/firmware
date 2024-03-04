@@ -83,6 +83,7 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       String display = doc["card_info_response"]["display"];
       unsigned long cardId = doc["card_info_response"]["card_id"];
       String countryIso2 = doc["card_info_response"]["country_iso2"];
+      bool canCompete = doc["card_info_response"]["can_compete"];
       countryIso2.toLowerCase();
 
       if (state.competitorCardId > 0 && state.judgeCardId > 0 && state.competitorCardId == cardId && millis() - state.lastTimeSent > 1500) {
@@ -90,7 +91,7 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
         sendSolve(false);
       } else if (state.competitorCardId > 0 && state.competitorCardId != cardId && state.finishedSolveTime > 0 && state.timeConfirmed) {
         state.judgeCardId = cardId;
-      } else if (state.competitorCardId == 0) {
+      } else if (state.competitorCardId == 0 && canCompete) {
         state.competitorDisplay = display;
         state.competitorCardId = cardId;
         primaryLangauge = countryIso2 != "pl";
