@@ -25,6 +25,7 @@ services:
       - PORT=8080
       - FIRMWARE_DIR=./firmware
       - API_URL=http://localhost:5001
+      - RUST_LOG=none,backend=trace cargo run
     restart: unless-stopped
     dns:
       - 127.0.0.1
