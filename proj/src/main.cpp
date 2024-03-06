@@ -1,25 +1,13 @@
-#if defined(ESP32)
-  #define ESP_ID() (unsigned long)ESP.getEfuseMac()
+#define ESP_ID() (unsigned long)ESP.getChipId()
 
-  #define CS_PIN D2
-  #define MISO_PIN D3
-  #define MOSI_PIN D10
-  #define SCK_PIN D8
-  #define STACKMAT_TIMER_PIN D7
-  #define PENALTY_BUTTON_PIN D1
-  #define SUBMIT_BUTTON_PIN D0
-#elif defined(ESP8266)
-  #define ESP_ID() (unsigned long)ESP.getChipId()
-
-  #define CS_PIN 16
-  #define SCK_PIN 14
-  #define MISO_PIN 12
-  #define MOSI_PIN 13
-  #define STACKMAT_TIMER_PIN 3
-  #define PENALTY_BUTTON_PIN 0
-  #define SUBMIT_BUTTON_PIN 2
-  #define DELEGATE_BUTTON_PIN 15
-#endif
+#define CS_PIN 16
+#define SCK_PIN 14
+#define MISO_PIN 12
+#define MOSI_PIN 13
+#define STACKMAT_TIMER_PIN 3
+#define PENALTY_BUTTON_PIN 0
+#define SUBMIT_BUTTON_PIN 2
+#define DELEGATE_BUTTON_PIN 15
 
 #include <Arduino.h>
 #include <SPI.h>
@@ -47,11 +35,7 @@ bool lastWebsocketState = false;
 char hostString[16] = {0};
 void setup()
 {
-  #if defined(ESP32)
-    Serial.begin(115200);
-  #elif defined(ESP8266)
-    Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, 1); //IT WONT WORK, because im setting that pin as input (TODO: debug mode)
-  #endif
+  Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, 1); //IT WONT WORK, because im setting that pin as input (TODO: debug mode)
 
   Logger.begin(&Serial, 5000);
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
