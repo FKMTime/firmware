@@ -135,7 +135,7 @@ void stackmatLoop()
     switch (stackmat.state())
     {
       case ST_Stopped:
-        if (!state.timeStarted || state.competitorCardId == 0 || state.finishedSolveTime > 0) break;
+        if (!state.timeStarted || state.competitorCardId == 0 || state.finishedSolveTime > 0 || stackmat.time() == state.lastFinishedSolveTime) break;
 
         Logger.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
         state.finishedSolveTime = stackmat.time();
