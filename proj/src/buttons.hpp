@@ -46,14 +46,15 @@ inline void penaltyButton() {
       delay(50);
     }
 
-    if(state.timeConfirmed || state.finishedSolveTime <= 0) return;
-    if (millis() - pressedTime > DNF_BUTTON_HOLD_TIME) {
-      state.timeOffset = state.timeOffset != -1 ? -1 : 0;
-      lcdChange();
-      lcdLoop();
-    } else { 
-      state.timeOffset = (state.timeOffset >= 16 || state.timeOffset == -1) ? 0 : state.timeOffset + 2;
-      lcdChange();
+    if(!state.timeConfirmed && state.finishedSolveTime > 0) {
+      if (millis() - pressedTime > DNF_BUTTON_HOLD_TIME) {
+        state.timeOffset = state.timeOffset != -1 ? -1 : 0;
+        lcdChange();
+        lcdLoop();
+      } else { 
+        state.timeOffset = (state.timeOffset >= 16 || state.timeOffset == -1) ? 0 : state.timeOffset + 2;
+        lcdChange();
+      }
     }
 
     while (digitalRead(PENALTY_BUTTON_PIN) == LOW) {
