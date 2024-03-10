@@ -117,7 +117,6 @@ void logState() {
 }
 
 void initUUID() {
-  unsigned long start = millis();
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo))
   {

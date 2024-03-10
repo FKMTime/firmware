@@ -1,5 +1,4 @@
 #include "ws_logger.h"
-#include "b64.hpp"
 
 WsLogger::WsLogger() {}
 void WsLogger::begin(Stream *_serial, unsigned long _sendInterval = 5000) {
@@ -27,11 +26,9 @@ void WsLogger::loop() {
         logData data = logs.back();
         logs.pop_back();
 
-        if (!isValidUTF8(data.msg.c_str())) continue;
-
         JsonObject obj = arr.add<JsonObject>();
         obj["millis"] = data.millis;
-        obj["msg"] = b64_encode((const unsigned char *)data.msg.c_str(), data.msg.length());
+        obj["msg"] = data.msg;
     }
 
     JsonDocument doc;
