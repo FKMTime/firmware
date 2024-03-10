@@ -115,6 +115,7 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
         return;
       }
 
+      state.lastCardReadTime = millis();
       state.finishedSolveTime = -1;
       state.timeOffset = 0;
       state.competitorCardId = 0;
