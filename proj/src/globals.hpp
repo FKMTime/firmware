@@ -31,6 +31,7 @@ struct GlobalState {
 
   bool timeStarted = false;
   bool timeConfirmed = false;
+  bool waitingForSolveResponse = false;
   unsigned long lastTimeSent;
 
   bool errored;

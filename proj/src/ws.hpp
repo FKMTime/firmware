@@ -122,6 +122,7 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       state.competitorDisplay = "";
       state.timeStarted = false;
       state.timeConfirmed = false;
+      state.waitingForSolveResponse = false;
       saveState();
       lcdChange();
     } else if (doc.containsKey("start_update")) {
@@ -167,6 +168,7 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
         state.judgeCardId = 0;
         state.competitorDisplay = "";
         state.timeStarted = false;
+        state.waitingForSolveResponse = false;
         saveState();
       }
 
@@ -215,6 +217,10 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
     webSocket.sendBIN((uint8_t *)NULL, 0);
   } else if (type == WStype_CONNECTED) {
     Logger.println("Connected to WebSocket server");
+
+    if(state.waitingForSolveResponse) {
+      sendSolve(false); // re-send time when waiting for solve response
+    }
   } else if (type == WStype_DISCONNECTED) {
     Logger.println("Disconnected from WebSocket server");
   }

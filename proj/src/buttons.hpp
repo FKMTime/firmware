@@ -33,6 +33,12 @@ inline void debugButton() {
       stackmat.loop();
       delay(50);
     }
+
+    // FOR DEBUG PURPOSES (TO TEST WITHOUT STACKMAT)
+    state.timeStarted = true;
+    state.finishedSolveTime = 6969;
+    state.competitorCardId = 3004425529;
+    lcdChange();
   }
 }
 

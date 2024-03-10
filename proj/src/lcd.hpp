@@ -70,6 +70,9 @@ inline void lcdLoop() {
   if (!webSocket.isConnected()) {
     lcdPrintf(0, true, ALIGN_CENTER, TR_SERVER_HEADER);
     lcdPrintf(1, true, ALIGN_CENTER, TR_DISCONNECTED);
+  } else if (state.waitingForSolveResponse) {
+    lcdPrintf(0, true, ALIGN_CENTER, TR_WAITING_FOR_SOLVE_TOP);
+    lcdPrintf(1, true, ALIGN_CENTER, TR_WAITING_FOR_SOLVE_BOTTOM);
   } else if (state.finishedSolveTime > 0 && state.competitorCardId > 0) { // after timer is stopped and competitor scanned his card
     uint8_t minutes = state.finishedSolveTime / 60000;
     uint8_t seconds = (state.finishedSolveTime % 60000) / 1000;

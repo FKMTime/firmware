@@ -22,5 +22,7 @@
 #define TR_DELEGATE_CALLED_BOTTOM (primaryLangauge ? "Release button" : "Pusc przycisk")
 
 #define TR_ERROR_HEADER "Error"
+#define TR_WAITING_FOR_SOLVE_TOP (primaryLangauge ? "Waiting for" : "Czekanie na")
+#define TR_WAITING_FOR_SOLVE_BOTTOM (primaryLangauge ? "WCA" : "WCA")
 
 #endif
