@@ -67,6 +67,7 @@ void setup()
   lcdPrintf(1, true, ALIGN_LEFT, "VER: %s", FIRMWARE_VERSION);
 
   netInit();
+  initUUID();
 }
 
 void loop() {

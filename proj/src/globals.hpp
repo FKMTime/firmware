@@ -21,6 +21,8 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 // Global stackmat variable
 Stackmat stackmat;
 
+UUID uuid;
+
 // Global state variable
 struct GlobalState {
   // TIMER INTERNALS
@@ -114,8 +116,20 @@ void logState() {
   Logger.printf("Last card read: %lu\n\n", state.lastCardReadTime);
 }
 
+void initUUID() {
+  unsigned long start = millis();
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo))
+  {
+    Logger.println("Failed to obtain time");
+  }
+  time_t epoch;
+  time(&epoch);
+
+  uuid.seed(epoch, ESP_ID());
+}
+
 char *generateUUID() {
-  UUID uuid;
   uuid.generate();
 
   return uuid.toCharArray();
