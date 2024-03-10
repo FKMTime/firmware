@@ -150,7 +150,7 @@ void stackmatLoop()
 
       case ST_Running:
         if (state.competitorCardId == 0 || state.finishedSolveTime > 0) break;
-        state.solveSessionId++;
+        strcpy(state.solveSessionId, generateUUID());
         state.finishedSolveTime = -1;
         state.timeOffset = 0;
         state.judgeCardId = 0;

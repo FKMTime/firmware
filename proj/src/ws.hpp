@@ -97,7 +97,7 @@ inline void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
         primaryLangauge = countryIso2 != "pl";
 
         if (state.lastFinishedSolveTime != stackmat.time()) {
-          state.solveSessionId++;
+          strcpy(state.solveSessionId, generateUUID());
           state.timeStarted = true;
           state.timeConfirmed = false;
           state.timeOffset = 0;

@@ -8,6 +8,9 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 #include "stackmat.h"
+#include "UUID.h"
+
+char *generateUUID();
 
 // Global websockets variable
 WebSocketsClient webSocket;
@@ -21,7 +24,7 @@ Stackmat stackmat;
 // Global state variable
 struct GlobalState {
   // TIMER INTERNALS
-  int solveSessionId;
+  char solveSessionId[37];
   int lastFinishedSolveTime = -1;
   int finishedSolveTime = -1;
   int timeOffset = 0;
@@ -48,14 +51,14 @@ bool sleepMode = false;
 bool primaryLangauge = true;
 
 struct SavedState {
-  int solveSessionId;
+  unsigned long competitorCardId;
   int finishedSolveTime;
   int timeOffset;
-  unsigned long competitorCardId;
+  char solveSessionId[37];
 };
 
 void stateDefault() {
-  state.solveSessionId = 0;
+  strcpy(state.solveSessionId, generateUUID());
   state.finishedSolveTime = -1;
   state.timeOffset = 0;
   state.competitorCardId = 0;
@@ -63,7 +66,7 @@ void stateDefault() {
 
 void saveState() {
   SavedState s = {0};
-  s.solveSessionId = state.solveSessionId;
+  strcpy(s.solveSessionId, state.solveSessionId);
   s.finishedSolveTime = state.finishedSolveTime;
   s.timeOffset = state.timeOffset;
   s.competitorCardId = state.competitorCardId;
@@ -85,7 +88,7 @@ void readState() {
   SavedState _state = {0};
   EEPROM.get(1, _state);
 
-  state.solveSessionId = _state.solveSessionId;
+  strcpy(state.solveSessionId, _state.solveSessionId);
   state.finishedSolveTime = _state.finishedSolveTime;
   state.timeOffset = _state.timeOffset;
   state.competitorCardId = _state.competitorCardId;
@@ -95,7 +98,7 @@ void readState() {
 /// @brief Simple debug tool, for checking the state
 void logState() {
   Logger.println("Current state:");
-  Logger.printf("Solve sess id: %d\n", state.solveSessionId);
+  Logger.printf("Solve sess id: %s\n", state.solveSessionId);
   Logger.printf("Last finished time: %d\n", state.lastFinishedSolveTime);
   Logger.printf("Finished time: %d\n", state.finishedSolveTime);
   Logger.printf("Time offset: %d\n", state.timeOffset);
@@ -109,6 +112,13 @@ void logState() {
   Logger.printf("Last timer state: %lu\n", state.lastTimerState);
   Logger.printf("Stackmat connected: %d\n", state.stackmatConnected);
   Logger.printf("Last card read: %lu\n\n", state.lastCardReadTime);
+}
+
+char *generateUUID() {
+  UUID uuid;
+  uuid.generate();
+
+  return uuid.toCharArray();
 }
 
 #endif

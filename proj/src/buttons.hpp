@@ -38,6 +38,7 @@ inline void debugButton() {
     state.timeStarted = true;
     state.finishedSolveTime = 6969;
     state.competitorCardId = 3004425529;
+    strcpy(state.solveSessionId, generateUUID());
     lcdChange();
   }
 }
