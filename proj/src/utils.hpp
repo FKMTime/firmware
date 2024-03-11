@@ -67,8 +67,6 @@ String getWsUrl() {
 }
 
 void sendSolve(bool delegate) {
-  if (state.finishedSolveTime == -1) return;
-
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo))
   {

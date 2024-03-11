@@ -133,7 +133,7 @@ inline void submitButton() {
 }
 
 inline void delegateButton() {
-  if (digitalRead(DELEGATE_BUTTON_PIN) == HIGH && state.finishedSolveTime > 0 && !sleepMode) {
+  if (digitalRead(DELEGATE_BUTTON_PIN) == HIGH && !sleepMode) {
     Logger.println("Delegate button pressed!");
     unsigned long pressedTime = millis();
 
