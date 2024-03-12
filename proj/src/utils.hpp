@@ -113,4 +113,43 @@ String displayTime(uint8_t m, uint8_t s, uint16_t ms) {
   return tmp;
 }
 
+float analogReadAvg(int pin, int c = 10) {
+  float v = 0;
+  for(int i = 0; i < c; i++) {
+    v += analogRead(pin);
+  }
+
+  return v / c;
+}
+
+float voltageToPercentage(float voltage) {
+    const float minVoltage = 3.6; // Minimum voltage of the battery
+    const float maxVoltage = 4.2; // Maximum voltage of the battery
+    float percentage = 0.0;
+
+    // Ensure the voltage is within the expected range
+    if (voltage < minVoltage) {
+        voltage = minVoltage;
+    } else if (voltage > maxVoltage) {
+        voltage = maxVoltage;
+    }
+
+    // Calculate the percentage
+    percentage = ((voltage - minVoltage) / (maxVoltage - minVoltage)) * 100;
+
+    return percentage;
+}
+
+#define V_REF 3.3
+#define READ_OFFSET 1.08
+#define MAX_ADC 4095.0 // max adc - 1
+#define R1 10000
+#define R2 10000
+float readBatteryVoltage(int pin) {
+  float val = analogReadAvg(pin);
+  float voltage = val * READ_OFFSET * (V_REF / MAX_ADC) * ((R1 + R2) / R2);
+
+  return voltage;
+}
+
 #endif
