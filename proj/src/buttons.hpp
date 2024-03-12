@@ -96,6 +96,8 @@ inline void submitButton() {
 
       return;
     }
+  if (state.finishedSolveTime <= 0) 
+
 
     Logger.println("Submit button pressed!");
     unsigned long pressedTime = millis();
@@ -104,9 +106,10 @@ inline void submitButton() {
       webSocket.loop();
       delay(50);
 
-      if (state.competitorCardId > 0 && state.finishedSolveTime <= 0 && millis() - pressedTime > RESET_COMPETITOR_HOLD_TIME) {
+      if (state.competitorCardId > 0 && !state.timeStarted && millis() - pressedTime > RESET_COMPETITOR_HOLD_TIME) {
         state.competitorCardId = 0;
         state.competitorDisplay = "";
+
         lcdChange();
         lcdLoop(); // refresh lcd
       }

@@ -1,21 +1,22 @@
 #ifndef __UTILS_HPP_
 #define __UTILS_HPP_
 
-#include <Arduino.h>
-#include <tuple>
-#include <stackmat.h>
-#include "ws_logger.h"
 #include "globals.hpp"
+#include "ws_logger.h"
+#include <Arduino.h>
+#include <stackmat.h>
+#include <tuple>
 
 #if defined(ESP32)
- #include <ESPmDNS.h>
+#include <ESPmDNS.h>
 #elif defined(ESP8266)
- #include <ESP8266mDNS.h>
+#include <ESP8266mDNS.h>
 #endif
 
 String getChipHex() {
   uint64_t chipid = ESP_ID();
-  String chipidStr = String((uint32_t)(chipid >> 32), HEX) + String((uint32_t)chipid, HEX);
+  String chipidStr =
+      String((uint32_t)(chipid >> 32), HEX) + String((uint32_t)chipid, HEX);
   return chipidStr;
 }
 
@@ -58,7 +59,9 @@ String getWsUrl() {
 
   int n = MDNS.queryService("stackmat", "tcp");
   if (n > 0) {
-    Logger.printf("Found stackmat MDNS:\n Hostname: %s, IP: %s, PORT: %d\n", MDNS.hostname(0).c_str(), MDNS.IP(0).toString().c_str(), MDNS.port(0));
+    Logger.printf("Found stackmat MDNS:\n Hostname: %s, IP: %s, PORT: %d\n",
+                  MDNS.hostname(0).c_str(), MDNS.IP(0).toString().c_str(),
+                  MDNS.port(0));
     return MDNS.hostname(0);
   }
   MDNS.end();
@@ -68,13 +71,12 @@ String getWsUrl() {
 
 void sendSolve(bool delegate) {
   struct tm timeinfo;
-  if (!getLocalTime(&timeinfo))
-  {
+  if (!getLocalTime(&timeinfo)) {
     Logger.println("Failed to obtain time");
   }
   time_t epoch;
   time(&epoch);
-  
+
   JsonDocument doc;
   doc["solve"]["solve_time"] = state.finishedSolveTime;
   doc["solve"]["offset"] = state.timeOffset;
@@ -89,7 +91,8 @@ void sendSolve(bool delegate) {
   serializeJson(doc, json);
   webSocket.sendTXT(json);
 
-  state.waitingForSolveResponse = true;
+  // if delegate is called before time has started, timer shouldnt wait for response
+  state.waitingForSolveResponse = state.timeStarted;
 }
 
 String displayTime(uint8_t m, uint8_t s, uint16_t ms) {
@@ -115,7 +118,7 @@ String displayTime(uint8_t m, uint8_t s, uint16_t ms) {
 
 float analogReadAvg(int pin, int c = 10) {
   float v = 0;
-  for(int i = 0; i < c; i++) {
+  for (int i = 0; i < c; i++) {
     v += analogRead(pin);
   }
 
@@ -123,21 +126,21 @@ float analogReadAvg(int pin, int c = 10) {
 }
 
 float voltageToPercentage(float voltage) {
-    const float minVoltage = 3.6; // Minimum voltage of the battery
-    const float maxVoltage = 4.2; // Maximum voltage of the battery
-    float percentage = 0.0;
+  const float minVoltage = 3.6; // Minimum voltage of the battery
+  const float maxVoltage = 4.2; // Maximum voltage of the battery
+  float percentage = 0.0;
 
-    // Ensure the voltage is within the expected range
-    if (voltage < minVoltage) {
-        voltage = minVoltage;
-    } else if (voltage > maxVoltage) {
-        voltage = maxVoltage;
-    }
+  // Ensure the voltage is within the expected range
+  if (voltage < minVoltage) {
+    voltage = minVoltage;
+  } else if (voltage > maxVoltage) {
+    voltage = maxVoltage;
+  }
 
-    // Calculate the percentage
-    percentage = ((voltage - minVoltage) / (maxVoltage - minVoltage)) * 100;
+  // Calculate the percentage
+  percentage = ((voltage - minVoltage) / (maxVoltage - minVoltage)) * 100;
 
-    return percentage;
+  return percentage;
 }
 
 #define V_REF 3.3
