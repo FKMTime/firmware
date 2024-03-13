@@ -5,7 +5,7 @@
 #include <Update.h>
 #include <WiFi.h>
 
-#define CHIP "esp32c3"
+#define CHIP "esp32"
 #elif defined(ESP8266)
 #include <ESP8266WiFi.h>
 #include <Updater.h>

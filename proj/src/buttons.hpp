@@ -16,10 +16,10 @@ inline void delegateButton();
 inline void debugButton();
 
 inline void buttonsLoop() {
-  debugButton();
-  penaltyButton();
-  submitButton();
-  delegateButton();
+  // debugButton();
+  // penaltyButton();
+  // submitButton();
+  // delegateButton();
 }
 
 // "Snapshot" debug button, click delegate and penalty buttons at the same time
