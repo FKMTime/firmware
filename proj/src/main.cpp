@@ -35,7 +35,11 @@ bool lastWebsocketState = false;
 char hostString[16] = {0};
 void setup()
 {
+  #if defined(ESP8266)
   Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, 1); //IT WONT WORK, because im setting that pin as input (TODO: debug mode)
+  #elif defined(ESP32)
+  Serial.begin(115200);
+  #endif
 
   Logger.begin(&Serial, 5000);
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);

@@ -55,7 +55,10 @@ inline void lcdLoop() {
 
     lcd.noBacklight();
     sleepMode = true;
+
+    #if defined(ESP8266)
     WiFi.forceSleepBegin(0);
+    #endif
     return;
   }
 
@@ -113,7 +116,10 @@ inline void lcdLoop() {
 }
 
 void restoreFromSleep() {
+  #if defined(ESP8266)
   WiFi.forceSleepWake();
+  #endif
+
   lcd.backlight();
   sleepMode = false;
   stateHasChanged = true;
