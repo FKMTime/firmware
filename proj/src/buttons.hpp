@@ -96,8 +96,6 @@ inline void submitButton() {
 
       return;
     }
-  if (state.finishedSolveTime <= 0) 
-
 
     Logger.println("Submit button pressed!");
     unsigned long pressedTime = millis();

@@ -7,6 +7,7 @@
 #include <WebSocketsClient.h>
 #include <Arduino.h>
 #include <EEPROM.h>
+#include "ws_logger.h"
 #include "stackmat.h"
 #include "UUID.h"
 
