@@ -15,6 +15,8 @@
 #include <EEPROM.h>
 #include <ArduinoJson.h>
 #include <CstmSoftwareSerial.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
 #include "version.h"
 #include "utils.hpp"
@@ -26,6 +28,7 @@
 
 void stackmatLoop();
 void rfidLoop();
+void loop1(void* pvParameters);
 
 SoftwareSerial stackmatSerial(STACKMAT_TIMER_PIN, -1, true);
 MFRC522 mfrc522(CS_PIN, UNUSED_PIN);
@@ -35,6 +38,8 @@ bool lastWebsocketState = false;
 char hostString[16] = {0};
 void setup()
 {
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
   #if defined(ESP8266)
   Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, 1); //IT WONT WORK, because im setting that pin as input (TODO: debug mode)
   #elif defined(ESP32)
@@ -72,6 +77,18 @@ void setup()
 
   netInit();
   initUUID();
+
+  xTaskCreatePinnedToCore (
+    loop1,     // Function to implement the task
+    "loop1",   // Name of the task
+    1000,      // Stack size in words
+    NULL,      // Task input parameter
+    0,         // Priority of the task
+    NULL,      // Task handle.
+    0          // Core where the task should run
+  );
+
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1);
 }
 
 void loop() {
@@ -105,6 +122,13 @@ void loop() {
   if (lastWebsocketState != webSocket.isConnected()) {
     lastWebsocketState = webSocket.isConnected();
     lcdChange();
+  }
+}
+
+void loop1(void* pvParameters) {
+  while(1) {
+    Serial.println("test on second thread");
+    delay(1000);
   }
 }
 
