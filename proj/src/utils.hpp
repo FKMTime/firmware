@@ -126,8 +126,8 @@ float analogReadAvg(int pin, int c = 10) {
 }
 
 float voltageToPercentage(float voltage) {
-  const float minVoltage = 3.6; // Minimum voltage of the battery
-  const float maxVoltage = 4.2; // Maximum voltage of the battery
+  const float minVoltage = 3.0;
+  const float maxVoltage = 4.1;
   float percentage = 0.0;
 
   // Ensure the voltage is within the expected range
@@ -152,7 +152,7 @@ float readBatteryVoltage(int pin) {
   float val = analogReadAvg(pin);
   float voltage = val * READ_OFFSET * (V_REF / MAX_ADC) * ((R1 + R2) / R2);
 
-  return voltage;
+  return voltage + 0.1;
 }
 
 #endif

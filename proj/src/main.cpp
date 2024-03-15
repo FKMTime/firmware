@@ -40,6 +40,9 @@ void setup()
 {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 
+  pinMode(34, INPUT);
+  float voltage = readBatteryVoltage(34);
+
   #if defined(ESP8266)
   Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, 1); //IT WONT WORK, because im setting that pin as input (TODO: debug mode)
   #elif defined(ESP32)
@@ -47,6 +50,7 @@ void setup()
   #endif
 
   Logger.begin(&Serial, 5000);
+  Logger.printf("Voltage: %f, perct: %f%%\n", voltage, voltageToPercentage(voltage));
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
   Logger.printf("Build time: %s\n", BUILD_TIME);
 
@@ -81,7 +85,7 @@ void setup()
   xTaskCreatePinnedToCore (
     loop1,     // Function to implement the task
     "loop1",   // Name of the task
-    1000,      // Stack size in words
+    10000,      // Stack size in words
     NULL,      // Task input parameter
     0,         // Priority of the task
     NULL,      // Task handle.
@@ -127,7 +131,14 @@ void loop() {
 
 void loop1(void* pvParameters) {
   while(1) {
-    Serial.println("test on second thread");
+    float max = 0;
+    for(int i = 0; i < 100; i++) {
+      float vol = readBatteryVoltage(34);
+      max = vol > max ? vol : max;
+      delay(1);
+    }
+
+    Logger.printf("Battery voltage: %f, battery perct: %f%% \n", max, voltageToPercentage(max));
     delay(1000);
   }
 }
