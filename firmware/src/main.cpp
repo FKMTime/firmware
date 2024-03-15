@@ -50,14 +50,12 @@ void setup() {
   lcdPrintf(0, true, ALIGN_LEFT, "ID: %x", ESP.getEfuseMac());
   lcdPrintf(1, true, ALIGN_LEFT, "VER: %s", FIRMWARE_VERSION);
 
-  xTaskCreatePinnedToCore(core2, "core2", 10000, NULL, 0, NULL, 1);
+  xTaskCreatePinnedToCore(core2, "core2", 10000, NULL, 0, NULL, 0);
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1); 
 }
 
 void loop() {
-  if (digitalRead(BUTTON2) == LOW) {
-    lightSleep(SLEEP_WAKE_BUTTON, LOW);
-  }
+  lcdLoop();
 }
 
 void core2(void* pvParameters) {
@@ -67,5 +65,9 @@ void core2(void* pvParameters) {
 }
 
 inline void loop2() {
-
+  if (digitalRead(BUTTON2) == LOW) {
+    lightSleep(SLEEP_WAKE_BUTTON, LOW);
+  }
+  delay(10);
+  Serial.printf("millis: %lu\n", millis());
 }

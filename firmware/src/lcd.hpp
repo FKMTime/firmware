@@ -58,6 +58,9 @@ inline void lcdLoop() {
 
     // enter light sleep and wait for SLEEP_WAKE_BUTTON to be pressed
     lightSleep(SLEEP_WAKE_BUTTON, LOW);
+
+    lcd.backlight();
+    stateHasChanged = true;
     return;
   }
 
@@ -69,8 +72,9 @@ inline void lcdLoop() {
   if (!stateHasChanged || timeSinceLastDraw < 50) return;
   stateHasChanged = false;
 
-  lcdPrintf(0, true, ALIGN_CENTER, "Lorem");
-  lcdPrintf(1, true, ALIGN_CENTER, "Ipsum");
+  lcdPrintf(0, true, ALIGN_CENTER, "Long lorem ipsum text");
+  lcdPrintf(1, true, ALIGN_CENTER, "TIME: %lu", millis());
+  // stateHasChanged = true;
 
   lcdLastDraw = millis();
 }
@@ -121,10 +125,8 @@ void scrollLoop() {
   else if(scrollX >= maxScroll) scrollDir = false;
 
   char buff[LCD_SIZE_X + 1];
-  for(int i = 0; i < LCD_SIZE_X; i++) {
-    buff[i] = scrollerBuff[i + scrollX];
-  }
-  buff[LCD_SIZE_X] = '\0';
+  strncpy(buff, scrollerBuff + scrollX, LCD_SIZE_X);
+
   y = scrollerLine;
   printToScreen(buff, true, ALIGN_LEFT);
 
@@ -147,9 +149,9 @@ void lcdScroller(int line, const char *str) {
     scrollerLine = line;
     y = line;
     scrollDir = true;
-    memcpy(scrollerBuff, str, strl + 1);
     char lineBuff[LCD_SIZE_X];
-    memcpy(lineBuff, str, strl + 1);
+    strncpy(scrollerBuff, str, strl);
+    strncpy(lineBuff, str, 16);
     printToScreen(lineBuff, true, ALIGN_LEFT);
     scrollerLen = strl;
   }
