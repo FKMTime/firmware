@@ -6,30 +6,32 @@
 #include <Update.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
-
-#include <BLEDevice.h>
-#include <BLEUtils.h>
-#include <BLEServer.h>
+#include <driver/rtc_io.h>
 
 #include "ws_logger.h"
-
-#define SERVICE_UUID "3ee59312-20bc-4c38-9e23-e785b6c385b1"
-#define CHARACTERISTIC_UUID "e2ed1fc5-0d2e-4c2d-a0a7-31e38431cc0c"
-
 
 void setup1(void* pvParameters);
 void loop1();
 
-class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
-  void onWrite(BLECharacteristic *pCharacteristic) {
-    std::string value = pCharacteristic->getValue();
-    if (value.length() > 0) {
-      Serial.printf("Characteristic written to: %s\n", value.c_str());
-    }
-  }
-};
+void sleepTest() {
+  Serial.println("Going to sleep now");
+  delay(1000);
+  Serial.println("3");
+  delay(1000);
+  Serial.println("2");
+  delay(1000);
+  Serial.println("1");
+  delay(1000);
+  Serial.flush(); 
+
+  rtc_gpio_hold_en(GPIO_NUM_33);
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_33, LOW);
+  esp_light_sleep_start();
+}
 
 void setup() {
+  pinMode(33, INPUT_PULLUP);
+
   xTaskCreatePinnedToCore (
     setup1,     // Function to implement the task
     "core2",   // Name of the task
@@ -42,25 +44,6 @@ void setup() {
 
   Serial.begin(115200);
   Logger.begin(&Serial);
-
-  BLEDevice::init("ESP32");
-  BLEServer *pServer = BLEDevice::createServer();
-
-  BLEService *pService = pServer->createService(SERVICE_UUID);
-  BLECharacteristic *pCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID, 
-    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
-
-  pCharacteristic->setValue("Hello World says Neil");
-  pCharacteristic->setCallbacks(new MyCharacteristicCallbacks());
-  pService->start();
-
-
-  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->setScanResponse(true);
-  pAdvertising->setMinPreferred(0x06); // functions that help with iPhone connections issue
-  pAdvertising->setMinPreferred(0x12);
-  BLEDevice::startAdvertising();
 }
 
 void setup1(void* pvParameters) {
@@ -74,6 +57,11 @@ void setup1(void* pvParameters) {
 void loop() {
   Logger.printf("dsadsa: %d\n", 213);
   Logger.loop();
+
+  if (digitalRead(33) == LOW) {
+    sleepTest();
+  }
+
   delay(500);
 }
 
