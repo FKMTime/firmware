@@ -18,7 +18,7 @@
 #define RFID_MOSI 23
 
 // DEFAULT I2C PINOUT
-#define LCD_SDA 33
+#define LCD_SDA 21
 #define LCD_SCL 22
 
 #endif
