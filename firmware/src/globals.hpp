@@ -7,6 +7,7 @@
 #include "defines.h"
 
 LiquidCrystal_I2C lcd(LCD_ADDR, LCD_SIZE_X, LCD_SIZE_Y);
+WebSocketsClient webSocket;
 Stackmat stackmat;
 
 #endif

@@ -4,8 +4,6 @@
 #include <EEPROM.h>
 #include <ArduinoJson.h>
 #include <Update.h>
-#include <WiFi.h>
-#include <WiFiManager.h>
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 
@@ -15,6 +13,7 @@
 #include "version.h"
 #include "globals.hpp"
 #include "lcd.hpp"
+#include "radio/radio.hpp"
 #include <stackmat.h>
 
 void core2(void* pvParameters);
@@ -48,7 +47,10 @@ void setup() {
   Logger.printf("Battery: %f%%\n", initialBat);
 
   lcdPrintf(0, true, ALIGN_LEFT, "ID: %x", ESP.getEfuseMac());
+  lcdPrintf(0, false, ALIGN_RIGHT, "%d%%", (int)initialBat);
   lcdPrintf(1, true, ALIGN_LEFT, "VER: %s", FIRMWARE_VERSION);
+
+  initWifi();
 
   xTaskCreatePinnedToCore(core2, "core2", 10000, NULL, 0, NULL, 0);
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1); 
@@ -56,6 +58,7 @@ void setup() {
 
 void loop() {
   lcdLoop();
+  webSocket.loop();
 }
 
 void core2(void* pvParameters) {
@@ -65,9 +68,9 @@ void core2(void* pvParameters) {
 }
 
 inline void loop2() {
-  if (digitalRead(BUTTON2) == LOW) {
-    lightSleep(SLEEP_WAKE_BUTTON, LOW);
-  }
+  // if (digitalRead(BUTTON2) == LOW) {
+  //   lightSleep(SLEEP_WAKE_BUTTON, LOW);
+  // }
+  // Serial.printf("millis: %lu\n", millis());
   delay(10);
-  Serial.printf("millis: %lu\n", millis());
 }

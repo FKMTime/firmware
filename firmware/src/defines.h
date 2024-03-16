@@ -5,6 +5,10 @@
 #define LCD_SIZE_X 16
 #define LCD_SIZE_Y 2
 
-#define SLEEP_TIME 300000 // 5mins (for test)
+#define SLEEP_TIME 300000 // 5min (for test)
+
+#define WIFI_SSID_PREFIX "FkmTimer"
+#define WIFI_PASSWORD "FkmTimer"
+#define CHIP "esp32"
 
 #endif
