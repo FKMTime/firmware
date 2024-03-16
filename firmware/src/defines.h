@@ -6,6 +6,7 @@
 #define LCD_SIZE_Y 2
 
 #define SLEEP_TIME 300000 // 5min (for test)
+#define BATTERY_READ_INTERVAL 30000 // 30s
 
 #define WIFI_SSID_PREFIX "FkmTimer"
 #define WIFI_PASSWORD "FkmTimer"

@@ -61,6 +61,10 @@ inline void lcdLoop() {
 
     lcd.backlight();
     stateHasChanged = true;
+
+    WiFi.disconnect();
+    WiFi.reconnect();
+
     return;
   }
 

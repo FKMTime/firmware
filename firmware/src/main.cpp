@@ -40,12 +40,12 @@ void setup() {
   pinMode(BUTTON3, INPUT_PULLUP);
   pinMode(BAT_ADC, INPUT);
 
-  float batteryVoltage = readBatteryVoltage(BAT_ADC, 15, false);
-  float initialBat = voltageToPercentage(batteryVoltage);
+  currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 15, false);
+  float initialBat = voltageToPercentage(currentBatteryVoltage);
   Logger.printf("ESP ID: %x\n", ESP.getEfuseMac());
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
   Logger.printf("Build time: %s\n", BUILD_TIME);
-  Logger.printf("Battery: %f%% (%fv)\n", initialBat, batteryVoltage);
+  Logger.printf("Battery: %f%% (%fv)\n", initialBat, currentBatteryVoltage);
 
   lcdPrintf(0, true, ALIGN_LEFT, "ID: %x", ESP.getEfuseMac());
   lcdPrintf(0, false, ALIGN_RIGHT, "%d%%", (int)initialBat);
@@ -63,11 +63,11 @@ void loop() {
   webSocket.loop();
   Logger.loop();
 
-  if (millis() - lastBatRead > 15000) {
-    float batteryVoltage = readBatteryVoltage(BAT_ADC, 15, false);
-    float initialBat = voltageToPercentage(batteryVoltage);
+  if (millis() - lastBatRead > BATTERY_READ_INTERVAL) {
+    currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 15, false);
+    float batPerct = voltageToPercentage(currentBatteryVoltage);
 
-    Logger.printf("Battery: %f%% (%fv)\n", initialBat, batteryVoltage);
+    Logger.printf("Battery: %f%% (%fv)\n", batPerct, currentBatteryVoltage);
     lastBatRead = millis();
   }
 
