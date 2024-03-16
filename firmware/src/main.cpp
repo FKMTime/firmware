@@ -42,12 +42,12 @@ void setup() {
 
   currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 15, false);
   float initialBat = voltageToPercentage(currentBatteryVoltage);
-  Logger.printf("ESP ID: %x\n", ESP.getEfuseMac());
+  Logger.printf("ESP ID: %x\n", (unsigned long)ESP.getEfuseMac());
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
   Logger.printf("Build time: %s\n", BUILD_TIME);
   Logger.printf("Battery: %f%% (%fv)\n", initialBat, currentBatteryVoltage);
 
-  lcdPrintf(0, true, ALIGN_LEFT, "ID: %x", ESP.getEfuseMac());
+  lcdPrintf(0, true, ALIGN_LEFT, "ID: %x", (unsigned long)ESP.getEfuseMac());
   lcdPrintf(0, false, ALIGN_RIGHT, "%d%%", (int)initialBat);
   lcdPrintf(1, true, ALIGN_LEFT, "VER: %s", FIRMWARE_VERSION);
 
@@ -68,6 +68,7 @@ void loop() {
     float batPerct = voltageToPercentage(currentBatteryVoltage);
 
     Logger.printf("Battery: %f%% (%fv)\n", batPerct, currentBatteryVoltage);
+    sendBatteryStats(batPerct, currentBatteryVoltage);
     lastBatRead = millis();
   }
 

@@ -47,7 +47,7 @@ void WsLogger::loop() {
     }
 
     JsonDocument doc;
-    doc["logs"]["esp_id"] = ESP.getEfuseMac();
+    doc["logs"]["esp_id"] = (unsigned long)ESP.getEfuseMac();
     doc["logs"]["logs"] = logsArrDoc;
 
     if (wsClient != NULL) {

@@ -11,6 +11,11 @@
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length);
 String wsURL = "";
 
+// OTA
+int sketchSize = 0;
+int sketchSizeRemaining = 0;
+bool update = false;
+
 void initWs() {
   lcdPrintf(0, true, ALIGN_CENTER, "FKM");
   lcdPrintf(1, true, ALIGN_CENTER, "Looking for MDNS");
@@ -35,68 +40,35 @@ void initWs() {
 }
 
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
-  /*
   if (type == WStype_TEXT) {
     JsonDocument doc;
     deserializeJson(doc, payload);
 
     if (doc.containsKey("card_info_response")) {
-      state.lastCardReadTime = millis();
-
       String display = doc["card_info_response"]["display"];
       unsigned long cardId = doc["card_info_response"]["card_id"];
       String countryIso2 = doc["card_info_response"]["country_iso2"];
       bool canCompete = doc["card_info_response"]["can_compete"];
       countryIso2.toLowerCase();
 
-      if (state.competitorCardId > 0 && state.judgeCardId > 0 && state.competitorCardId == cardId && millis() - state.lastTimeSent > 1500) {
-        state.lastTimeSent = millis();
-        sendSolve(false);
-      } else if (state.competitorCardId > 0 && state.competitorCardId != cardId && state.finishedSolveTime > 0 && state.timeConfirmed) {
-        state.judgeCardId = cardId;
-      } else if (state.competitorCardId == 0 && canCompete) {
-        state.competitorDisplay = display;
-        state.competitorCardId = cardId;
-        primaryLangauge = countryIso2 != "pl";
-
-        if (state.lastFinishedSolveTime != stackmat.time()) {
-          strcpy(state.solveSessionId, generateUUID());
-          state.timeStarted = true;
-          state.timeConfirmed = false;
-          state.timeOffset = 0;
-          state.finishedSolveTime = stackmat.time();
-          state.lastFinishedSolveTime = state.finishedSolveTime;
-        }
-      }
-
       lcdChange();
     } else if (doc.containsKey("solve_confirm")) {
-      if (doc["solve_confirm"]["competitor_id"] != state.competitorCardId ||
-          doc["solve_confirm"]["esp_id"] != ESP_ID() ||
-          doc["solve_confirm"]["session_id"] != state.solveSessionId) {
-        Logger.println("Wrong solve confirm frame!");
-        return;
-      }
+      // if (doc["solve_confirm"]["competitor_id"] != state.competitorCardId ||
+      //     doc["solve_confirm"]["esp_id"] != ESP_ID() ||
+      //     doc["solve_confirm"]["session_id"] != state.solveSessionId) {
+      //   Logger.println("Wrong solve confirm frame!");
+      //   return;
+      // }
 
-      state.lastCardReadTime = millis();
-      state.finishedSolveTime = -1;
-      state.timeOffset = 0;
-      state.competitorCardId = 0;
-      state.judgeCardId = 0;
-      state.competitorDisplay = "";
-      state.timeStarted = false;
-      state.timeConfirmed = false;
-      state.waitingForSolveResponse = false;
-      saveState();
       lcdChange();
     } else if (doc.containsKey("start_update")) {
       if (update) {
         ESP.restart();
       }
 
-      if (doc["start_update"]["esp_id"] != ESP_ID() ||
+      if (doc["start_update"]["esp_id"] != (unsigned long)ESP.getEfuseMac() ||
           doc["start_update"]["version"] == FIRMWARE_VERSION) {
-        Logger.println("Cannot start update!");
+        Logger.println("Cannot start update! (wrong esp id or same firmware version)");
         return;
       }
 
@@ -117,7 +89,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
 
       webSocket.sendBIN((uint8_t *)NULL, 0);
     } else if (doc.containsKey("api_error")) {
-      if (doc["api_error"]["esp_id"] != ESP_ID()) {
+      if (doc["api_error"]["esp_id"] != (unsigned long)ESP.getEfuseMac()) {
         Logger.println("Wrong api error frame!");
         return;
       }
@@ -126,20 +98,8 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       bool shouldResetTime = doc["api_error"]["should_reset_time"];
       Logger.printf("Api entry error: %s\n", errorMessage.c_str());
 
-      if (shouldResetTime) {
-        state.finishedSolveTime = -1;
-        state.competitorCardId = 0;
-        state.judgeCardId = 0;
-        state.competitorDisplay = "";
-        state.timeStarted = false;
-        state.waitingForSolveResponse = false;
-        saveState();
-      }
-
-      lcdPrintf(0, true, ALIGN_CENTER, TR_ERROR_HEADER);
+      // lcdPrintf(0, true, ALIGN_CENTER, TR_ERROR_HEADER);
       lcdPrintf(1, true, ALIGN_CENTER, errorMessage.c_str());
-
-      state.errored = true;
     }
   } else if (type == WStype_BIN) {
     if (Update.write(payload, length) != length) {
@@ -181,14 +141,9 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
     webSocket.sendBIN((uint8_t *)NULL, 0);
   } else if (type == WStype_CONNECTED) {
     Logger.println("Connected to WebSocket server");
-
-    if(state.waitingForSolveResponse) {
-      sendSolve(false); // re-send time when waiting for solve response
-    }
   } else if (type == WStype_DISCONNECTED) {
     Logger.println("Disconnected from WebSocket server");
   }
-  */
 }
 
 #endif

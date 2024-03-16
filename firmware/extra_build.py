@@ -23,7 +23,7 @@ def after_build(source, target, env):
     version = os.popen("cat src/version.h | grep \"FIRMWARE_VERSION\" | cut -d'\"' -f 2").read().strip()
     buildTime = os.popen("cat src/version.h | grep \"BUILD_TIME\" | cut -d'\"' -f 2").read().strip()
     bin_name = f"{env['BOARD_MCU']}.{version}.{buildTime}.bin"
-    # os.popen(f"mkdir -p ./build ; cp {source[0].get_abspath()} ./build/{bin_name}")
+    os.popen(f"mkdir -p ./build ; cp {source[0].get_abspath()} ./build/{bin_name}")
 
 def generate_version():
     filesHash = os.popen("bash ./hash.sh").read().strip()

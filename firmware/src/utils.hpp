@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <driver/rtc_io.h>
+#include "globals.hpp"
 
 void lightSleep(gpio_num_t gpio, int level) {
   Serial.println("Going into light sleep...");
@@ -46,6 +47,17 @@ float readBatteryVoltage(int pin, int delayMs = 5, bool offset = true) {
   float voltage = val * READ_OFFSET * (V_REF / MAX_ADC) * ((R1 + R2) / R2);
 
   return voltage + (offset ? VOLTAGE_OFFSET : 0);
+}
+
+void sendBatteryStats(float level, float voltage) {
+  JsonDocument doc;
+  doc["battery"]["esp_id"] = (unsigned long)ESP.getEfuseMac();
+  doc["battery"]["level"] = level;
+  doc["battery"]["voltage"] = voltage;
+
+  String json;
+  serializeJson(doc, json);
+  webSocket.sendTXT(json);
 }
 
 #endif
