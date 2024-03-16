@@ -17,13 +17,14 @@ void lightSleep(gpio_num_t gpio, int level) {
   delay(100);
 }
 
-float analogReadAvg(int pin, int c = 10) {
-  float v = 0;
+uint16_t analogReadMax(int pin, int c = 10, int delayMs = 5) {
+  uint16_t v = 0;
   for (int i = 0; i < c; i++) {
-    v += analogRead(pin);
+    v = max(analogRead(pin), v);
+    delay(delayMs);
   }
 
-  return v / c;
+  return v;
 }
 
 #define MIN_VOLTAGE 3.0 // to change (measure min voltage of cell when esp is turning on)
@@ -40,11 +41,11 @@ float voltageToPercentage(float voltage) {
 #define MAX_ADC 4095.0 // max adc - 1
 #define R1 10000
 #define R2 10000
-float readBatteryVoltage(int pin) {
-  float val = analogReadAvg(pin);
+float readBatteryVoltage(int pin, int delayMs = 5, bool offset = true) {
+  float val = analogReadMax(pin, 10, delayMs);
   float voltage = val * READ_OFFSET * (V_REF / MAX_ADC) * ((R1 + R2) / R2);
 
-  return voltage + VOLTAGE_OFFSET;
+  return voltage + (offset ? VOLTAGE_OFFSET : 0);
 }
 
 #endif

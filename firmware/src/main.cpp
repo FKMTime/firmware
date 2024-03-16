@@ -40,11 +40,12 @@ void setup() {
   pinMode(BUTTON3, INPUT_PULLUP);
   pinMode(BAT_ADC, INPUT);
 
-  float initialBat = voltageToPercentage(readBatteryVoltage(BAT_ADC));
+  float batteryVoltage = readBatteryVoltage(BAT_ADC, 15, false);
+  float initialBat = voltageToPercentage(batteryVoltage);
   Logger.printf("ESP ID: %x\n", ESP.getEfuseMac());
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
   Logger.printf("Build time: %s\n", BUILD_TIME);
-  Logger.printf("Battery: %f%%\n", initialBat);
+  Logger.printf("Battery: %f%% (%fv)\n", initialBat, batteryVoltage);
 
   lcdPrintf(0, true, ALIGN_LEFT, "ID: %x", ESP.getEfuseMac());
   lcdPrintf(0, false, ALIGN_RIGHT, "%d%%", (int)initialBat);

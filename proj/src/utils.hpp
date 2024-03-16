@@ -116,7 +116,7 @@ String displayTime(uint8_t m, uint8_t s, uint16_t ms) {
   return tmp;
 }
 
-float analogReadAvg(int pin, int c = 10) {
+float analogReadMax(int pin, int c = 10) {
   float v = 0;
   for (int i = 0; i < c; i++) {
     v += analogRead(pin);
@@ -149,7 +149,7 @@ float voltageToPercentage(float voltage) {
 #define R1 10000
 #define R2 10000
 float readBatteryVoltage(int pin) {
-  float val = analogReadAvg(pin);
+  float val = analogReadMax(pin);
   float voltage = val * READ_OFFSET * (V_REF / MAX_ADC) * ((R1 + R2) / R2);
 
   return voltage + 0.1;
