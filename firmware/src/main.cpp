@@ -57,9 +57,21 @@ void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1); 
 }
 
+unsigned long lastBatRead = 0;
 void loop() {
   lcdLoop();
   webSocket.loop();
+  Logger.loop();
+
+  if (millis() - lastBatRead > 15000) {
+    float batteryVoltage = readBatteryVoltage(BAT_ADC, 15, false);
+    float initialBat = voltageToPercentage(batteryVoltage);
+
+    Logger.printf("Battery: %f%% (%fv)\n", initialBat, batteryVoltage);
+    lastBatRead = millis();
+  }
+
+  delay(5);
 }
 
 void core2(void* pvParameters) {

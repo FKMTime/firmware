@@ -33,8 +33,6 @@ void WsLogger::loop() {
     if (millis() - lastSent < sendInterval) return;
     lastSent = millis();
 
-    Serial.printf("DBG: logs size: %d\n", logs.size());
-
     if (logs.size() == 0 || wsClient == NULL || !wsClient->isConnected()) return;
     JsonDocument logsArrDoc;
     JsonArray arr = logsArrDoc.to<JsonArray>();
