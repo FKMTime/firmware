@@ -12,15 +12,25 @@
 #include "version.h"
 #include "globals.hpp"
 #include "lcd.hpp"
+#include "buttons.hpp"
 #include "radio/radio.hpp"
 #include <stackmat.h>
+#include <a_buttons.h>
 
 void core2(void* pvParameters);
 inline void loop2();
 void rfidLoop();
+void btnTest();
+void btnTest2();
 
+AButtons abuttons;
 void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
+  pinMode(BUTTON1, INPUT_PULLUP);
+  pinMode(BUTTON2, INPUT_PULLUP);
+  pinMode(BUTTON3, INPUT_PULLUP);
+  pinMode(BAT_ADC, INPUT);
 
   Serial.begin(115200);
   Serial2.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, STACKMAT_JACK);
@@ -33,11 +43,11 @@ void setup() {
   mfrc522.PCD_Init();
   lcdInit();
 
-  pinMode(BUTTON1, INPUT_PULLUP);
-  pinMode(BUTTON2, INPUT_PULLUP);
-  pinMode(BUTTON3, INPUT_PULLUP);
-  pinMode(BAT_ADC, INPUT);
+  size_t btn1 = abuttons.addButton(BUTTON1);
+  abuttons.addButtonCb(btn1, 1000, false, btnTest);
+  abuttons.addButtonCb(btn1, 10000, true, btnTest2);
 
+  delay(100);
   currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 15, false);
   float initialBat = voltageToPercentage(currentBatteryVoltage);
   Logger.printf("ESP ID: %x\n", (unsigned long)ESP.getEfuseMac());
@@ -71,8 +81,6 @@ void loop() {
     lastBatRead = millis();
   }
 
-  rfidLoop();
-
   delay(5);
 }
 
@@ -83,7 +91,9 @@ void core2(void* pvParameters) {
 }
 
 inline void loop2() {
-  // rfidLoop();
+  rfidLoop();
+  // buttonsLoop();
+  abuttons.loop();
   delay(10);
 }
 
@@ -106,4 +116,12 @@ void rfidLoop() {
 
   mfrc522.PICC_HaltA();
   lastCardReadTime = millis();
+}
+
+void btnTest() {
+  Serial.printf("Button pressed!\n");
+}
+
+void btnTest2() {
+  Serial.printf("2 Button pressed!\n");
 }
