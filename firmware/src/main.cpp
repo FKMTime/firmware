@@ -1,9 +1,8 @@
 #include <Arduino.h>
-#include <SPI.h>
-#include <MFRC522.h>
 #include <EEPROM.h>
 #include <ArduinoJson.h>
 #include <Update.h>
+#include <Wire.h>
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 
@@ -18,8 +17,7 @@
 
 void core2(void* pvParameters);
 inline void loop2();
-
-MFRC522 mfrc522(RFID_CS, UNUSED_PIN);
+void rfidLoop();
 
 void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
@@ -29,7 +27,7 @@ void setup() {
   Logger.begin(&Serial);
   EEPROM.begin(128);
   stackmat.begin(&Serial2);
-  SPI.begin(RFID_SCK, RFID_MISO, RFID_MOSI, RFID_CS);
+  SPI.begin(RFID_SCK, RFID_MISO, RFID_MOSI);
   Wire.begin(LCD_SDA, LCD_SCL);
 
   mfrc522.PCD_Init();
@@ -67,10 +65,13 @@ void loop() {
     currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 15, false);
     float batPerct = voltageToPercentage(currentBatteryVoltage);
 
+    // TODO: remove this battery log
     Logger.printf("Battery: %f%% (%fv)\n", batPerct, currentBatteryVoltage);
     sendBatteryStats(batPerct, currentBatteryVoltage);
     lastBatRead = millis();
   }
+
+  rfidLoop();
 
   delay(5);
 }
@@ -82,9 +83,27 @@ void core2(void* pvParameters) {
 }
 
 inline void loop2() {
-  // if (digitalRead(BUTTON2) == LOW) {
-  //   lightSleep(SLEEP_WAKE_BUTTON, LOW);
-  // }
-  // Serial.printf("millis: %lu\n", millis());
+  // rfidLoop();
   delay(10);
+}
+
+unsigned long lastCardReadTime = 0;
+void rfidLoop() {
+  if (millis() - lastCardReadTime < 500) return;
+  if(!mfrc522.PICC_IsNewCardPresent()) return;
+  if(!mfrc522.PICC_ReadCardSerial()) return;
+
+  unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
+  Logger.printf("Scanned card ID: %lu\n", cardId);
+
+  JsonDocument doc;
+  doc["card_info_request"]["card_id"] = cardId;
+  doc["card_info_request"]["esp_id"] = (unsigned long)ESP.getEfuseMac();
+
+  String json;
+  serializeJson(doc, json);
+  webSocket.sendTXT(json);
+
+  mfrc522.PICC_HaltA();
+  lastCardReadTime = millis();
 }
