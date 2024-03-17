@@ -22,6 +22,7 @@ inline void loop2();
 void rfidLoop();
 void btnTest();
 void btnTest2();
+void btnAfterReleaseTest();
 
 AButtons abuttons;
 void setup() {
@@ -43,9 +44,13 @@ void setup() {
   mfrc522.PCD_Init();
   lcdInit();
 
-  size_t btn1 = abuttons.addButton(BUTTON1);
+  size_t btn1 = abuttons.addButton(BUTTON1, btnAfterReleaseTest);
   abuttons.addButtonCb(btn1, 1000, false, btnTest);
   abuttons.addButtonCb(btn1, 10000, true, btnTest2);
+
+  size_t btn2 = abuttons.addButton(BUTTON2);
+  abuttons.addButtonCb(btn2, 1000, false, btnTest);
+  abuttons.addButtonCb(btn2, 2000, false, btnTest2);
 
   delay(100);
   currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 15, false);
@@ -124,4 +129,8 @@ void btnTest() {
 
 void btnTest2() {
   Serial.printf("2 Button pressed!\n");
+}
+
+void btnAfterReleaseTest() {
+  Serial.printf("After release!\n");
 }

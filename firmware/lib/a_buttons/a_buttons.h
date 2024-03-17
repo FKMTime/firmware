@@ -9,20 +9,21 @@ typedef void (*callback_t)();
 struct ButtonCb {
     int callTime;
     bool called;
-    bool afterUnpress;
+    bool afterRelease;
     callback_t callback;
 };
 
 struct Button {
     uint8_t pin; // TODO: add multiple buttons press (at once)
+    callback_t afterReleaseCb;
     std::vector<ButtonCb> callbacks;
 };
 
 class AButtons {
   public:
     AButtons();
-    size_t addButton(uint8_t _pin);
-    void addButtonCb(size_t idx, int _callTime, bool _afterUnpress, callback_t callback);
+    size_t addButton(uint8_t _pin, callback_t _afterReleaseCb = NULL);
+    void addButtonCb(size_t idx, int _callTime, bool _afterRelease, callback_t callback);
     void loop();
 
   private:

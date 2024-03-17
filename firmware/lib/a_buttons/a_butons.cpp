@@ -22,7 +22,7 @@ void AButtons::loop() {
                 ButtonCb &bcb = b.callbacks.at(cb);
 
                 if(bcb.callTime > millis() - bPressedTime) break;
-                if(bcb.afterUnpress || bcb.called) continue;
+                if(bcb.afterRelease || bcb.called) continue;
 
                 bcb.callback();
                 bcb.called = true;
@@ -37,27 +37,30 @@ void AButtons::loop() {
             bcb.called = false; // clear called status
 
             if(bcb.callTime > millis() - bPressedTime) break;
-            if(!bcb.afterUnpress) continue;
+            if(!bcb.afterRelease) continue;
 
             bcb.callback();
         }
+
+        if(b.afterReleaseCb != NULL) b.afterReleaseCb();
     }
 }
 
-size_t AButtons::addButton(uint8_t _pin) {
+size_t AButtons::addButton(uint8_t _pin, callback_t _afterReleaseCb) {
     Button b = {
-        .pin = _pin
+        .pin = _pin,
+        .afterReleaseCb = _afterReleaseCb
     };
 
     buttons.push_back(b);
     return buttons.size() - 1;
 }
 
-void AButtons::addButtonCb(size_t idx, int _callTime, bool _afterUnpress, callback_t callback) {
+void AButtons::addButtonCb(size_t idx, int _callTime, bool _afterRelease, callback_t callback) {
     ButtonCb cb = {
         .callTime = _callTime,  
         .called = false,
-        .afterUnpress = _afterUnpress,
+        .afterRelease = _afterRelease,
         .callback = callback
     };
 
