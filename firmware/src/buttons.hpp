@@ -26,10 +26,27 @@ void delegateButtonAfterRelease() {
   lcdChange();
 }
 
+void testBtn2Hold(int holdTime) {
+    blockLcdChange(true);
+
+    lcdPrintf(0, true, ALIGN_CENTER, "Test Holding");
+    lcdPrintf(1, true, ALIGN_CENTER, "%d", holdTime);
+}
+
+void testBtn2AfterRelease() {
+  lcdClear();
+
+  blockLcdChange(false);
+  lcdChange();
+}
+
 void buttonsInit() {
   size_t delegateBtn = buttons.addButton(BUTTON1, delegateButtonAfterRelease);
   buttons.addButtonReocCb(delegateBtn, 1000, delegateButtonHold);
   buttons.addButtonCb(delegateBtn, 3000, false, delegateButtonCalled);
+
+  size_t btn2 = buttons.addButton(BUTTON2, testBtn2AfterRelease);
+  buttons.addButtonReocCb(btn2, 0, testBtn2Hold);
 
 //   size_t btn2 = buttons.addButton(BUTTON2);
 //   buttons.addButtonCb(btn2, 1000, false, btnTest);

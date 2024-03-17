@@ -62,6 +62,7 @@ inline void lcdPrintLoop() {
     lcdPrintf(0, true, ALIGN_CENTER, "Sleep mode");
     lcdPrintf(1, true, ALIGN_CENTER, "Submit to wake");
     lcd.noBacklight();
+    mfrc522.PCD_SoftPowerDown();
 
     // enter light sleep and wait for SLEEP_WAKE_BUTTON to be pressed
     lightSleep(SLEEP_WAKE_BUTTON, LOW);
@@ -74,6 +75,7 @@ inline void lcdPrintLoop() {
 
     WiFi.disconnect();
     WiFi.reconnect();
+    mfrc522.PCD_SoftPowerUp();
 
     return;
   }
