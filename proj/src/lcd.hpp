@@ -20,7 +20,7 @@ unsigned long lastScrollerTime = 0;
 char lcdBuff[LCD_SIZE_Y][LCD_SIZE_X];
 int x, y = 0;
 
-bool stateHasChanged = true;
+bool lcdHasChanged = true;
 unsigned long lcdLastDraw = 0;
 
 enum PrintAligment {
@@ -43,12 +43,12 @@ inline void lcdInit() {
 }
 
 inline void lcdChange() {
-  stateHasChanged = true;
+  lcdHasChanged = true;
 }
 
-inline void lcdLoop() {
+inline void lcdPrintLoop() {
   unsigned long timeSinceLastDraw = millis() - lcdLastDraw;
-  if (timeSinceLastDraw > SLEEP_TIME && !stateHasChanged) {
+  if (timeSinceLastDraw > SLEEP_TIME && !lcdHasChanged) {
 
     lcdPrintf(0, true, ALIGN_CENTER, "Sleep mode");
     lcdPrintf(1, true, ALIGN_CENTER, "Submit to wake");
@@ -67,8 +67,8 @@ inline void lcdLoop() {
     lastScrollerTime = millis();
   }
 
-  if (!stateHasChanged || timeSinceLastDraw < 50) return;
-  stateHasChanged = false;
+  if (!lcdHasChanged || timeSinceLastDraw < 50) return;
+  lcdHasChanged = false;
 
   if (!webSocket.isConnected()) {
     lcdPrintf(0, true, ALIGN_CENTER, TR_SERVER_HEADER);
@@ -122,7 +122,7 @@ void restoreFromSleep() {
 
   lcd.backlight();
   sleepMode = false;
-  stateHasChanged = true;
+  lcdHasChanged = true;
 }
 
 // Clears screen and sets cursor on (0, 0)

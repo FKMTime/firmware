@@ -120,7 +120,7 @@ void loop() {
       state.judgeCardId = 0;
     }
     
-    lcdLoop();
+    lcdPrintLoop();
   }
 
   if (lastWebsocketState != webSocket.isConnected()) {

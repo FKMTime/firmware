@@ -6,7 +6,7 @@
 #define BUTTON1 33
 #define BUTTON2 32
 #define BUTTON3 27
-#define SLEEP_WAKE_BUTTON (gpio_num_t)BUTTON1
+#define SLEEP_WAKE_BUTTON (gpio_num_t)BUTTON3
 
 #define BAT_ADC 34
 #define STACKMAT_JACK 4

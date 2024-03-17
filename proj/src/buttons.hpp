@@ -57,7 +57,7 @@ inline void penaltyButton() {
       if (millis() - pressedTime > DNF_BUTTON_HOLD_TIME) {
         state.timeOffset = state.timeOffset != -1 ? -1 : 0;
         lcdChange();
-        lcdLoop();
+        lcdPrintLoop();
       } else { 
         state.timeOffset = (state.timeOffset >= 16 || state.timeOffset == -1) ? 0 : state.timeOffset + 2;
         lcdChange();
@@ -109,7 +109,7 @@ inline void submitButton() {
         state.competitorDisplay = "";
 
         lcdChange();
-        lcdLoop(); // refresh lcd
+        lcdPrintLoop(); // refresh lcd
       }
     }
 

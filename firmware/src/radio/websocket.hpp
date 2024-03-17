@@ -105,7 +105,6 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
     if (Update.write(payload, length) != length) {
       Update.printError(Serial);
       Logger.printf("[Update] (lensum) Error! Rebooting...\n");
-      webSocket.loop();
 
       delay(250);
       ESP.restart();
@@ -119,19 +118,16 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
 
     if (sketchSizeRemaining <= 0) {
       Logger.printf("[Update] Left 0, delay 1s\n");
-      webSocket.loop();
       delay(1000);
 
       if (Update.end(true)) {
         Logger.printf("[Update] Success!!! Rebooting...\n");
-        webSocket.loop();
 
         delay(250);
         ESP.restart();
       } else {
         Update.printError(Serial);
         Logger.printf("[Update] Error! Rebooting...\n");
-        webSocket.loop();
 
         delay(250);
         ESP.restart();

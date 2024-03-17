@@ -25,6 +25,8 @@ void delegateButtonCalled() {
 }
 
 void delegateButtonAfterRelease() {
+  lcdClear();
+
   blockLcdChange(false);
   lcdChange();
 }
