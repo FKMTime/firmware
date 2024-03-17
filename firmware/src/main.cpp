@@ -15,16 +15,11 @@
 #include "buttons.hpp"
 #include "radio/radio.hpp"
 #include <stackmat.h>
-#include <a_buttons.h>
 
 void core2(void* pvParameters);
 inline void loop2();
 void rfidLoop();
-void btnTest();
-void btnTest2();
-void btnAfterReleaseTest();
 
-AButtons abuttons;
 void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 
@@ -41,16 +36,9 @@ void setup() {
   SPI.begin(RFID_SCK, RFID_MISO, RFID_MOSI);
   Wire.begin(LCD_SDA, LCD_SCL);
 
+  buttonsInit();
   mfrc522.PCD_Init();
   lcdInit();
-
-  size_t btn1 = abuttons.addButton(BUTTON1, btnAfterReleaseTest);
-  abuttons.addButtonCb(btn1, 1000, false, btnTest);
-  abuttons.addButtonCb(btn1, 10000, true, btnTest2);
-
-  size_t btn2 = abuttons.addButton(BUTTON2);
-  abuttons.addButtonCb(btn2, 1000, false, btnTest);
-  abuttons.addButtonCb(btn2, 2000, false, btnTest2);
 
   delay(100);
   currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 15, false);
@@ -72,10 +60,12 @@ void setup() {
 
 unsigned long lastBatRead = 0;
 void loop() {
-  lcdLoop();
-  webSocket.loop();
-  Logger.loop();
+  lcdLoop(); // non blocking (i mean its blocking but only in light sleep)
+  webSocket.loop(); // non blocking
+  Logger.loop(); // non blocking
 
+  // non blocking
+  // TODO: maybe move this into own function?
   if (millis() - lastBatRead > BATTERY_READ_INTERVAL) {
     currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 15, false);
     float batPerct = voltageToPercentage(currentBatteryVoltage);
@@ -96,12 +86,13 @@ void core2(void* pvParameters) {
 }
 
 inline void loop2() {
-  rfidLoop();
-  // buttonsLoop();
-  abuttons.loop();
+  rfidLoop(); // blocking (when card is close to scanner)
+  buttons.loop(); // blocking 
+
   delay(10);
 }
 
+// TODO: maybe move it into own file?
 unsigned long lastCardReadTime = 0;
 void rfidLoop() {
   if (millis() - lastCardReadTime < 500) return;
@@ -121,16 +112,4 @@ void rfidLoop() {
 
   mfrc522.PICC_HaltA();
   lastCardReadTime = millis();
-}
-
-void btnTest() {
-  Serial.printf("Button pressed!\n");
-}
-
-void btnTest2() {
-  Serial.printf("2 Button pressed!\n");
-}
-
-void btnAfterReleaseTest() {
-  Serial.printf("After release!\n");
 }

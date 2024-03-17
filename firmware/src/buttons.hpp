@@ -1,32 +1,44 @@
 #ifndef __BUTTONS_HPP__
 #define __BUTTONS_HPP__
 
+#include <a_buttons.h>
 #include "pins.h"
+AButtons buttons;
 
-// void button1();
-// void button2();
-// void button3();
+void delegateButtonHold3() {
+    blockLcdChange(true);
+    lcdPrintf(0, true, ALIGN_CENTER, "Delegate");
+    lcdPrintf(1, true, ALIGN_CENTER, "In 3");
+}
 
-// void buttonsLoop() {
-//     button1();
-//     button2();
-//     button3();
-// }
+void delegateButtonHold2() {
+    lcdPrintf(1, true, ALIGN_CENTER, "In 2");
+}
 
-// void button1() {
-    
-// }
+void delegateButtonHold1() {
+    lcdPrintf(1, true, ALIGN_CENTER, "In 1");
+}
 
-// void button2() {
+void delegateButtonCalled() {
+    lcdPrintf(0, true, ALIGN_CENTER, "Delegate callled");
+    lcdPrintf(1, true, ALIGN_CENTER, "Release button");
+}
 
-// }
+void delegateButtonAfterRelease() {
+  blockLcdChange(false);
+  lcdChange();
+}
 
-// void button3() {
+void buttonsInit() {
+  size_t delegateBtn = buttons.addButton(BUTTON1, delegateButtonAfterRelease);
+  buttons.addButtonCb(delegateBtn, 0, false, delegateButtonHold3);
+  buttons.addButtonCb(delegateBtn, 1000, false, delegateButtonHold2);
+  buttons.addButtonCb(delegateBtn, 2000, false, delegateButtonHold1);
+  buttons.addButtonCb(delegateBtn, 3000, false, delegateButtonCalled);
 
-// }
-
-// int readButtonClick(uint8_t pin, bool holdCore = false) {
-//     if (digitalRead(pin) != LOW) return -1;
-// }
+//   size_t btn2 = buttons.addButton(BUTTON2);
+//   buttons.addButtonCb(btn2, 1000, false, btnTest);
+//   buttons.addButtonCb(btn2, 2000, false, btnTest2);
+}
 
 #endif

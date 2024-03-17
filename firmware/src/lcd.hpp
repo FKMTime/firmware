@@ -21,6 +21,7 @@ char lcdBuff[LCD_SIZE_Y][LCD_SIZE_X];
 int x, y = 0;
 
 bool stateHasChanged = true;
+bool blockLcd = false;
 unsigned long lcdLastDraw = 0;
 
 enum PrintAligment {
@@ -239,6 +240,10 @@ void lcdPrintf(int line, bool fillBlank, PrintAligment aligment, const char *for
     if (buffer != temp) {
         delete[] buffer;
     }
+}
+
+void blockLcdChange(bool block) {
+  blockLcd = block;
 }
 
 #endif
