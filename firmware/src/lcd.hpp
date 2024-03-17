@@ -67,6 +67,7 @@ inline void lcdPrintLoop() {
     lightSleep(SLEEP_WAKE_BUTTON, LOW);
 
     lcd.backlight();
+    lcdClear();
     lcdHasChanged = true;
 
     // refresh state (not done yet)

@@ -5,18 +5,13 @@
 #include "pins.h"
 AButtons buttons;
 
-void delegateButtonHold3() {
+void delegateButtonHold(int holdTime) {
+    if(holdTime > 3000) return;
     blockLcdChange(true);
+
+    int secs = ceilf((3000 - holdTime) / 1000.0);
     lcdPrintf(0, true, ALIGN_CENTER, "Delegate");
-    lcdPrintf(1, true, ALIGN_CENTER, "In 3");
-}
-
-void delegateButtonHold2() {
-    lcdPrintf(1, true, ALIGN_CENTER, "In 2");
-}
-
-void delegateButtonHold1() {
-    lcdPrintf(1, true, ALIGN_CENTER, "In 1");
+    lcdPrintf(1, true, ALIGN_CENTER, "In %d", secs);
 }
 
 void delegateButtonCalled() {
@@ -33,9 +28,7 @@ void delegateButtonAfterRelease() {
 
 void buttonsInit() {
   size_t delegateBtn = buttons.addButton(BUTTON1, delegateButtonAfterRelease);
-  buttons.addButtonCb(delegateBtn, 0, false, delegateButtonHold3);
-  buttons.addButtonCb(delegateBtn, 1000, false, delegateButtonHold2);
-  buttons.addButtonCb(delegateBtn, 2000, false, delegateButtonHold1);
+  buttons.addButtonReocCb(delegateBtn, 1000, delegateButtonHold);
   buttons.addButtonCb(delegateBtn, 3000, false, delegateButtonCalled);
 
 //   size_t btn2 = buttons.addButton(BUTTON2);
