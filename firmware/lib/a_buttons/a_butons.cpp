@@ -29,6 +29,8 @@ void AButtons::loop() {
 
     for(size_t i = 0; i < buttons.size(); i++) {
         Button &b = buttons.at(i);
+        b.disableAfterReleaseCbs = false;
+
         if (!isPinsPressed(b.pins)) continue;
         bPressedTime = millis();
 
@@ -46,7 +48,7 @@ void AButtons::loop() {
 
                     bcb.reocCallback(millis() - bPressedTime);
                 } else {
-                    bcb.callback();
+                    bcb.callback(b);
                     bcb.called = true;
                 }
             }
@@ -55,24 +57,19 @@ void AButtons::loop() {
         }
 
         // after release
-        bool afterReleaseCalled = false;
-        for(int cb = b.callbacks.size() - 1; cb >= 0; cb--) {
+        for(size_t cb = 0; cb < b.callbacks.size(); cb++) {
             ButtonCb &bcb = b.callbacks.at(cb);
             bcb.called = false; // clear called status
 
-            if(afterReleaseCalled) continue;
-
-            if(bcb.callTime > millis() - bPressedTime) continue;
-            if(bcb.disableAfterRelease) afterReleaseCalled = true;
-
+            if(bcb.callTime > millis() - bPressedTime) break;
+            if(b.disableAfterReleaseCbs) continue;
             if(!bcb.afterRelease) continue;
             if(bcb.callback == NULL) continue;
 
-            bcb.callback();
-            afterReleaseCalled = true; // only one event can be called after release
+            bcb.callback(b);
         }
 
-        if(b.afterReleaseCb != NULL) b.afterReleaseCb();
+        if(b.afterReleaseCb != NULL) b.afterReleaseCb(b);
     }
 }
 
@@ -111,12 +108,11 @@ size_t AButtons::addMultiButton(std::vector<uint8_t> _pins, callback_t _beforeRe
     return idx;
 }
 
-void AButtons::addButtonCb(size_t idx, int _callTime, bool _afterRelease, callback_t callback, bool _disableAfterRelease) {
+void AButtons::addButtonCb(size_t idx, int _callTime, bool _afterRelease, callback_t callback) {
     ButtonCb cb = {
         .callTime = _callTime,  
         .called = false,
         .afterRelease = _afterRelease,
-        .disableAfterRelease = _disableAfterRelease,
         .callback = callback
     };
 
@@ -127,12 +123,11 @@ void AButtons::addButtonCb(size_t idx, int _callTime, bool _afterRelease, callba
     std::sort(b.callbacks.begin(), b.callbacks.end(), compareButtonsCbs);
 }
 
-void AButtons::addButtonReocCb(size_t idx, int _callInterval, reoc_callback_t callback, bool _disableAfterRelease) {
+void AButtons::addButtonReocCb(size_t idx, int _callInterval, reoc_callback_t callback) {
     ButtonCb cb = {
         .callTime = _callInterval,
         .called = false,
         .afterRelease = false,
-        .disableAfterRelease = _disableAfterRelease,
         .reocCallback = callback
     };
 

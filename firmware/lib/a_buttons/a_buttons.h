@@ -4,14 +4,15 @@
 #include <Arduino.h>
 #include <vector>
 
-typedef void (*callback_t)();
+struct Button;
+
+typedef void (*callback_t)(Button&);
 typedef void (*reoc_callback_t)(int);
 
 struct ButtonCb {
   int callTime;
   bool called;
   bool afterRelease;
-  bool disableAfterRelease;
   callback_t callback;
   reoc_callback_t reocCallback;
 };
@@ -20,6 +21,7 @@ struct Button {
   std::vector<uint8_t> pins;
   callback_t afterPressCb;
   callback_t afterReleaseCb;
+  bool disableAfterReleaseCbs;
   std::vector<ButtonCb> callbacks;
 };
 
@@ -28,8 +30,8 @@ public:
   AButtons();
   size_t addButton(uint8_t _pin, callback_t _afterPressCb = NULL, callback_t _afterReleaseCb = NULL);
   size_t addMultiButton(std::vector<uint8_t> _pins, callback_t _afterPressCb = NULL, callback_t _afterReleaseCb = NULL);
-  void addButtonCb(size_t idx, int _callTime, bool _afterRelease, callback_t callback, bool _disableAfterRelease = false);
-  void addButtonReocCb(size_t idx, int _callInterval, reoc_callback_t callback, bool _disableAfterRelease = false);
+  void addButtonCb(size_t idx, int _callTime, bool _afterRelease, callback_t callback);
+  void addButtonReocCb(size_t idx, int _callInterval, reoc_callback_t callback);
   void loop();
 
 private:

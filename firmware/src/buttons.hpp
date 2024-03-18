@@ -18,19 +18,19 @@ void delegateButtonHold(int holdTime) {
     lcdPrintf(1, true, ALIGN_CENTER, TR_DELEGATE_COUNTDOWN, secs);
 }
 
-void delegateButtonCalled() {
+void delegateButtonCalled(Button &b) {
     lcdPrintf(0, true, ALIGN_CENTER, TR_DELEGATE_CALLED_TOP);
     lcdPrintf(1, true, ALIGN_CENTER, TR_DELEGATE_CALLED_BOTTOM);
 }
 
-void delegateButtonAfterRelease() {
+void delegateButtonAfterRelease(Button &b) {
   lcdClear();
 
   blockLcdChange(false);
   lcdChange();
 }
 
-void penaltyButton() {
+void penaltyButton(Button &b) {
   if (state.currentScene != SCENE_WAITING_FOR_COMPETITOR) return;
   if (state.timeConfirmed) return;
 
@@ -38,14 +38,13 @@ void penaltyButton() {
   stateHasChanged = true;
 }
 
-void dnfButton() {
-  Logger.printf("penalty: %d\n", state.penalty);
+void dnfButton(Button &b) {
   state.penalty = state.penalty == -1 ? 0 : -1;
-  Logger.printf("penalty: %d\n", state.penalty);
   stateHasChanged = true; // refresh state
+  b.disableAfterReleaseCbs = true;
 }
 
-void debugButton() {
+void debugButton(Button &b) {
   Logger.printf("dbg here\n");
 }
 
@@ -56,7 +55,7 @@ void buttonsInit() {
 
   size_t penaltyBtn = buttons.addButton(BUTTON2, NULL, NULL);
   buttons.addButtonCb(penaltyBtn, 0, true, penaltyButton);
-  buttons.addButtonCb(penaltyBtn, DNF_BUTTON_HOLD_TIME, false, dnfButton, true);
+  buttons.addButtonCb(penaltyBtn, DNF_BUTTON_HOLD_TIME, false, dnfButton);
 
   size_t dbgBtn = buttons.addMultiButton({BUTTON1, BUTTON2}, NULL, debugButton);
 }
