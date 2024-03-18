@@ -3,20 +3,24 @@
 
 #include <a_buttons.h>
 #include "pins.h"
+#include "defines.h"
+#include "translations.h"
+#include "state.hpp"
+
 AButtons buttons;
 
 void delegateButtonHold(int holdTime) {
-    if(holdTime > 3000) return;
+    if(holdTime > DELEGAT_BUTTON_HOLD_TIME) return;
     blockLcdChange(true);
 
-    int secs = ceilf((3000 - holdTime) / 1000.0);
-    lcdPrintf(0, true, ALIGN_CENTER, "Delegate");
-    lcdPrintf(1, true, ALIGN_CENTER, "In %d", secs);
+    int secs = ceilf((DELEGAT_BUTTON_HOLD_TIME - holdTime) / 1000.0);
+    lcdPrintf(0, true, ALIGN_CENTER, TR_DELEGATE_HEADER);
+    lcdPrintf(1, true, ALIGN_CENTER, TR_DELEGATE_COUNTDOWN, secs);
 }
 
 void delegateButtonCalled() {
-    lcdPrintf(0, true, ALIGN_CENTER, "Delegate callled");
-    lcdPrintf(1, true, ALIGN_CENTER, "Release button");
+    lcdPrintf(0, true, ALIGN_CENTER, TR_DELEGATE_CALLED_TOP);
+    lcdPrintf(1, true, ALIGN_CENTER, TR_DELEGATE_CALLED_BOTTOM);
 }
 
 void delegateButtonAfterRelease() {
@@ -26,41 +30,35 @@ void delegateButtonAfterRelease() {
   lcdChange();
 }
 
-void testBtn2Hold(int holdTime) {
-    blockLcdChange(true);
+void penaltyButton() {
+  if (state.currentScene != SCENE_WAITING_FOR_COMPETITOR) return;
+  if (state.timeConfirmed) return;
 
-    lcdPrintf(0, true, ALIGN_CENTER, "Test Holding");
-    lcdPrintf(1, true, ALIGN_CENTER, "%d", holdTime);
+  state.penalty = (state.penalty >= 16 || state.penalty == -1) ? 0 : state.penalty + 2;
+  stateHasChanged = true;
 }
 
-void testBtn2AfterRelease() {
-  lcdClear();
-
-  blockLcdChange(false);
-  lcdChange();
+void dnfButton() {
+  Logger.printf("penalty: %d\n", state.penalty);
+  state.penalty = state.penalty == -1 ? 0 : -1;
+  Logger.printf("penalty: %d\n", state.penalty);
+  stateHasChanged = true; // refresh state
 }
 
-void debugAfterRelease() {
-  Logger.printf("dbg:\n");
-  for(int y = 0; y < LCD_SIZE_Y; y++) {
-    Logger.printf("y: %d | %s\n", y, lcdBuff[y]);
-    Logger.printf("y2: %d | %s\n", y, shownBuff[y]);
-  }
+void debugButton() {
+  Logger.printf("dbg here\n");
 }
 
 void buttonsInit() {
   size_t delegateBtn = buttons.addButton(BUTTON1, NULL, delegateButtonAfterRelease);
   buttons.addButtonReocCb(delegateBtn, 1000, delegateButtonHold);
-  buttons.addButtonCb(delegateBtn, 3000, false, delegateButtonCalled);
+  buttons.addButtonCb(delegateBtn, DELEGAT_BUTTON_HOLD_TIME, false, delegateButtonCalled);
 
-  size_t btn2 = buttons.addButton(BUTTON2, NULL, testBtn2AfterRelease);
-  buttons.addButtonReocCb(btn2, 0, testBtn2Hold);
+  size_t penaltyBtn = buttons.addButton(BUTTON2, NULL, NULL);
+  buttons.addButtonCb(penaltyBtn, 0, true, penaltyButton);
+  buttons.addButtonCb(penaltyBtn, DNF_BUTTON_HOLD_TIME, false, dnfButton, true);
 
-  size_t dbgBtn = buttons.addMultiButton({BUTTON1, BUTTON2}, NULL, debugAfterRelease);
-
-//   size_t btn2 = buttons.addButton(BUTTON2);
-//   buttons.addButtonCb(btn2, 1000, false, btnTest);
-//   buttons.addButtonCb(btn2, 2000, false, btnTest2);
+  size_t dbgBtn = buttons.addMultiButton({BUTTON1, BUTTON2}, NULL, debugButton);
 }
 
 #endif

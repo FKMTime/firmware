@@ -3,9 +3,10 @@
 
 #include <Arduino.h>
 
-#define BUTTON1 33
-#define BUTTON2 32
-#define BUTTON3 27
+#define BUTTON1 33 // delegate
+#define BUTTON2 32 // penalty
+#define BUTTON3 27 // submit
+#define BUTTON4 26 // inspection start
 #define SLEEP_WAKE_BUTTON (gpio_num_t)BUTTON3
 
 #define BAT_ADC 34

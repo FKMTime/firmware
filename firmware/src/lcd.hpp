@@ -118,6 +118,7 @@ void printLcdBuff(bool force) {
 void lcdClear() {
   waitForLock();
 
+  // TODO: C mem operation
   for (int ty = 0; ty < LCD_SIZE_Y; ty++) {
     for (int tx = 0; tx < LCD_SIZE_X; tx++) {
       lcdBuff[ty][tx] = ' ';
@@ -133,6 +134,7 @@ void lcdClearLine(int line) {
   if (line < 0 || line >= LCD_SIZE_Y) return;
 
   waitForLock();
+  // TODO: C mem operation
   for (int tx = 0; tx < LCD_SIZE_X; tx++) {
     lcdBuff[line][tx] = ' ';
   }
@@ -165,6 +167,7 @@ void lcdScroller(int line, const char *str) {
   int strl = constrain(strlen(str), 0, MAX_SCROLLER_LINE);
   bool changed = line != scrollerLine;
 
+  // TODO: C strcmpy
   for (int i = 0; i < strl; i++) {
     if (scrollerBuff[i] != str[i]) {
       changed = true;
@@ -211,6 +214,8 @@ void printToScreen(char *str, bool fillBlank = true, PrintAligment aligment = AL
 
   int strI = 0;
   waitForLock();
+
+  // TODO: C mem operations (if fill blank, fill it first with spaces)
   for (int i = 0; i < LCD_SIZE_X; i++) {
     if (fillBlank && ((i < leftOffset && aligment != ALIGN_NEXTTO) || i >= leftOffset + strl)) {
       lcdBuff[y][i] = ' ';

@@ -13,6 +13,7 @@
 #include "globals.hpp"
 #include "lcd.hpp"
 #include "buttons.hpp"
+#include "state.hpp"
 #include "radio/radio.hpp"
 #include <stackmat.h>
 
@@ -20,8 +21,7 @@ void core2(void *pvParameters);
 inline void loop2();
 void rfidLoop();
 
-void setup()
-{
+void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 
   pinMode(BUTTON1, INPUT_PULLUP);
@@ -56,21 +56,21 @@ void setup()
   initWifi();
   lcdClear();
 
+  initState();
   xTaskCreatePinnedToCore(core2, "core2", 10000, NULL, 0, NULL, 0);
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1);
 }
 
 unsigned long lastBatRead = 0;
-void loop()
-{
-  lcdPrintLoop();   // non blocking (i mean its blocking but only in light sleep)
-  webSocket.loop(); // non blocking
-  Logger.loop();    // non blocking
+void loop() {
+  lcdStateManagementLoop(); // non blocking
+  lcdPrintLoop();           // non blocking (i mean its blocking but only in light sleep)
+  Logger.loop();            // non blocking
+  webSocket.loop();         // non blocking
 
   // non blocking
   // TODO: maybe move this into own function?
-  if (millis() - lastBatRead > BATTERY_READ_INTERVAL)
-  {
+  if (millis() - lastBatRead > BATTERY_READ_INTERVAL) {
     currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 15, false);
     float batPerct = voltageToPercentage(currentBatteryVoltage);
 
@@ -83,16 +83,13 @@ void loop()
   delay(5);
 }
 
-void core2(void *pvParameters)
-{
-  while (1)
-  {
+void core2(void *pvParameters) {
+  while (1) {
     loop2();
   }
 }
 
-inline void loop2()
-{
+inline void loop2() {
   rfidLoop();     // blocking (when card is close to scanner)
   buttons.loop(); // blocking
 
@@ -101,14 +98,10 @@ inline void loop2()
 
 // TODO: maybe move it into own file?
 unsigned long lastCardReadTime = 0;
-void rfidLoop()
-{
-  if (millis() - lastCardReadTime < 500)
-    return;
-  if (!mfrc522.PICC_IsNewCardPresent())
-    return;
-  if (!mfrc522.PICC_ReadCardSerial())
-    return;
+void rfidLoop() {
+  if (millis() - lastCardReadTime < 500) return;
+  if (!mfrc522.PICC_IsNewCardPresent()) return;
+  if (!mfrc522.PICC_ReadCardSerial()) return;
 
   unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
   Logger.printf("Scanned card ID: %lu\n", cardId);

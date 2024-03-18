@@ -11,13 +11,14 @@ struct ButtonCb {
   int callTime;
   bool called;
   bool afterRelease;
+  bool disableAfterRelease;
   callback_t callback;
   reoc_callback_t reocCallback;
 };
 
 struct Button {
   std::vector<uint8_t> pins;
-  callback_t beforeReleaseCb;
+  callback_t afterPressCb;
   callback_t afterReleaseCb;
   std::vector<ButtonCb> callbacks;
 };
@@ -25,10 +26,10 @@ struct Button {
 class AButtons {
 public:
   AButtons();
-  size_t addButton(uint8_t _pin, callback_t _beforeReleaseCb = NULL, callback_t _afterReleaseCb = NULL);
-  size_t addMultiButton(std::vector<uint8_t> _pins, callback_t _beforeReleaseCb = NULL, callback_t _afterReleaseCb = NULL);
-  void addButtonCb(size_t idx, int _callTime, bool _afterRelease, callback_t callback);
-  void addButtonReocCb(size_t idx, int _callInterval, reoc_callback_t callback);
+  size_t addButton(uint8_t _pin, callback_t _afterPressCb = NULL, callback_t _afterReleaseCb = NULL);
+  size_t addMultiButton(std::vector<uint8_t> _pins, callback_t _afterPressCb = NULL, callback_t _afterReleaseCb = NULL);
+  void addButtonCb(size_t idx, int _callTime, bool _afterRelease, callback_t callback, bool _disableAfterRelease = false);
+  void addButtonReocCb(size_t idx, int _callInterval, reoc_callback_t callback, bool _disableAfterRelease = false);
   void loop();
 
 private:
