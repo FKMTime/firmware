@@ -1,9 +1,21 @@
 #include "a_buttons.h"
 
-bool compareButtonsCbs(ButtonCb cb1, ButtonCb cb2) 
-{ 
-    return (cb1.callTime < cb1.callTime); 
+bool compareButtonsCbs(ButtonCb cb1, ButtonCb cb2) { 
+    return (cb1.callTime < cb2.callTime); 
 } 
+
+// TODO: sort buttons by their pins length
+bool compareButtonsPins(Button b1, Button b2) { 
+    return (b1.pins.size() < b2.pins.size()); 
+} 
+
+bool isPinsPressed(std::vector<uint8_t> pins) {
+    for(size_t i = 0; i < pins.size(); i++) {
+        if(digitalRead(pins.at(i)) != LOW) return false;
+    }
+
+    return true;
+}
 
 
 AButtons::AButtons() {}
@@ -14,11 +26,11 @@ void AButtons::loop() {
 
     for(size_t i = 0; i < buttons.size(); i++) {
         Button &b = buttons.at(i);
-        if (digitalRead(b.pin) != LOW) continue;
+        if (!isPinsPressed(b.pins)) continue;
         bPressedTime = millis();
 
         // while holding
-        while (digitalRead(b.pin) == LOW) {
+        while (isPinsPressed(b.pins)) {
             for(size_t cb = 0; cb < b.callbacks.size(); cb++) {
                 ButtonCb &bcb = b.callbacks.at(cb);
 
@@ -55,9 +67,23 @@ void AButtons::loop() {
     }
 }
 
-size_t AButtons::addButton(uint8_t _pin, callback_t _afterReleaseCb) {
+size_t AButtons::addButton(uint8_t _pin, callback_t _beforeReleaseCb, callback_t _afterReleaseCb) {
+    std::vector<uint8_t> _pins = {_pin};
+
     Button b = {
-        .pin = _pin,
+        .pins = _pins,
+        .beforeReleaseCb = _beforeReleaseCb,
+        .afterReleaseCb = _afterReleaseCb
+    };
+
+    buttons.push_back(b);
+    return buttons.size() - 1;
+}
+
+size_t AButtons::addMultiButton(std::vector<uint8_t> _pins, callback_t _beforeReleaseCb, callback_t _afterReleaseCb) {
+    Button b = {
+        .pins = _pins,
+        .beforeReleaseCb = _beforeReleaseCb,
         .afterReleaseCb = _afterReleaseCb
     };
 
