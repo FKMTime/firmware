@@ -10,7 +10,10 @@ bool compareButtonsPins(Button b1, Button b2) {
 } 
 
 bool isPinsPressed(std::vector<uint8_t> pins) {
-    for(size_t i = 0; i < pins.size(); i++) {
+    size_t size = pins.size();
+    if (size == 1) return digitalRead(pins.at(0)) == LOW;
+
+    for(size_t i = 0; i < size; i++) {
         if(digitalRead(pins.at(i)) != LOW) return false;
     }
 
@@ -88,7 +91,18 @@ size_t AButtons::addMultiButton(std::vector<uint8_t> _pins, callback_t _beforeRe
     };
 
     buttons.push_back(b);
-    return buttons.size() - 1;
+    // sort buttons by their pins length
+    std::sort(buttons.begin(), buttons.end(), compareButtonsPins);
+
+    size_t idx = 0;
+    for(size_t i = 0; i < buttons.size(); i++) {
+        if(buttons.at(i).pins == _pins) {
+            idx = i;
+            break;
+        }
+    }
+
+    return idx;
 }
 
 void AButtons::addButtonCb(size_t idx, int _callTime, bool _afterRelease, callback_t callback) {

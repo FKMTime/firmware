@@ -41,11 +41,11 @@ void testBtn2AfterRelease() {
 }
 
 void buttonsInit() {
-  size_t delegateBtn = buttons.addButton(BUTTON1, delegateButtonAfterRelease);
+  size_t delegateBtn = buttons.addButton(BUTTON1, NULL, delegateButtonAfterRelease);
   buttons.addButtonReocCb(delegateBtn, 1000, delegateButtonHold);
   buttons.addButtonCb(delegateBtn, 3000, false, delegateButtonCalled);
 
-  size_t btn2 = buttons.addButton(BUTTON2, testBtn2AfterRelease);
+  size_t btn2 = buttons.addButton(BUTTON2, NULL, testBtn2AfterRelease);
   buttons.addButtonReocCb(btn2, 0, testBtn2Hold);
 
 //   size_t btn2 = buttons.addButton(BUTTON2);
