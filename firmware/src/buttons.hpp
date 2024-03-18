@@ -40,6 +40,14 @@ void testBtn2AfterRelease() {
   lcdChange();
 }
 
+void debugAfterRelease() {
+  Logger.printf("dbg:\n");
+  for(int y = 0; y < LCD_SIZE_Y; y++) {
+    Logger.printf("y: %d | %s\n", y, lcdBuff[y]);
+    Logger.printf("y2: %d | %s\n", y, shownBuff[y]);
+  }
+}
+
 void buttonsInit() {
   size_t delegateBtn = buttons.addButton(BUTTON1, NULL, delegateButtonAfterRelease);
   buttons.addButtonReocCb(delegateBtn, 1000, delegateButtonHold);
@@ -47,6 +55,8 @@ void buttonsInit() {
 
   size_t btn2 = buttons.addButton(BUTTON2, NULL, testBtn2AfterRelease);
   buttons.addButtonReocCb(btn2, 0, testBtn2Hold);
+
+  size_t dbgBtn = buttons.addMultiButton({BUTTON1, BUTTON2}, NULL, debugAfterRelease);
 
 //   size_t btn2 = buttons.addButton(BUTTON2);
 //   buttons.addButtonCb(btn2, 1000, false, btnTest);

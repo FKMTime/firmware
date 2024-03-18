@@ -6,7 +6,7 @@ bool compareButtonsCbs(ButtonCb cb1, ButtonCb cb2) {
 
 // TODO: sort buttons by their pins length
 bool compareButtonsPins(Button b1, Button b2) { 
-    return (b1.pins.size() < b2.pins.size()); 
+    return (b1.pins.size() > b2.pins.size()); 
 } 
 
 bool isPinsPressed(std::vector<uint8_t> pins) {

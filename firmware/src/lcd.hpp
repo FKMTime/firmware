@@ -22,6 +22,7 @@ char shownBuff[LCD_SIZE_Y][LCD_SIZE_X];
 char lcdBuff[LCD_SIZE_Y][LCD_SIZE_X];
 int x, y = 0;
 
+bool lcdWriteLock = false;
 bool lcdHasChanged = true;
 bool blockLcd = false;
 unsigned long lcdLastDraw = 0;
@@ -33,7 +34,7 @@ enum PrintAligment {
   ALIGN_NEXTTO = 3 // ALIGN AFTER LAST TEXT
 };
 
-inline void printLcdBuff();
+void printLcdBuff(bool force = false);
 void lcdPrintf(int line, bool fillBlank, PrintAligment aligment, const char *format, ...);
 void printToScreen(char *str, bool fillBlank, PrintAligment aligment);
 void lcdClear();
@@ -41,7 +42,11 @@ void lcdClearLine(int line);
 void lcdScroller(int line, const char *str);
 void scrollLoop();
 
-inline void lcdInit() {
+inline void waitForLock() {
+  while(lcdWriteLock) { delay(5); }
+}
+
+void lcdInit() {
   int coreId = xPortGetCoreID();
   mainCoreId = coreId;
 
@@ -52,11 +57,11 @@ inline void lcdInit() {
   lcdClear();
 }
 
-inline void lcdChange() {
+void lcdChange() {
   lcdHasChanged = true;
 }
 
-inline void lcdPrintLoop() {
+void lcdPrintLoop() {
   unsigned long timeSinceLastDraw = millis() - lcdLastDraw;
   if (timeSinceLastDraw > SLEEP_TIME && !lcdHasChanged) {
     lcdPrintf(0, true, ALIGN_CENTER, "Sleep mode");
@@ -91,10 +96,12 @@ inline void lcdPrintLoop() {
   printLcdBuff();
 }
 
-inline void printLcdBuff() {
+void printLcdBuff(bool force) {
+  lcdWriteLock = true;
+
   for(int y = 0; y < LCD_SIZE_Y; y++) {
     for(int x = 0; x < LCD_SIZE_X; x++) {
-      if(shownBuff[y][x] != lcdBuff[y][x]) {
+      if(/* force || */ shownBuff[y][x] != lcdBuff[y][x]) {
         lcd.setCursor(x, y);
         lcd.print(lcdBuff[y][x]);
 
@@ -104,10 +111,13 @@ inline void printLcdBuff() {
   }
 
   lcdLastDraw = millis();
+  lcdWriteLock = false;
 }
 
 // Clears screen and sets cursor on (0, 0)
 void lcdClear() {
+  waitForLock();
+
   for (int ty = 0; ty < LCD_SIZE_Y; ty++) {
     for (int tx = 0; tx < LCD_SIZE_X; tx++) {
       lcdBuff[ty][tx] = ' ';
@@ -122,6 +132,7 @@ void lcdClear() {
 void lcdClearLine(int line) {
   if (line < 0 || line >= LCD_SIZE_Y) return;
 
+  waitForLock();
   for (int tx = 0; tx < LCD_SIZE_X; tx++) {
     lcdBuff[line][tx] = ' ';
   }
@@ -199,6 +210,7 @@ void printToScreen(char *str, bool fillBlank = true, PrintAligment aligment = AL
   if (leftOffset < 0) leftOffset = 0;
 
   int strI = 0;
+  waitForLock();
   for (int i = 0; i < LCD_SIZE_X; i++) {
     if (fillBlank && ((i < leftOffset && aligment != ALIGN_NEXTTO) || i >= leftOffset + strl)) {
       lcdBuff[y][i] = ' ';
