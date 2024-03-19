@@ -44,6 +44,9 @@ struct State {
 
     StackmatTimerState lastTimerState = ST_Unknown;
     bool stackmatConnected = false;
+
+    char errorMsg[128]; // max 128 chars
+    StateScene sceneBeforeError = SCENE_NOT_INITALIZED;
 } state;
 
 // TODO: save state to EEPROM
@@ -67,38 +70,20 @@ void initState() {
   state.currentScene = SCENE_WAITING_FOR_COMPETITOR;
 }
 
-/// @brief Called after time is finished
-/// @param solveTime 
-void startSolveSession(int solveTime) {
-    uuid.generate(); // generate next uuid
-
-    strncpy(state.solveSessionId, uuid.toCharArray(), UUID_LENGTH);
-    state.solveTime = solveTime;
-    state.penalty = 0;
-    state.judgeCardId = 0;
-    state.timeConfirmed = false;
-    waitForSolveResponse = false;
-    state.currentScene = SCENE_FINISHED_TIME;
-
-    stateHasChanged = true;
-}
-
-void resetSolveState() {
-    state.solveTime = 0;
-    state.penalty = 0;
-    state.judgeCardId = 0;
-    state.timeConfirmed = false;
-    memset(state.competitorDisplay, ' ', sizeof(state.competitorCardId));
-    waitForSolveResponse = false;
-    state.currentScene = SCENE_WAITING_FOR_COMPETITOR;
-
-    stateHasChanged = true;
-}
-
 void lcdStateManagementLoop() {
     if(!stateHasChanged || lockStateChange) return;
 
-    if (state.currentScene == SCENE_FINISHED_TIME) {
+    if (state.currentScene == SCENE_WAITING_FOR_COMPETITOR) {
+        lcdPrintf(0, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_TOP);
+        lcdPrintf(1, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_BOTTOM);
+    } else if(state.currentScene == SCENE_COMPETITOR_INFO) {
+        lcdPrintf(0, true, ALIGN_CENTER, state.competitorDisplay);
+        lcdClearLine(1); // TODO: temp
+        // lcdPrintf(1, true, ALIGN_CENTER, "Inspection"); // TODO: show only if inspection is enabled for current round
+    } else if(state.currentScene == SCENE_TIMER_TIME) {
+        lcdPrintf(0, true, ALIGN_CENTER, "%s", displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds()).c_str());
+        lcdClearLine(1);
+    } else if (state.currentScene == SCENE_FINISHED_TIME) {
         if (waitForSolveResponse) {
             lcdPrintf(0, true, ALIGN_CENTER, TR_WAITING_FOR_SOLVE_TOP);
             lcdPrintf(1, true, ALIGN_CENTER, TR_WAITING_FOR_SOLVE_BOTTOM);
@@ -127,9 +112,40 @@ void lcdStateManagementLoop() {
         } else if(state.judgeCardId > 0 && state.competitorCardId > 0) {
             lcdPrintf(1, true, ALIGN_RIGHT, TR_AWAITING_COMPETITOR_AGAIN);
         }
+    } else if (state.currentScene == SCENE_ERROR) {
+        lcdPrintf(0, true, ALIGN_CENTER, TR_ERROR_HEADER);
+        lcdPrintf(1, true, ALIGN_CENTER, state.errorMsg);
     }
 
     stateHasChanged = false;
+}
+
+/// @brief Called after time is finished
+/// @param solveTime 
+void startSolveSession(int solveTime) {
+    uuid.generate(); // generate next uuid
+
+    strncpy(state.solveSessionId, uuid.toCharArray(), UUID_LENGTH);
+    state.solveTime = solveTime;
+    state.penalty = 0;
+    state.judgeCardId = 0;
+    state.timeConfirmed = false;
+    waitForSolveResponse = false;
+    state.currentScene = SCENE_FINISHED_TIME;
+
+    stateHasChanged = true;
+}
+
+void resetSolveState() {
+    state.solveTime = 0;
+    state.penalty = 0;
+    state.judgeCardId = 0;
+    state.timeConfirmed = false;
+    memset(state.competitorDisplay, ' ', sizeof(state.competitorCardId));
+    waitForSolveResponse = false;
+    state.currentScene = SCENE_WAITING_FOR_COMPETITOR;
+
+    stateHasChanged = true;
 }
 
 String displayTime(uint8_t m, uint8_t s, uint16_t ms) {

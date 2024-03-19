@@ -134,9 +134,7 @@ void sleepDetection() {
 
     lcd.backlight();
     lcdClear();
-    lcdHasChanged = true;
-
-    // refresh state (not done yet)
+    stateHasChanged = true;
 
     WiFi.disconnect();
     WiFi.reconnect();

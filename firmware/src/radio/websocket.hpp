@@ -56,6 +56,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
           strncpy(state.competitorDisplay, display.c_str(), 128);
           state.competitorCardId = cardId;
           primaryLangauge = countryIso2 != "pl";
+          state.currentScene = SCENE_COMPETITOR_INFO;
 
           if (state.solveTime != stackmat.time()) {
             startSolveSession(stackmat.time());
@@ -116,10 +117,12 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       bool shouldResetTime = doc["api_error"]["should_reset_time"];
       Logger.printf("Api entry error: %s\n", errorMessage.c_str());
 
-      lcdPrintf(0, true, ALIGN_CENTER, TR_ERROR_HEADER);
-      lcdPrintf(1, true, ALIGN_CENTER, errorMessage.c_str());
+      state.sceneBeforeError = state.currentScene;
+      state.currentScene = SCENE_ERROR;
+      strncpy(state.errorMsg, errorMessage.c_str(), 128);
 
       waitForSolveResponse = false;
+      stateHasChanged = true;
     }
   } else if (type == WStype_BIN) {
     if (Update.write(payload, length) != length) {

@@ -11,6 +11,7 @@
 AButtons buttons;
 
 void delegateButtonHold(int holdTime) {
+    if (state.currentScene == SCENE_ERROR) return;
     if(holdTime > DELEGAT_BUTTON_HOLD_TIME) return;
     lockStateChange = true;
 
@@ -20,6 +21,7 @@ void delegateButtonHold(int holdTime) {
 }
 
 void delegateButtonCalled(Button &b) {
+    if (state.currentScene == SCENE_ERROR) return;
     lcdPrintf(0, true, ALIGN_CENTER, TR_DELEGATE_CALLED_TOP);
     lcdPrintf(1, true, ALIGN_CENTER, TR_DELEGATE_CALLED_BOTTOM);
 
@@ -27,6 +29,7 @@ void delegateButtonCalled(Button &b) {
 }
 
 void delegateButtonAfterRelease(Button &b) {
+  if (state.currentScene == SCENE_ERROR) return;
   lcdClear();
   lockStateChange = false;
   stateHasChanged = true;
@@ -50,6 +53,14 @@ void dnfButton(Button &b) {
 }
 
 void submitButton(Button &b) {
+  if (state.currentScene == SCENE_ERROR)  {
+    lcdClear();
+    state.currentScene = state.sceneBeforeError;
+    stateHasChanged = true;
+
+    return;
+  }
+  
   if (state.currentScene != SCENE_FINISHED_TIME) return;
   if (state.timeConfirmed) return;
 
