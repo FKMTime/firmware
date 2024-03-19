@@ -3,6 +3,8 @@
 
 #include "globals.hpp"
 
+// TODO: translation method that takes key ENUM and language and returns string 
+
 // EN / PL
 #define TR_STACKMAT_HEADER "Timer"
 #define TR_SERVER_HEADER "Server"

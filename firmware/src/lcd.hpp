@@ -5,10 +5,7 @@
 #define SCROLLER_SPEED 500
 #define SCROLLER_SETBACK 1000
 
-#include "globals.hpp"
-#include "utils.hpp"
 #include "defines.h"
-#include "pins.h"
 
 int mainCoreId = -1;
 char scrollerBuff[MAX_SCROLLER_LINE];
@@ -56,34 +53,8 @@ void lcdInit() {
   lcdClear();
 }
 
-void lcdChange() {
-  lcdHasChanged = true;
-}
-
 void lcdPrintLoop() {
   unsigned long timeSinceLastDraw = millis() - lcdLastDraw;
-  if (timeSinceLastDraw > SLEEP_TIME && !lcdHasChanged) {
-    lcdPrintf(0, true, ALIGN_CENTER, "Sleep mode");
-    lcdPrintf(1, true, ALIGN_CENTER, "Submit to wake");
-    lcd.noBacklight();
-    mfrc522.PCD_SoftPowerDown();
-
-    // enter light sleep and wait for SLEEP_WAKE_BUTTON to be pressed
-    lightSleep(SLEEP_WAKE_BUTTON, LOW);
-
-    lcd.backlight();
-    lcdClear();
-    lcdHasChanged = true;
-
-    // refresh state (not done yet)
-
-    WiFi.disconnect();
-    WiFi.reconnect();
-    mfrc522.PCD_SoftPowerUp();
-
-    return;
-  }
-
   if (scrollerLine > -1 && millis() - lastScrollerTime > SCROLLER_SPEED) {
     scrollLoop();
     lastScrollerTime = millis();

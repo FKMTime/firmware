@@ -4,12 +4,17 @@
 #include <stackmat.h>
 #include <UUID.h>
 #include "ws_logger.h"
+#include "translations.h"
+#include "lcd.hpp"
 
 #define UUID_LENGTH 37
+String displayTime(uint8_t m, uint8_t s, uint16_t ms);
+void sendSolve(bool delegate);
 
 UUID uuid;
 bool stateHasChanged = true;
 bool lockStateChange = false;
+bool waitForSolveResponse = false;
 
 enum StateScene {
   SCENE_NOT_INITALIZED, // before timer connects to wifi/ws
@@ -72,8 +77,21 @@ void startSolveSession(int solveTime) {
     state.penalty = 0;
     state.judgeCardId = 0;
     state.timeConfirmed = false;
-
+    waitForSolveResponse = false;
     state.currentScene = SCENE_FINISHED_TIME;
+
+    stateHasChanged = true;
+}
+
+void resetSolveState() {
+    state.solveTime = 0;
+    state.penalty = 0;
+    state.judgeCardId = 0;
+    state.timeConfirmed = false;
+    memset(state.competitorDisplay, ' ', sizeof(state.competitorCardId));
+    waitForSolveResponse = false;
+    state.currentScene = SCENE_WAITING_FOR_COMPETITOR;
+
     stateHasChanged = true;
 }
 
@@ -81,6 +99,14 @@ void lcdStateManagementLoop() {
     if(!stateHasChanged || lockStateChange) return;
 
     if (state.currentScene == SCENE_FINISHED_TIME) {
+        if (waitForSolveResponse) {
+            lcdPrintf(0, true, ALIGN_CENTER, TR_WAITING_FOR_SOLVE_TOP);
+            lcdPrintf(1, true, ALIGN_CENTER, TR_WAITING_FOR_SOLVE_BOTTOM);
+
+            stateHasChanged = false;
+            return;
+        }
+
         uint8_t minutes = state.solveTime / 60000;
         uint8_t seconds = (state.solveTime % 60000) / 1000;
         uint16_t ms = state.solveTime % 1000;
@@ -104,6 +130,52 @@ void lcdStateManagementLoop() {
     }
 
     stateHasChanged = false;
+}
+
+String displayTime(uint8_t m, uint8_t s, uint16_t ms) {
+  String tmp = "";
+  if (m > 0) {
+    tmp += m;
+    tmp += ":";
+
+    char sBuff[6];
+    sprintf(sBuff, "%02d", s);
+    tmp += String(sBuff);
+  } else {
+    tmp += s;
+  }
+
+  char msBuff[6];
+  sprintf(msBuff, "%03d", ms);
+
+  tmp += ".";
+  tmp += String(msBuff);
+  return tmp;
+}
+
+void sendSolve(bool delegate) {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    Logger.println("Failed to obtain time");
+  }
+  time_t epoch;
+  time(&epoch);
+
+  JsonDocument doc;
+  doc["solve"]["solve_time"] = state.solveTime;
+  doc["solve"]["penalty"] = state.penalty;
+  doc["solve"]["competitor_id"] = state.competitorCardId;
+  doc["solve"]["judge_id"] = state.judgeCardId;
+  doc["solve"]["esp_id"] = (unsigned long)ESP.getEfuseMac();
+  doc["solve"]["timestamp"] = epoch;
+  doc["solve"]["session_id"] = state.solveSessionId;
+  doc["solve"]["delegate"] = delegate;
+
+  String json;
+  serializeJson(doc, json);
+  webSocket.sendTXT(json);
+
+  waitForSolveResponse = true;
 }
 
 #endif

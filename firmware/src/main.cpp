@@ -20,6 +20,7 @@
 void core2(void *pvParameters);
 inline void loop2();
 void rfidLoop();
+void sleepDetection();
 
 void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
@@ -64,9 +65,11 @@ void setup() {
 unsigned long lastBatRead = 0;
 void loop() {
   lcdStateManagementLoop(); // non blocking
-  lcdPrintLoop();           // non blocking (i mean its blocking but only in light sleep)
+  lcdPrintLoop();           // non blocking
   Logger.loop();            // non blocking
   webSocket.loop();         // non blocking
+
+  sleepDetection();
 
   // non blocking
   // TODO: maybe move this into own function?
@@ -116,4 +119,29 @@ void rfidLoop() {
 
   mfrc522.PICC_HaltA();
   lastCardReadTime = millis();
+}
+
+void sleepDetection() {
+  unsigned long timeSinceLastDraw = millis() - lcdLastDraw;
+  if (timeSinceLastDraw > SLEEP_TIME && !lcdHasChanged) {
+    lcdPrintf(0, true, ALIGN_CENTER, "Sleep mode");
+    lcdPrintf(1, true, ALIGN_CENTER, "Submit to wake");
+    lcd.noBacklight();
+    mfrc522.PCD_SoftPowerDown();
+
+    // enter light sleep and wait for SLEEP_WAKE_BUTTON to be pressed
+    lightSleep(SLEEP_WAKE_BUTTON, LOW);
+
+    lcd.backlight();
+    lcdClear();
+    lcdHasChanged = true;
+
+    // refresh state (not done yet)
+
+    WiFi.disconnect();
+    WiFi.reconnect();
+    mfrc522.PCD_SoftPowerUp();
+
+    return;
+  }
 }

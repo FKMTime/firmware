@@ -51,16 +51,34 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       bool canCompete = doc["card_info_response"]["can_compete"];
       countryIso2.toLowerCase();
 
-      lcdChange();
-    } else if (doc.containsKey("solve_confirm")) {
-      // if (doc["solve_confirm"]["competitor_id"] != state.competitorCardId ||
-      //     doc["solve_confirm"]["esp_id"] != ESP_ID() ||
-      //     doc["solve_confirm"]["session_id"] != state.solveSessionId) {
-      //   Logger.println("Wrong solve confirm frame!");
-      //   return;
-      // }
+      if (state.currentScene == SCENE_WAITING_FOR_COMPETITOR) {
+        if (state.competitorCardId == 0 && canCompete) {
+          strncpy(state.competitorDisplay, display.c_str(), 128);
+          state.competitorCardId = cardId;
+          primaryLangauge = countryIso2 != "pl";
 
-      lcdChange();
+          if (state.solveTime != stackmat.time()) {
+            startSolveSession(stackmat.time());
+          }
+        }
+      } else if (state.currentScene == SCENE_FINISHED_TIME) {
+        if (state.competitorCardId != cardId && state.timeConfirmed) {
+          state.judgeCardId = cardId;
+        } else if(state.judgeCardId > 0 && state.competitorCardId == cardId) {
+          sendSolve(false);
+        }
+      }
+
+      stateHasChanged = true;
+    } else if (doc.containsKey("solve_confirm")) {
+      if (doc["solve_confirm"]["competitor_id"] != state.competitorCardId ||
+          doc["solve_confirm"]["esp_id"] != (unsigned long)ESP.getEfuseMac() ||
+          doc["solve_confirm"]["session_id"] != state.solveSessionId) {
+        Logger.println("Wrong solve confirm frame!");
+        return;
+      }
+
+      resetSolveState();
     } else if (doc.containsKey("start_update")) {
       if (update) {
         ESP.restart();
@@ -98,8 +116,10 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       bool shouldResetTime = doc["api_error"]["should_reset_time"];
       Logger.printf("Api entry error: %s\n", errorMessage.c_str());
 
-      // lcdPrintf(0, true, ALIGN_CENTER, TR_ERROR_HEADER);
+      lcdPrintf(0, true, ALIGN_CENTER, TR_ERROR_HEADER);
       lcdPrintf(1, true, ALIGN_CENTER, errorMessage.c_str());
+
+      waitForSolveResponse = false;
     }
   } else if (type == WStype_BIN) {
     if (Update.write(payload, length) != length) {

@@ -22,6 +22,8 @@ void delegateButtonHold(int holdTime) {
 void delegateButtonCalled(Button &b) {
     lcdPrintf(0, true, ALIGN_CENTER, TR_DELEGATE_CALLED_TOP);
     lcdPrintf(1, true, ALIGN_CENTER, TR_DELEGATE_CALLED_BOTTOM);
+
+    sendSolve(true); // send delegate request (TODO: maybe different method?)
 }
 
 void delegateButtonAfterRelease(Button &b) {

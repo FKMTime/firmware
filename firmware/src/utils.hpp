@@ -18,27 +18,6 @@ void lightSleep(gpio_num_t gpio, int level) {
   delay(100);
 }
 
-String displayTime(uint8_t m, uint8_t s, uint16_t ms) {
-  String tmp = "";
-  if (m > 0) {
-    tmp += m;
-    tmp += ":";
-
-    char sBuff[6];
-    sprintf(sBuff, "%02d", s);
-    tmp += String(sBuff);
-  } else {
-    tmp += s;
-  }
-
-  char msBuff[6];
-  sprintf(msBuff, "%03d", ms);
-
-  tmp += ".";
-  tmp += String(msBuff);
-  return tmp;
-}
-
 uint16_t analogReadMax(int pin, int c = 10, int delayMs = 5) {
   uint16_t v = 0;
   for (int i = 0; i < c; i++) {
