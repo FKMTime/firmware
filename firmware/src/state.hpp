@@ -9,6 +9,7 @@
 
 UUID uuid;
 bool stateHasChanged = true;
+bool lockStateChange = false;
 
 enum StateScene {
   SCENE_NOT_INITALIZED, // before timer connects to wifi/ws
@@ -73,18 +74,32 @@ void startSolveSession(int solveTime) {
     state.timeConfirmed = false;
 
     state.currentScene = SCENE_FINISHED_TIME;
+    stateHasChanged = true;
 }
 
 void lcdStateManagementLoop() {
-    if(!stateHasChanged) return;
+    if(!stateHasChanged || lockStateChange) return;
 
-    if (state.currentScene == SCENE_WAITING_FOR_COMPETITOR) {
-        lcdPrintf(0, true, ALIGN_LEFT, "test");
+    if (state.currentScene == SCENE_FINISHED_TIME) {
+        uint8_t minutes = state.solveTime / 60000;
+        uint8_t seconds = (state.solveTime % 60000) / 1000;
+        uint16_t ms = state.solveTime % 1000;
 
+        /* Line 1 */
+        lcdPrintf(0, true, ALIGN_LEFT, "%s", displayTime(minutes, seconds, ms).c_str());
         if (state.penalty == -1) {
             lcdPrintf(0, false, ALIGN_RIGHT, "DNF");
         } else if(state.penalty > 0) {
             lcdPrintf(0, false, ALIGN_RIGHT, "+%d", state.penalty);
+        }
+
+        /* Line 2 */
+        if (!state.timeConfirmed) {
+            lcdPrintf(1, true, ALIGN_RIGHT, TR_CONFIRM_TIME);
+        } else if (state.judgeCardId == 0) {
+            lcdPrintf(1, true, ALIGN_RIGHT, TR_AWAITING_JUDGE);
+        } else if(state.judgeCardId > 0 && state.competitorCardId > 0) {
+            lcdPrintf(1, true, ALIGN_RIGHT, TR_AWAITING_COMPETITOR_AGAIN);
         }
     }
 

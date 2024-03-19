@@ -4,6 +4,8 @@
 #include <Arduino.h>
 #include <vector>
 
+// TODO: button map, so digitalRead is called once before checking all buttons
+
 struct Button;
 
 typedef void (*callback_t)(Button&);
@@ -35,7 +37,7 @@ public:
   void loop();
 
 private:
-  int checkDelay = 50;
+  int checkDelay = 15;
   std::vector<Button> buttons;
 };
 

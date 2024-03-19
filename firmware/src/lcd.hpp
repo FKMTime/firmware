@@ -24,7 +24,6 @@ int x, y = 0;
 
 bool lcdWriteLock = false;
 bool lcdHasChanged = true;
-bool blockLcd = false;
 unsigned long lcdLastDraw = 0;
 
 enum PrintAligment {
@@ -263,10 +262,6 @@ void lcdPrintf(int line, bool fillBlank, PrintAligment aligment, const char *for
   if (buffer != temp) delete[] buffer;
 
   if(xPortGetCoreID() == mainCoreId) printLcdBuff();
-}
-
-void blockLcdChange(bool block) {
-  blockLcd = block;
 }
 
 #endif
