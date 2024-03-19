@@ -52,6 +52,8 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       countryIso2.toLowerCase();
 
       if (state.currentScene == SCENE_WAITING_FOR_COMPETITOR) {
+        if(!webSocket.isConnected() || !stackmat.connected()) return;
+
         if (state.competitorCardId == 0 && canCompete) {
           strncpy(state.competitorDisplay, display.c_str(), 128);
           state.competitorCardId = cardId;
@@ -163,6 +165,11 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
     Logger.println("Connected to WebSocket server");
   } else if (type == WStype_DISCONNECTED) {
     Logger.println("Disconnected from WebSocket server");
+
+    if(waitForSolveResponse) {
+      showError("Server not connected!");
+      waitForSolveResponse = false;
+    }
   }
 }
 

@@ -178,6 +178,13 @@ void resetSolveState() {
     stateHasChanged = true;
 }
 
+void showError(const char* str) {
+  if(state.currentScene != SCENE_ERROR) state.sceneBeforeError = state.currentScene;
+  state.currentScene = SCENE_ERROR;
+  strncpy(state.errorMsg, str, 128);
+  stateHasChanged = true;
+}
+
 String displayTime(uint8_t m, uint8_t s, uint16_t ms) {
   String tmp = "";
   if (m > 0) {

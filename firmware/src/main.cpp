@@ -117,6 +117,10 @@ void rfidLoop() {
   serializeJson(doc, json);
   webSocket.sendTXT(json);
 
+  if(!webSocket.isConnected()) {
+    showError("Server not connected!");
+  }
+
   mfrc522.PICC_HaltA();
   lastCardReadTime = millis();
 }
