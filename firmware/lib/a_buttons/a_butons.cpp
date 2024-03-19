@@ -20,6 +20,17 @@ bool isPinsPressed(std::vector<uint8_t> pins) {
     return true;
 }
 
+bool isAnyPinPressed(std::vector<uint8_t> pins) {
+    size_t size = pins.size();
+    if (size == 1) return digitalRead(pins.at(0)) == LOW;
+
+    for(size_t i = 0; i < size; i++) {
+        if(digitalRead(pins.at(i)) == LOW) return true;
+    }
+
+    return false;
+}
+
 
 AButtons::AButtons() {}
 
@@ -35,7 +46,7 @@ void AButtons::loop() {
         bPressedTime = millis();
 
         // while holding
-        while (isPinsPressed(b.pins)) {
+        while (isAnyPinPressed(b.pins)) {
             for(size_t cb = 0; cb < b.callbacks.size(); cb++) {
                 ButtonCb &bcb = b.callbacks.at(cb);
 
