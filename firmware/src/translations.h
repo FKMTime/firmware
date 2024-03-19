@@ -8,6 +8,7 @@
 // EN / PL
 #define TR_STACKMAT_HEADER "Timer"
 #define TR_SERVER_HEADER "Server"
+#define TR_WIFI_HEADER "WIFI"
 #define TR_DISCONNECTED (primaryLangauge ? "Disconnected" : "Odlaczony")
 #define TR_COMPETITOR (primaryLangauge ? "Competitor" : "Zawodnik")
 #define TR_CONFIRM_TIME (primaryLangauge ? "Confirm the time" : "Potwierdz czas")

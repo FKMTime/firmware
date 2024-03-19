@@ -16,6 +16,7 @@ bool stateHasChanged = true;
 bool lockStateChange = false;
 bool waitForSolveResponse = false;
 
+bool lastWifiConnected = false;
 bool lastServerConnected = false;
 bool lastStackmatConnected = false;
 
@@ -83,6 +84,11 @@ void checkConnectionStatus() {
     lastServerConnected = webSocket.isConnected();
     stateHasChanged = true;
   }
+
+  if (WiFi.isConnected() != lastWifiConnected) {
+    lastWifiConnected = WiFi.isConnected();
+    stateHasChanged = true;
+  }
 }
 
 void lcdStateManagementLoop() {
@@ -90,7 +96,12 @@ void lcdStateManagementLoop() {
     if(!stateHasChanged || lockStateChange) return;
 
     if (state.currentScene <= SCENE_WAITING_FOR_COMPETITOR) {
-      if (!webSocket.isConnected()) {
+      if (!WiFi.isConnected()) {
+        lcdPrintf(0, true, ALIGN_CENTER, TR_WIFI_HEADER);
+        lcdPrintf(1, true, ALIGN_CENTER, TR_DISCONNECTED);
+        stateHasChanged = false;
+        return;
+      } else if (!webSocket.isConnected()) {
         lcdPrintf(0, true, ALIGN_CENTER, TR_SERVER_HEADER);
         lcdPrintf(1, true, ALIGN_CENTER, TR_DISCONNECTED);
         stateHasChanged = false;
@@ -227,6 +238,10 @@ void sendSolve(bool delegate) {
   String json;
   serializeJson(doc, json);
   webSocket.sendTXT(json);
+
+  if(!webSocket.isConnected()) {
+    showError("Server not connected!");
+  }
 
   waitForSolveResponse = true;
 }
