@@ -16,6 +16,9 @@ bool stateHasChanged = true;
 bool lockStateChange = false;
 bool waitForSolveResponse = false;
 
+bool lastServerConnected = false;
+bool lastStackmatConnected = false;
+
 enum StateScene {
   SCENE_NOT_INITALIZED, // before timer connects to wifi/ws
   SCENE_WAITING_FOR_COMPETITOR, // before competitor scans card
@@ -70,8 +73,35 @@ void initState() {
   state.currentScene = SCENE_WAITING_FOR_COMPETITOR;
 }
 
+void checkConnectionStatus() {
+  if (stackmat.connected() != lastStackmatConnected) {
+    lastStackmatConnected = stackmat.connected();
+    stateHasChanged = true;
+  }
+
+  if (webSocket.isConnected() != lastServerConnected) {
+    lastServerConnected = webSocket.isConnected();
+    stateHasChanged = true;
+  }
+}
+
 void lcdStateManagementLoop() {
+    checkConnectionStatus();
     if(!stateHasChanged || lockStateChange) return;
+
+    if (state.currentScene <= SCENE_WAITING_FOR_COMPETITOR) {
+      if (!webSocket.isConnected()) {
+        lcdPrintf(0, true, ALIGN_CENTER, TR_SERVER_HEADER);
+        lcdPrintf(1, true, ALIGN_CENTER, TR_DISCONNECTED);
+        stateHasChanged = false;
+        return;
+      } else if (!stackmat.connected()) {
+        lcdPrintf(0, true, ALIGN_CENTER, TR_STACKMAT_HEADER);
+        lcdPrintf(1, true, ALIGN_CENTER, TR_DISCONNECTED);
+        stateHasChanged = false;
+        return;
+      }
+    }
 
     if (state.currentScene == SCENE_WAITING_FOR_COMPETITOR) {
         lcdPrintf(0, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_TOP);
