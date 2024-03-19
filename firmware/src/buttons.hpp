@@ -29,8 +29,7 @@ void delegateButtonCalled(Button &b) {
 }
 
 void delegateButtonAfterRelease(Button &b) {
-  if (state.currentScene == SCENE_ERROR) return;
-  lcdClear();
+  if (state.currentScene != SCENE_ERROR) lcdClear();
   lockStateChange = false;
   stateHasChanged = true;
 }
