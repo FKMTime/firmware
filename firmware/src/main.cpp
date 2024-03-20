@@ -32,10 +32,10 @@ void setup() {
   pinMode(BAT_ADC, INPUT);
 
   Serial.begin(115200);
-  Serial2.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, STACKMAT_JACK);
   Logger.begin(&Serial);
   EEPROM.begin(128);
-  stackmat.begin(&Serial2);
+  Serial1.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, STACKMAT_JACK, 255, false);
+  stackmat.begin(&Serial1);
   SPI.begin(RFID_SCK, RFID_MISO, RFID_MOSI);
   Wire.begin(LCD_SDA, LCD_SCL);
 
@@ -58,6 +58,10 @@ void setup() {
   initWifi();
   lcdClear();
 
+  // IDK WHY BUT MY STACKMAT IMPLEMENTATION IS BUGGY WHEN THERE IS A LOT OF 
+  // DATA INSIDE Serial BUFFER, SO IT WILL FIX IT
+  while(Serial1.available()) { Serial1.read(); } 
+
   initState();
   xTaskCreatePinnedToCore(core2, "core2", 10000, NULL, 0, NULL, 0);
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1);
@@ -69,6 +73,7 @@ void loop() {
   lcdPrintLoop();           // non blocking
   Logger.loop();            // non blocking
   webSocket.loop();         // non blocking
+  stackmat.loop();          // non blocking
   stackmatLoop();           // non blocking
 
   sleepDetection();

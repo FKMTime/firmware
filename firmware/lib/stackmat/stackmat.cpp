@@ -10,7 +10,6 @@ void Stackmat::begin(Stream *_serial) {
 void Stackmat::loop() {
   String data;
   while (serial->available() > 9) {
-    yield();
     data = ReadStackmatString();
 
     if (data.length() >= 8) {
@@ -50,6 +49,7 @@ String Stackmat::ReadStackmatString() {
   while (millis() - startTime < 1000) {
     if (serial->available() > 0) {
       char c = serial->read();
+
       if ((int)c == 0) {
         return tmp;
       }
