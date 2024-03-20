@@ -69,8 +69,9 @@ void submitButton(Button &b) {
 
 void debugButton(Button &b) {
   Logger.printf("dbg here\n");
-  state.competitorCardId = 3004425529;
-  startSolveSession(6969);
+  // state.competitorCardId = 3004425529;
+  // startSolveSession(6969);
+  Logger.printf("Current scene: %d\n\n", state.currentScene);
 }
 
 void buttonsInit() {

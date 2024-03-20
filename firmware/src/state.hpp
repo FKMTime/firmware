@@ -37,6 +37,7 @@ struct State {
 
     char solveSessionId[UUID_LENGTH];
     int solveTime = 0;
+    int lastSolveTime = 0;
     int penalty = 0;
 
     unsigned long competitorCardId = 0;
@@ -122,8 +123,8 @@ void lcdStateManagementLoop() {
         lcdClearLine(1); // TODO: temp
         // lcdPrintf(1, true, ALIGN_CENTER, "Inspection"); // TODO: show only if inspection is enabled for current round
     } else if(state.currentScene == SCENE_TIMER_TIME) {
-        lcdPrintf(0, true, ALIGN_CENTER, "%s", displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds()).c_str());
-        lcdClearLine(1);
+        // lcdPrintf(0, true, ALIGN_CENTER, "%s", displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds()).c_str());
+        // lcdClearLine(1);
     } else if (state.currentScene == SCENE_FINISHED_TIME) {
         if (waitForSolveResponse) {
             lcdPrintf(0, true, ALIGN_CENTER, TR_WAITING_FOR_SOLVE_TOP);
@@ -164,10 +165,13 @@ void lcdStateManagementLoop() {
 /// @brief Called after time is finished
 /// @param solveTime 
 void startSolveSession(int solveTime) {
+    if (solveTime == state.lastSolveTime) return;
+
     uuid.generate(); // generate next uuid
 
     strncpy(state.solveSessionId, uuid.toCharArray(), UUID_LENGTH);
     state.solveTime = solveTime;
+    state.lastSolveTime = solveTime;
     state.penalty = 0;
     state.judgeCardId = 0;
     state.timeConfirmed = false;
@@ -180,6 +184,7 @@ void startSolveSession(int solveTime) {
 void resetSolveState() {
     state.solveTime = 0;
     state.penalty = 0;
+    state.competitorCardId = 0;
     state.judgeCardId = 0;
     state.timeConfirmed = false;
     memset(state.competitorDisplay, ' ', sizeof(state.competitorCardId));

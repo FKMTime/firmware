@@ -136,7 +136,7 @@ void sleepDetection() {
   unsigned long timeSinceLastDraw = millis() - lcdLastDraw;
   if (timeSinceLastDraw > SLEEP_TIME && !lcdHasChanged) {
     lcdPrintf(0, true, ALIGN_CENTER, "Sleep mode");
-    lcdPrintf(1, true, ALIGN_CENTER, "Submit to wake");
+    lcdPrintf(1, true, ALIGN_CENTER, "Turn on timer");
     lcd.noBacklight();
     mfrc522.PCD_SoftPowerDown();
 
@@ -157,7 +157,7 @@ void sleepDetection() {
 
 void stackmatLoop() {
   if (stackmat.state() != state.lastTimerState && stackmat.state() != ST_Unknown && state.lastTimerState != ST_Unknown) {
-    Logger.printf("State changed from %c to %c\n", state.lastTimerState, stackmat.state());
+    // Logger.printf("State changed from %c to %c\n", state.lastTimerState, stackmat.state());
     switch (stackmat.state()) {
       case ST_Stopped:
         if (state.competitorCardId == 0 || state.solveTime > 0) break;
@@ -173,6 +173,7 @@ void stackmatLoop() {
 
       case ST_Running:
         if (state.competitorCardId == 0 || state.solveTime > 0) break;
+        state.currentScene = SCENE_TIMER_TIME;
         Logger.println("Solve started!");
         break;
 
@@ -183,8 +184,9 @@ void stackmatLoop() {
     stateHasChanged = true;
   }
 
-  if (stackmat.state() == StackmatTimerState::ST_Running && state.solveTime <= 0) {
-      stateHasChanged = true;
+  if (stackmat.state() == StackmatTimerState::ST_Running && state.currentScene == SCENE_TIMER_TIME) {
+    lcdPrintf(0, true, ALIGN_CENTER, "%s", displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds()).c_str());
+    lcdClearLine(1);
   } else if (stackmat.connected() != lastStackmatConnected) {
     lastStackmatConnected = stackmat.connected();
     stateHasChanged = true;

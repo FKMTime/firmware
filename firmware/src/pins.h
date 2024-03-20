@@ -7,7 +7,7 @@
 #define BUTTON2 32 // penalty
 #define BUTTON3 27 // submit
 #define BUTTON4 26 // inspection start
-#define SLEEP_WAKE_BUTTON (gpio_num_t)BUTTON3
+#define SLEEP_WAKE_BUTTON (gpio_num_t)STACKMAT_JACK
 
 #define BAT_ADC 34
 #define STACKMAT_JACK 4
