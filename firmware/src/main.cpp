@@ -21,6 +21,7 @@ void core2(void *pvParameters);
 inline void loop2();
 void rfidLoop();
 void sleepDetection();
+void stackmatLoop();
 
 void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
@@ -68,6 +69,7 @@ void loop() {
   lcdPrintLoop();           // non blocking
   Logger.loop();            // non blocking
   webSocket.loop();         // non blocking
+  stackmatLoop();           // non blocking
 
   sleepDetection();
 
@@ -146,4 +148,42 @@ void sleepDetection() {
 
     return;
   }
+}
+
+void stackmatLoop() {
+  if (stackmat.state() != state.lastTimerState && stackmat.state() != ST_Unknown && state.lastTimerState != ST_Unknown) {
+    Logger.printf("State changed from %c to %c\n", state.lastTimerState, stackmat.state());
+    switch (stackmat.state()) {
+      case ST_Stopped:
+        if (state.competitorCardId == 0 || state.solveTime > 0) break;
+
+        Logger.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
+        startSolveSession(stackmat.time());
+        //saveState();
+        break;
+
+      case ST_Reset:
+        Logger.println("Timer reset!");
+        break;
+
+      case ST_Running:
+        if (state.competitorCardId == 0 || state.solveTime > 0) break;
+        Logger.println("Solve started!");
+        break;
+
+      default:
+        break;
+    }
+
+    stateHasChanged = true;
+  }
+
+  if (stackmat.state() == StackmatTimerState::ST_Running && state.solveTime <= 0) {
+      stateHasChanged = true;
+  } else if (stackmat.connected() != lastStackmatConnected) {
+    lastStackmatConnected = stackmat.connected();
+    stateHasChanged = true;
+  }
+
+  state.lastTimerState = stackmat.state();
 }
