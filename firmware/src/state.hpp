@@ -62,6 +62,31 @@ struct EEPROMState {
     int penalty;
 };
 
+void stateDefault() {
+  uuid.generate();
+  strcpy(state.solveSessionId, uuid.toCharArray());
+}
+
+void readState() {
+  uint8_t size = EEPROM.read(0);
+  Logger.printf("read Size: %d\n", size);
+
+  if (size != sizeof(EEPROMState)) {
+    Logger.println("Loading default state...");
+    stateDefault();
+    return;
+  }
+
+  EEPROMState _state = {0};
+  EEPROM.get(1, _state);
+
+  strcpy(state.solveSessionId, _state.solveSessionId);
+  state.solveTime = _state.solveTime;
+  state.lastSolveTime = _state.solveTime;
+  state.penalty = _state.penalty;
+  state.competitorCardId = _state.competitorCardId;
+}
+
 void initState() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
