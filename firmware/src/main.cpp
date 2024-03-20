@@ -164,7 +164,6 @@ void stackmatLoop() {
 
         Logger.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
         startSolveSession(stackmat.time());
-        //saveState();
         break;
 
       case ST_Reset:

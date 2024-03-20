@@ -67,6 +67,18 @@ void stateDefault() {
   strcpy(state.solveSessionId, uuid.toCharArray());
 }
 
+void saveState() {
+  EEPROMState s = {0};
+  strcpy(s.solveSessionId, state.solveSessionId);
+  s.solveTime = state.solveTime;
+  s.penalty = state.penalty;
+  s.competitorCardId = state.competitorCardId;
+
+  EEPROM.write(0, (uint8_t)sizeof(EEPROMState));
+  EEPROM.put(1, s);
+  EEPROM.commit();
+}
+
 void readState() {
   uint8_t size = EEPROM.read(0);
   Logger.printf("read Size: %d\n", size);
@@ -97,7 +109,12 @@ void initState() {
 
   uuid.seed(epoch, (unsigned long)ESP.getEfuseMac());
 
-  state.currentScene = SCENE_WAITING_FOR_COMPETITOR;
+  readState();
+  if (state.solveTime > 0) {
+    state.currentScene = SCENE_FINISHED_TIME;
+  } else {
+    state.currentScene = SCENE_WAITING_FOR_COMPETITOR;
+  }
 }
 
 void checkConnectionStatus() {
@@ -204,6 +221,8 @@ void startSolveSession(int solveTime) {
     state.currentScene = SCENE_FINISHED_TIME;
 
     stateHasChanged = true;
+
+    saveState();
 }
 
 void resetSolveState() {
@@ -217,6 +236,8 @@ void resetSolveState() {
     state.currentScene = SCENE_WAITING_FOR_COMPETITOR;
 
     stateHasChanged = true;
+
+    saveState();
 }
 
 void showError(const char* str) {
