@@ -297,4 +297,17 @@ void sendSolve(bool delegate) {
   waitForSolveResponse = true;
 }
 
+void logState() {
+  Logger.printf("State snapshot:\n");
+  Logger.printf("Solve sess id: %s\n", state.solveSessionId);
+  Logger.printf("Last finished time: %d\n", state.lastSolveTime);
+  Logger.printf("Finished time: %d\n", state.solveTime);
+  Logger.printf("Penalty: %d\n", state.penalty);
+  Logger.printf("Competitor card: %lu\n", state.competitorCardId);
+  Logger.printf("Judge card: %lu\n", state.judgeCardId);
+  Logger.printf("Competitor display: \"%s\"\n", state.competitorDisplay);
+  Logger.printf("Time confirmed: %d\n", state.timeConfirmed);
+  Logger.printf("Current scene: %d\n", state.currentScene);
+}
+
 #endif
