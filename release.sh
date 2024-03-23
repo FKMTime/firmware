@@ -14,12 +14,12 @@ then
     exit
 fi
 
-cd $SCRIPT_DIR/proj
+cd $SCRIPT_DIR/firmware
 pio run
 
 cd $SCRIPT_DIR
-VERSION=$(head -c 8 ./proj/.versum)
-BUILD_TIME=$(printf "%d\n" "0x$(cat ./proj/src/version.h | grep 'BUILD_TIME' | cut -d'"' -f 2)")
+VERSION=$(head -c 8 ./firmware/.versum)
+BUILD_TIME=$(printf "%d\n" "0x$(cat ./firmware/src/version.h | grep 'BUILD_TIME' | cut -d'"' -f 2)")
 BUILD_TIME_HEX=$(printf "%08x\n" $BUILD_TIME)
 
 if gh release list | grep -q "$BUILD_TIME-$VERSION" ; then
@@ -27,7 +27,7 @@ if gh release list | grep -q "$BUILD_TIME-$VERSION" ; then
     exit
 fi
 
-BUILD_FILES=$(ls $SCRIPT_DIR/proj/build/*.$VERSION.$BUILD_TIME_HEX.bin)
+BUILD_FILES=$(ls $SCRIPT_DIR/firmware/build/*.$VERSION.$BUILD_TIME_HEX.bin)
 if [ -z "$BUILD_FILES" ]; then
     echo "No build files found"
     exit
