@@ -40,6 +40,9 @@ struct State {
     int lastSolveTime = 0;
     int penalty = 0;
 
+    unsigned long inspectionStarted = 0;
+    unsigned long inspectionEnded = 0;
+
     unsigned long competitorCardId = 0;
     unsigned long judgeCardId = 0;
     char competitorDisplay[128]; // max 128 chars
@@ -58,6 +61,8 @@ struct State {
 struct EEPROMState {
     char solveSessionId[UUID_LENGTH];
     unsigned long competitorCardId;
+    unsigned long inspectionStarted;
+    unsigned long inspectionEnded;
     int solveTime;
     int penalty;
 };
@@ -73,6 +78,8 @@ void saveState() {
   s.solveTime = state.solveTime;
   s.penalty = state.penalty;
   s.competitorCardId = state.competitorCardId;
+  s.inspectionStarted = state.inspectionStarted;
+  s.inspectionEnded = state.inspectionEnded;
 
   EEPROM.write(0, (uint8_t)sizeof(EEPROMState));
   EEPROM.put(1, s);
@@ -97,6 +104,8 @@ void readState() {
   state.lastSolveTime = _state.solveTime;
   state.penalty = _state.penalty;
   state.competitorCardId = _state.competitorCardId;
+  state.inspectionStarted = _state.inspectionStarted;
+  state.inspectionEnded = _state.inspectionEnded;
 }
 
 void initState() {
@@ -167,6 +176,12 @@ void lcdStateManagementLoop() {
     } else if(state.currentScene == SCENE_TIMER_TIME) {
         // lcdPrintf(0, true, ALIGN_CENTER, "%s", displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds()).c_str());
         // lcdClearLine(1);
+    } else if(state.currentScene == SCENE_INSPECTION) {
+      int secondsLeft = (int)ceil((millis() - state.inspectionStarted) / 1000); 
+      lcdPrintf(0, true, ALIGN_CENTER, "%d s", secondsLeft);
+      lcdClearLine(1);
+      stateHasChanged = true; // refresh
+      return;
     } else if (state.currentScene == SCENE_FINISHED_TIME) {
         if (waitForSolveResponse) {
             lcdPrintf(0, true, ALIGN_CENTER, TR_WAITING_FOR_SOLVE_TOP);
@@ -180,8 +195,18 @@ void lcdStateManagementLoop() {
         uint8_t seconds = (state.solveTime % 60000) / 1000;
         uint16_t ms = state.solveTime % 1000;
 
+        int inspectionTime = state.inspectionEnded - state.inspectionStarted;
+        int inspectionS = (inspectionTime % 60000) / 1000;
+
+        String solveTimeStr = displayTime(minutes, seconds, ms);
+
         /* Line 1 */
-        lcdPrintf(0, true, ALIGN_LEFT, "%s", displayTime(minutes, seconds, ms).c_str());
+        if (inspectionTime >= INSPECTION_TIME) {
+          lcdPrintf(0, true, ALIGN_LEFT, "%s (%ds)", solveTimeStr.c_str(), inspectionS);
+        } else {
+          lcdPrintf(0, true, ALIGN_LEFT, "%s", solveTimeStr.c_str());
+        }
+
         if (state.penalty == -1) {
             lcdPrintf(0, false, ALIGN_RIGHT, "DNF");
         } else if(state.penalty > 0) {
@@ -220,8 +245,14 @@ void startSolveSession(int solveTime) {
     waitForSolveResponse = false;
     state.currentScene = SCENE_FINISHED_TIME;
 
-    stateHasChanged = true;
+    int inspectionTime = state.inspectionEnded - state.inspectionStarted;
+    if (inspectionTime >= INSPECTION_PLUS_TWO_PENALTY && inspectionTime < INSPECTION_DNF_PENALTY) {
+      state.penalty = 2;
+    } else if (inspectionTime >= INSPECTION_DNF_PENALTY) {
+      state.penalty = -1;
+    }
 
+    stateHasChanged = true;
     saveState();
 }
 
@@ -231,6 +262,8 @@ void resetSolveState() {
     state.competitorCardId = 0;
     state.judgeCardId = 0;
     state.timeConfirmed = false;
+    state.inspectionStarted = 0;
+    state.inspectionEnded = 0;
     memset(state.competitorDisplay, ' ', sizeof(state.competitorCardId));
     waitForSolveResponse = false;
     state.currentScene = SCENE_WAITING_FOR_COMPETITOR;
@@ -238,6 +271,23 @@ void resetSolveState() {
     stateHasChanged = true;
 
     saveState();
+}
+
+void startInspection() {
+  if (state.currentScene >= SCENE_INSPECTION) return;
+  if (state.competitorCardId <= 0) return;
+
+  state.currentScene = SCENE_INSPECTION;
+  state.inspectionStarted = millis();
+  stateHasChanged = true;
+}
+
+void stopInspection() {
+  if (state.currentScene != SCENE_INSPECTION) return;
+
+  state.currentScene = SCENE_TIMER_TIME;
+  state.inspectionEnded = millis();
+  stateHasChanged = true;
 }
 
 void showError(const char* str) {

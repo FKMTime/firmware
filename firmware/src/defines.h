@@ -12,6 +12,11 @@
 #define WIFI_PASSWORD "FkmTimer"
 #define CHIP "esp32"
 
+#define INSPECTION_TIME 15000 // 15s
+#define INSPECTION_PLUS_TWO_PENALTY 15000 // 15s to dnf penalty
+#define INSPECTION_DNF_PENALTY 17000 // from 17s upwards
+#define INSPECTION_ENABLE // for test
+
 #define DELEGAT_BUTTON_HOLD_TIME 3000 // 3s (in 1s increments)
 #define DNF_BUTTON_HOLD_TIME 1000 // on penalty button (TIME TO HOLD PNALTY TO INPUT DNF)
 #define RESET_COMPETITOR_HOLD_TIME 5000 // on submit button (RESETS COMPETITOR IF TIME HASNT STARTED YET)

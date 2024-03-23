@@ -29,6 +29,7 @@ void delegateButtonCalled(Button &b) {
   lcdPrintf(0, true, ALIGN_CENTER, TR_DELEGATE_CALLED_TOP);
   lcdPrintf(1, true, ALIGN_CENTER, TR_DELEGATE_CALLED_BOTTOM);
 
+  stopInspection(); // stop inspection
   sendSolve(true); // send delegate request (TODO: maybe different method?)
 }
 
@@ -95,6 +96,10 @@ void debugButton(Button &b) {
   // startSolveSession(6969);
 }
 
+void inspectionButton(Button &b) {
+  startInspection();
+}
+
 void buttonsInit() {
   size_t delegateBtn =
       buttons.addButton(BUTTON1, NULL, delegateButtonAfterRelease);
@@ -111,6 +116,11 @@ void buttonsInit() {
   buttons.addButtonCb(submitBtn, 0, true, submitButton);
   buttons.addButtonCb(submitBtn, RESET_COMPETITOR_HOLD_TIME, false,
                       resetCompettorButton);
+
+  #ifdef INSPECTION_ENABLE
+  size_t inspectionBtn = buttons.addButton(BUTTON4, NULL, NULL);
+  buttons.addButtonCb(inspectionBtn, 0, true, inspectionButton);
+  #endif
 
   size_t dbgBtn = buttons.addMultiButton({BUTTON1, BUTTON2}, NULL, debugButton);
 }

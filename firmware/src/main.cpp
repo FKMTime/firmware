@@ -29,6 +29,7 @@ void setup() {
   pinMode(BUTTON1, INPUT_PULLUP);
   pinMode(BUTTON2, INPUT_PULLUP);
   pinMode(BUTTON3, INPUT_PULLUP);
+  pinMode(BUTTON4, INPUT_PULLUP);
   pinMode(BAT_ADC, INPUT);
 
   Serial.begin(115200);
@@ -172,6 +173,11 @@ void stackmatLoop() {
 
       case ST_Running:
         if (state.competitorCardId == 0 || state.solveTime > 0) break;
+
+        #ifdef INSPECTION_ENABLE
+        stopInspection();
+        #endif
+
         state.currentScene = SCENE_TIMER_TIME;
         Logger.println("Solve started!");
         break;
