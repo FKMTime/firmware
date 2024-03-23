@@ -53,7 +53,7 @@ void lcdInit() {
   lcdClear();
 }
 
-void lcdPrintLoop() {
+void lcdLoop() {
   unsigned long timeSinceLastDraw = millis() - lcdLastDraw;
   if (scrollerLine > -1 && millis() - lastScrollerTime > SCROLLER_SPEED) {
     scrollLoop();

@@ -68,26 +68,20 @@ void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1);
 }
 
-unsigned long lastBatRead = 0;
 void loop() {
-  lcdStateManagementLoop(); // non blocking
-  lcdPrintLoop();           // non blocking
+  if (update) {
+    webSocket.loop();
+    return;
+  }
+
+  stateLoop();              // non blocking
+  lcdLoop();                // non blocking
   Logger.loop();            // non blocking
   webSocket.loop();         // non blocking
   stackmat.loop();          // non blocking
   stackmatLoop();           // non blocking
 
   sleepDetection();
-
-  // non blocking
-  // TODO: maybe move this into own function?
-  if (millis() - lastBatRead > BATTERY_READ_INTERVAL) {
-    currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 5, false);
-    float batPerct = voltageToPercentage(currentBatteryVoltage);
-
-    sendBatteryStats(batPerct, currentBatteryVoltage);
-    lastBatRead = millis();
-  }
 
   delay(5);
 }
@@ -98,9 +92,20 @@ void core2(void *pvParameters) {
   }
 }
 
+unsigned long lastBatRead = 0;
 inline void loop2() {
+  if (update) return; // return if update'ing
+
   rfidLoop();     // blocking (when card is close to scanner)
   buttons.loop(); // blocking
+
+  if (millis() - lastBatRead > BATTERY_READ_INTERVAL) {
+    currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 5, false);
+    float batPerct = voltageToPercentage(currentBatteryVoltage);
+
+    sendBatteryStats(batPerct, currentBatteryVoltage);
+    lastBatRead = millis();
+  }
 
   delay(10);
 }

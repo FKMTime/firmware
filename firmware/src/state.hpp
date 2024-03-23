@@ -145,7 +145,7 @@ void checkConnectionStatus() {
   }
 }
 
-void lcdStateManagementLoop() {
+void stateLoop() {
     checkConnectionStatus();
     if(!stateHasChanged || lockStateChange) return;
 
