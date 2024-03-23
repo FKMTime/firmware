@@ -89,7 +89,9 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       }
 
       bool useInspection = doc["device_settings"]["use_inspection"];
+      bool added = doc["device_settings"]["added"];
       state.useInspection = useInspection;
+      state.added = added;
       stateHasChanged = true;
     } else if (doc.containsKey("start_update")) {
       if (update) {

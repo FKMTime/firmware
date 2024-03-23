@@ -40,6 +40,7 @@ struct State {
     int lastSolveTime = 0;
     int penalty = 0;
 
+    bool added = true;
     bool useInspection = true;
     unsigned long inspectionStarted = 0;
     unsigned long inspectionEnded = 0;
@@ -147,6 +148,13 @@ void checkConnectionStatus() {
 void lcdStateManagementLoop() {
     checkConnectionStatus();
     if(!stateHasChanged || lockStateChange) return;
+
+    if (!state.added) {
+      lcdPrintf(0, true, ALIGN_CENTER, TR_DEVICE_NOT_ADDED_TOP);
+      lcdPrintf(1, true, ALIGN_CENTER, TR_DEVICE_NOT_ADDED_BOTTOM);
+      stateHasChanged = false;
+      return;
+    }
 
     if (state.currentScene <= SCENE_WAITING_FOR_COMPETITOR) {
       if (!WiFi.isConnected()) {

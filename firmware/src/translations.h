@@ -28,4 +28,7 @@
 #define TR_WAITING_FOR_SOLVE_TOP (primaryLangauge ? "Waiting for" : "Czekanie na")
 #define TR_WAITING_FOR_SOLVE_BOTTOM (primaryLangauge ? "WCA" : "WCA")
 
+#define TR_DEVICE_NOT_ADDED_TOP "Device not added"
+#define TR_DEVICE_NOT_ADDED_BOTTOM "Press submit to connect"
+
 #endif

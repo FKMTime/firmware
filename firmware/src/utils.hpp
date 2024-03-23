@@ -60,4 +60,13 @@ void sendBatteryStats(float level, float voltage) {
   webSocket.sendTXT(json);
 }
 
+void sendAddDevice() {
+  JsonDocument doc;
+  doc["add"]["esp_id"] = getEspId();
+
+  String json;
+  serializeJson(doc, json);
+  webSocket.sendTXT(json);
+}
+
 #endif

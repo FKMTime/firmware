@@ -63,6 +63,11 @@ void dnfButton(Button &b) {
 }
 
 void submitButton(Button &b) {
+  if (!state.added) {
+    sendAddDevice();
+    return;
+  }
+
   if (state.currentScene == SCENE_ERROR) {
     lcdClear();
     state.currentScene = state.sceneBeforeError;
