@@ -264,7 +264,7 @@ void startSolveSession(int solveTime) {
     saveState();
 }
 
-void resetSolveState() {
+void resetSolveState(bool save = true) {
     state.solveTime = 0;
     state.penalty = 0;
     state.competitorCardId = 0;
@@ -278,7 +278,7 @@ void resetSolveState() {
 
     stateHasChanged = true;
 
-    saveState();
+    if(save) saveState();
 }
 
 void startInspection() {

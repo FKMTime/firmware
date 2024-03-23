@@ -85,7 +85,15 @@ void submitButton(Button &b) {
   stateHasChanged = true;
 }
 
-void resetCompettorButton(Button &b) { resetSolveState(); }
+void resetTimerStateButton(Button &b) {
+  resetSolveState(false);
+}
+
+void resetCompetitorButton(Button &b) { 
+  if (state.currentScene == SCENE_COMPETITOR_INFO || state.currentScene == SCENE_INSPECTION) {
+    resetSolveState(false);
+  }
+}
 
 void resetWifiButton(Button &b) {
   Logger.println("Resetting wifi settings!");
@@ -107,25 +115,36 @@ void inspectionButton(Button &b) {
   startInspection();
 }
 
+void resetInspectionButton(Button &b) {
+  if (!state.useInspection) return;
+  if (state.currentScene != SCENE_INSPECTION) return;
+
+  state.currentScene = SCENE_COMPETITOR_INFO;
+  state.inspectionStarted = 0;
+  stateHasChanged = true;
+
+  b.disableAfterReleaseCbs = true; // disable other invokations (after release)
+}
+
 void buttonsInit() {
   size_t delegateBtn =
       buttons.addButton(BUTTON1, NULL, delegateButtonAfterRelease);
   buttons.addButtonReocCb(delegateBtn, 1000, delegateButtonHold);
-  buttons.addButtonCb(delegateBtn, DELEGAT_BUTTON_HOLD_TIME, false,
-                      delegateButtonCalled);
+  buttons.addButtonCb(delegateBtn, DELEGAT_BUTTON_HOLD_TIME, false, delegateButtonCalled);
 
   size_t penaltyBtn = buttons.addButton(BUTTON2, NULL, NULL);
   buttons.addButtonCb(penaltyBtn, 0, true, penaltyButton);
   buttons.addButtonCb(penaltyBtn, DNF_BUTTON_HOLD_TIME, false, dnfButton);
-  buttons.addButtonCb(penaltyBtn, RESET_WIFI_HOLD_TIME, false, resetWifiButton);
+  buttons.addButtonCb(penaltyBtn, TIMER_RESET_HOLD_TIME, false, resetTimerStateButton);
 
   size_t submitBtn = buttons.addButton(BUTTON3, NULL, NULL);
   buttons.addButtonCb(submitBtn, 0, true, submitButton);
-  buttons.addButtonCb(submitBtn, RESET_COMPETITOR_HOLD_TIME, false,
-                      resetCompettorButton);
+  buttons.addButtonCb(submitBtn, RESET_COMPETITOR_HOLD_TIME, false, resetCompetitorButton);
+  buttons.addButtonCb(submitBtn, RESET_WIFI_HOLD_TIME, false, resetWifiButton);
 
   size_t inspectionBtn = buttons.addButton(BUTTON4, NULL, NULL);
   buttons.addButtonCb(inspectionBtn, 0, true, inspectionButton);
+  buttons.addButtonCb(inspectionBtn, INSPECTION_RESET_HOLD_TIME, false, resetInspectionButton);
 
   size_t dbgBtn = buttons.addMultiButton({BUTTON1, BUTTON2}, NULL, debugButton);
 }

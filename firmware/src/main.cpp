@@ -155,8 +155,7 @@ void sleepDetection() {
 }
 
 void stackmatLoop() {
-  if (stackmat.state() != state.lastTimerState && stackmat.state() != ST_Unknown) {
-    // Logger.printf("State changed from %c to %c\n", state.lastTimerState, stackmat.state());
+  if (stackmat.state() != state.lastTimerState && stackmat.state() != ST_Unknown && state.lastTimerState != ST_Unknown) {
     switch (stackmat.state()) {
       case ST_Stopped:
         if (state.competitorCardId == 0 || state.solveTime > 0) break;
