@@ -51,7 +51,7 @@ float readBatteryVoltage(int pin, int delayMs = 5, bool offset = true) {
 
 void sendBatteryStats(float level, float voltage) {
   JsonDocument doc;
-  doc["battery"]["esp_id"] = (unsigned long)ESP.getEfuseMac();
+  doc["battery"]["esp_id"] = getEspId();
   doc["battery"]["level"] = level;
   doc["battery"]["voltage"] = voltage;
 

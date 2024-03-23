@@ -13,7 +13,7 @@ void initWifi() {
   WiFiManager wm;
 
   char generatedSSID[100];
-  snprintf(generatedSSID, 100, "%s-%x", WIFI_SSID_PREFIX, (unsigned long)ESP.getEfuseMac());
+  snprintf(generatedSSID, 100, "%s-%x", WIFI_SSID_PREFIX, getEspId());
   wm.setConfigPortalTimeout(300);
   bool res = wm.autoConnect(generatedSSID, WIFI_PASSWORD);
   if (!res) {

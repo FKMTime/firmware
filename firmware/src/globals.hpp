@@ -22,4 +22,9 @@ MFRC522DriverPinSimple ss_pin(RFID_CS);
 MFRC522DriverSPI driver{ss_pin};
 MFRC522 mfrc522{driver};
 
+// Get esp id as uint32_t (only 4bytes)
+unsigned long getEspId() {
+    return (unsigned long)(ESP.getEfuseMac() & 0x00000000FFFFFFFF);
+}
+
 #endif

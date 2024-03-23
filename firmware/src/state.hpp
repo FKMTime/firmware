@@ -116,7 +116,7 @@ void initState() {
   time_t epoch;
   time(&epoch);
 
-  uuid.seed(epoch, (unsigned long)ESP.getEfuseMac());
+  uuid.seed(epoch, getEspId());
 
   readState();
   if (state.solveTime > 0) {
@@ -331,7 +331,7 @@ void sendSolve(bool delegate) {
   doc["solve"]["penalty"] = state.penalty;
   doc["solve"]["competitor_id"] = state.competitorCardId;
   doc["solve"]["judge_id"] = state.judgeCardId;
-  doc["solve"]["esp_id"] = (unsigned long)ESP.getEfuseMac();
+  doc["solve"]["esp_id"] = getEspId();
   doc["solve"]["timestamp"] = epoch;
   doc["solve"]["session_id"] = state.solveSessionId;
   doc["solve"]["delegate"] = delegate;

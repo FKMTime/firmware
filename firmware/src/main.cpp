@@ -47,12 +47,12 @@ void setup() {
   delay(100);
   currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 15, false);
   float initialBat = voltageToPercentage(currentBatteryVoltage);
-  Logger.printf("ESP ID: %x\n", (unsigned long)ESP.getEfuseMac());
+  Logger.printf("ESP ID: %x\n", getEspId());
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
   Logger.printf("Build time: %s\n", BUILD_TIME);
   Logger.printf("Battery: %f%% (%fv)\n", initialBat, currentBatteryVoltage);
 
-  lcdPrintf(0, true, ALIGN_LEFT, "ID: %x", (unsigned long)ESP.getEfuseMac());
+  lcdPrintf(0, true, ALIGN_LEFT, "ID: %x", getEspId());
   lcdPrintf(0, false, ALIGN_RIGHT, "%d%%", (int)initialBat);
   lcdPrintf(1, true, ALIGN_LEFT, "VER: %s", FIRMWARE_VERSION);
 
@@ -119,7 +119,7 @@ void rfidLoop() {
 
   JsonDocument doc;
   doc["card_info_request"]["card_id"] = cardId;
-  doc["card_info_request"]["esp_id"] = (unsigned long)ESP.getEfuseMac();
+  doc["card_info_request"]["esp_id"] = getEspId();
 
   String json;
   serializeJson(doc, json);

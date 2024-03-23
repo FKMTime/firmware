@@ -31,7 +31,8 @@ void initWs() {
 
   char finalPath[128];
   snprintf(finalPath, 128, "%s?id=%lu&ver=%s&chip=%s&bt=%s", 
-            wsInfo.path, (unsigned long)ESP.getEfuseMac(), FIRMWARE_VERSION, CHIP, BUILD_TIME);
+            wsInfo.path, getEspId(), FIRMWARE_VERSION, CHIP, BUILD_TIME);
+  Serial.printf("Final path: %s\n", finalPath);
 
   webSocket.begin(wsInfo.host, wsInfo.port, finalPath);
   webSocket.onEvent(webSocketEvent);
@@ -75,7 +76,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       stateHasChanged = true;
     } else if (doc.containsKey("solve_confirm")) {
       if (doc["solve_confirm"]["competitor_id"] != state.competitorCardId ||
-          doc["solve_confirm"]["esp_id"] != (unsigned long)ESP.getEfuseMac() ||
+          doc["solve_confirm"]["esp_id"] != getEspId() ||
           doc["solve_confirm"]["session_id"] != state.solveSessionId) {
         Logger.println("Wrong solve confirm frame!");
         return;
@@ -87,7 +88,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
         ESP.restart();
       }
 
-      if (doc["start_update"]["esp_id"] != (unsigned long)ESP.getEfuseMac() ||
+      if (doc["start_update"]["esp_id"] != getEspId() ||
           doc["start_update"]["version"] == FIRMWARE_VERSION) {
         Logger.println("Cannot start update! (wrong esp id or same firmware version)");
         return;
@@ -110,7 +111,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
 
       webSocket.sendBIN((uint8_t *)NULL, 0);
     } else if (doc.containsKey("api_error")) {
-      if (doc["api_error"]["esp_id"] != (unsigned long)ESP.getEfuseMac()) {
+      if (doc["api_error"]["esp_id"] != getEspId()) {
         Logger.println("Wrong api error frame!");
         return;
       }

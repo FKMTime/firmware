@@ -1,5 +1,10 @@
 #include "ws_logger.h"
 
+// Get esp id as uint32_t (only 4bytes)
+unsigned long espId() {
+    return (unsigned long)(ESP.getEfuseMac() & 0x00000000FFFFFFFF);
+}
+
 void WsLogger::begin(HardwareSerial* serial, unsigned long _sendInterval) {
     _serial = serial;
     sendInterval = _sendInterval;
@@ -47,7 +52,7 @@ void WsLogger::loop() {
     }
 
     JsonDocument doc;
-    doc["logs"]["esp_id"] = (unsigned long)ESP.getEfuseMac();
+    doc["logs"]["esp_id"] = espId();
     doc["logs"]["logs"] = logsArrDoc;
 
     if (wsClient != NULL) {
