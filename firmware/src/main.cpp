@@ -85,8 +85,6 @@ void loop() {
     currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 5, false);
     float batPerct = voltageToPercentage(currentBatteryVoltage);
 
-    // TODO: remove this battery log
-    Logger.printf("Battery: %f%% (%fv)\n", batPerct, currentBatteryVoltage);
     sendBatteryStats(batPerct, currentBatteryVoltage);
     lastBatRead = millis();
   }
@@ -173,10 +171,7 @@ void stackmatLoop() {
 
       case ST_Running:
         if (state.competitorCardId == 0 || state.solveTime > 0) break;
-
-        #ifdef INSPECTION_ENABLE
-        stopInspection();
-        #endif
+        if (state.useInspection) stopInspection();
 
         state.currentScene = SCENE_TIMER_TIME;
         Logger.println("Solve started!");

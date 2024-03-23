@@ -82,6 +82,14 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       }
 
       resetSolveState();
+    } else if (doc.containsKey("device_settings")) {
+      if (doc["device_settings"]["esp_id"] != getEspId()) {
+        Logger.println("Wrong deivce settings frame!");
+        return;
+      }
+
+      bool useInspection = doc["device_settings"]["use_inspection"];
+      state.useInspection = useInspection;
     } else if (doc.containsKey("start_update")) {
       if (update) {
         ESP.restart();

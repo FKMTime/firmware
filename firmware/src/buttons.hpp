@@ -97,6 +97,8 @@ void debugButton(Button &b) {
 }
 
 void inspectionButton(Button &b) {
+  if (!state.useInspection) return;
+
   startInspection();
 }
 
@@ -117,10 +119,8 @@ void buttonsInit() {
   buttons.addButtonCb(submitBtn, RESET_COMPETITOR_HOLD_TIME, false,
                       resetCompettorButton);
 
-  #ifdef INSPECTION_ENABLE
   size_t inspectionBtn = buttons.addButton(BUTTON4, NULL, NULL);
   buttons.addButtonCb(inspectionBtn, 0, true, inspectionButton);
-  #endif
 
   size_t dbgBtn = buttons.addMultiButton({BUTTON1, BUTTON2}, NULL, debugButton);
 }

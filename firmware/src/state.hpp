@@ -40,6 +40,7 @@ struct State {
     int lastSolveTime = 0;
     int penalty = 0;
 
+    bool useInspection = true;
     unsigned long inspectionStarted = 0;
     unsigned long inspectionEnded = 0;
 
