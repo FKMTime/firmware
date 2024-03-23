@@ -172,8 +172,7 @@ void lcdStateManagementLoop() {
         lcdPrintf(1, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_BOTTOM);
     } else if(state.currentScene == SCENE_COMPETITOR_INFO) {
         lcdPrintf(0, true, ALIGN_CENTER, state.competitorDisplay);
-        lcdClearLine(1); // TODO: temp
-        // lcdPrintf(1, true, ALIGN_CENTER, "Inspection"); // TODO: show only if inspection is enabled for current round
+        lcdPrintf(1, true, ALIGN_CENTER, state.useInspection ? "Inspection" : "");
     } else if(state.currentScene == SCENE_TIMER_TIME) {
         // lcdPrintf(0, true, ALIGN_CENTER, "%s", displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds()).c_str());
         // lcdClearLine(1);
