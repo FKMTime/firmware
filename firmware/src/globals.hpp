@@ -24,7 +24,7 @@ MFRC522 mfrc522{driver};
 
 // Get esp id as uint32_t (only 4bytes)
 unsigned long getEspId() {
-    return (unsigned long)(ESP.getEfuseMac() & 0x00000000FFFFFFFF);
+    return (unsigned long)(ESP.getEfuseMac() & 0x000000007FFFFFFF);
 }
 
 #endif
