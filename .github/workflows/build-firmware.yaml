@@ -17,7 +17,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: |
-            ./proj/.pio
+            ./firmware/.pio
             ~/.cache/pip
             ~/.platformio
           key: ${{ runner.os }}-pio
@@ -30,20 +30,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash ./build.sh
-        working-directory: ./proj
+        working-directory: ./firmware
 
       - name: Read version
         if: ${{ env.SKIP_BUILD != '1' }}
-        run: echo "VERSION=$(head -c 8 ./proj/.versum)" >> $GITHUB_ENV
+        run: echo "VERSION=$(head -c 8 ./firmware/.versum)" >> $GITHUB_ENV
 
       - name: Read build time
         if: ${{ env.SKIP_BUILD != '1' }}
-        run: echo "BUILD_TIME=$(printf "%d\n" "0x$(cat ./proj/src/version.h | grep 'BUILD_TIME' | cut -d'"' -f 2)")" >> $GITHUB_ENV
+        run: echo "BUILD_TIME=$(printf "%d\n" "0x$(cat ./firmware/src/version.h | grep 'BUILD_TIME' | cut -d'"' -f 2)")" >> $GITHUB_ENV
 
       - uses: ncipollo/release-action@v1
         if: ${{ env.SKIP_BUILD != '1' }}
         with:
-          artifacts: "./proj/build/*.bin"
+          artifacts: "./firmware/build/*.bin"
           generateReleaseNotes: true
           skipIfReleaseExists: true
           prerelease: true
