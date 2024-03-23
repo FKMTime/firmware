@@ -82,7 +82,7 @@ void loop() {
   // non blocking
   // TODO: maybe move this into own function?
   if (millis() - lastBatRead > BATTERY_READ_INTERVAL) {
-    currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 15, false);
+    currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 5, false);
     float batPerct = voltageToPercentage(currentBatteryVoltage);
 
     // TODO: remove this battery log

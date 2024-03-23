@@ -32,7 +32,6 @@ void initWs() {
   char finalPath[128];
   snprintf(finalPath, 128, "%s?id=%lu&ver=%s&chip=%s&bt=%s", 
             wsInfo.path, getEspId(), FIRMWARE_VERSION, CHIP, BUILD_TIME);
-  Serial.printf("Final path: %s\n", finalPath);
 
   webSocket.begin(wsInfo.host, wsInfo.port, finalPath);
   webSocket.onEvent(webSocketEvent);
