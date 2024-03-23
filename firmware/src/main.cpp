@@ -155,7 +155,7 @@ void sleepDetection() {
 }
 
 void stackmatLoop() {
-  if (stackmat.state() != state.lastTimerState && stackmat.state() != ST_Unknown && state.lastTimerState != ST_Unknown) {
+  if (stackmat.state() != state.lastTimerState && stackmat.state() != ST_Unknown) {
     // Logger.printf("State changed from %c to %c\n", state.lastTimerState, stackmat.state());
     switch (stackmat.state()) {
       case ST_Stopped:

@@ -335,6 +335,7 @@ void sendSolve(bool delegate) {
   doc["solve"]["timestamp"] = epoch;
   doc["solve"]["session_id"] = state.solveSessionId;
   doc["solve"]["delegate"] = delegate;
+  doc["solve"]["inspection_time"] = state.inspectionEnded - state.inspectionStarted;
 
   String json;
   serializeJson(doc, json);
