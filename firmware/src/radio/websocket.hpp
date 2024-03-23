@@ -35,7 +35,7 @@ void initWs() {
 
   webSocket.begin(wsInfo.host, wsInfo.port, finalPath);
   webSocket.onEvent(webSocketEvent);
-  webSocket.setReconnectInterval(5000);
+  webSocket.setReconnectInterval(1500);
   Logger.setWsClient(&webSocket);
 }
 
@@ -162,9 +162,9 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
 
     webSocket.sendBIN((uint8_t *)NULL, 0);
   } else if (type == WStype_CONNECTED) {
-    Logger.println("Connected to WebSocket server");
+    Serial.println("Connected to WebSocket server"); // do not send to logger
   } else if (type == WStype_DISCONNECTED) {
-    Logger.println("Disconnected from WebSocket server");
+    Serial.println("Disconnected from WebSocket server"); // do not send to logger
 
     if(waitForSolveResponse) {
       showError("Server not connected!");
