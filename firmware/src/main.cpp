@@ -74,12 +74,12 @@ void loop() {
     return;
   }
 
-  stateLoop();              // non blocking
-  lcdLoop();                // non blocking
-  Logger.loop();            // non blocking
-  webSocket.loop();         // non blocking
-  stackmat.loop();          // non blocking
-  stackmatLoop();           // non blocking
+  stateLoop();      // non blocking
+  lcdLoop();        // non blocking
+  Logger.loop();    // non blocking
+  webSocket.loop(); // non blocking
+  stackmat.loop();  // non blocking
+  stackmatLoop();   // non blocking
 
   sleepDetection();
 
