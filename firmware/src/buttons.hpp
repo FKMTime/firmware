@@ -41,10 +41,8 @@ void delegateButtonAfterRelease(Button &b) {
 }
 
 void penaltyButton(Button &b) {
-  if (state.currentScene != SCENE_FINISHED_TIME)
-    return;
-  if (state.timeConfirmed)
-    return;
+  if (state.currentScene != SCENE_FINISHED_TIME) return;
+  if (state.timeConfirmed) return;
 
   state.penalty =
       (state.penalty >= 16 || state.penalty == -1) ? 0 : state.penalty + 2;
@@ -52,10 +50,20 @@ void penaltyButton(Button &b) {
 }
 
 void dnfButton(Button &b) {
-  if (state.currentScene != SCENE_FINISHED_TIME)
+  if (state.currentScene == SCENE_INSPECTION) {
+    stopInspection();
+    state.solveTime = 0;
+    state.currentScene = SCENE_FINISHED_TIME;
+    state.penalty = -1; // set dnf
+    state.timeConfirmed = true;
+
+    stateHasChanged = true;
+    b.disableAfterReleaseCbs = true;
     return;
-  if (state.timeConfirmed)
-    return;
+  }
+
+  if (state.currentScene != SCENE_FINISHED_TIME) return;
+  if (state.timeConfirmed) return;
 
   state.penalty = state.penalty == -1 ? 0 : -1;
   stateHasChanged = true; // refresh state

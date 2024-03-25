@@ -209,10 +209,14 @@ void stateLoop() {
         String solveTimeStr = displayTime(minutes, seconds, ms);
 
         /* Line 1 */
-        if (inspectionTime >= INSPECTION_TIME) {
-          lcdPrintf(0, true, ALIGN_LEFT, "%s (%ds)", solveTimeStr.c_str(), inspectionS);
+        if (state.solveTime > 0) {
+          if (inspectionTime >= INSPECTION_TIME) {
+            lcdPrintf(0, true, ALIGN_LEFT, "%s (%ds)", solveTimeStr.c_str(), inspectionS);
+          } else {
+            lcdPrintf(0, true, ALIGN_LEFT, "%s", solveTimeStr.c_str());
+          }
         } else {
-          lcdPrintf(0, true, ALIGN_LEFT, "%s", solveTimeStr.c_str());
+          lcdClearLine(0);
         }
 
         if (state.penalty == -1) {
