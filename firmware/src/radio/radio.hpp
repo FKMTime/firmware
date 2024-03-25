@@ -10,12 +10,12 @@
 #include "websocket.hpp"
 #include "defines.h"
 
-// UNCOMMENT TO ENABLE BLUETOOTH WIFI SETUP!
-// #define BLUETOOTH_ENABLE
-
 void initWifi() {
   WiFiManager wm;
-  initBt();
+
+  char generatedDeviceName[100];
+  snprintf(generatedDeviceName, 100, "%s-%x", BLUETOOTH_PREFIX, getEspId());
+  initBt(generatedDeviceName);
 
   char generatedSSID[100];
   snprintf(generatedSSID, 100, "%s-%x", WIFI_SSID_PREFIX, getEspId());

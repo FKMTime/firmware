@@ -10,6 +10,7 @@
 
 #define WIFI_SSID_PREFIX "FkmTimer"
 #define WIFI_PASSWORD "FkmTimer"
+#define BLUETOOTH_PREFIX "FkmTimer"
 #define CHIP "esp32"
 
 #define INSPECTION_TIME 15000 // 15s
