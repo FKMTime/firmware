@@ -8,9 +8,8 @@
 #define SLEEP_TIME 300000 // 5min (for test)
 #define BATTERY_READ_INTERVAL 30000 // 30s
 
-#define WIFI_SSID_PREFIX "FkmTimer"
+#define NAME_PREFIX "FkmTimer"
 #define WIFI_PASSWORD "FkmTimer"
-#define BLUETOOTH_PREFIX "FkmTimer"
 #define CHIP "esp32"
 
 #define INSPECTION_TIME 15000 // 15s
