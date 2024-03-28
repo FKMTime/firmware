@@ -7,12 +7,14 @@ services:
     network_mode: host
     build: ./backend
     volumes:
+      - /run/dbus:/run/dbus:ro
       - ./proj/build:/app/firmware
     environment:
       - PORT=8080
       - FIRMWARE_DIR=./firmware
       - API_URL=http://localhost:5001
-      - RUST_LOG=none,backend=trace
+      - API_TOKEN=paste_your_token_here
+      - RUST_LOG=none,backend=debug
     restart: unless-stopped
     dns:
       - 127.0.0.1
