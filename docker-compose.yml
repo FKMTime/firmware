@@ -16,9 +16,6 @@ services:
       - API_TOKEN=paste_your_token_here
       - RUST_LOG=none,backend=debug
     restart: unless-stopped
-    dns:
-      - 127.0.0.1
-      - 1.1.1.1
 
 # NOTE: replace this with actual api
   api:
