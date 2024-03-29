@@ -1,8 +1,15 @@
 #include "ws_logger.h"
 
-// Get esp id as uint32_t (only 4bytes)
 unsigned long espId() {
-    return (unsigned long)(ESP.getEfuseMac() & 0x000000007FFFFFFF);
+    uint64_t efuse = ESP.getEfuseMac();
+    efuse = (~efuse) + (efuse << 18);
+    efuse = efuse ^ (efuse >> 31);
+    efuse = efuse * 21;
+    efuse = efuse ^ (efuse >> 11);
+    efuse = efuse + (efuse << 6);
+    efuse = efuse ^ (efuse >> 22);
+
+    return (unsigned long)(efuse & 0x000000007FFFFFFF);
 }
 
 void WsLogger::begin(HardwareSerial* serial, unsigned long _sendInterval) {
