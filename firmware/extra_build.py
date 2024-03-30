@@ -20,6 +20,7 @@ def generate_version():
     version = filesHash[:8]
     buildTime = format(int(time.time()), 'x')
     versionPath = os.path.join(env["PROJECT_DIR"], "src", "version.h")
+    chip = env['BOARD_MCU']
     versionString = """
 #ifndef __VERSION_H__
 #define __VERSION_H__
@@ -27,9 +28,10 @@ def generate_version():
 #define FIRMWARE_VERSION "{version}"
 #define BUILD_TIME "{buildTime}"
 #define FIRMWARE_TYPE "STATION"
+#define CHIP "{chip}"
 
 #endif
-""".format(version = version, buildTime = buildTime)
+""".format(version = version, buildTime = buildTime, chip = chip)
 
     with open(versionPath, "w") as file:
         file.write(versionString)

@@ -27,7 +27,7 @@ if gh release list | grep -q "$BUILD_TIME-$VERSION" ; then
     exit
 fi
 
-BUILD_FILES=$(ls $SCRIPT_DIR/firmware/build/*.$VERSION.$BUILD_TIME_HEX.bin)
+BUILD_FILES=$(ls $SCRIPT_DIR/build/*.$VERSION.$BUILD_TIME_HEX.bin)
 if [ -z "$BUILD_FILES" ]; then
     echo "No build files found"
     exit

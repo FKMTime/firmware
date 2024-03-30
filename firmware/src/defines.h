@@ -10,7 +10,6 @@
 
 #define NAME_PREFIX "FkmTimer"
 #define WIFI_PASSWORD "FkmTimer"
-#define CHIP "esp32"
 
 #define INSPECTION_TIME 15000 // 15s
 #define INSPECTION_PLUS_TWO_PENALTY 15000 // 15s to dnf penalty
