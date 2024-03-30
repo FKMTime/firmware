@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <driver/rtc_io.h>
 #include "globals.hpp"
+#include "version.h"
 
 void lightSleep(gpio_num_t gpio, int level) {
   Serial.println("Going into light sleep...");
@@ -63,6 +64,7 @@ void sendBatteryStats(float level, float voltage) {
 void sendAddDevice() {
   JsonDocument doc;
   doc["add"]["esp_id"] = getEspId();
+  doc["add"]["firmware"] = FIRMWARE_TYPE;
 
   String json;
   serializeJson(doc, json);

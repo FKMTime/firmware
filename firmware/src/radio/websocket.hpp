@@ -29,8 +29,8 @@ void initWs() {
 
   ws_info_t wsInfo = parseWsUrl(wsURL.c_str());
 
-  char finalPath[128];
-  snprintf(finalPath, 128, "%s?id=%lu&ver=%s&chip=%s&bt=%s&firmware=%s", 
+  char finalPath[256];
+  snprintf(finalPath, 256, "%s?id=%lu&ver=%s&chip=%s&bt=%s&firmware=%s", 
             wsInfo.path, getEspId(), FIRMWARE_VERSION, CHIP, BUILD_TIME, FIRMWARE_TYPE);
 
   webSocket.begin(wsInfo.host, wsInfo.port, finalPath);
