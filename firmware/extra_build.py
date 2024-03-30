@@ -1,22 +1,4 @@
 Import("env")
-# from collections import deque
-# import re
-# import os
-
-# def insert_firmware_version(env, node):
-#     build_path = node.get_abspath().replace(os.getcwd(), "")
-#     build_path = re.sub("/.pio/build/(.*?)/", "", build_path)
-
-#     if build_path == 'src/main.cpp':
-#         return env.Object(
-#             node,
-#             CPPDEFINES=deque(env["CPPDEFINES"]) + deque([("FIRMWARE_VERSION", "321")]),
-#             CCFLAGS=deque(env["CCFLAGS"])
-#         )
-#     return node
-
-# env.AddBuildMiddleware(insert_firmware_version)
-
 import os, time
 
 def after_build(source, target, env):
@@ -43,6 +25,7 @@ def generate_version():
 
 #define FIRMWARE_VERSION "{version}"
 #define BUILD_TIME "{buildTime}"
+#define FIRMWARE_TYPE "timer"
 
 #endif
 """.format(version = version, buildTime = buildTime)

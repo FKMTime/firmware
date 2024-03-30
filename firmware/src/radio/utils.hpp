@@ -2,7 +2,6 @@
 #define __RADIO_UTILS__
 
 #include <Arduino.h>
-#include <tuple>
 #include <ESPmDNS.h>
 
 struct WsInfo {
