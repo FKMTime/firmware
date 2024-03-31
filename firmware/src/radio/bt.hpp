@@ -4,7 +4,7 @@
 #include "ws_logger.h"
 
 // UNCOMMENT TO ENABLE BLUETOOTH WIFI SETUP!
-// #define BLUETOOTH_ENABLE
+#define BLUETOOTH_ENABLE
 
 #ifdef BLUETOOTH_ENABLE
 #include <BLEDevice.h>
