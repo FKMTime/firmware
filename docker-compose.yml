@@ -8,10 +8,10 @@ services:
     build: ./backend
     volumes:
       - /run/dbus:/run/dbus:ro
-      - ./firmware/build:/app/firmware
+      - ./build:/app/firmware
     environment:
       - PORT=8080
-      - FIRMWARE_DIR=./firmware
+      - FIRMWARE_DIR=/app/firmware
       - API_URL=http://localhost:5001
       - API_TOKEN=paste_your_token_here
       - RUST_LOG=none,backend=debug
