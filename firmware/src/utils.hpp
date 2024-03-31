@@ -9,14 +9,13 @@
 void lightSleep(gpio_num_t gpio, int level) {
   Serial.println("Going into light sleep...");
   Serial.flush();
+  webSocket.disconnect();
 
   rtc_gpio_hold_en(gpio);
   esp_sleep_enable_ext0_wakeup(gpio, level);
   esp_light_sleep_start();
 
   Serial.println("Waked up from light sleep...");
-
-  delay(100);
 }
 
 uint16_t analogReadMax(int pin, int c = 10, int delayMs = 5) {
