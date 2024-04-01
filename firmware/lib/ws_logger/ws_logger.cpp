@@ -41,8 +41,10 @@ size_t WsLogger::write(const uint8_t *buffer, size_t size) {
     return 0;
 }
 
-void WsLogger::loop() {
-    if (millis() - lastSent < sendInterval) return;
+/// @brief Loop method to send messages to ws
+/// @param force If it should send messages without checking interval
+void WsLogger::loop(bool force) {
+    if (millis() - lastSent < sendInterval && !force) return;
     lastSent = millis();
 
     if (logs.size() == 0 || wsClient == NULL || !wsClient->isConnected()) return;

@@ -7,15 +7,17 @@
 #include "version.h"
 
 void lightSleep(gpio_num_t gpio, int level) {
-  Serial.println("Going into light sleep...");
+  Logger.println("Going into light sleep...");
   Serial.flush();
+  Logger.loop(true);
+  webSocket.loop();
   webSocket.disconnect();
 
   rtc_gpio_hold_en(gpio);
   esp_sleep_enable_ext0_wakeup(gpio, level);
   esp_light_sleep_start();
 
-  Serial.println("Waked up from light sleep...");
+  Logger.println("Waked up from light sleep...");
 }
 
 uint16_t analogReadMax(int pin, int c = 10, int delayMs = 5) {

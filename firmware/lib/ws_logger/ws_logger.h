@@ -19,7 +19,7 @@ class WsLogger : public Print {
     size_t write(const uint8_t *buffer, size_t size) override;
     void setWsClient(WebSocketsClient* _wsClient);
     void setMaxSize(int logsSize);
-    void loop();
+    void loop(bool force = false);
 
   private:
     HardwareSerial* _serial;
