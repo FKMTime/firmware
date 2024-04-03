@@ -136,7 +136,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       Logger.printf("Api entry error: %s\n", errorMessage.c_str());
 
       if(shouldResetTime) resetSolveState();
-      state.sceneBeforeError = state.currentScene;
+      if(state.currentScene != SCENE_ERROR) state.sceneBeforeError = state.currentScene;
       state.currentScene = SCENE_ERROR;
       strncpy(state.errorMsg, errorMessage.c_str(), 128);
 

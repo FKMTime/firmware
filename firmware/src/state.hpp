@@ -275,7 +275,7 @@ void resetSolveState(bool save = true) {
     state.timeConfirmed = false;
     state.inspectionStarted = 0;
     state.inspectionEnded = 0;
-    memset(state.competitorDisplay, ' ', sizeof(state.competitorCardId));
+    memset(state.competitorDisplay, ' ', sizeof(state.competitorDisplay));
     waitForSolveResponse = false;
     state.currentScene = SCENE_WAITING_FOR_COMPETITOR;
 
