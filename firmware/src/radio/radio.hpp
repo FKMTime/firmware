@@ -21,6 +21,8 @@ void initWifi() {
 
   wm.setConfigPortalTimeout(300);
   wm.setConfigPortalBlocking(false);
+  wm.setConnectRetries(3);
+  wm.setConnectTimeout(1);
 
   bool res = wm.autoConnect(generatedDeviceName, WIFI_PASSWORD);
   if (res) {
