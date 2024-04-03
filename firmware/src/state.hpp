@@ -53,7 +53,6 @@ struct State {
     bool waitingForSolveResponse = false;
 
     StackmatTimerState lastTimerState = ST_Unknown;
-    bool stackmatConnected = false;
 
     char errorMsg[128]; // max 128 chars
     StateScene sceneBeforeError = SCENE_NOT_INITALIZED;
