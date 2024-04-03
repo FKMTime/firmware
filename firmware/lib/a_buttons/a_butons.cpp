@@ -43,7 +43,7 @@ void AButtons::loop() {
         b.disableAfterReleaseCbs = false;
 
         if (!isPinsPressed(b.pins)) continue;
-        b.afterPressCb(b);
+        if(b.afterPressCb != NULL) b.afterPressCb(b);
         bPressedTime = millis();
 
         // while holding
