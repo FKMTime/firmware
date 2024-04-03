@@ -121,8 +121,8 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       }
 
       update = true;
+      lcdClear();
       lcdPrintf(0, true, ALIGN_LEFT, "Updating");
-      lcdClearLine(1);
 
       webSocket.sendBIN((uint8_t *)NULL, 0);
     } else if (doc.containsKey("api_error")) {

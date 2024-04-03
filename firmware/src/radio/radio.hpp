@@ -14,6 +14,7 @@ void apCallback(WiFiManager *wm);
 
 void initWifi() {
   WiFi.mode(WIFI_STA); 
+  deinitBt();
   WiFiManager wm;
 
   char generatedDeviceName[100];

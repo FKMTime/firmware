@@ -337,6 +337,11 @@ void sendSolve(bool delegate) {
   time_t epoch;
   time(&epoch);
 
+  if(delegate) {
+    uuid.generate();
+    strncpy(state.solveSessionId, uuid.toCharArray(), UUID_LENGTH);
+  }
+
   JsonDocument doc;
   doc["solve"]["solve_time"] = state.solveTime;
   doc["solve"]["penalty"] = state.penalty;
