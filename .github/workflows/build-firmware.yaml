@@ -44,7 +44,7 @@ jobs:
       - uses: ncipollo/release-action@v1
         if: ${{ env.SKIP_BUILD != '1' }}
         with:
-          artifacts: "./firmware/build/*.bin"
+          artifacts: "./build/*.bin"
           generateReleaseNotes: true
           skipIfReleaseExists: true
           prerelease: true
