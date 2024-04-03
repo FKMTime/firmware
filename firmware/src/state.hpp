@@ -357,7 +357,8 @@ void sendSolve(bool delegate) {
     showError("Server not connected!");
   }
 
-  waitForSolveResponse = true;
+  // only show wait for solve response if not delegate request
+  if(!delegate) waitForSolveResponse = true;
 }
 
 void logState() {

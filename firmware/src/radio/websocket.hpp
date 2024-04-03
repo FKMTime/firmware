@@ -61,7 +61,12 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
           state.currentScene = SCENE_COMPETITOR_INFO;
 
           if (state.solveTime != stackmat.time()) {
-            startSolveSession(stackmat.time());
+            if (state.lastTimerState == ST_Stopped) {
+              startSolveSession(stackmat.time());
+            } else {
+              if (state.useInspection) stopInspection();
+              state.currentScene = SCENE_TIMER_TIME;
+            }
           }
         }
       } else if (state.currentScene == SCENE_FINISHED_TIME) {
