@@ -11,6 +11,7 @@
 #include "defines.h"
 
 float currentBatteryVoltage = 0.0;
+bool wifiConnected = false;
 bool primaryLangauge = false; // primary language is EN so non primary is PL
 
 LiquidCrystal_I2C lcd(LCD_ADDR, LCD_SIZE_X, LCD_SIZE_Y);

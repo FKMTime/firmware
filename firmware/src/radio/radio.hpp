@@ -14,7 +14,6 @@ void apCallback(WiFiManager *wm);
 
 void initWifi() {
   WiFi.mode(WIFI_STA); 
-  deinitBt();
   WiFiManager wm;
 
   char generatedDeviceName[100];
@@ -25,17 +24,17 @@ void initWifi() {
 
   bool res = wm.autoConnect(generatedDeviceName, WIFI_PASSWORD);
   if (res) {
-    Logger.printf("Connected!");
+    Logger.printf("Connected!\n");
   } else {
     initBt(generatedDeviceName);
-    Logger.printf("Config portal running!");
   }
 
   while(!res && !wm.process()) {
     delay(5);
   }
 
-  if (!res) deinitBt();
+  wifiConnected = true;
+  if (!res) deinitBt(true);
   configTime(3600, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
   initWs();
 }

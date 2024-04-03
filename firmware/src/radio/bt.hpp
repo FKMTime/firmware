@@ -17,7 +17,7 @@
 class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pCharacteristic) {
     std::string value = pCharacteristic->getValue();
-    if (value.length() > 0) {
+    if (value.length() > 0 && WiFi.status() != WL_CONNECTED && !wifiConnected) {
       char *str = (char *)value.c_str();
         
       char *ssid = strtok_r(str, "|", &str);
@@ -58,10 +58,10 @@ void initBt(char* deviceName) {
   #endif
 }
 
-void deinitBt() {
+void deinitBt(bool release_memory = false) {
   #ifdef BLUETOOTH_ENABLE
   Logger.printf("Stopping bt le handler!\n");
-  BLEDevice::deinit(true);
+  BLEDevice::deinit(release_memory);
   #endif
 }
 
