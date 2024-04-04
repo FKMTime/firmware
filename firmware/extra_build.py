@@ -9,12 +9,23 @@ def curl_get_ota_version(project, channel, chip):
 
     return version
 
+def curl_upload_ota(project, channel, chip, version, name, bin, token):
+    os.popen(f"curl -s -T {bin} -H 'Authorization: {token}' https://ota.filipton.space/latest/{project}/{channel}/{chip}/{version}/{name}.bin")
+
 def after_build(source, target, env):
+    release_build = "RELEASE_BUILD" in env["ENV"]
+
     version = os.popen("cat src/version.h | grep \"FIRMWARE_VERSION\" | cut -d'\"' -f 2").read().strip()
-    buildTime = os.popen("cat src/version.h | grep \"BUILD_TIME\" | cut -d'\"' -f 2").read().strip()
+    # buildTime = os.popen("cat src/version.h | grep \"BUILD_TIME\" | cut -d'\"' -f 2").read().strip()
     firmwareType = os.popen("cat src/version.h | grep \"FIRMWARE_TYPE\" | cut -d'\"' -f 2").read().strip()
-    bin_name = f"{env['BOARD_MCU']}.{firmwareType}.{version}.{buildTime}.bin"
-    os.popen(f"mkdir -p ../build ; cp {source[0].get_abspath()} ../build/{bin_name}")
+    chip = env['BOARD_MCU']
+    channel = release_build == True and "stable" or "prerelease"
+    name = release_build == True and version or int(time.time())
+
+    if "OTA_TOKEN" in env["ENV"]:
+        curl_upload_ota(firmwareType, channel, chip, version, name, source[0].get_abspath(), env["ENV"]["OTA_TOKEN"])
+    else:
+        print("OTA_TOKEN is not set! Skipping OTA upload")
 
 def generate_version():
     release_build = "RELEASE_BUILD" in env["ENV"]
@@ -33,18 +44,19 @@ def generate_version():
     channel = "prerelease"
 
     if release_build == True:
-        version = os.popen("cat ./VERSION").read().strip()
+        version = os.popen("cat ./VERSION.txt").read().strip()
         channel = "stable"
 
+    curl_version = curl_get_ota_version(OTA_PROJ_NAME, channel, chip)
     print(f"Version: {version}")
     print(f"Build Time: {buildTime}")
     print(f"Chip: {chip}")
     print(f"Channel: {channel}")
-
-    curl_version = curl_get_ota_version(OTA_PROJ_NAME, channel, chip)
     print(f"OTA Version: {curl_version}")
 
-    env.Exit(0)
+    if version == curl_version:
+        print("Version is up to date")
+        env.Exit(0)
 
     versionString = """
 #ifndef __VERSION_H__
@@ -52,11 +64,11 @@ def generate_version():
 
 #define FIRMWARE_VERSION "{version}"
 #define BUILD_TIME "{buildTime}"
-#define FIRMWARE_TYPE "STATION"
+#define FIRMWARE_TYPE "{otaProjName}"
 #define CHIP "{chip}"
 
 #endif
-""".format(version = version, buildTime = buildTime, chip = chip)
+""".format(version = version, buildTime = buildTime, chip = chip, otaProjName = OTA_PROJ_NAME)
 
     with open(versionPath, "w") as file:
         file.write(versionString)
