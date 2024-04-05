@@ -25,29 +25,33 @@ def after_build(source, target, env):
     if "OTA_TOKEN" in env["ENV"]:
         curl_upload_ota(firmwareType, channel, chip, version, name, source[0].get_abspath(), env["ENV"]["OTA_TOKEN"])
     else:
+        os.popen(f"mkdir -p ../build ; rm -f ../build/{chip}.{firmwareType}.*.bin ; cp {source[0].get_abspath()} ../build/{chip}.{firmwareType}.{version}.bin")
         print("OTA_TOKEN is not set! Skipping OTA upload")
 
 def generate_version():
     release_build = "RELEASE_BUILD" in env["ENV"]
     filesHash = os.popen("bash ./hash.sh").read().strip()
-    try:
-        with open(".versum", "r") as file:
-            if filesHash == file.read().strip():
-                return
-    except:
-        print(".versum doesn't exists! Building...")
+
+    if not release_build:
+        try:
+            with open(".versum", "r") as file:
+                if filesHash == file.read().strip():
+                    return
+        except:
+            print(".versum doesn't exists! Building...")
 
     version = filesHash[:8]
     buildTime = format(int(time.time()), 'x')
     versionPath = os.path.join(env["PROJECT_DIR"], "src", "version.h")
     chip = env['BOARD_MCU']
-    channel = "prerelease"
+    channel = release_build == True and "stable" or "prerelease"
+    curl_version = curl_get_ota_version(OTA_PROJ_NAME, channel, chip).strip()
 
     if release_build == True:
-        version = os.popen("cat ./VERSION.txt").read().strip()
-        channel = "stable"
+        print("Previous version:", curl_version)
+        print("Enter new version:")
+        version = input()
 
-    curl_version = curl_get_ota_version(OTA_PROJ_NAME, channel, chip)
     print(f"Version: {version}")
     print(f"Build Time: {buildTime}")
     print(f"Chip: {chip}")
