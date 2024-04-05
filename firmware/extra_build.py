@@ -5,11 +5,14 @@ OTA_PROJ_NAME = "fkm"
 
 def curl_get_ota_version(project, channel, chip):
     res = os.popen(f"curl -s https://ota.filipton.space/firmware/{project}/{channel}/{chip}/latest.json").read()
+    print("OTA response:", res)
     version = os.popen(f"echo '{res}' | jq -r .version").read().strip()
 
     return version
 
 def curl_upload_ota(project, channel, chip, version, name, bin, token):
+    print(f"Uploading {bin} to OTA")
+    print(f"Url: https://ota.filipton.space/latest/{project}/{channel}/{chip}/{version}/{name}.bin")
     os.popen(f"curl -s -T {bin} -H 'Authorization: {token}' https://ota.filipton.space/latest/{project}/{channel}/{chip}/{version}/{name}.bin")
 
 def after_build(source, target, env):
