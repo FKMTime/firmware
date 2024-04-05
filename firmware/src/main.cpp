@@ -35,7 +35,6 @@ void setup() {
   Serial.begin(115200);
   Logger.begin(&Serial);
   EEPROM.begin(128);
-  Serial1.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, STACKMAT_JACK, 255, false);
   Wire.begin(LCD_SDA, LCD_SCL);
   lcdInit();
 
@@ -51,6 +50,7 @@ void setup() {
   lcdPrintf(0, false, ALIGN_RIGHT, "%d%%", (int)initialBat);
   lcdPrintf(1, true, ALIGN_LEFT, "VER: %s", FIRMWARE_VERSION);
 
+  Serial1.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, STACKMAT_JACK, 255, false);
   stackmat.begin(&Serial1);
   SPI.begin(RFID_SCK, RFID_MISO, RFID_MOSI);
 

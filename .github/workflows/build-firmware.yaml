@@ -29,24 +29,6 @@ jobs:
 
       - name: Build PlatformIO Project
         env:
-          GH_TOKEN: ${{ github.token }}
+          OTA_TOKEN: ${{ secrets.OTA_TOKEN }}
         run: bash ./build.sh
         working-directory: ./firmware
-
-      - name: Read version
-        if: ${{ env.SKIP_BUILD != '1' }}
-        run: echo "VERSION=$(head -c 8 ./firmware/.versum)" >> $GITHUB_ENV
-
-      - name: Read build time
-        if: ${{ env.SKIP_BUILD != '1' }}
-        run: echo "BUILD_TIME=$(printf "%d\n" "0x$(cat ./firmware/src/version.h | grep 'BUILD_TIME' | cut -d'"' -f 2)")" >> $GITHUB_ENV
-
-      - uses: ncipollo/release-action@v1
-        if: ${{ env.SKIP_BUILD != '1' }}
-        with:
-          artifacts: "./build/*.bin"
-          generateReleaseNotes: true
-          skipIfReleaseExists: true
-          prerelease: true
-          tag: ${{ env.BUILD_TIME }}-${{ env.VERSION }}
-          token: ${{ github.token }}
