@@ -54,6 +54,8 @@ def generate_version():
         print("Previous version:", curl_version)
         print("Enter new version:")
         version = input()
+    elif "OTA_TOKEN" not in env["ENV"]:
+        version = int(time.time())
 
     print(f"Version: {version}")
     print(f"Build Time: {buildTime}")
