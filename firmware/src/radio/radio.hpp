@@ -21,10 +21,15 @@ void initWifi() {
 
   wm.setConfigPortalTimeout(300);
   wm.setConfigPortalBlocking(false);
-  wm.setConnectRetries(3);
-  wm.setConnectTimeout(1);
+  wm.setConnectRetries(10);
+  wm.setConnectTimeout(3);
 
-  bool res = wm.autoConnect(generatedDeviceName, WIFI_PASSWORD);
+  bool res = true;
+  for(int i = 0; i < 5; i++) {
+    res = wm.autoConnect(generatedDeviceName, WIFI_PASSWORD);
+    if (res) break;
+  }
+  
   if (res) {
     Logger.printf("Connected!\n");
   } else {
