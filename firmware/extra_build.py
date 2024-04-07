@@ -12,8 +12,8 @@ def curl_get_ota_version(project, channel, chip):
 
 def curl_upload_ota(project, channel, chip, version, name, bin, token, buildTime):
     print(f"Uploading {bin} to OTA")
-    print(f"Url: https://ota.filipton.space/latest/{project}/{channel}/{chip}/{version}/{name}.bin")
-    os.popen(f"curl -s -T {bin} -H 'Authorization: {token}' https://ota.filipton.space/latest/{project}/{channel}/{chip}/{version}/{name}.bin/{buildTime}")
+    print(f"Url: https://ota.filipton.space/latest/{project}/{channel}/{chip}/{version}/{buildTime}/{name}.bin")
+    os.popen(f"curl -s -T {bin} -H 'Authorization: {token}' https://ota.filipton.space/latest/{project}/{channel}/{chip}/{version}/{buildTime}/{name}.bin")
 
 def after_build(source, target, env):
     release_build = "RELEASE_BUILD" in env["ENV"]
@@ -23,7 +23,7 @@ def after_build(source, target, env):
     firmwareType = os.popen("cat src/version.h | grep \"FIRMWARE_TYPE\" | cut -d'\"' -f 2").read().strip()
     chip = env['BOARD_MCU']
     channel = release_build == True and "stable" or "prerelease"
-    name = release_build == True and version or int(time.time())
+    name = release_build == True and version or buildTime
 
     if "OTA_TOKEN" in env["ENV"]:
         curl_upload_ota(firmwareType, channel, chip, version, name, source[0].get_abspath(), env["ENV"]["OTA_TOKEN"], buildTime)
@@ -70,7 +70,7 @@ def generate_version():
 #define __VERSION_H__
 
 #define FIRMWARE_VERSION "{version}"
-#define BUILD_TIME {buildTime}
+#define BUILD_TIME "{buildTime}"
 #define FIRMWARE_TYPE "{otaProjName}"
 #define CHIP "{chip}"
 

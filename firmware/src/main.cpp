@@ -43,7 +43,7 @@ void setup() {
   float initialBat = voltageToPercentage(currentBatteryVoltage);
   Logger.printf("ESP ID: %x\n", getEspId());
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
-  Logger.printf("Build time: %lu\n", BUILD_TIME);
+  Logger.printf("Build time: %s\n", BUILD_TIME);
   Logger.printf("Battery: %f%% (%fv)\n", initialBat, currentBatteryVoltage);
 
   lcdPrintf(0, true, ALIGN_LEFT, "ID: %x", getEspId());
