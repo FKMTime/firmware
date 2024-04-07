@@ -148,7 +148,7 @@ void stateLoop() {
     checkConnectionStatus();
     if(!stateHasChanged || lockStateChange) return;
 
-    if (!state.added) {
+    if (!state.added && WiFi.isConnected() && webSocket.isConnected()) {
       lcdPrintf(0, true, ALIGN_CENTER, TR_DEVICE_NOT_ADDED_TOP);
       lcdPrintf(1, true, ALIGN_CENTER, TR_DEVICE_NOT_ADDED_BOTTOM);
       stateHasChanged = false;

@@ -43,8 +43,8 @@ def generate_version():
         except:
             print(".versum doesn't exists! Building...")
 
-    version = filesHash[:8]
-    buildTime = format(int(time.time()), 'x')
+    buildTime = int(time.time())
+    version = buildTime
     versionPath = os.path.join(env["PROJECT_DIR"], "src", "version.h")
     chip = env['BOARD_MCU']
     channel = release_build == True and "stable" or "prerelease"
@@ -54,8 +54,6 @@ def generate_version():
         print("Previous version:", curl_version)
         print("Enter new version:")
         version = input()
-    elif "OTA_TOKEN" not in env["ENV"]:
-        version = int(time.time())
 
     print(f"Version: {version}")
     print(f"Build Time: {buildTime}")
@@ -72,7 +70,7 @@ def generate_version():
 #define __VERSION_H__
 
 #define FIRMWARE_VERSION "{version}"
-#define BUILD_TIME "{buildTime}"
+#define BUILD_TIME {buildTime}
 #define FIRMWARE_TYPE "{otaProjName}"
 #define CHIP "{chip}"
 
