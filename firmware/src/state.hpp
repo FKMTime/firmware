@@ -184,8 +184,9 @@ void stateLoop() {
         // lcdPrintf(0, true, ALIGN_CENTER, "%s", displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds()).c_str());
         // lcdClearLine(1);
     } else if(state.currentScene == SCENE_INSPECTION) {
-      int secondsLeft = (int)ceil((millis() - state.inspectionStarted) / 1000); 
-      uint16_t ms = secondsLeft % 1000;
+      int time = millis() - state.inspectionStarted;
+      int secondsLeft = (int)ceil((time) / 1000); 
+      uint16_t ms = (time) % 1000;
       lcdPrintf(0, true, ALIGN_CENTER, "%d.%d s", secondsLeft, ms);
       lcdClearLine(1);
       stateHasChanged = true; // refresh
