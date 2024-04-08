@@ -136,7 +136,7 @@ void resetInspectionButton(Button &b) {
 
 void buttonsInit() {
   size_t delegateBtn =
-      buttons.addButton(BUTTON1, NULL, delegateButtonAfterRelease);
+      buttons.addButton(BUTTON4, NULL, delegateButtonAfterRelease);
   buttons.addButtonReocCb(delegateBtn, 1000, delegateButtonHold);
   buttons.addButtonCb(delegateBtn, DELEGAT_BUTTON_HOLD_TIME, false, delegateButtonCalled);
 
@@ -145,12 +145,12 @@ void buttonsInit() {
   buttons.addButtonCb(penaltyBtn, DNF_BUTTON_HOLD_TIME, false, dnfButton);
   buttons.addButtonCb(penaltyBtn, TIMER_RESET_HOLD_TIME, false, resetTimerStateButton);
 
-  size_t submitBtn = buttons.addButton(BUTTON3, NULL, NULL);
+  size_t submitBtn = buttons.addButton(BUTTON1, NULL, NULL);
   buttons.addButtonCb(submitBtn, 0, true, submitButton);
   buttons.addButtonCb(submitBtn, RESET_COMPETITOR_HOLD_TIME, false, resetCompetitorButton);
   buttons.addButtonCb(submitBtn, RESET_WIFI_HOLD_TIME, false, resetWifiButton);
 
-  size_t inspectionBtn = buttons.addButton(BUTTON4, NULL, NULL);
+  size_t inspectionBtn = buttons.addButton(BUTTON3, NULL, NULL);
   buttons.addButtonCb(inspectionBtn, 0, true, inspectionButton);
   buttons.addButtonCb(inspectionBtn, INSPECTION_RESET_HOLD_TIME, false, resetInspectionButton);
 
