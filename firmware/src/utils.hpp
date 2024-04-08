@@ -62,10 +62,11 @@ void sendBatteryStats(float level, float voltage) {
   webSocket.sendTXT(json);
 }
 
+#define ADD_DEVICE_FIRMWARE_TYPE "STATION"
 void sendAddDevice() {
   JsonDocument doc;
   doc["add"]["esp_id"] = getEspId();
-  doc["add"]["firmware"] = FIRMWARE_TYPE;
+  doc["add"]["firmware"] = ADD_DEVICE_FIRMWARE_TYPE;
 
   String json;
   serializeJson(doc, json);
