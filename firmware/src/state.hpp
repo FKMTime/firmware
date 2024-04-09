@@ -187,8 +187,9 @@ void stateLoop() {
       int time = millis() - state.inspectionStarted;
       int secondsLeft = (int)ceil((time) / 1000); 
       uint16_t ms = (time) % 1000;
-      lcdPrintf(0, true, ALIGN_CENTER, "%d.%d s", secondsLeft, ms);
+      lcdPrintf(0, true, ALIGN_CENTER, "%d.%03d s", secondsLeft, ms);
       lcdClearLine(1);
+      delay(5);
       stateHasChanged = true; // refresh
       return;
     } else if (state.currentScene == SCENE_FINISHED_TIME) {
