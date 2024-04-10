@@ -24,12 +24,7 @@ void initWifi() {
   wm.setConnectRetries(10);
   wm.setConnectTimeout(3);
 
-  bool res = true;
-  for(int i = 0; i < 5; i++) {
-    res = wm.autoConnect(generatedDeviceName, WIFI_PASSWORD);
-    if (res) break;
-  }
-  
+  bool res = wm.autoConnect(generatedDeviceName, WIFI_PASSWORD);;
   if (res) {
     Logger.printf("Connected!\n");
   } else {
