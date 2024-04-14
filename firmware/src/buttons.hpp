@@ -93,14 +93,8 @@ void submitButton(Button &b) {
   stateHasChanged = true;
 }
 
-void resetTimerStateButton(Button &b) {
-  resetSolveState(false);
-}
-
 void resetCompetitorButton(Button &b) { 
-  if (state.currentScene == SCENE_COMPETITOR_INFO || state.currentScene == SCENE_INSPECTION) {
-    resetSolveState(false);
-  }
+  resetSolveState(false);
 }
 
 void resetWifiButton(Button &b) {
@@ -143,7 +137,6 @@ void buttonsInit() {
   size_t penaltyBtn = buttons.addButton(BUTTON2, NULL, NULL);
   buttons.addButtonCb(penaltyBtn, 0, true, penaltyButton);
   buttons.addButtonCb(penaltyBtn, DNF_BUTTON_HOLD_TIME, false, dnfButton);
-  buttons.addButtonCb(penaltyBtn, TIMER_RESET_HOLD_TIME, false, resetTimerStateButton);
 
   size_t submitBtn = buttons.addButton(BUTTON1, NULL, NULL);
   buttons.addButtonCb(submitBtn, 0, true, submitButton);
