@@ -175,8 +175,9 @@ void stackmatLoop() {
         break;
 
       case ST_Running:
-        if (state.competitorCardId == 0 || state.solveTime > 0) break;
+        if (state.solveTime > 0) break;
         if (state.useInspection) stopInspection();
+        if (state.competitorCardId == 0) break;
 
         state.currentScene = SCENE_TIMER_TIME;
         Logger.println("Solve started!");

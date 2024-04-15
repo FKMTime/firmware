@@ -305,13 +305,13 @@ void startInspection() {
 }
 
 void stopInspection() {
-  if (state.inspectionStarted == 0)
+  if (state.inspectionStarted == 0 || state.inspectionEnded != 0)
     return;
 
   // i think this code causes errors!
   // if (state.currentScene != SCENE_INSPECTION) return;
 
-  state.currentScene = SCENE_TIMER_TIME;
+  state.currentScene = state.competitorCardId > 0 ? SCENE_TIMER_TIME : SCENE_WAITING_FOR_COMPETITOR;
   state.inspectionEnded = millis();
   stateHasChanged = true;
 }
