@@ -58,12 +58,12 @@ struct State {
   StateScene sceneBeforeError = SCENE_NOT_INITALIZED;
 } state;
 
-// TODO: save state to EEPROM
 struct EEPROMState {
   char solveSessionId[UUID_LENGTH];
   unsigned long competitorCardId;
   unsigned long inspectionStarted;
   unsigned long inspectionEnded;
+  unsigned long saveTime;
   int solveTime;
   int penalty;
 };
@@ -81,6 +81,7 @@ void saveState() {
   s.competitorCardId = state.competitorCardId;
   s.inspectionStarted = state.inspectionStarted;
   s.inspectionEnded = state.inspectionEnded;
+  s.saveTime = getEpoch();
 
   EEPROM.write(0, (uint8_t)sizeof(EEPROMState));
   EEPROM.put(1, s);
@@ -99,6 +100,11 @@ void readState() {
 
   EEPROMState _state = {0};
   EEPROM.get(1, _state);
+
+  unsigned long currentEpoch = getEpoch();
+  if (currentEpoch - _state.saveTime > SAVE_TIME_RESET) {
+    return;
+  }
 
   strcpy(state.solveSessionId, _state.solveSessionId);
   state.solveTime = _state.solveTime;
@@ -346,13 +352,6 @@ String displayTime(uint8_t m, uint8_t s, uint16_t ms) {
 }
 
 void sendSolve(bool delegate) {
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {
-    Logger.println("Failed to obtain time");
-  }
-  time_t epoch;
-  time(&epoch);
-
   if (delegate) {
     uuid.generate();
     strncpy(state.solveSessionId, uuid.toCharArray(), UUID_LENGTH);
@@ -364,7 +363,7 @@ void sendSolve(bool delegate) {
   doc["solve"]["competitor_id"] = state.competitorCardId;
   doc["solve"]["judge_id"] = state.judgeCardId;
   doc["solve"]["esp_id"] = getEspId();
-  doc["solve"]["timestamp"] = epoch;
+  doc["solve"]["timestamp"] = getEpoch();
   doc["solve"]["session_id"] = state.solveSessionId;
   doc["solve"]["delegate"] = delegate;
   doc["solve"]["inspection_time"] =
@@ -391,6 +390,8 @@ void logState() {
   Logger.printf("Penalty: %d\n", state.penalty);
   Logger.printf("Competitor card: %lu\n", state.competitorCardId);
   Logger.printf("Judge card: %lu\n", state.judgeCardId);
+  Logger.printf("Inspection started: %lu\n", state.inspectionStarted);
+  Logger.printf("Inspection Ended: %lu\n", state.inspectionEnded);
   Logger.printf("Competitor display: \"%s\"\n", state.competitorDisplay);
   Logger.printf("Time confirmed: %d\n", state.timeConfirmed);
   Logger.printf("Current scene: %d\n", state.currentScene);
