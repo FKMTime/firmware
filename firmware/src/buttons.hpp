@@ -114,18 +114,18 @@ void debugButton(Button &b) {
 void inspectionButton(Button &b) {
   if (!state.useInspection) return;
 
-  startInspection();
-}
-
-void resetInspectionButton(Button &b) {
-  if (!state.useInspection) return;
-  if (state.currentScene != SCENE_INSPECTION) return;
-
-  state.currentScene = SCENE_COMPETITOR_INFO;
-  state.inspectionStarted = 0;
-  stateHasChanged = true;
-
-  b.disableAfterReleaseCbs = true; // disable other invokations (after release)
+  if(state.currentScene != SCENE_INSPECTION && state.inspectionStarted == 0) {
+    startInspection();
+    return;
+  } 
+  
+  if(state.currentScene == SCENE_INSPECTION) {
+    state.currentScene = state.competitorCardId > 0 ? SCENE_COMPETITOR_INFO : SCENE_WAITING_FOR_COMPETITOR;
+    state.inspectionStarted = 0;
+    state.inspectionEnded = 0;
+    stateHasChanged = true;
+    return;
+  }
 }
 
 void buttonsInit() {
@@ -145,7 +145,6 @@ void buttonsInit() {
 
   size_t inspectionBtn = buttons.addButton(BUTTON3, NULL, NULL);
   buttons.addButtonCb(inspectionBtn, 0, true, inspectionButton);
-  buttons.addButtonCb(inspectionBtn, INSPECTION_RESET_HOLD_TIME, false, resetInspectionButton);
 
   size_t dbgBtn = buttons.addMultiButton({BUTTON1, BUTTON2}, NULL, debugButton);
 }

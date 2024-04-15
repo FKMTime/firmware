@@ -294,10 +294,10 @@ void resetSolveState(bool save = true) {
 }
 
 void startInspection() {
-  if (state.currentScene >= SCENE_INSPECTION)
-    return;
-  if (state.competitorCardId <= 0)
-    return;
+  if (state.currentScene >= SCENE_INSPECTION) return;
+  
+  // if (state.competitorCardId <= 0)
+  //   return;
 
   state.currentScene = SCENE_INSPECTION;
   state.inspectionStarted = millis();
