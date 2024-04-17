@@ -17,9 +17,6 @@ def generate_version():
     versionPath = os.path.join(env["PROJECT_DIR"], "src", "version.h")
     chip = env['BOARD_MCU']
 
-    if release_build == True:
-        version = env["ENV"]["VERSION"]
-
     print(f"Version: {version}")
     print(f"Build Time: {buildTime}")
     print(f"Chip: {chip}")

@@ -15,26 +15,33 @@ then
 fi
 
 cd $SCRIPT_DIR/firmware
-pio run
+LAST_FIRMWARE_VERSION=$(gh release list | head -n 1 | cut -f 1)
+echo "Last firmware version: $LAST_FIRMWARE_VERSION"
+echo -n "Enter new firmware version: "
+RELEASE_VERSION=""
+while [ -z "$RELEASE_VERSION" ]; do
+    read RELEASE_VERSION
+done
+
+RELEASE_BUILD="$RELEASE_VERSION" pio run
 
 cd $SCRIPT_DIR
-VERSION=$(head -c 8 ./firmware/.versum)
-BUILD_TIME=$(printf "%d\n" "0x$(cat ./firmware/src/version.h | grep 'BUILD_TIME' | cut -d'"' -f 2)")
-BUILD_TIME_HEX=$(printf "%08x\n" $BUILD_TIME)
+VERSION=$(cat ./firmware/src/version.h | grep 'FIRMWARE_VERSION' | cut -d'"' -f 2)
+echo "Version: $VERSION"
 
-if gh release list | grep -q "$BUILD_TIME-$VERSION" ; then
+if gh release list | grep -q "$VERSION" ; then
     echo "Release already exists"
     exit
 fi
 
-BUILD_FILES=$(ls $SCRIPT_DIR/build/*.$VERSION.$BUILD_TIME_HEX.bin)
+BUILD_FILES=$(ls $SCRIPT_DIR/build/*."$VERSION".bin)
 if [ -z "$BUILD_FILES" ]; then
     echo "No build files found"
     exit
 fi
 
-gh release create "$BUILD_TIME-$VERSION" -t "$BUILD_TIME-$VERSION" --generate-notes
+gh release create "$VERSION" -t "$VERSION" --generate-notes
 for file in $BUILD_FILES; do
     echo "Uploading $file"
-    gh release upload "$BUILD_TIME-$VERSION" "$file"
+    gh release upload "$VERSION" "$file"
 done
