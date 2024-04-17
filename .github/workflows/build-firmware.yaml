@@ -28,7 +28,5 @@ jobs:
           python-version: '3.9'
 
       - name: Build PlatformIO Project
-        env:
-          OTA_TOKEN: ${{ secrets.OTA_TOKEN }}
         run: bash ./build.sh
         working-directory: ./firmware
