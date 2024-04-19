@@ -30,3 +30,9 @@ jobs:
       - name: Build PlatformIO Project
         run: bash ./build.sh
         working-directory: ./firmware
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: ./build
