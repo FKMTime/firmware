@@ -9,18 +9,12 @@ services:
     volumes:
       - /run/dbus:/run/dbus:ro
       - ./build:/app/firmware
+      - /tmp/sock:/app/sock
     environment:
       - PORT=8080
       - FIRMWARE_DIR=/app/firmware
       - API_URL=http://localhost:5001
       - API_TOKEN=paste_your_token_here
       - RUST_LOG=none,backend=debug
-    restart: unless-stopped
-
-# NOTE: replace this with actual api
-  api:
-    container_name: api
-    build: ./backend/test-api
-    ports:
-      - 5001:5000
+      - SOCKET_PATH=/app/sock/socket.sock
     restart: unless-stopped
