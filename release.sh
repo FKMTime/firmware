@@ -34,7 +34,7 @@ if gh release list | grep -q "$VERSION" ; then
     exit
 fi
 
-BUILD_FILES=$(ls $SCRIPT_DIR/build/*."$VERSION".bin)
+BUILD_FILES=$(ls $SCRIPT_DIR/build/*_"$VERSION".bin)
 if [ -z "$BUILD_FILES" ]; then
     echo "No build files found"
     exit
