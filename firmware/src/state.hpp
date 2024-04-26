@@ -10,6 +10,7 @@
 #define UUID_LENGTH 37
 String displayTime(uint8_t m, uint8_t s, uint16_t ms);
 void sendSolve(bool delegate);
+void stopInspection();
 
 UUID uuid;
 bool stateHasChanged = true;
@@ -51,6 +52,7 @@ struct State {
 
   bool timeConfirmed = false;
   bool waitingForSolveResponse = false;
+  bool testMode = false;
 
   StackmatTimerState lastTimerState = ST_Unknown;
 
@@ -168,12 +170,12 @@ void stateLoop() {
       lcdPrintf(1, true, ALIGN_CENTER, TR_DISCONNECTED);
       stateHasChanged = false;
       return;
-    } else if (!webSocket.isConnected()) {
+    } else if (!state.testMode && !webSocket.isConnected()) {
       lcdPrintf(0, true, ALIGN_CENTER, TR_SERVER_HEADER);
       lcdPrintf(1, true, ALIGN_CENTER, TR_DISCONNECTED);
       stateHasChanged = false;
       return;
-    } else if (!stackmat.connected()) {
+    } else if (!state.testMode && !stackmat.connected()) {
       lcdPrintf(0, true, ALIGN_CENTER, TR_STACKMAT_HEADER);
       lcdPrintf(1, true, ALIGN_CENTER, TR_DISCONNECTED);
       stateHasChanged = false;
@@ -255,8 +257,8 @@ void stateLoop() {
 /// @brief Called after time is finished
 /// @param solveTime
 void startSolveSession(int solveTime) {
-  if (solveTime == state.lastSolveTime)
-    return;
+  stopInspection();
+  if (solveTime == state.lastSolveTime) return;
 
   uuid.generate(); // generate next uuid
 
@@ -295,8 +297,7 @@ void resetSolveState(bool save = true) {
 
   stateHasChanged = true;
 
-  if (save)
-    saveState();
+  if (save) saveState();
 }
 
 void startInspection() {
@@ -311,8 +312,7 @@ void startInspection() {
 }
 
 void stopInspection() {
-  if (state.inspectionStarted == 0 || state.inspectionEnded != 0)
-    return;
+  if (state.inspectionStarted == 0 || state.inspectionEnded != 0) return;
 
   // i think this code causes errors!
   // if (state.currentScene != SCENE_INSPECTION) return;
@@ -323,8 +323,7 @@ void stopInspection() {
 }
 
 void showError(const char *str) {
-  if (state.currentScene != SCENE_ERROR)
-    state.sceneBeforeError = state.currentScene;
+  if (state.currentScene != SCENE_ERROR) state.sceneBeforeError = state.currentScene;
   state.currentScene = SCENE_ERROR;
   strncpy(state.errorMsg, str, 128);
   stateHasChanged = true;
@@ -380,6 +379,20 @@ void sendSolve(bool delegate) {
   // only show wait for solve response if not delegate request
   if (!delegate)
     waitForSolveResponse = true;
+}
+
+void scanCard(unsigned long cardId) {
+  JsonDocument doc;
+  doc["card_info_request"]["card_id"] = cardId;
+  doc["card_info_request"]["esp_id"] = getEspId();
+
+  String json;
+  serializeJson(doc, json);
+  webSocket.sendTXT(json);
+
+  if(!webSocket.isConnected()) {
+    showError("Server not connected!");
+  }
 }
 
 void logState() {

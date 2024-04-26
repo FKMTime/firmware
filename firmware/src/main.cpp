@@ -121,17 +121,7 @@ void rfidLoop() {
   unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
   Logger.printf("Scanned card ID: %lu\n", cardId);
 
-  JsonDocument doc;
-  doc["card_info_request"]["card_id"] = cardId;
-  doc["card_info_request"]["esp_id"] = getEspId();
-
-  String json;
-  serializeJson(doc, json);
-  webSocket.sendTXT(json);
-
-  if(!webSocket.isConnected()) {
-    showError("Server not connected!");
-  }
+  scanCard(cardId);
 
   mfrc522.PICC_HaltA();
   lastCardReadTime = millis();
