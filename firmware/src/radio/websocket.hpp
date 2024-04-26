@@ -87,6 +87,28 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       }
 
       resetSolveState();
+    } else if (doc.containsKey("delegate_response")) {
+      if (doc["delegate_response"]["esp_id"] != getEspId()) {
+        Logger.println("Wrong solve confirm frame!");
+        return;
+      }
+
+      unsigned long solveTime =  doc["delegate_response"]["solve_time"];
+      int penalty =  doc["delegate_response"]["penalty"];
+      bool shouldScanCards =  doc["delegate_response"]["should_scan_cards"];
+
+      state.solveTime = solveTime;
+      state.lastSolveTime = solveTime;
+      state.penalty = penalty;
+      state.timeConfirmed = true;
+      if(shouldScanCards) {
+        state.currentScene = SCENE_FINISHED_TIME;
+        waitForDelegateResponse = false;
+      } else {
+        resetSolveState();
+      }
+
+      stateHasChanged = true;
     } else if (doc.containsKey("device_settings")) {
       if (doc["device_settings"]["esp_id"] != getEspId()) {
         Logger.println("Wrong deivce settings frame!");
@@ -145,6 +167,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       strncpy(state.errorMsg, errorMessage.c_str(), 128);
 
       waitForSolveResponse = false;
+      waitForDelegateResponse = false;
       stateHasChanged = true;
     }
   } else if (type == WStype_BIN) {
@@ -186,9 +209,11 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
   } else if (type == WStype_DISCONNECTED) {
     Serial.println("Disconnected from WebSocket server"); // do not send to logger
 
-    if(waitForSolveResponse) {
+    // TODO: remove this (if packet queuening is added for backend)
+    if(waitForSolveResponse || waitForDelegateResponse) {
       showError("Server not connected!");
       waitForSolveResponse = false;
+      waitForDelegateResponse = false;
     }
   }
 }

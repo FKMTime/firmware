@@ -16,6 +16,7 @@ UUID uuid;
 bool stateHasChanged = true;
 bool lockStateChange = false;
 bool waitForSolveResponse = false;
+bool waitForDelegateResponse = false;
 
 bool lastWifiConnected = false;
 bool lastServerConnected = false;
@@ -51,7 +52,6 @@ struct State {
   char competitorDisplay[128]; // max 128 chars
 
   bool timeConfirmed = false;
-  bool waitingForSolveResponse = false;
   bool testMode = false;
 
   StackmatTimerState lastTimerState = ST_Unknown;
@@ -211,6 +211,14 @@ void stateLoop() {
       return;
     }
 
+    if (waitForDelegateResponse) {
+      lcdPrintf(0, true, ALIGN_CENTER, TR_WAITING_FOR_SOLVE_TOP);
+      lcdPrintf(1, true, ALIGN_CENTER, TR_WAITING_FOR_SOLVE_BOTTOM);
+
+      stateHasChanged = false;
+      return;
+    }
+
     uint8_t minutes = state.solveTime / 60000;
     uint8_t seconds = (state.solveTime % 60000) / 1000;
     uint16_t ms = state.solveTime % 1000;
@@ -234,6 +242,8 @@ void stateLoop() {
 
     if (state.penalty == -1) {
       lcdPrintf(0, false, ALIGN_RIGHT, "DNF");
+    } else if (state.penalty == -2) {
+      lcdPrintf(0, false, ALIGN_RIGHT, "DNS");
     } else if (state.penalty > 0) {
       lcdPrintf(0, false, ALIGN_RIGHT, "+%d", state.penalty);
     }
@@ -269,6 +279,7 @@ void startSolveSession(int solveTime) {
   state.judgeCardId = 0;
   state.timeConfirmed = false;
   waitForSolveResponse = false;
+  waitForDelegateResponse = false;
   state.currentScene = SCENE_FINISHED_TIME;
 
   int inspectionTime = state.inspectionEnded - state.inspectionStarted;
@@ -293,6 +304,7 @@ void resetSolveState(bool save = true) {
   state.inspectionEnded = 0;
   memset(state.competitorDisplay, ' ', sizeof(state.competitorDisplay));
   waitForSolveResponse = false;
+  waitForDelegateResponse = false;
   state.currentScene = SCENE_WAITING_FOR_COMPETITOR;
 
   stateHasChanged = true;
@@ -352,6 +364,7 @@ String displayTime(uint8_t m, uint8_t s, uint16_t ms) {
 
 void sendSolve(bool delegate) {
   if (delegate) {
+    waitForDelegateResponse = true;
     uuid.generate();
     strncpy(state.solveSessionId, uuid.toCharArray(), UUID_LENGTH);
   }
@@ -376,9 +389,10 @@ void sendSolve(bool delegate) {
     showError("Server not connected!");
   }
 
-  // only show wait for solve response if not delegate request
-  if (!delegate)
-    waitForSolveResponse = true;
+  if(delegate) waitForDelegateResponse = true;
+  else waitForSolveResponse = true;
+
+  stateHasChanged = true;
 }
 
 void scanCard(unsigned long cardId) {
