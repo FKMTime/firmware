@@ -1,4 +1,5 @@
 use anyhow::Result;
+use rand::Rng;
 use std::{collections::HashMap, path::Path, sync::Arc, time::Duration};
 use structs::{
     CompetitionStatusResp, Room, UnixRequest, UnixRequestData, UnixResponse, UnixResponseData,
@@ -50,6 +51,16 @@ async fn main() -> Result<()> {
             name: "Filip Sciurka".to_string(),
             registrant_id: state.cards.len() as i64,
             wca_id: "FILSCI01".to_string(),
+            can_compete: true,
+        },
+    );
+
+    state.cards.insert(
+        "69420".to_string(),
+        CompetitorInfo {
+            name: "Filip Dziurka".to_string(),
+            registrant_id: state.cards.len() as i64,
+            wca_id: "FILDZI01".to_string(),
             can_compete: true,
         },
     );
@@ -133,7 +144,7 @@ async fn new_test_sender(esp_id: &u32, senders: SharedSenders) -> Result<()> {
 
 async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
     let unix_tx = UNIX_SENDER.get().expect("UNIX_SENDER not set!");
-    let rx = spawn_new_sender(&senders, esp_id).await?;
+    let mut rx = spawn_new_sender(&senders, esp_id).await?;
 
     unix_tx.send(UnixResponse {
         error: None,
@@ -144,6 +155,17 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
         }),
     })?;
 
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    unix_tx.send(UnixResponse {
+        error: None,
+        tag: None,
+        data: Some(UnixResponseData::TestPacket {
+            esp_id,
+            data: structs::TestPacketData::ResetState,
+        }),
+    })?;
+
+    tokio::time::sleep(Duration::from_millis(1000)).await;
     unix_tx.send(UnixResponse {
         error: None,
         tag: None,
@@ -153,7 +175,79 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
         }),
     })?;
 
-    Ok(())
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    unix_tx.send(UnixResponse {
+        error: None,
+        tag: None,
+        data: Some(UnixResponseData::TestPacket {
+            esp_id,
+            data: structs::TestPacketData::SolveTime(rand::thread_rng().gen_range(300..69420)),
+        }),
+    })?;
+
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    unix_tx.send(UnixResponse {
+        error: None,
+        tag: None,
+        data: Some(UnixResponseData::TestPacket {
+            esp_id,
+            data: structs::TestPacketData::ButtonPress {
+                pins: vec![32],
+                press_time: 30,
+            },
+        }),
+    })?;
+
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    unix_tx.send(UnixResponse {
+        error: None,
+        tag: None,
+        data: Some(UnixResponseData::TestPacket {
+            esp_id,
+            data: structs::TestPacketData::ButtonPress {
+                pins: vec![32],
+                press_time: 30,
+            },
+        }),
+    })?;
+
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    unix_tx.send(UnixResponse {
+        error: None,
+        tag: None,
+        data: Some(UnixResponseData::TestPacket {
+            esp_id,
+            data: structs::TestPacketData::ButtonPress {
+                pins: vec![33],
+                press_time: 30,
+            },
+        }),
+    })?;
+
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    unix_tx.send(UnixResponse {
+        error: None,
+        tag: None,
+        data: Some(UnixResponseData::TestPacket {
+            esp_id,
+            data: structs::TestPacketData::ScanCard(69420),
+        }),
+    })?;
+
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    unix_tx.send(UnixResponse {
+        error: None,
+        tag: None,
+        data: Some(UnixResponseData::TestPacket {
+            esp_id,
+            data: structs::TestPacketData::ScanCard(3004425529),
+        }),
+    })?;
+
+    loop {
+        let recv = rx.recv().await;
+        println!("recv: {recv:?}");
+    }
 }
 
 async fn send_resp(
