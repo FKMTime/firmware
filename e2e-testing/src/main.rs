@@ -251,8 +251,26 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
             }),
         })?;
 
-        let recv = rx.recv().await;
-        println!("recv: {recv:?}");
+        let recv = tokio::time::timeout(Duration::from_secs(5), rx.recv()).await;
+        match recv {
+            Ok(recv) => {
+                println!("recv: {recv:?}");
+            }
+            Err(_) => {
+                // timeout
+
+                unix_tx.send(UnixResponse {
+                    error: None,
+                    tag: None,
+                    data: Some(UnixResponseData::TestPacket {
+                        esp_id,
+                        data: structs::TestPacketData::ResetState,
+                    }),
+                })?;
+
+                println!("!!!ERROR_TIMEOUT!!!");
+            }
+        }
     }
 }
 
