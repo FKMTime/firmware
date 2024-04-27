@@ -20,17 +20,19 @@ void delegateButtonHold(int holdTime) {
   int secs = ceilf((DELEGAT_BUTTON_HOLD_TIME - holdTime) / 1000.0);
   lcdPrintf(0, true, ALIGN_CENTER, TR_DELEGATE_HEADER);
   lcdPrintf(1, true, ALIGN_CENTER, TR_DELEGATE_COUNTDOWN, secs);
+  stateHasChanged = true;
 }
 
 void delegateButtonCalled(Button &b) {
   if (state.currentScene == SCENE_ERROR) return;
   if (state.competitorCardId <= 0) return;
-
-  lcdPrintf(0, true, ALIGN_CENTER, TR_DELEGATE_CALLED_TOP);
-  lcdPrintf(1, true, ALIGN_CENTER, TR_DELEGATE_CALLED_BOTTOM);
+  lcdClear();
 
   stopInspection(); // stop inspection
   sendSolve(true); // send delegate request (TODO: maybe different method?)
+
+  lockStateChange = false;
+  stateHasChanged = true;
 }
 
 void delegateButtonAfterRelease(Button &b) {
@@ -129,7 +131,7 @@ void inspectionButton(Button &b) {
 
 void buttonsInit() {
   size_t delegateBtn =
-      buttons.addButton(BUTTON4, NULL, delegateButtonAfterRelease);
+      buttons.addButton(BUTTON4, NULL, NULL);
   buttons.addButtonReocCb(delegateBtn, 1000, delegateButtonHold);
   buttons.addButtonCb(delegateBtn, DELEGAT_BUTTON_HOLD_TIME, false, delegateButtonCalled);
 

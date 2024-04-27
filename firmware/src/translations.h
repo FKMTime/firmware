@@ -21,8 +21,6 @@
 
 #define TR_DELEGATE_HEADER (primaryLangauge ? "Delegate" : "Delegat")
 #define TR_DELEGATE_COUNTDOWN (primaryLangauge ? "In %lu" : "Za %lu")
-#define TR_DELEGATE_CALLED_TOP (primaryLangauge ? "Delegate called" : "Delegat wezwany")
-#define TR_DELEGATE_CALLED_BOTTOM (primaryLangauge ? "Release button" : "Pusc przycisk")
 
 #define TR_ERROR_HEADER "Error"
 #define TR_WAITING_FOR_SOLVE_TOP (primaryLangauge ? "Sending" : "Przesylanie")
