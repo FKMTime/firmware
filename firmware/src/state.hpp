@@ -183,7 +183,19 @@ void stateLoop() {
     }
   }
 
-  if (state.currentScene == SCENE_WAITING_FOR_COMPETITOR) {
+  if (waitForDelegateResponse) {
+    lcdPrintf(0, true, ALIGN_CENTER, TR_WAITING_FOR_DELEGATE_TOP);
+    lcdPrintf(1, true, ALIGN_CENTER, TR_WAITING_FOR_DELEGATE_BOTTOM);
+
+    stateHasChanged = false;
+    return;
+  } else if (waitForSolveResponse) {
+    lcdPrintf(0, true, ALIGN_CENTER, TR_WAITING_FOR_SOLVE_TOP);
+    lcdPrintf(1, true, ALIGN_CENTER, TR_WAITING_FOR_SOLVE_BOTTOM);
+
+    stateHasChanged = false;
+    return;
+  } else if (state.currentScene == SCENE_WAITING_FOR_COMPETITOR) {
     lcdPrintf(0, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_TOP);
     lcdPrintf(1, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_BOTTOM);
   } else if (state.currentScene == SCENE_COMPETITOR_INFO) {
@@ -203,22 +215,6 @@ void stateLoop() {
     stateHasChanged = true; // refresh
     return;
   } else if (state.currentScene == SCENE_FINISHED_TIME) {
-    if (waitForSolveResponse) {
-      lcdPrintf(0, true, ALIGN_CENTER, TR_WAITING_FOR_SOLVE_TOP);
-      lcdPrintf(1, true, ALIGN_CENTER, TR_WAITING_FOR_SOLVE_BOTTOM);
-
-      stateHasChanged = false;
-      return;
-    }
-
-    if (waitForDelegateResponse) {
-      lcdPrintf(0, true, ALIGN_CENTER, TR_WAITING_FOR_SOLVE_TOP);
-      lcdPrintf(1, true, ALIGN_CENTER, TR_WAITING_FOR_SOLVE_BOTTOM);
-
-      stateHasChanged = false;
-      return;
-    }
-
     uint8_t minutes = state.solveTime / 60000;
     uint8_t seconds = (state.solveTime % 60000) / 1000;
     uint16_t ms = state.solveTime % 1000;
@@ -364,7 +360,6 @@ String displayTime(uint8_t m, uint8_t s, uint16_t ms) {
 
 void sendSolve(bool delegate) {
   if (delegate) {
-    waitForDelegateResponse = true;
     uuid.generate();
     strncpy(state.solveSessionId, uuid.toCharArray(), UUID_LENGTH);
   }
@@ -422,6 +417,8 @@ void logState() {
   Logger.printf("Competitor display: \"%s\"\n", state.competitorDisplay);
   Logger.printf("Time confirmed: %d\n", state.timeConfirmed);
   Logger.printf("Current scene: %d\n", state.currentScene);
+  Logger.printf("Wait for solve resp: %d\n", waitForSolveResponse);
+  Logger.printf("Wait for delegate resp: %d\n", waitForDelegateResponse);
 }
 
 #endif

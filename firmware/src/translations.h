@@ -28,6 +28,9 @@
 #define TR_WAITING_FOR_SOLVE_TOP (primaryLangauge ? "Sending" : "Przesylanie")
 #define TR_WAITING_FOR_SOLVE_BOTTOM (primaryLangauge ? "result..." : "wyniku...")
 
+#define TR_WAITING_FOR_DELEGATE_TOP (primaryLangauge ? "Waiting for" : "Czekanie na")
+#define TR_WAITING_FOR_DELEGATE_BOTTOM (primaryLangauge ? "delegate" : "delegata")
+
 #define TR_DEVICE_NOT_ADDED_TOP "Device not added"
 #define TR_DEVICE_NOT_ADDED_BOTTOM "Press submit to connect"
 

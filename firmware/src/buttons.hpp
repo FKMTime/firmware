@@ -12,10 +12,9 @@
 AButtons buttons;
 
 void delegateButtonHold(int holdTime) {
-  if (state.currentScene == SCENE_ERROR)
-    return;
-  if (holdTime > DELEGAT_BUTTON_HOLD_TIME)
-    return;
+  if (state.currentScene == SCENE_ERROR) return;
+  if (state.competitorCardId <= 0) return;
+  if (holdTime > DELEGAT_BUTTON_HOLD_TIME) return;
   lockStateChange = true;
 
   int secs = ceilf((DELEGAT_BUTTON_HOLD_TIME - holdTime) / 1000.0);
@@ -24,8 +23,9 @@ void delegateButtonHold(int holdTime) {
 }
 
 void delegateButtonCalled(Button &b) {
-  if (state.currentScene == SCENE_ERROR)
-    return;
+  if (state.currentScene == SCENE_ERROR) return;
+  if (state.competitorCardId <= 0) return;
+
   lcdPrintf(0, true, ALIGN_CENTER, TR_DELEGATE_CALLED_TOP);
   lcdPrintf(1, true, ALIGN_CENTER, TR_DELEGATE_CALLED_BOTTOM);
 
@@ -34,8 +34,7 @@ void delegateButtonCalled(Button &b) {
 }
 
 void delegateButtonAfterRelease(Button &b) {
-  if (state.currentScene != SCENE_ERROR)
-    lcdClear();
+  if (state.currentScene != SCENE_ERROR) lcdClear();
   lockStateChange = false;
   stateHasChanged = true;
 }
