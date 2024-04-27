@@ -121,6 +121,7 @@ async fn handle_stream(
                     }
                     structs::UnixRequestData::EnterAttempt { esp_id, .. } => {
                         send_senders_data(&state.senders, &esp_id, packet.data.clone()).await?;
+                        tokio::time::sleep(Duration::from_millis(300)).await;
                         send_resp(stream, UnixResponseData::Empty, packet.tag, false).await?;
                     }
                     structs::UnixRequestData::UpdateBatteryPercentage { .. } => {

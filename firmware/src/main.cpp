@@ -129,7 +129,7 @@ void rfidLoop() {
 
 void sleepDetection() {
   unsigned long timeSinceLastDraw = millis() - lcdLastDraw;
-  if (timeSinceLastDraw > SLEEP_TIME && !lcdHasChanged && !stackmat.connected()) {
+  if (timeSinceLastDraw > SLEEP_TIME && !lcdHasChanged && !stackmat.connected() && !state.testMode) {
     lcdPrintf(0, true, ALIGN_CENTER, "Sleep mode");
     lcdPrintf(1, true, ALIGN_CENTER, "Turn on timer");
     lcd.noBacklight();
