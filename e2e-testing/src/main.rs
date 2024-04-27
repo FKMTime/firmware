@@ -90,6 +90,7 @@ async fn handle_stream(
                 let bytes = res?;
                 let packet: UnixRequest = serde_json::from_slice(&bytes[..])?;
 
+                let mut print_log = true;
                 match packet.data {
                     structs::UnixRequestData::RequestToConnectDevice { esp_id, .. } => {
                         state.devices.push(esp_id);
@@ -122,12 +123,18 @@ async fn handle_stream(
                         send_senders_data(&state.senders, &esp_id, packet.data.clone()).await?;
                         send_resp(stream, UnixResponseData::Empty, packet.tag, false).await?;
                     }
+                    structs::UnixRequestData::UpdateBatteryPercentage { .. } => {
+                        print_log = false;
+                        send_resp(stream, UnixResponseData::Empty, packet.tag, false).await?;
+                    }
                     _ => {
                         send_resp(stream, UnixResponseData::Empty, packet.tag, false).await?;
                     }
                 }
 
-                println!("{packet:?}");
+                if print_log {
+                    println!("{packet:?}");
+                }
             }
             Some(recv) = rx.recv() => {
                 send_raw_resp(stream, recv).await?;
@@ -155,7 +162,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
         }),
     })?;
 
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
     unix_tx.send(UnixResponse {
         error: None,
         tag: None,
@@ -165,7 +172,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
         }),
     })?;
 
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
     unix_tx.send(UnixResponse {
         error: None,
         tag: None,
@@ -175,7 +182,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
         }),
     })?;
 
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
     unix_tx.send(UnixResponse {
         error: None,
         tag: None,
@@ -185,7 +192,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
         }),
     })?;
 
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
     unix_tx.send(UnixResponse {
         error: None,
         tag: None,
@@ -198,7 +205,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
         }),
     })?;
 
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
     unix_tx.send(UnixResponse {
         error: None,
         tag: None,
@@ -211,7 +218,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
         }),
     })?;
 
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
     unix_tx.send(UnixResponse {
         error: None,
         tag: None,
@@ -224,7 +231,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
         }),
     })?;
 
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
     unix_tx.send(UnixResponse {
         error: None,
         tag: None,
@@ -234,7 +241,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
         }),
     })?;
 
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
     unix_tx.send(UnixResponse {
         error: None,
         tag: None,
