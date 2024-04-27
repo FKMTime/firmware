@@ -162,7 +162,6 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
         }),
     })?;
 
-    tokio::time::sleep(Duration::from_millis(500)).await;
     unix_tx.send(UnixResponse {
         error: None,
         tag: None,
@@ -172,86 +171,86 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
         }),
     })?;
 
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    unix_tx.send(UnixResponse {
-        error: None,
-        tag: None,
-        data: Some(UnixResponseData::TestPacket {
-            esp_id,
-            data: structs::TestPacketData::ScanCard(3004425529),
-        }),
-    })?;
-
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    unix_tx.send(UnixResponse {
-        error: None,
-        tag: None,
-        data: Some(UnixResponseData::TestPacket {
-            esp_id,
-            data: structs::TestPacketData::SolveTime(rand::thread_rng().gen_range(300..69420)),
-        }),
-    })?;
-
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    unix_tx.send(UnixResponse {
-        error: None,
-        tag: None,
-        data: Some(UnixResponseData::TestPacket {
-            esp_id,
-            data: structs::TestPacketData::ButtonPress {
-                pins: vec![32],
-                press_time: 30,
-            },
-        }),
-    })?;
-
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    unix_tx.send(UnixResponse {
-        error: None,
-        tag: None,
-        data: Some(UnixResponseData::TestPacket {
-            esp_id,
-            data: structs::TestPacketData::ButtonPress {
-                pins: vec![32],
-                press_time: 30,
-            },
-        }),
-    })?;
-
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    unix_tx.send(UnixResponse {
-        error: None,
-        tag: None,
-        data: Some(UnixResponseData::TestPacket {
-            esp_id,
-            data: structs::TestPacketData::ButtonPress {
-                pins: vec![33],
-                press_time: 30,
-            },
-        }),
-    })?;
-
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    unix_tx.send(UnixResponse {
-        error: None,
-        tag: None,
-        data: Some(UnixResponseData::TestPacket {
-            esp_id,
-            data: structs::TestPacketData::ScanCard(69420),
-        }),
-    })?;
-
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    unix_tx.send(UnixResponse {
-        error: None,
-        tag: None,
-        data: Some(UnixResponseData::TestPacket {
-            esp_id,
-            data: structs::TestPacketData::ScanCard(3004425529),
-        }),
-    })?;
-
     loop {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        unix_tx.send(UnixResponse {
+            error: None,
+            tag: None,
+            data: Some(UnixResponseData::TestPacket {
+                esp_id,
+                data: structs::TestPacketData::ScanCard(3004425529),
+            }),
+        })?;
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        unix_tx.send(UnixResponse {
+            error: None,
+            tag: None,
+            data: Some(UnixResponseData::TestPacket {
+                esp_id,
+                data: structs::TestPacketData::SolveTime(rand::thread_rng().gen_range(300..69420)),
+            }),
+        })?;
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        unix_tx.send(UnixResponse {
+            error: None,
+            tag: None,
+            data: Some(UnixResponseData::TestPacket {
+                esp_id,
+                data: structs::TestPacketData::ButtonPress {
+                    pins: vec![32],
+                    press_time: 30,
+                },
+            }),
+        })?;
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        unix_tx.send(UnixResponse {
+            error: None,
+            tag: None,
+            data: Some(UnixResponseData::TestPacket {
+                esp_id,
+                data: structs::TestPacketData::ButtonPress {
+                    pins: vec![32],
+                    press_time: 30,
+                },
+            }),
+        })?;
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        unix_tx.send(UnixResponse {
+            error: None,
+            tag: None,
+            data: Some(UnixResponseData::TestPacket {
+                esp_id,
+                data: structs::TestPacketData::ButtonPress {
+                    pins: vec![33],
+                    press_time: 30,
+                },
+            }),
+        })?;
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        unix_tx.send(UnixResponse {
+            error: None,
+            tag: None,
+            data: Some(UnixResponseData::TestPacket {
+                esp_id,
+                data: structs::TestPacketData::ScanCard(69420),
+            }),
+        })?;
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        unix_tx.send(UnixResponse {
+            error: None,
+            tag: None,
+            data: Some(UnixResponseData::TestPacket {
+                esp_id,
+                data: structs::TestPacketData::ScanCard(3004425529),
+            }),
+        })?;
+
         let recv = rx.recv().await;
         println!("recv: {recv:?}");
     }
