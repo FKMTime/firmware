@@ -9,7 +9,7 @@ pub struct UnixError {
     pub should_reset_time: bool,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct UnixResponse {
     pub error: Option<bool>,
     pub tag: Option<u32>,
@@ -18,7 +18,7 @@ pub struct UnixResponse {
     pub data: Option<UnixResponseData>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type", content = "data")]
 #[serde(rename_all_fields = "camelCase")]
 pub enum UnixResponseData {
@@ -98,7 +98,7 @@ pub enum UnixRequestData {
     },
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct IncidentAttempt {
     pub session_id: String,
@@ -124,7 +124,7 @@ pub struct CompetitionDeviceSettings {
 }
 
 // API RESPONSE
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompetitionStatusResp {
     pub should_update: bool,
@@ -132,7 +132,7 @@ pub struct CompetitionStatusResp {
     pub rooms: Vec<Room>,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Room {
     pub id: String,
