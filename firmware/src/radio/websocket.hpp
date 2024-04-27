@@ -169,6 +169,34 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       waitForSolveResponse = false;
       waitForDelegateResponse = false;
       stateHasChanged = true;
+    } else if (doc.containsKey("test_packet")) {
+      String type = doc["test_packet"]["type"];
+
+      if (type == "Start") {
+        state.testMode = true;
+      } else if (type == "End") {
+        state.testMode = false;
+        resetSolveState(true);
+      } else if (type == "SolveTime") {
+        unsigned long solveTime = doc["test_packet"]["data"];
+        startSolveSession(solveTime);
+      } else if (type == "ButtonPress") {
+        JsonArray pinsArr = doc["test_packet"]["data"]["pins"].as<JsonArray>();
+        std::vector<uint8_t> pins;
+        for(JsonVariant v : pinsArr) {
+          pins.push_back(v.as<int>());
+        }
+
+        int pressTime = doc["test_packet"]["data"]["press_time"];
+        buttons.testButtonClick(pins, pressTime);
+      } else if (type == "ScanCard") {
+        unsigned long cardId = doc["test_packet"]["data"];
+        scanCard(cardId);
+      } else if (type == "ResetState") {
+        resetSolveState(true);
+      }
+
+      stateHasChanged = true;
     }
   } else if (type == WStype_BIN) {
     if (Update.write(payload, length) != length) {
