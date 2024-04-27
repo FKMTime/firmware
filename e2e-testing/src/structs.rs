@@ -72,11 +72,11 @@ pub enum UnixRequestData {
     },
     WifiSettings,
     CreateAttendance {
-        card_id: u128,
+        card_id: u64,
         esp_id: u32,
     },
     EnterAttempt {
-        value: u128,
+        value: u64,
         penalty: i64,
         solved_at: String,
         esp_id: u32,
@@ -84,7 +84,7 @@ pub enum UnixRequestData {
         competitor_id: String,
         is_delegate: bool,
         session_id: String,
-        inspection_time: u128,
+        inspection_time: u64,
     },
     UpdateBatteryPercentage {
         esp_id: u32,
@@ -113,9 +113,9 @@ pub enum TestPacketData {
     Start,
     End,
     ResetState,
-    ScanCard(u128),
+    ScanCard(u64),
     ButtonPress { pins: Vec<u8>, press_time: u64 },
-    SolveTime(u128),
+    SolveTime(u64),
 }
 
 #[derive(Debug, Clone)]
