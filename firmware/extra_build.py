@@ -13,7 +13,7 @@ def generate_version():
     release_build = "RELEASE_BUILD" in env["ENV"]
 
     buildTime = int(time.time())
-    version = release_build == True and env["ENV"]["RELEASE_BUILD"] or buildTime
+    version = release_build == True and env["ENV"]["RELEASE_BUILD"] or ("DV" + str(buildTime))
     versionPath = os.path.join(env["PROJECT_DIR"], "src", "version.h")
     chip = env['BOARD_MCU']
 
