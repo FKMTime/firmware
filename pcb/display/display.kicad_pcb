@@ -103,7 +103,7 @@
 		(at 154.25 95.005 180)
 		(descr "Through hole straight pin header, 1x06, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x06 2.54mm single row")
-		(property "Reference" "J2"
+		(property "Reference" "JOUT"
 			(at 0.1 15.025 180)
 			(layer "F.SilkS")
 			(uuid "927b4ad8-f0b8-4c77-a417-33c2493ca921")
@@ -411,7 +411,7 @@
 		(at 143.59 109.85 90)
 		(descr "Through hole straight pin header, 1x05, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x05 2.54mm single row")
-		(property "Reference" "J4"
+		(property "Reference" "JDOWN"
 			(at 2.425 5.06 0)
 			(layer "F.SilkS")
 			(uuid "38a5b304-2003-41ef-9418-d0ba0745250d")
@@ -698,7 +698,7 @@
 		(at 143.125 82.325)
 		(descr "Through hole straight pin header, 1x06, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x06 2.54mm single row")
-		(property "Reference" "J1"
+		(property "Reference" "JIN"
 			(at 0 -2.33 0)
 			(layer "F.SilkS")
 			(uuid "a7e2c58c-e925-425e-8b3a-265d8838db94")
@@ -1218,7 +1218,7 @@
 		(descr "SMD Solder Jumper, 1x1.5mm, rounded Pads, 0.3mm gap, open")
 		(tags "solder jumper open")
 		(property "Reference" "JP1"
-			(at 0 -1.8 270)
+			(at 0 -1.8 -90)
 			(layer "F.SilkS")
 			(uuid "0e8d54a5-86ab-4637-8fdf-e27ad2543640")
 			(effects
@@ -1229,7 +1229,7 @@
 			)
 		)
 		(property "Value" "SolderJumper_2_Open"
-			(at 0 1.9 270)
+			(at 0 1.9 -90)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "bff3b5f7-ee67-427e-b843-acf25af1eb56")
@@ -1485,7 +1485,7 @@
 		(at 143.6 69.255 90)
 		(descr "Through hole straight pin header, 1x05, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x05 2.54mm single row")
-		(property "Reference" "J3"
+		(property "Reference" "JUP"
 			(at -2.545 5.075 0)
 			(layer "F.SilkS")
 			(uuid "6f62d1b1-8409-4bd7-83c0-56f1d413ffcb")
@@ -2060,8 +2060,8 @@
 		)
 	)
 	(gr_circle
-		(center 146.3 87.425)
-		(end 146.495256 87.425)
+		(center 146.3 87.85)
+		(end 146.495256 87.85)
 		(stroke
 			(width 0.1)
 			(type solid)
