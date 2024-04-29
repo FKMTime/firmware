@@ -15,4 +15,15 @@ services:
       - API_TOKEN=paste_your_token_here
       - RUST_LOG=none,backend=debug
       - SOCKET_PATH=/app/sock/socket.sock
+      - DEV=1 #comment if you dont want to use dev build
+    restart: unless-stopped
+    depends_on:
+      - e2e
+  e2e:
+    container_name: e2e
+    build: ./e2e-testing
+    volumes:
+      - /tmp/sock:/app/sock
+    environment:
+      - SOCKET_PATH=/app/sock/socket.sock
     restart: unless-stopped
