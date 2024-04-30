@@ -78,6 +78,7 @@ void submitButton(Button &b) {
   }
 
   if (state.currentScene == SCENE_ERROR) {
+    state.errorMsg[0] = '\0';
     lcdClear();
     state.currentScene = state.sceneBeforeError;
     stateHasChanged = true;

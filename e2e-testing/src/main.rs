@@ -124,6 +124,10 @@ async fn handle_stream(
                         tokio::time::sleep(Duration::from_millis(300)).await;
                         send_resp(stream, UnixResponseData::Empty, packet.tag, false).await?;
                     }
+                    structs::UnixRequestData::Snapshot(ref data) => {
+                        send_senders_data(&state.senders, &data.esp_id, packet.data.clone()).await?;
+                        send_resp(stream, UnixResponseData::Empty, packet.tag, false).await?;
+                    }
                     structs::UnixRequestData::UpdateBatteryPercentage { .. } => {
                         print_log = false;
                         send_resp(stream, UnixResponseData::Empty, packet.tag, false).await?;
@@ -172,6 +176,19 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
         }),
     })?;
 
+    unix_tx.send(UnixResponse {
+        error: None,
+        tag: None,
+        data: Some(UnixResponseData::TestPacket {
+            esp_id,
+            data: structs::TestPacketData::Snapshot,
+        }),
+    })?;
+
+    let recv = tokio::time::timeout(Duration::from_secs(5), rx.recv()).await;
+    println!("recv {recv:?}");
+
+    /*
     loop {
         tokio::time::sleep(Duration::from_millis(500)).await;
         unix_tx.send(UnixResponse {
@@ -273,6 +290,9 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
             }
         }
     }
+    */
+
+    Ok(())
 }
 
 async fn send_resp(

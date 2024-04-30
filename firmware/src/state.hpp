@@ -404,6 +404,28 @@ void scanCard(unsigned long cardId) {
   }
 }
 
+void sendSnapshotData() {
+  JsonDocument doc;
+  doc["snapshot"]["esp_id"] = getEspId();
+  doc["snapshot"]["scene"] = state.currentScene;
+  doc["snapshot"]["solve_session_id"] = state.solveSessionId;
+  doc["snapshot"]["solve_time"] = state.solveTime;
+  doc["snapshot"]["last_solve_time"] = state.lastSolveTime;
+  doc["snapshot"]["penalty"] = state.penalty;
+  doc["snapshot"]["use_inspection"] = state.useInspection;
+  doc["snapshot"]["inspection_started"] = state.inspectionStarted;
+  doc["snapshot"]["inspection_ended"] = state.inspectionEnded;
+  doc["snapshot"]["competitor_card_id"] = state.competitorCardId;
+  doc["snapshot"]["judge_card_id"] = state.judgeCardId;
+  doc["snapshot"]["competitor_display"] = state.competitorDisplay;
+  doc["snapshot"]["time_confirmed"] = state.timeConfirmed;
+  doc["snapshot"]["error_msg"] = state.errorMsg;
+
+  String json;
+  serializeJson(doc, json);
+  webSocket.sendTXT(json);
+}
+
 void logState() {
   Logger.printf("State snapshot:\n");
   Logger.printf("Solve sess id: %s\n", state.solveSessionId);

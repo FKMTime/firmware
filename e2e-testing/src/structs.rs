@@ -96,6 +96,7 @@ pub enum UnixRequestData {
         #[serde(rename = "type")]
         r#type: String,
     },
+    Snapshot(SnapshotData),
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -116,6 +117,7 @@ pub enum TestPacketData {
     ScanCard(u64),
     ButtonPress { pins: Vec<u8>, press_time: u64 },
     SolveTime(u64),
+    Snapshot
 }
 
 #[derive(Debug, Clone)]
@@ -139,4 +141,22 @@ pub struct Room {
     pub name: String,
     pub use_inspection: bool,
     pub devices: Vec<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+pub struct SnapshotData {
+    pub esp_id: u32,
+    pub scene: u32,
+    pub solve_session_id: String,
+    pub solve_time: i64,
+    pub last_solve_time: i64,
+    pub penalty: i64,
+    pub use_inspection: bool,
+    pub inspection_started: u64,
+    pub inspection_ended: u64,
+    pub competitor_card_id: u64,
+    pub judge_card_id: u64,
+    pub competitor_display: String,
+    pub time_confirmed: bool,
+    pub error_msg: String,
 }
