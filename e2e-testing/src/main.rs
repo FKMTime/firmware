@@ -1,36 +1,21 @@
 use anyhow::Result;
-use rand::Rng;
 use std::{collections::HashMap, path::Path, sync::Arc, time::Duration};
-use structs::{
-    CompetitionStatusResp, Room, UnixRequest, UnixRequestData, UnixResponse, UnixResponseData,
-};
+use structs::{CompetitorInfo, SharedSenders, State};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{UnixListener, UnixStream},
-    sync::{
-        mpsc::{UnboundedReceiver, UnboundedSender},
-        OnceCell, RwLock,
-    },
+    sync::{mpsc::UnboundedReceiver, OnceCell, RwLock},
+};
+use unix_utils::{
+    request::{UnixRequest, UnixRequestData},
+    response::{CompetitionStatusResp, Room, UnixResponse, UnixResponseData},
+    TestPacketData,
 };
 
 mod structs;
 
 pub static UNIX_SENDER: OnceCell<tokio::sync::mpsc::UnboundedSender<UnixResponse>> =
     OnceCell::const_new();
-
-pub type SharedSenders = Arc<RwLock<HashMap<u32, UnboundedSender<UnixRequestData>>>>;
-pub struct State {
-    pub devices: Vec<u32>,
-    pub cards: HashMap<String, CompetitorInfo>,
-    pub senders: SharedSenders,
-}
-
-pub struct CompetitorInfo {
-    pub registrant_id: i64,
-    pub name: String,
-    pub wca_id: String,
-    pub can_compete: bool,
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -92,14 +77,14 @@ async fn handle_stream(
 
                 let mut print_log = true;
                 match packet.data {
-                    structs::UnixRequestData::RequestToConnectDevice { esp_id, .. } => {
+                    UnixRequestData::RequestToConnectDevice { esp_id, .. } => {
                         state.devices.push(esp_id);
                         send_status_resp(stream, &state.devices).await?;
                         send_resp(stream, UnixResponseData::Empty, packet.tag, false).await?;
 
                         new_test_sender(&esp_id, state.senders.clone()).await?;
                     }
-                    structs::UnixRequestData::PersonInfo { ref card_id } => {
+                    UnixRequestData::PersonInfo { ref card_id } => {
                         let competitor = state.cards.get(card_id);
                         let resp = match competitor {
                             Some(competitor) => UnixResponseData::PersonInfoResp {
@@ -119,16 +104,16 @@ async fn handle_stream(
 
                         send_resp(stream, resp, packet.tag, competitor.is_none()).await?;
                     }
-                    structs::UnixRequestData::EnterAttempt { esp_id, .. } => {
+                    UnixRequestData::EnterAttempt { esp_id, .. } => {
                         send_senders_data(&state.senders, &esp_id, packet.data.clone()).await?;
                         tokio::time::sleep(Duration::from_millis(300)).await;
                         send_resp(stream, UnixResponseData::Empty, packet.tag, false).await?;
                     }
-                    structs::UnixRequestData::Snapshot(ref data) => {
+                    UnixRequestData::Snapshot(ref data) => {
                         send_senders_data(&state.senders, &data.esp_id, packet.data.clone()).await?;
                         send_resp(stream, UnixResponseData::Empty, packet.tag, false).await?;
                     }
-                    structs::UnixRequestData::UpdateBatteryPercentage { .. } => {
+                    UnixRequestData::UpdateBatteryPercentage { .. } => {
                         print_log = false;
                         send_resp(stream, UnixResponseData::Empty, packet.tag, false).await?;
                     }
@@ -163,7 +148,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
         tag: None,
         data: Some(UnixResponseData::TestPacket {
             esp_id,
-            data: structs::TestPacketData::Start,
+            data: TestPacketData::Start,
         }),
     })?;
 
@@ -172,7 +157,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
         tag: None,
         data: Some(UnixResponseData::TestPacket {
             esp_id,
-            data: structs::TestPacketData::ResetState,
+            data: TestPacketData::ResetState,
         }),
     })?;
 
@@ -181,7 +166,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
         tag: None,
         data: Some(UnixResponseData::TestPacket {
             esp_id,
-            data: structs::TestPacketData::Snapshot,
+            data: TestPacketData::Snapshot,
         }),
     })?;
 
@@ -196,7 +181,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
             tag: None,
             data: Some(UnixResponseData::TestPacket {
                 esp_id,
-                data: structs::TestPacketData::ScanCard(3004425529),
+                data: TestPacketData::ScanCard(3004425529),
             }),
         })?;
 
@@ -206,7 +191,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
             tag: None,
             data: Some(UnixResponseData::TestPacket {
                 esp_id,
-                data: structs::TestPacketData::SolveTime(rand::thread_rng().gen_range(300..69420)),
+                data: TestPacketData::SolveTime(rand::thread_rng().gen_range(300..69420)),
             }),
         })?;
 
@@ -216,7 +201,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
             tag: None,
             data: Some(UnixResponseData::TestPacket {
                 esp_id,
-                data: structs::TestPacketData::ButtonPress {
+                data: TestPacketData::ButtonPress {
                     pins: vec![32],
                     press_time: 30,
                 },
@@ -229,7 +214,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
             tag: None,
             data: Some(UnixResponseData::TestPacket {
                 esp_id,
-                data: structs::TestPacketData::ButtonPress {
+                data: TestPacketData::ButtonPress {
                     pins: vec![32],
                     press_time: 30,
                 },
@@ -242,7 +227,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
             tag: None,
             data: Some(UnixResponseData::TestPacket {
                 esp_id,
-                data: structs::TestPacketData::ButtonPress {
+                data: TestPacketData::ButtonPress {
                     pins: vec![33],
                     press_time: 30,
                 },
@@ -255,7 +240,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
             tag: None,
             data: Some(UnixResponseData::TestPacket {
                 esp_id,
-                data: structs::TestPacketData::ScanCard(69420),
+                data: TestPacketData::ScanCard(69420),
             }),
         })?;
 
@@ -265,7 +250,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
             tag: None,
             data: Some(UnixResponseData::TestPacket {
                 esp_id,
-                data: structs::TestPacketData::ScanCard(3004425529),
+                data: TestPacketData::ScanCard(3004425529),
             }),
         })?;
 
@@ -282,7 +267,7 @@ async fn test_sender(esp_id: u32, senders: SharedSenders) -> Result<()> {
                     tag: None,
                     data: Some(UnixResponseData::TestPacket {
                         esp_id,
-                        data: structs::TestPacketData::ResetState,
+                        data: TestPacketData::ResetState,
                     }),
                 })?;
 
