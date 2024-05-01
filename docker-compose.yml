@@ -3,7 +3,10 @@ services:
     image: filipton/fkm-backend:latest
     container_name: backend
     network_mode: host
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: backend
     volumes:
       - /run/dbus:/run/dbus:ro
       - ./build:/app/firmware
@@ -21,7 +24,10 @@ services:
       - e2e
   e2e:
     container_name: e2e
-    build: ./e2e-testing
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: e2e
     volumes:
       - /tmp/sock:/app/sock
     environment:
