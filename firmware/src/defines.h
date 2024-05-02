@@ -18,7 +18,7 @@
 
 #define DELEGAT_BUTTON_HOLD_TIME 3000 // 3s (in 1s increments)
 #define DNF_BUTTON_HOLD_TIME 1000 // on penalty button (TIME TO HOLD PNALTY TO INPUT DNF)
-#define RESET_COMPETITOR_HOLD_TIME 5000 // on submit button (reset competitor and time)
+#define RESET_COMPETITOR_HOLD_TIME 3000 // on submit button (reset competitor and time)
 #define RESET_WIFI_HOLD_TIME 15000 // on submit button
 
 #endif
