@@ -426,10 +426,9 @@ void sendSnapshotData() {
   webSocket.sendTXT(json);
 }
 
-void sendTestAck(String type) {
+void sendTestAck() {
   JsonDocument doc;
   doc["test_ack"]["esp_id"] = getEspId();
-  doc["test_ack"]["typ"] = type.c_str();
 
   String json;
   serializeJson(doc, json);

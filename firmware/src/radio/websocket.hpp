@@ -171,6 +171,8 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       stateHasChanged = true;
     } else if (doc.containsKey("test_packet")) {
       String type = doc["test_packet"]["type"];
+      sendTestAck();
+
       if (type == "Start") {
         state.testMode = true;
       } else if (type == "End") {
@@ -197,7 +199,6 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
         sendSnapshotData();
       }
 
-      sendTestAck(type);
       stateHasChanged = true;
     }
   } else if (type == WStype_BIN) {
