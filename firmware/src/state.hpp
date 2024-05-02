@@ -426,6 +426,16 @@ void sendSnapshotData() {
   webSocket.sendTXT(json);
 }
 
+void sendTestAck(String type) {
+  JsonDocument doc;
+  doc["test_ack"]["esp_id"] = getEspId();
+  doc["test_ack"]["typ"] = type.c_str();
+
+  String json;
+  serializeJson(doc, json);
+  webSocket.sendTXT(json);
+}
+
 void logState() {
   Logger.printf("State snapshot:\n");
   Logger.printf("Solve sess id: %s\n", state.solveSessionId);

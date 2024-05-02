@@ -197,6 +197,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
         sendSnapshotData();
       }
 
+      sendTestAck(type);
       stateHasChanged = true;
     }
   } else if (type == WStype_BIN) {
