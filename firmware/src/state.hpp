@@ -405,6 +405,15 @@ void scanCard(unsigned long cardId) {
 }
 
 void sendSnapshotData() {
+  String tmpLcdBuff;
+  for(int y = 0; y < LCD_SIZE_Y; y++) {
+    for(int x = 0; x < LCD_SIZE_X; x++) {
+      tmpLcdBuff += shownBuff[y][x];
+    }
+    
+    tmpLcdBuff += "\n";
+  }
+
   JsonDocument doc;
   doc["snapshot"]["esp_id"] = getEspId();
   doc["snapshot"]["scene"] = state.currentScene;
@@ -420,6 +429,7 @@ void sendSnapshotData() {
   doc["snapshot"]["competitor_display"] = state.competitorDisplay;
   doc["snapshot"]["time_confirmed"] = state.timeConfirmed;
   doc["snapshot"]["error_msg"] = state.errorMsg;
+  doc["snapshot"]["lcd_buffer"] = tmpLcdBuff.c_str();
 
   String json;
   serializeJson(doc, json);
