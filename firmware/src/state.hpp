@@ -430,6 +430,7 @@ void sendSnapshotData() {
   doc["snapshot"]["time_confirmed"] = state.timeConfirmed;
   doc["snapshot"]["error_msg"] = state.errorMsg;
   doc["snapshot"]["lcd_buffer"] = tmpLcdBuff.c_str();
+  doc["snapshot"]["free_heap_size"] = esp_get_free_heap_size();
 
   String json;
   serializeJson(doc, json);
