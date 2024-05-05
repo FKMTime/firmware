@@ -185,6 +185,7 @@ void parseTestPacket(JsonChildDocument doc) {
 
   if (type == "Start") {
     state.testMode = true;
+    state.lastSolveTime = -1;
   } else if (type == "End") {
     state.testMode = false;
     resetSolveState(true);
