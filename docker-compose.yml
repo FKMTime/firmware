@@ -30,6 +30,8 @@ services:
       target: e2e
     volumes:
       - /tmp/sock:/app/sock
+      - ./backend/tests.json:/app/tests.json
     environment:
+      - RUST_LOG=none,e2e=debug
       - SOCKET_PATH=/app/sock/socket.sock
     restart: unless-stopped
