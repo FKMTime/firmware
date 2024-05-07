@@ -36,7 +36,7 @@ void delegateButtonCalled(Button &b) {
 }
 
 void delegateButtonAfterRelease(Button &b) {
-  if (state.currentScene != SCENE_ERROR) lcdClear();
+  // if (state.currentScene != SCENE_ERROR) lcdClear();
   lockStateChange = false;
   stateHasChanged = true;
 }
@@ -132,7 +132,7 @@ void inspectionButton(Button &b) {
 
 void buttonsInit() {
   size_t delegateBtn =
-      buttons.addButton(BUTTON4, NULL, NULL);
+      buttons.addButton(BUTTON4, NULL, delegateButtonAfterRelease);
   buttons.addButtonReocCb(delegateBtn, 1000, delegateButtonHold);
   buttons.addButtonCb(delegateBtn, DELEGAT_BUTTON_HOLD_TIME, false, delegateButtonCalled);
 
