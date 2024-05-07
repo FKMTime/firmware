@@ -7,7 +7,7 @@ def after_build(source, target, env):
     firmwareType = os.popen("cat src/version.h | grep \"FIRMWARE_TYPE\" | cut -d'\"' -f 2").read().strip()
     chip = env['BOARD_MCU']
 
-    os.popen(f"mkdir -p ../build ; cp {source[0].get_abspath()} ../build/{chip}_{firmwareType}_{version}.bin")
+    os.popen(f"mkdir -p /tmp/fkm-build ; cp {source[0].get_abspath()} /tmp/fkm-build/{chip}_{firmwareType}_{version}.bin")
 
 def generate_version():
     release_build = "RELEASE_BUILD" in env["ENV"]
