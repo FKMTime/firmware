@@ -41,7 +41,8 @@ void setup() {
 
   delay(100);
   currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 15);
-  float initialBat = voltageToPercentage(currentBatteryVoltage);
+  float initialBat = roundf(voltageToPercentage(currentBatteryVoltage));
+
   Logger.printf("ESP ID: %x\n", getEspId());
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
   Logger.printf("Build time: %s\n", BUILD_TIME);
