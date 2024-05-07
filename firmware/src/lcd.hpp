@@ -32,14 +32,14 @@ enum PrintAligment {
 
 void printLcdBuff(bool force = false);
 void lcdPrintf(int line, bool fillBlank, PrintAligment aligment, const char *format, ...);
-void printToScreen(char *str, bool fillBlank, PrintAligment aligment);
+void printToScreen(char *str, bool fillBlank, PrintAligment aligment, bool forceUnlock);
 void lcdClear();
 void lcdClearLine(int line);
 void lcdScroller(int line, const char *str);
 void scrollLoop();
 
 inline void waitForLock() {
-  while(lcdWriteLock) { delay(5); }
+  while(lcdWriteLock) { delay(1); }
 }
 
 void lcdInit() {
@@ -67,15 +67,20 @@ void lcdLoop() {
 }
 
 void printLcdBuff(bool force) {
+  waitForLock();
   lcdWriteLock = true;
 
   for(int y = 0; y < LCD_SIZE_Y; y++) {
+    int lastX = 0;
+    lcd.setCursor(0, y);
+
     for(int x = 0; x < LCD_SIZE_X; x++) {
       if(/* force || */ shownBuff[y][x] != lcdBuff[y][x]) {
-        lcd.setCursor(x, y);
+        if (x - lastX > 0) lcd.setCursor(x, y);
         lcd.print(lcdBuff[y][x]);
 
         shownBuff[y][x] = lcdBuff[y][x];
+        lastX = x;
       }
     }
   }
@@ -88,12 +93,8 @@ void printLcdBuff(bool force) {
 void lcdClear() {
   waitForLock();
 
-  // TODO: C mem operation
-  for (int ty = 0; ty < LCD_SIZE_Y; ty++) {
-    for (int tx = 0; tx < LCD_SIZE_X; tx++) {
-      lcdBuff[ty][tx] = ' ';
-    }
-  }
+  memset(&lcdBuff, ' ', LCD_SIZE_X * LCD_SIZE_Y);
+  lcdBuff[LCD_SIZE_Y-1][LCD_SIZE_X] = '\0';
 
   x = y = 0;
   lcdHasChanged = true;
@@ -104,10 +105,9 @@ void lcdClearLine(int line) {
   if (line < 0 || line >= LCD_SIZE_Y) return;
 
   waitForLock();
-  // TODO: C mem operation
-  for (int tx = 0; tx < LCD_SIZE_X; tx++) {
-    lcdBuff[line][tx] = ' ';
-  }
+
+  memset(&lcdBuff[line], ' ', LCD_SIZE_X);
+  lcdBuff[line][LCD_SIZE_X] = '\0';
 
   x = 0;
   y = line;
@@ -118,6 +118,9 @@ void lcdClearLine(int line) {
 }
 
 void scrollLoop() {
+  waitForLock();
+  lcdWriteLock = true;
+
   int maxScroll = constrain(scrollerLen - 16, 0, MAX_SCROLLER_LINE - 16);
 
   if (scrollX <= 0) scrollDir = true;
@@ -127,17 +130,21 @@ void scrollLoop() {
   strncpy(buff, scrollerBuff + scrollX, LCD_SIZE_X);
 
   y = scrollerLine;
-  printToScreen(buff, true, ALIGN_LEFT);
+  printToScreen(buff, true, ALIGN_LEFT, true);
 
   if (maxScroll > 0) scrollX += scrollDir ? 1 : -1;
   else scrollX = 0;
+
+  lcdWriteLock = false;
 }
 
 void lcdScroller(int line, const char *str) {
+  waitForLock();
+  lcdWriteLock = true;
+
   int strl = constrain(strlen(str), 0, MAX_SCROLLER_LINE);
   bool changed = line != scrollerLine;
 
-  // TODO: C strcmpy
   for (int i = 0; i < strl; i++) {
     if (scrollerBuff[i] != str[i]) {
       changed = true;
@@ -152,16 +159,24 @@ void lcdScroller(int line, const char *str) {
     char lineBuff[LCD_SIZE_X];
     strncpy(scrollerBuff, str, strl);
     strncpy(lineBuff, str, 16);
-    printToScreen(lineBuff, true, ALIGN_LEFT);
+    printToScreen(lineBuff, true, ALIGN_LEFT, true);
     scrollerLen = strl;
   }
+
+  lcdWriteLock = false;
 }
 
 /// @brief
 /// @param str string to print
 /// @param fillBlank if string should be padded with spaces (blanks) to the end of screen
 /// @param aligment text aligment (left/center/right)
-void printToScreen(char *str, bool fillBlank = true, PrintAligment aligment = ALIGN_LEFT) {
+/// @param forceUnlock set to true if you dont want to lock
+void printToScreen(char *str, bool fillBlank = true, PrintAligment aligment = ALIGN_LEFT, bool forceUnlock = false) {
+  if (!forceUnlock) {
+    waitForLock();
+    lcdWriteLock = true;
+  }
+
   int strl = strlen(str);
   int leftOffset = 0;
   switch (aligment)
@@ -181,28 +196,26 @@ void printToScreen(char *str, bool fillBlank = true, PrintAligment aligment = AL
   }
 
   if (leftOffset < 0) leftOffset = 0;
-
-  int strI = 0;
-  waitForLock();
-
-  // TODO: C mem operations (if fill blank, fill it first with spaces)
-  for (int i = 0; i < LCD_SIZE_X; i++) {
-    if (fillBlank && ((i < leftOffset && aligment != ALIGN_NEXTTO) || i >= leftOffset + strl)) {
-      lcdBuff[y][i] = ' ';
-      continue;
+  if (fillBlank) {
+    // left fill
+    if(aligment != ALIGN_NEXTTO && leftOffset > 0) {
+      memset(&lcdBuff[y], ' ', leftOffset);
     }
 
-    if (i >= leftOffset && strI < strl) {
-      if (lcdBuff[y][i] != str[strI]) {
-        lcdBuff[y][i] = str[strI];
-      }
-
-      strI++;
+    // right fill
+    int offset = leftOffset + strl;
+    if(offset < LCD_SIZE_X) {
+      memset(&lcdBuff[y][offset], ' ', LCD_SIZE_X - offset);
     }
   }
 
+  strl = constrain(strl, 0, LCD_SIZE_X - leftOffset);
+  strncpy(&lcdBuff[y][leftOffset], str, strl);
+
   x = leftOffset + strl;
   if (x >= LCD_SIZE_X) x = LCD_SIZE_X;
+  if (!forceUnlock) lcdWriteLock = false;
+
   lcdHasChanged = true;
 }
 
@@ -231,7 +244,6 @@ void lcdPrintf(int line, bool fillBlank, PrintAligment aligment, const char *for
   else printToScreen(buffer, fillBlank, aligment);
 
   if (buffer != temp) delete[] buffer;
-
   if(xPortGetCoreID() == mainCoreId) printLcdBuff();
 }
 
