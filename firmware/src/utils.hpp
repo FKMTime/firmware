@@ -6,6 +6,8 @@
 #include "globals.hpp"
 #include "version.h"
 
+float batteryVoltageOffset = 0;
+
 void lightSleep(gpio_num_t gpio, int level) {
   Logger.println("Going into light sleep...");
   Serial.flush();
@@ -31,7 +33,7 @@ uint16_t analogReadMax(int pin, int c = 10, int delayMs = 5) {
 }
 
 #define MIN_VOLTAGE 3.0 // to change (measure min voltage of cell when esp is turning on)
-#define MAX_VOLTAGE 4.1
+#define MAX_VOLTAGE 4.2
 float voltageToPercentage(float voltage) {
   voltage = constrain(voltage, MIN_VOLTAGE, MAX_VOLTAGE);
 
@@ -39,8 +41,7 @@ float voltageToPercentage(float voltage) {
 }
 
 #define V_REF 3.3
-#define READ_OFFSET 1.08 // to change
-#define VOLTAGE_OFFSET 0.1 // to change
+#define READ_OFFSET 1.0 // to change
 #define MAX_ADC 4095.0 // max adc - 1
 #define R1 10000
 #define R2 10000
@@ -48,7 +49,7 @@ float readBatteryVoltage(int pin, int delayMs = 5, bool offset = true) {
   float val = analogReadMax(pin, 10, delayMs);
   float voltage = val * READ_OFFSET * (V_REF / MAX_ADC) * ((R1 + R2) / R2);
 
-  return voltage + (offset ? VOLTAGE_OFFSET : 0);
+  return voltage + (offset ? batteryVoltageOffset : 0);
 }
 
 void sendBatteryStats(float level, float voltage) {

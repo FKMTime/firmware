@@ -36,10 +36,11 @@ void setup() {
   Logger.begin(&Serial);
   EEPROM.begin(128);
   Wire.begin(LCD_SDA, LCD_SCL);
+  readState(true);
   lcdInit();
 
   delay(100);
-  currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 15, false);
+  currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 15);
   float initialBat = voltageToPercentage(currentBatteryVoltage);
   Logger.printf("ESP ID: %x\n", getEspId());
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
@@ -101,7 +102,7 @@ inline void loop2() {
   buttons.loop(); // blocking
 
   if (millis() - lastBatRead > BATTERY_READ_INTERVAL) {
-    currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 5, false);
+    currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 15);
     float batPerct = voltageToPercentage(currentBatteryVoltage);
 
     sendBatteryStats(batPerct, currentBatteryVoltage);

@@ -68,6 +68,8 @@ struct EEPROMState {
   unsigned long saveTime;
   int solveTime;
   int penalty;
+
+  float batteryOffset;
 };
 
 void stateDefault() {
@@ -84,17 +86,17 @@ void saveState() {
   s.inspectionStarted = state.inspectionStarted;
   s.inspectionEnded = state.inspectionEnded;
   s.saveTime = getEpoch();
+  s.batteryOffset = batteryVoltageOffset;
 
   EEPROM.write(0, (uint8_t)sizeof(EEPROMState));
   EEPROM.put(1, s);
   EEPROM.commit();
 }
 
-void readState() {
+void readState(bool skipEpoch = false) {
   uint8_t size = EEPROM.read(0);
-  Logger.printf("read Size: %d\n", size);
 
-  if (size != sizeof(EEPROMState)) {
+  if (size != sizeof(EEPROMState) && !skipEpoch) {
     Logger.println("Loading default state...");
     stateDefault();
     return;
@@ -102,7 +104,9 @@ void readState() {
 
   EEPROMState _state = {0};
   EEPROM.get(1, _state);
+  batteryVoltageOffset = _state.batteryOffset;
 
+  if (skipEpoch) return;
   unsigned long currentEpoch = getEpoch();
   if (currentEpoch - _state.saveTime > SAVE_TIME_RESET) {
     return;

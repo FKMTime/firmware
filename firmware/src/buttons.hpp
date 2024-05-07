@@ -113,6 +113,21 @@ void debugButton(Button &b) {
   // startSolveSession(6969);
 }
 
+void calibrationButton(Button &b) {
+  lockStateChange = true;
+  lcdPrintf(0, true, ALIGN_CENTER, "CALIBRATING!");
+  lcdClearLine(1);
+
+  float currentReading = readBatteryVoltage(BAT_ADC, 15, false);
+  batteryVoltageOffset = MAX_VOLTAGE - currentReading;
+  saveState();
+
+  lockStateChange = false;
+  stateHasChanged = true;
+
+  Logger.printf("Calculated voltage offset: %f\n", batteryVoltageOffset);
+}
+
 void inspectionButton(Button &b) {
   if (!state.useInspection) return;
 
@@ -148,7 +163,8 @@ void buttonsInit() {
   size_t inspectionBtn = buttons.addButton(BUTTON3, NULL, NULL);
   buttons.addButtonCb(inspectionBtn, 0, true, inspectionButton);
 
-  size_t dbgBtn = buttons.addMultiButton({BUTTON1, BUTTON2}, NULL, debugButton);
+  size_t dbgBtn = buttons.addMultiButton({BUTTON1, BUTTON2}, NULL, debugButton); // submit + penalty
+  size_t calibrationBtn = buttons.addMultiButton({BUTTON2, BUTTON3}, calibrationButton, NULL); // inspection + penalty
 }
 
 #endif
