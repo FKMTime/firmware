@@ -94,13 +94,18 @@ void parseDelegateResponse(JsonChildDocument doc) {
     return;
   }
 
-  unsigned long solveTime =  doc["solve_time"];
-  int penalty =  doc["penalty"];
-  bool shouldScanCards =  doc["should_scan_cards"];
+  if (doc.containsKey("solve_time")) {
+    unsigned long solveTime =  doc["solve_time"];
+    state.solveTime = solveTime;
+    state.lastSolveTime = solveTime;
+  }
 
-  state.solveTime = solveTime;
-  state.lastSolveTime = solveTime;
-  state.penalty = penalty;
+  if (doc.containsKey("penalty")) {
+    int penalty =  doc["penalty"];
+    state.penalty = penalty;
+  }
+  
+  bool shouldScanCards =  doc["should_scan_cards"];
   state.timeConfirmed = true;
 
   if(shouldScanCards) {
