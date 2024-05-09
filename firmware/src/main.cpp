@@ -158,10 +158,8 @@ void stackmatLoop() {
       case ST_Stopped:
         if (state.solveTime > 0) break;
         if (state.competitorCardId == 0) {
-          state.currentScene = SCENE_WAITING_FOR_COMPETITOR;
-          stateHasChanged = true;
-
-          return;
+          state.currentScene = SCENE_WAITING_FOR_COMPETITOR_WITH_TIME;
+          break;
         }
 
         Logger.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
@@ -169,6 +167,10 @@ void stackmatLoop() {
         break;
 
       case ST_Reset:
+        if(state.competitorCardId == 0 && (state.currentScene == SCENE_TIMER_TIME || state.currentScene == SCENE_WAITING_FOR_COMPETITOR_WITH_TIME)) {
+          resetSolveState();
+        }
+
         Logger.println("Timer reset!");
         break;
 

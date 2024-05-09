@@ -18,6 +18,7 @@
 
 #define TR_AWAITING_COMPETITOR_TOP (primaryLangauge ? "Scan the card" : "Zeskanuj karte")
 #define TR_AWAITING_COMPETITOR_BOTTOM (primaryLangauge ? "of a competitor" : "zawodnika")
+#define TR_AWAITING_COMPETITOR_WITH_TIME_BOTTOM (primaryLangauge ? "of a competitor (%s)" : "zawodnika (%s)")
 
 #define TR_DELEGATE_HEADER (primaryLangauge ? "Delegate" : "Delegat")
 #define TR_DELEGATE_COUNTDOWN (primaryLangauge ? "In %lu" : "Za %lu")

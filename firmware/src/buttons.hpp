@@ -134,7 +134,7 @@ void inspectionButton(Button &b) {
   if(state.currentScene != SCENE_INSPECTION && state.inspectionStarted == 0) {
     startInspection();
     return;
-  } 
+  }
   
   if(state.currentScene == SCENE_INSPECTION) {
     state.currentScene = state.competitorCardId > 0 ? SCENE_COMPETITOR_INFO : SCENE_WAITING_FOR_COMPETITOR;

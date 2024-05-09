@@ -25,6 +25,7 @@ bool lastStackmatConnected = false;
 enum StateScene {
   SCENE_NOT_INITALIZED,         // before timer connects to wifi/ws
   SCENE_WAITING_FOR_COMPETITOR, // before competitor scans card
+  SCENE_WAITING_FOR_COMPETITOR_WITH_TIME, // after competitor solved but didn't scan his card
   SCENE_COMPETITOR_INFO,        // competitor info with inspection info
 
   // FROM HERE, DO NOT SHOW TIMER/SERVER DISCONNECTED
@@ -202,6 +203,14 @@ void stateLoop() {
   } else if (state.currentScene == SCENE_WAITING_FOR_COMPETITOR) {
     lcdPrintf(0, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_TOP);
     lcdPrintf(1, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_BOTTOM);
+  } else if (state.currentScene == SCENE_WAITING_FOR_COMPETITOR_WITH_TIME) {
+    uint8_t minutes = stackmat.time() / 60000;
+    uint8_t seconds = (stackmat.time() % 60000) / 1000;
+    uint16_t ms = stackmat.time() % 1000;
+    String solveTimeStr = displayTime(minutes, seconds, ms);
+
+    lcdPrintf(0, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_TOP);
+    lcdPrintf(1, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_WITH_TIME_BOTTOM, solveTimeStr.c_str());
   } else if (state.currentScene == SCENE_COMPETITOR_INFO) {
     lcdPrintf(0, true, ALIGN_CENTER, state.competitorDisplay);
     lcdPrintf(1, true, ALIGN_CENTER, state.useInspection ? "Inspection" : "");

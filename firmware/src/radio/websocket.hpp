@@ -47,7 +47,7 @@ void parseCardInfoResponse(JsonChildDocument doc) {
   bool canCompete = doc["can_compete"];
   countryIso2.toLowerCase();
 
-  if (state.currentScene == SCENE_WAITING_FOR_COMPETITOR) {
+  if (state.currentScene == SCENE_WAITING_FOR_COMPETITOR || state.currentScene == SCENE_WAITING_FOR_COMPETITOR_WITH_TIME) {
     if(!state.testMode && (!webSocket.isConnected() || !stackmat.connected())) return;
 
     if (state.competitorCardId == 0 && canCompete) {
