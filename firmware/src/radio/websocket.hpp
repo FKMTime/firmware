@@ -48,7 +48,7 @@ void parseCardInfoResponse(JsonChildDocument doc) {
   countryIso2.toLowerCase();
 
   if (state.currentScene == SCENE_WAITING_FOR_COMPETITOR || state.currentScene == SCENE_WAITING_FOR_COMPETITOR_WITH_TIME) {
-    if(!state.testMode && (!webSocket.isConnected() || !stackmat.connected())) return;
+    if(!webSocket.isConnected() || (!stackmat.connected() && !state.testMode)) return;
 
     if (state.competitorCardId == 0 && canCompete) {
       strncpy(state.competitorDisplay, display.c_str(), 128);
@@ -56,12 +56,13 @@ void parseCardInfoResponse(JsonChildDocument doc) {
       primaryLangauge = countryIso2 != "pl";
       state.currentScene = SCENE_COMPETITOR_INFO;
 
-      if (state.solveTime != stackmat.time()) {
-        if (state.lastTimerState == ST_Stopped) {
-          startSolveSession(stackmat.time());
-        } else {
-          if (state.useInspection) stopInspection();
+      int time = state.testMode ? testModeStackmatTime : stackmat.time();
+      if (state.solveTime != time) {
+        if (state.useInspection) stopInspection();
 
+        if (state.lastTimerState == ST_Stopped || state.testMode) {
+          startSolveSession(time);
+        } else {
           state.currentScene = SCENE_TIMER_TIME;
         }
       }
@@ -195,8 +196,10 @@ void parseTestPacket(JsonChildDocument doc) {
     state.testMode = false;
     resetSolveState(true);
   } else if (type == "SolveTime") {
+    unsigned long solveTime = doc["data"];
+    testModeStackmatTime = solveTime;
+
     if (state.competitorCardId > 0) {
-      unsigned long solveTime = doc["data"];
       startSolveSession(solveTime);
     } else {
       state.currentScene = SCENE_WAITING_FOR_COMPETITOR_WITH_TIME;

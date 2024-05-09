@@ -22,6 +22,8 @@ bool lastWifiConnected = false;
 bool lastServerConnected = false;
 bool lastStackmatConnected = false;
 
+int testModeStackmatTime = 0; //mock of stackmat time for testmode
+
 enum StateScene {
   SCENE_NOT_INITALIZED,         // before timer connects to wifi/ws
   SCENE_WAITING_FOR_COMPETITOR, // before competitor scans card
@@ -204,9 +206,10 @@ void stateLoop() {
     lcdPrintf(0, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_TOP);
     lcdPrintf(1, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_BOTTOM);
   } else if (state.currentScene == SCENE_WAITING_FOR_COMPETITOR_WITH_TIME) {
-    uint8_t minutes = stackmat.time() / 60000;
-    uint8_t seconds = (stackmat.time() % 60000) / 1000;
-    uint16_t ms = stackmat.time() % 1000;
+    int time = state.testMode ? testModeStackmatTime : stackmat.time();
+    uint8_t minutes = time / 60000;
+    uint8_t seconds = (time % 60000) / 1000;
+    uint16_t ms = time % 1000;
     String solveTimeStr = displayTime(minutes, seconds, ms);
 
     lcdPrintf(0, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_TOP);
@@ -474,6 +477,11 @@ void logState() {
   Logger.printf("Current scene: %d\n", state.currentScene);
   Logger.printf("Wait for solve resp: %d\n", waitForSolveResponse);
   Logger.printf("Wait for delegate resp: %d\n", waitForDelegateResponse);
+  Logger.printf("Test mode: %d\n", state.testMode);
+
+  if(state.testMode) {
+    Logger.printf("Mock solve time (TM): %d\n", testModeStackmatTime);
+  }
 }
 
 #endif
