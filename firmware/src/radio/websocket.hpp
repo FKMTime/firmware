@@ -195,8 +195,12 @@ void parseTestPacket(JsonChildDocument doc) {
     state.testMode = false;
     resetSolveState(true);
   } else if (type == "SolveTime") {
-    unsigned long solveTime = doc["data"];
-    startSolveSession(solveTime);
+    if (state.competitorCardId > 0) {
+      unsigned long solveTime = doc["data"];
+      startSolveSession(solveTime);
+    } else {
+      state.currentScene = SCENE_WAITING_FOR_COMPETITOR_WITH_TIME;
+    }
   } else if (type == "ButtonPress") {
     JsonArray pinsArr = doc["data"]["pins"].as<JsonArray>();
     std::vector<uint8_t> pins;
