@@ -98,7 +98,6 @@ void parseDelegateResponse(JsonChildDocument doc) {
   if (doc.containsKey("solve_time")) {
     unsigned long solveTime =  doc["solve_time"];
     state.solveTime = solveTime;
-    state.lastSolveTime = solveTime;
   }
 
   if (doc.containsKey("penalty")) {
