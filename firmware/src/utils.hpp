@@ -85,11 +85,11 @@ unsigned long getEpoch() {
   return epoch;
 }
 
-void clearDisplay() {
+void clearDisplay(uint8_t filler = 255) {
   digitalWrite(DIS_STCP, LOW);
 
   for(int i = 0; i < DIS_LENGTH; i++){
-    shiftOut(DIS_DS, DIS_SHCP, LSBFIRST, 255);
+    shiftOut(DIS_DS, DIS_SHCP, LSBFIRST, filler);
   }
 
   digitalWrite(DIS_STCP, HIGH);

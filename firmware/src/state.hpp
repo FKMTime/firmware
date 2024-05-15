@@ -147,6 +147,10 @@ void initState() {
 void checkConnectionStatus() {
   if (stackmat.connected() != lastStackmatConnected) {
     lastStackmatConnected = stackmat.connected();
+    if (!lastStackmatConnected) {
+      clearDisplay();
+    }
+
     stateHasChanged = true;
   }
 

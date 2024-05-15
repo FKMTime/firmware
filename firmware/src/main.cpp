@@ -40,7 +40,7 @@ void setup() {
   EEPROM.begin(128);
   Wire.begin(LCD_SDA, LCD_SCL);
   readState(true);
-  clearDisplay();
+  clearDisplay(0);
   lcdInit();
 
   delay(100);
@@ -65,6 +65,7 @@ void setup() {
   
   initWifi();
   lcdClear();
+  clearDisplay();
 
   // IDK WHY BUT MY STACKMAT IMPLEMENTATION IS BUGGY WHEN THERE IS A LOT OF 
   // DATA INSIDE Serial BUFFER, SO IT WILL FIX IT
@@ -198,9 +199,6 @@ void stackmatLoop() {
     lcdPrintf(0, true, ALIGN_CENTER, "%s", displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds()).c_str());
     displayStr(displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds(), false));
     lcdClearLine(1);
-  } else if (stackmat.connected() != lastStackmatConnected) {
-    lastStackmatConnected = stackmat.connected();
-    stateHasChanged = true;
   }
 
   state.lastTimerState = stackmat.state();
