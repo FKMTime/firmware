@@ -4,6 +4,7 @@
 #define LCD_ADDR 0x27
 #define LCD_SIZE_X 16
 #define LCD_SIZE_Y 2
+#define DIS_LENGTH 6
 
 #define SLEEP_TIME 600000 // 10mins
 #define BATTERY_READ_INTERVAL 30000 // 30s

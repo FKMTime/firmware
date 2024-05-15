@@ -85,4 +85,57 @@ unsigned long getEpoch() {
   return epoch;
 }
 
+void clearDisplay() {
+  digitalWrite(DIS_STCP, LOW);
+
+  for(int i = 0; i < DIS_LENGTH; i++){
+    shiftOut(DIS_DS, DIS_SHCP, LSBFIRST, 255);
+  }
+
+  digitalWrite(DIS_STCP, HIGH);
+}
+
+int decDigits[10] = {215,132,203,206,156,94,95,196,223,222};
+int dotMod = 32;
+void displayStr(String str) {
+  digitalWrite(DIS_STCP, LOW);
+
+  int pos = 0;
+  for(int i = 0; i < DIS_LENGTH - str.length(); i++) {
+    shiftOut(DIS_DS, DIS_SHCP, LSBFIRST, 255);
+    pos++;
+  }
+
+  for (int i = 0; i < str.length(); i++) {
+    bool showDot = pos == 0 || pos == 2; // show '.' and ':'
+
+    int digit = str[i] - '0';
+    shiftOut(DIS_DS, DIS_SHCP, LSBFIRST, ~decDigits[digit] ^ (showDot ? dotMod : 0));
+    pos++;
+  }
+
+  digitalWrite(DIS_STCP, HIGH);
+}
+
+String displayTime(uint8_t m, uint8_t s, uint16_t ms, bool special = true) {
+  String tmp = "";
+  if (m > 0) {
+    tmp += m;
+    if(special) tmp += ":";
+
+    char sBuff[6];
+    sprintf(sBuff, "%02d", s);
+    tmp += String(sBuff);
+  } else {
+    tmp += s;
+  }
+
+  char msBuff[6];
+  sprintf(msBuff, "%03d", ms);
+
+  if(special) tmp += ".";
+  tmp += String(msBuff);
+  return tmp;
+}
+
 #endif

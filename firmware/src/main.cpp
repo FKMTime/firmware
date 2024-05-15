@@ -31,12 +31,16 @@ void setup() {
   pinMode(BUTTON3, INPUT_PULLUP);
   pinMode(BUTTON4, INPUT_PULLUP);
   pinMode(BAT_ADC, INPUT);
+  pinMode(DIS_DS, OUTPUT);
+  pinMode(DIS_STCP, OUTPUT);
+  pinMode(DIS_SHCP, OUTPUT);
 
   Serial.begin(115200);
   Logger.begin(&Serial);
   EEPROM.begin(128);
   Wire.begin(LCD_SDA, LCD_SCL);
   readState(true);
+  clearDisplay();
   lcdInit();
 
   delay(100);
@@ -192,6 +196,7 @@ void stackmatLoop() {
 
   if (stackmat.state() == StackmatTimerState::ST_Running && state.currentScene == SCENE_TIMER_TIME) {
     lcdPrintf(0, true, ALIGN_CENTER, "%s", displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds()).c_str());
+    displayStr(displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds(), false));
     lcdClearLine(1);
   } else if (stackmat.connected() != lastStackmatConnected) {
     lastStackmatConnected = stackmat.connected();

@@ -22,4 +22,9 @@
 #define LCD_SDA 21
 #define LCD_SCL 22
 
+// DISPLAY SHIFTER
+#define DIS_DS 16
+#define DIS_STCP 17
+#define DIS_SHCP 12
+
 #endif

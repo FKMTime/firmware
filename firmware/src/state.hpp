@@ -8,7 +8,6 @@
 #include <stackmat.h>
 
 #define UUID_LENGTH 37
-String displayTime(uint8_t m, uint8_t s, uint16_t ms);
 void sendSolve(bool delegate);
 void stopInspection();
 
@@ -107,7 +106,10 @@ void readState(bool skipEpoch = false) {
 
   EEPROMState _state = {0};
   EEPROM.get(1, _state);
-  batteryVoltageOffset = _state.batteryOffset;
+
+  if(_state.batteryOffset > -3 && _state.batteryOffset < 3) {
+    batteryVoltageOffset = _state.batteryOffset;
+  }
 
   if (skipEpoch) return;
   unsigned long currentEpoch = getEpoch();
@@ -211,6 +213,7 @@ void stateLoop() {
     uint8_t seconds = (time % 60000) / 1000;
     uint16_t ms = time % 1000;
     String solveTimeStr = displayTime(minutes, seconds, ms);
+    displayStr(displayTime(minutes, seconds, ms, false));
 
     lcdPrintf(0, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_TOP);
     lcdPrintf(1, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_WITH_TIME_BOTTOM, solveTimeStr.c_str());
@@ -225,6 +228,8 @@ void stateLoop() {
     int time = millis() - state.inspectionStarted;
     int secondsLeft = (int)ceil((time) / 1000);
     uint16_t ms = (time) % 1000;
+    displayStr(displayTime(0, secondsLeft, ms, false));
+
     lcdPrintf(0, true, ALIGN_CENTER, "%d.%03d s", secondsLeft, ms);
     lcdClearLine(1);
     delay(5);
@@ -239,6 +244,7 @@ void stateLoop() {
     int inspectionS = (inspectionTime % 60000) / 1000;
 
     String solveTimeStr = displayTime(minutes, seconds, ms);
+    displayStr(displayTime(minutes, seconds, ms, false));
 
     /* Line 1 */
     if (state.solveTime > 0) {
@@ -302,6 +308,8 @@ void startSolveSession(int solveTime) {
     state.penalty = -1;
   }
 
+  Logger.printf("Start Solve Session\n");
+
   stateHasChanged = true;
   saveState();
 }
@@ -351,27 +359,6 @@ void showError(const char *str) {
   state.currentScene = SCENE_ERROR;
   strncpy(state.errorMsg, str, 128);
   stateHasChanged = true;
-}
-
-String displayTime(uint8_t m, uint8_t s, uint16_t ms) {
-  String tmp = "";
-  if (m > 0) {
-    tmp += m;
-    tmp += ":";
-
-    char sBuff[6];
-    sprintf(sBuff, "%02d", s);
-    tmp += String(sBuff);
-  } else {
-    tmp += s;
-  }
-
-  char msBuff[6];
-  sprintf(msBuff, "%03d", ms);
-
-  tmp += ".";
-  tmp += String(msBuff);
-  return tmp;
 }
 
 void sendSolve(bool delegate) {
