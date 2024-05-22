@@ -331,6 +331,7 @@ void resetSolveState(bool save = true) {
   waitForDelegateResponse = false;
   state.currentScene = SCENE_WAITING_FOR_COMPETITOR;
 
+  clearDisplay();
   stateHasChanged = true;
 
   if (save) saveState();

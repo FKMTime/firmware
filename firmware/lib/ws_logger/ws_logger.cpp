@@ -1,6 +1,7 @@
 #include "ws_logger.h"
 
-unsigned long espId() {
+unsigned long espId()
+{
     uint64_t efuse = ESP.getEfuseMac();
     efuse = (~efuse) + (efuse << 18);
     efuse = efuse ^ (efuse >> 31);
@@ -12,46 +13,56 @@ unsigned long espId() {
     return (unsigned long)(efuse & 0x000000007FFFFFFF);
 }
 
-void WsLogger::begin(HardwareSerial* serial, unsigned long _sendInterval) {
+void WsLogger::begin(HardwareSerial *serial, unsigned long _sendInterval)
+{
     _serial = serial;
     sendInterval = _sendInterval;
 }
 
-void WsLogger::setWsClient(WebSocketsClient *_wsClient) {
+void WsLogger::setWsClient(WebSocketsClient *_wsClient)
+{
     wsClient = _wsClient;
 }
 
-void WsLogger::setMaxSize(int logsSize) {
+void WsLogger::setMaxSize(int logsSize)
+{
     maxLogsSize = logsSize;
 }
 
 // not implemented
-size_t WsLogger::write(uint8_t val) {
+size_t WsLogger::write(uint8_t val)
+{
     return 0;
 }
-size_t WsLogger::write(const uint8_t *buffer, size_t size) {
+size_t WsLogger::write(const uint8_t *buffer, size_t size)
+{
     logData data;
     data.millis = millis();
-    data.msg = String((const char*)buffer);
+    data.msg = String((const char *)buffer);
 
     logs.push_back(data);
     _serial->write(buffer, size);
 
-    if(logs.size() > (unsigned)maxLogsSize) logs.erase(logs.begin());
+    if (logs.size() > (unsigned)maxLogsSize)
+        logs.erase(logs.begin());
     return 0;
 }
 
 /// @brief Loop method to send messages to ws
 /// @param force If it should send messages without checking interval
-void WsLogger::loop(bool force) {
-    if (millis() - lastSent < sendInterval && !force) return;
+void WsLogger::loop(bool force)
+{
+    if (millis() - lastSent < sendInterval && !force)
+        return;
     lastSent = millis();
 
-    if (logs.size() == 0 || wsClient == NULL || !wsClient->isConnected()) return;
+    if (logs.size() == 0 || wsClient == NULL || !wsClient->isConnected())
+        return;
     JsonDocument logsArrDoc;
     JsonArray arr = logsArrDoc.to<JsonArray>();
 
-    while (logs.size() > 0) {
+    while (logs.size() > 0)
+    {
         logData data = logs.back();
         logs.pop_back();
 
@@ -64,7 +75,8 @@ void WsLogger::loop(bool force) {
     doc["logs"]["esp_id"] = espId();
     doc["logs"]["logs"] = logsArrDoc;
 
-    if (wsClient != NULL) {
+    if (wsClient != NULL)
+    {
         String json;
         serializeJson(doc, json);
         wsClient->sendTXT(json);
