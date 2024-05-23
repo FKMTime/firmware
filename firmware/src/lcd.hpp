@@ -92,11 +92,13 @@ void printLcdBuff(bool force) {
 // Clears screen and sets cursor on (0, 0)
 void lcdClear() {
   waitForLock();
+  lcdWriteLock = true;
 
   memset(&lcdBuff, ' ', LCD_SIZE_X * LCD_SIZE_Y);
   lcdBuff[LCD_SIZE_Y-1][LCD_SIZE_X] = '\0';
 
   x = y = 0;
+  lcdWriteLock = false;
   lcdHasChanged = true;
 }
 
@@ -105,6 +107,7 @@ void lcdClearLine(int line) {
   if (line < 0 || line >= LCD_SIZE_Y) return;
 
   waitForLock();
+  lcdWriteLock = true;
 
   memset(&lcdBuff[line], ' ', LCD_SIZE_X);
   lcdBuff[line][LCD_SIZE_X] = '\0';
@@ -115,6 +118,9 @@ void lcdClearLine(int line) {
   if (line == scrollerLine) {
     scrollerLine = -1;
   }
+
+  lcdWriteLock = false;
+  lcdHasChanged = true;
 }
 
 void scrollLoop() {
@@ -214,8 +220,8 @@ void printToScreen(char *str, bool fillBlank = true, PrintAligment aligment = AL
 
   x = leftOffset + strl;
   if (x >= LCD_SIZE_X) x = LCD_SIZE_X;
-  if (!forceUnlock) lcdWriteLock = false;
 
+  if (!forceUnlock) lcdWriteLock = false;
   lcdHasChanged = true;
 }
 

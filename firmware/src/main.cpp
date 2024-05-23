@@ -158,8 +158,12 @@ void sleepDetection() {
 }
 
 void stackmatLoop() {
-  if (stackmat.state() != state.lastTimerState && stackmat.state() != ST_Unknown && state.lastTimerState != ST_Unknown) {
-    switch (stackmat.state()) {
+  StackmatTimerState stackmatState = stackmat.state();
+
+  if (stackmatState != state.lastTimerState && stackmatState != ST_Unknown) {
+    Logger.printf("Stackmat state change to: %d\n", stackmatState);
+    
+    switch (stackmatState) {
       case ST_Stopped:
         if (state.solveTime > 0) break;
         if (state.competitorCardId == 0) {
@@ -195,11 +199,11 @@ void stackmatLoop() {
     stateHasChanged = true;
   }
 
-  if (stackmat.state() == StackmatTimerState::ST_Running && state.currentScene == SCENE_TIMER_TIME) {
+  if (stackmatState == StackmatTimerState::ST_Running && state.currentScene == SCENE_TIMER_TIME) {
     lcdPrintf(0, true, ALIGN_CENTER, "%s", displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds()).c_str());
     displayStr(displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds(), false));
     lcdClearLine(1);
   }
 
-  state.lastTimerState = stackmat.state();
+  if(stackmatState != ST_Unknown) state.lastTimerState = stackmatState;
 }
