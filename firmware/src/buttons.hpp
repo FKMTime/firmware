@@ -140,7 +140,6 @@ void inspectionButton(Button &b) {
     state.currentScene = state.competitorCardId > 0 ? SCENE_COMPETITOR_INFO : SCENE_WAITING_FOR_COMPETITOR;
     state.inspectionStarted = 0;
     state.inspectionEnded = 0;
-    clearDisplay();
     stateHasChanged = true;
     return;
   }

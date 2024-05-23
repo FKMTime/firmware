@@ -232,7 +232,6 @@ void stateLoop() {
     int time = millis() - state.inspectionStarted;
     int secondsLeft = (int)ceil((time) / 1000);
     uint16_t ms = (time) % 1000;
-    displayStr(displayTime(0, secondsLeft, ms, false));
 
     lcdPrintf(0, true, ALIGN_CENTER, "%d.%03d s", secondsLeft, ms);
     lcdClearLine(1);
