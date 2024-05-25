@@ -58,6 +58,10 @@ void dnfButton(Button &b) {
     state.penalty = -1; // set dnf
     state.timeConfirmed = true;
 
+    // regenerate uuid
+    uuid.generate();
+    strncpy(state.solveSessionId, uuid.toCharArray(), UUID_LENGTH);
+
     stateHasChanged = true;
     b.disableAfterReleaseCbs = true;
     return;
