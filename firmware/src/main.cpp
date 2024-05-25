@@ -120,15 +120,18 @@ inline void loop2() {
 
 // TODO: maybe move it into own file?
 unsigned long lastCardReadTime = 0;
+unsigned long lastCardId = 0;
 void rfidLoop() {
   if (millis() - lastCardReadTime < 500) return;
   if (!mfrc522.PICC_IsNewCardPresent()) return;
   if (!mfrc522.PICC_ReadCardSerial()) return;
 
   unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
-  Logger.printf("Scanned card ID: %lu\n", cardId);
+  if (lastCardId == cardId && millis() - lastCardReadTime < 2500) return; // if same as last card (in 2.5s)
 
+  Logger.printf("Scanned card ID: %lu\n", cardId);
   scanCard(cardId);
+  lastCardId = cardId;
 
   mfrc522.PICC_HaltA();
   lastCardReadTime = millis();
