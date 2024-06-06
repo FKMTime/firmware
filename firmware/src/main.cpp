@@ -39,7 +39,7 @@ void setup() {
   Logger.begin(&Serial);
   EEPROM.begin(128);
   Wire.begin(LCD_SDA, LCD_SCL);
-  readState(true);
+  readState();
   clearDisplay(0);
   lcdInit();
 

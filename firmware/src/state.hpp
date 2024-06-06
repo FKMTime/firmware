@@ -72,7 +72,7 @@ struct EEPROMState {
   int penalty;
 
   float batteryOffset;
-};
+} eeprom_state;
 
 void stateDefault() {
   uuid.generate();
@@ -80,56 +80,53 @@ void stateDefault() {
 }
 
 void saveState() {
-  EEPROMState s = {0};
-  strcpy(s.solveSessionId, state.solveSessionId);
-  s.solveTime = state.solveTime;
-  s.penalty = state.penalty;
-  s.competitorCardId = state.competitorCardId;
-  s.inspectionStarted = state.inspectionStarted;
-  s.inspectionEnded = state.inspectionEnded;
-  s.saveTime = getEpoch();
-  s.batteryOffset = batteryVoltageOffset;
+  strcpy(eeprom_state.solveSessionId, state.solveSessionId);
+  eeprom_state.solveTime = state.solveTime;
+  eeprom_state.penalty = state.penalty;
+  eeprom_state.competitorCardId = state.competitorCardId;
+  eeprom_state.inspectionStarted = state.inspectionStarted;
+  eeprom_state.inspectionEnded = state.inspectionEnded;
+  eeprom_state.saveTime = getEpoch();
+  eeprom_state.batteryOffset = batteryVoltageOffset;
 
   EEPROM.write(0, (uint8_t)sizeof(EEPROMState));
-  EEPROM.put(1, s);
+  EEPROM.put(1, eeprom_state);
   EEPROM.commit();
 }
 
-void readState(bool skipEpoch = false) {
+void readState() {
   uint8_t size = EEPROM.read(0);
 
-  if (size != sizeof(EEPROMState) && !skipEpoch) {
+  if (size != sizeof(EEPROMState)) {
     Logger.println("Loading default state...");
     stateDefault();
     return;
   }
 
-  EEPROMState _state = {0};
-  EEPROM.get(1, _state);
-
-  if(_state.batteryOffset > -3 && _state.batteryOffset < 3) {
-    batteryVoltageOffset = _state.batteryOffset;
+  EEPROM.get(1, eeprom_state);
+  if(eeprom_state.batteryOffset > -3 && eeprom_state.batteryOffset < 3) {
+    batteryVoltageOffset = eeprom_state.batteryOffset;
   }
-
-  if (skipEpoch) return;
-  unsigned long currentEpoch = getEpoch();
-  if (currentEpoch - _state.saveTime > SAVE_TIME_RESET) {
-    return;
-  }
-
-  strcpy(state.solveSessionId, _state.solveSessionId);
-  state.solveTime = _state.solveTime;
-  state.lastSolveTime = _state.solveTime;
-  state.penalty = _state.penalty;
-  state.competitorCardId = _state.competitorCardId;
-  state.inspectionStarted = _state.inspectionStarted;
-  state.inspectionEnded = _state.inspectionEnded;
 }
 
 void initState() {
-  uuid.seed(getEpoch(), getEspId());
+  unsigned long currentEpoch = 0;
+  while((currentEpoch = getEpoch()) == 0) {
+    webSocket.loop();
+    delay(5);
+  }
 
-  readState();
+  uuid.seed(currentEpoch, getEspId());
+  if(currentEpoch - eeprom_state.saveTime < SAVE_TIME_RESET) {
+    strcpy(state.solveSessionId, eeprom_state.solveSessionId);
+    state.solveTime = eeprom_state.solveTime;
+    state.lastSolveTime = eeprom_state.solveTime;
+    state.penalty = eeprom_state.penalty;
+    state.competitorCardId = eeprom_state.competitorCardId;
+    state.inspectionStarted = eeprom_state.inspectionStarted;
+    state.inspectionEnded = eeprom_state.inspectionEnded;
+  }
+
   if (state.solveTime > 0) {
     state.currentScene = SCENE_FINISHED_TIME;
   } else {
