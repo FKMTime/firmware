@@ -74,15 +74,10 @@ void sendAddDevice() {
   webSocket.sendTXT(json);
 }
 
+unsigned long epochBase = 0;
 unsigned long getEpoch() {
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {
-    Logger.println("Failed to obtain time");
-  }
-  time_t epoch;
-  time(&epoch);
-
-  return epoch;
+  if (epochBase == 0) return 0;
+  return epochBase + (millis() / 1000);
 }
 
 void clearDisplay(uint8_t filler = 255) {

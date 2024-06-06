@@ -127,14 +127,7 @@ void readState(bool skipEpoch = false) {
 }
 
 void initState() {
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {
-    Logger.println("Failed to obtain time");
-  }
-  time_t epoch;
-  time(&epoch);
-
-  uuid.seed(epoch, getEspId());
+  uuid.seed(getEpoch(), getEspId());
 
   readState();
   if (state.solveTime > 0) {

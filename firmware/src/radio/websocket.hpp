@@ -135,6 +135,11 @@ void parseDeviceSettings(JsonChildDocument doc) {
   stateHasChanged = true;
 }
 
+void parseEpochTime(JsonChildDocument doc) {
+  epochBase = doc["current_epoch"];
+  epochBase -= millis() / 1000;
+}
+
 void parseStartUpdate(JsonChildDocument doc) {
   if (update) {
     ESP.restart();
@@ -279,6 +284,8 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       parseApiError(doc["api_error"]);
     } else if (doc.containsKey("test_packet")) {
       parseTestPacket(doc["test_packet"]);
+    } else if (doc.containsKey("epoch_time")) {
+      parseEpochTime(doc["epoch_time"]);
     }
   } else if (type == WStype_BIN) {
     parseUpdateData(payload, length);
