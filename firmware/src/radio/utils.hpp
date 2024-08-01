@@ -6,8 +6,9 @@
 
 struct WsInfo {
     char host[100];
-    int port;
     char path[100];
+    int port;
+    bool ssl;
 } typedef ws_info_t;
 
 ws_info_t parseWsUrl(const char *url) {
@@ -17,9 +18,11 @@ ws_info_t parseWsUrl(const char *url) {
   if (strncmp("ws://", url, 5) == 0) {
     pathPtr = 5;
     wsInfo.port = 80;
+    wsInfo.ssl = false;
   } else if (strncmp("wss://", url, 6) == 0) {
     pathPtr = 6;
     wsInfo.port = 443;
+    wsInfo.ssl = true;
   } else {
     return wsInfo;
   }

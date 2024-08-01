@@ -33,7 +33,12 @@ void initWs() {
   snprintf(finalPath, 256, "%s?id=%lu&ver=%s&chip=%s&bt=%s&firmware=%s", 
             wsInfo.path, getEspId(), FIRMWARE_VERSION, CHIP, BUILD_TIME, FIRMWARE_TYPE);
 
-  webSocket.begin(wsInfo.host, wsInfo.port, finalPath);
+  if (wsInfo.ssl) {
+    webSocket.beginSSL(wsInfo.host, wsInfo.port, finalPath);
+  } else {
+    webSocket.begin(wsInfo.host, wsInfo.port, finalPath);
+  }
+
   webSocket.onEvent(webSocketEvent);
   webSocket.setReconnectInterval(1500);
   Logger.setWsClient(&webSocket);
