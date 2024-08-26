@@ -46,6 +46,7 @@ struct State {
 
   bool added = true;
   bool useInspection = true;
+  char secondaryText[32];
   unsigned long inspectionStarted = 0;
   unsigned long inspectionEnded = 0;
 
@@ -213,7 +214,7 @@ void stateLoop() {
     lcdPrintf(1, true, ALIGN_CENTER, TR_AWAITING_COMPETITOR_WITH_TIME_BOTTOM, solveTimeStr.c_str());
   } else if (state.currentScene == SCENE_COMPETITOR_INFO) {
     lcdPrintf(0, true, ALIGN_CENTER, state.competitorDisplay);
-    lcdPrintf(1, true, ALIGN_CENTER, state.useInspection ? "Inspection" : "");
+    lcdPrintf(1, true, ALIGN_CENTER, state.secondaryText);
   } else if (state.currentScene == SCENE_TIMER_TIME) {
     // lcdPrintf(0, true, ALIGN_CENTER, "%s",
     // displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(),
@@ -419,6 +420,7 @@ void sendSnapshotData() {
   doc["snapshot"]["last_solve_time"] = state.lastSolveTime;
   doc["snapshot"]["penalty"] = state.penalty;
   doc["snapshot"]["use_inspection"] = state.useInspection;
+  doc["snapshot"]["secondary_text"] = state.secondaryText;
   doc["snapshot"]["inspection_started"] = state.inspectionStarted;
   doc["snapshot"]["inspection_ended"] = state.inspectionEnded;
   doc["snapshot"]["competitor_card_id"] = state.competitorCardId;
