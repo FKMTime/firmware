@@ -1,0 +1,18 @@
+CompileFlags:                    
+  Add:
+    [
+      # -mlong-calls,
+      -DSSIZE_MAX,
+      -DLWIP_NO_UNISTD_H=1,
+      -Dssize_t=long,
+      -D_SSIZE_T_DECLARED,
+    ]
+  Remove:
+    [
+      -fno-tree-switch-conversion,
+      -mtext-section-literals,
+      -mlongcalls,
+      -fstrict-volatile-bitfields,
+      -free,
+      -fipa-pta,
+    ]

@@ -1,7 +1,6 @@
 #include "a_buttons.h"
 
-template <typename T>
-bool compare(std::vector<T> &v1, std::vector<T> &v2) {
+template <typename T> bool compare(std::vector<T> &v1, std::vector<T> &v2) {
   std::sort(v1.begin(), v1.end());
   std::sort(v2.begin(), v2.end());
   return v1 == v2;
@@ -18,10 +17,12 @@ bool compareButtonsPins(Button b1, Button b2) {
 
 bool isPinsPressed(std::vector<uint8_t> pins) {
   size_t size = pins.size();
-  if (size == 1) return digitalRead(pins.at(0)) == LOW;
+  if (size == 1)
+    return digitalRead(pins.at(0)) == LOW;
 
   for (size_t i = 0; i < size; i++) {
-    if (digitalRead(pins.at(i)) != LOW) return false;
+    if (digitalRead(pins.at(i)) != LOW)
+      return false;
   }
 
   return true;
@@ -29,10 +30,12 @@ bool isPinsPressed(std::vector<uint8_t> pins) {
 
 bool isAnyPinPressed(std::vector<uint8_t> pins) {
   size_t size = pins.size();
-  if (size == 1) return digitalRead(pins.at(0)) == LOW;
+  if (size == 1)
+    return digitalRead(pins.at(0)) == LOW;
 
   for (size_t i = 0; i < size; i++) {
-    if (digitalRead(pins.at(i)) == LOW) return true;
+    if (digitalRead(pins.at(i)) == LOW)
+      return true;
   }
 
   return false;
@@ -48,8 +51,10 @@ void AButtons::loop() {
     Button &b = buttons.at(i);
     b.disableAfterReleaseCbs = false;
 
-    if (!isPinsPressed(b.pins)) continue;
-    if (b.afterPressCb != NULL) b.afterPressCb(b);
+    if (!isPinsPressed(b.pins))
+      continue;
+    if (b.afterPressCb != NULL)
+      b.afterPressCb(b);
     bPressedTime = millis();
 
     // while holding
@@ -57,11 +62,14 @@ void AButtons::loop() {
       for (size_t cb = 0; cb < b.callbacks.size(); cb++) {
         ButtonCb &bcb = b.callbacks.at(cb);
 
-        if (bcb.callback != NULL && bcb.callTime > millis() - bPressedTime) break;
-        if (bcb.afterRelease || bcb.called) continue;
+        if (bcb.callback != NULL && bcb.callTime > millis() - bPressedTime)
+          break;
+        if (bcb.afterRelease || bcb.called)
+          continue;
 
         if (bcb.callback == NULL) {
-          if (millis() - lastReocCbTime < bcb.callTime) continue;
+          if (millis() - lastReocCbTime < bcb.callTime)
+            continue;
 
           lastReocCbTime = millis();
           bcb.reocCallback(millis() - bPressedTime);
@@ -79,37 +87,41 @@ void AButtons::loop() {
       ButtonCb &bcb = b.callbacks.at(cb);
       bcb.called = false; // clear called status
 
-      if (bcb.callTime > millis() - bPressedTime) break;
-      if (b.disableAfterReleaseCbs) continue;
-      if (!bcb.afterRelease) continue;
-      if (bcb.callback == NULL) continue;
+      if (bcb.callTime > millis() - bPressedTime)
+        break;
+      if (b.disableAfterReleaseCbs)
+        continue;
+      if (!bcb.afterRelease)
+        continue;
+      if (bcb.callback == NULL)
+        continue;
 
       bcb.callback(b);
     }
 
-    if (b.afterReleaseCb != NULL) b.afterReleaseCb(b);
+    if (b.afterReleaseCb != NULL)
+      b.afterReleaseCb(b);
   }
 }
 
-size_t AButtons::addButton(uint8_t _pin, callback_t _beforeReleaseCb, callback_t _afterReleaseCb) {
+size_t AButtons::addButton(uint8_t _pin, callback_t _beforeReleaseCb,
+                           callback_t _afterReleaseCb) {
   std::vector<uint8_t> _pins = {_pin};
 
-  Button b = {
-    .pins = _pins,
-    .afterPressCb = _beforeReleaseCb,
-    .afterReleaseCb = _afterReleaseCb
-  };
+  Button b = {.pins = _pins,
+              .afterPressCb = _beforeReleaseCb,
+              .afterReleaseCb = _afterReleaseCb};
 
   buttons.push_back(b);
   return buttons.size() - 1;
 }
 
-size_t AButtons::addMultiButton(std::vector<uint8_t> _pins, callback_t _beforeReleaseCb, callback_t _afterReleaseCb) {
-  Button b = {
-    .pins = _pins,
-    .afterPressCb = _beforeReleaseCb,
-    .afterReleaseCb = _afterReleaseCb
-  };
+size_t AButtons::addMultiButton(std::vector<uint8_t> _pins,
+                                callback_t _beforeReleaseCb,
+                                callback_t _afterReleaseCb) {
+  Button b = {.pins = _pins,
+              .afterPressCb = _beforeReleaseCb,
+              .afterReleaseCb = _afterReleaseCb};
 
   buttons.push_back(b);
   // sort buttons by their pins length
@@ -126,13 +138,12 @@ size_t AButtons::addMultiButton(std::vector<uint8_t> _pins, callback_t _beforeRe
   return idx;
 }
 
-void AButtons::addButtonCb(size_t idx, int _callTime, bool _afterRelease, callback_t callback) {
-  ButtonCb cb = {
-    .callTime = _callTime,
-    .called = false,
-    .afterRelease = _afterRelease,
-    .callback = callback
-  };
+void AButtons::addButtonCb(size_t idx, int _callTime, bool _afterRelease,
+                           callback_t callback) {
+  ButtonCb cb = {.callTime = _callTime,
+                 .called = false,
+                 .afterRelease = _afterRelease,
+                 .callback = callback};
 
   Button &b = buttons.at(idx);
   b.callbacks.push_back(cb);
@@ -141,13 +152,12 @@ void AButtons::addButtonCb(size_t idx, int _callTime, bool _afterRelease, callba
   std::sort(b.callbacks.begin(), b.callbacks.end(), compareButtonsCbs);
 }
 
-void AButtons::addButtonReocCb(size_t idx, int _callInterval, reoc_callback_t callback) {
-  ButtonCb cb = {
-    .callTime = _callInterval,
-    .called = false,
-    .afterRelease = false,
-    .reocCallback = callback
-  };
+void AButtons::addButtonReocCb(size_t idx, int _callInterval,
+                               reoc_callback_t callback) {
+  ButtonCb cb = {.callTime = _callInterval,
+                 .called = false,
+                 .afterRelease = false,
+                 .reocCallback = callback};
 
   Button &b = buttons.at(idx);
   b.callbacks.push_back(cb);
@@ -162,10 +172,12 @@ void AButtons::testButtonClick(std::vector<uint8_t> pins, int pressTime) {
 
   for (size_t i = 0; i < buttons.size(); i++) {
     Button &b = buttons.at(i);
-    if (!compare(b.pins, pins)) continue;
+    if (!compare(b.pins, pins))
+      continue;
 
     b.disableAfterReleaseCbs = false;
-    if (b.afterPressCb != NULL) b.afterPressCb(b);
+    if (b.afterPressCb != NULL)
+      b.afterPressCb(b);
     bPressedTime = millis();
 
     // while holding
@@ -173,12 +185,15 @@ void AButtons::testButtonClick(std::vector<uint8_t> pins, int pressTime) {
       for (size_t cb = 0; cb < b.callbacks.size(); cb++) {
         ButtonCb &bcb = b.callbacks.at(cb);
 
-        if (bcb.callback != NULL && bcb.callTime > millis() - bPressedTime) break;
-        if (bcb.afterRelease || bcb.called) continue;
+        if (bcb.callback != NULL && bcb.callTime > millis() - bPressedTime)
+          break;
+        if (bcb.afterRelease || bcb.called)
+          continue;
 
         if (bcb.callback == NULL) {
-          if (millis() - lastReocCbTime < bcb.callTime) continue;
-          
+          if (millis() - lastReocCbTime < bcb.callTime)
+            continue;
+
           lastReocCbTime = millis();
           bcb.reocCallback(millis() - bPressedTime);
         } else {
@@ -195,14 +210,19 @@ void AButtons::testButtonClick(std::vector<uint8_t> pins, int pressTime) {
       ButtonCb &bcb = b.callbacks.at(cb);
       bcb.called = false; // clear called status
 
-      if (bcb.callTime > millis() - bPressedTime) break;
-      if (b.disableAfterReleaseCbs) continue;
-      if (!bcb.afterRelease) continue;
-      if (bcb.callback == NULL) continue;
+      if (bcb.callTime > millis() - bPressedTime)
+        break;
+      if (b.disableAfterReleaseCbs)
+        continue;
+      if (!bcb.afterRelease)
+        continue;
+      if (bcb.callback == NULL)
+        continue;
 
       bcb.callback(b);
     }
 
-    if (b.afterReleaseCb != NULL) b.afterReleaseCb(b);
+    if (b.afterReleaseCb != NULL)
+      b.afterReleaseCb(b);
   }
 }

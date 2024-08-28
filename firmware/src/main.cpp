@@ -1,27 +1,23 @@
+#include "main.hpp"
+
+#include "soc/rtc_cntl_reg.h"
+#include "soc/soc.h"
 #include <Arduino.h>
-#include <EEPROM.h>
 #include <ArduinoJson.h>
+#include <EEPROM.h>
 #include <Update.h>
 #include <Wire.h>
-#include "soc/soc.h"
-#include "soc/rtc_cntl_reg.h"
 
-#include "ws_logger.h"
-#include "pins.h"
-#include "utils.hpp"
-#include "version.h"
+#include "buttons.hpp"
 #include "globals.hpp"
 #include "lcd.hpp"
-#include "buttons.hpp"
-#include "state.hpp"
+#include "pins.h"
 #include "radio/radio.hpp"
+#include "state.hpp"
+#include "utils.hpp"
+#include "version.h"
+#include "ws_logger.h"
 #include <stackmat.h>
-
-void core2(void *pvParameters);
-inline void loop2();
-void rfidLoop();
-void sleepDetection();
-void stackmatLoop();
 
 void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
@@ -47,7 +43,7 @@ void setup() {
   currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 15);
   float initialBat = roundf(voltageToPercentage(currentBatteryVoltage));
 
-  Logger.printf("ESP ID: %x\n", getEspId());
+  Logger.printf("ESP ID: %lx\n", getEspId());
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
   Logger.printf("Build time: %s\n", BUILD_TIME);
   Logger.printf("Battery: %f%% (%fv)\n", initialBat, currentBatteryVoltage);
@@ -56,20 +52,22 @@ void setup() {
   lcdPrintf(0, false, ALIGN_RIGHT, "%d%%", (int)initialBat);
   lcdPrintf(1, true, ALIGN_LEFT, "VER: %s", FIRMWARE_VERSION);
 
-  Serial1.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, STACKMAT_JACK, 255, false);
+  Serial1.begin(STACKMAT_TIMER_BAUD_RATE, SERIAL_8N1, STACKMAT_JACK, -1, false);
   stackmat.begin(&Serial1);
   SPI.begin(RFID_SCK, RFID_MISO, RFID_MOSI);
 
   buttonsInit();
   mfrc522.PCD_Init();
-  
+
   initWifi();
   lcdClear();
   clearDisplay();
 
-  // IDK WHY BUT MY STACKMAT IMPLEMENTATION IS BUGGY WHEN THERE IS A LOT OF 
+  // IDK WHY BUT MY STACKMAT IMPLEMENTATION IS BUGGY WHEN THERE IS A LOT OF
   // DATA INSIDE Serial BUFFER, SO IT WILL FIX IT
-  while(Serial1.available()) { Serial1.read(); } 
+  while (Serial1.available()) {
+    Serial1.read();
+  }
 
   initState();
   xTaskCreatePinnedToCore(core2, "core2", 10000, NULL, 0, NULL, 0);
@@ -101,8 +99,9 @@ void core2(void *pvParameters) {
 }
 
 unsigned long lastBatRead = 0;
-inline void loop2() {
-  if (update) return; // return if update'ing
+void loop2() {
+  if (update)
+    return; // return if update'ing
 
   rfidLoop();     // blocking (when card is close to scanner)
   buttons.loop(); // blocking
@@ -122,12 +121,18 @@ inline void loop2() {
 unsigned long lastCardReadTime = 0;
 unsigned long lastCardId = 0;
 void rfidLoop() {
-  if (millis() - lastCardReadTime < 500) return;
-  if (!mfrc522.PICC_IsNewCardPresent()) return;
-  if (!mfrc522.PICC_ReadCardSerial()) return;
+  if (millis() - lastCardReadTime < 500)
+    return;
+  if (!mfrc522.PICC_IsNewCardPresent())
+    return;
+  if (!mfrc522.PICC_ReadCardSerial())
+    return;
 
-  unsigned long cardId = mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) + (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
-  if (lastCardId == cardId && millis() - lastCardReadTime < 2500) return; // if same as last card (in 2.5s)
+  unsigned long cardId =
+      mfrc522.uid.uidByte[0] + (mfrc522.uid.uidByte[1] << 8) +
+      (mfrc522.uid.uidByte[2] << 16) + (mfrc522.uid.uidByte[3] << 24);
+  if (lastCardId == cardId && millis() - lastCardReadTime < 2500)
+    return; // if same as last card (in 2.5s)
 
   Logger.printf("Scanned card ID: %lu\n", cardId);
   scanCard(cardId);
@@ -139,7 +144,8 @@ void rfidLoop() {
 
 void sleepDetection() {
   unsigned long timeSinceLastDraw = millis() - lcdLastDraw;
-  if (timeSinceLastDraw > SLEEP_TIME && !lcdHasChanged && !stackmat.connected() && !state.testMode) {
+  if (timeSinceLastDraw > SLEEP_TIME && !lcdHasChanged &&
+      !stackmat.connected() && !state.testMode) {
     lcdPrintf(0, true, ALIGN_CENTER, "Sleep mode");
     lcdPrintf(1, true, ALIGN_CENTER, "Turn on timer");
     lcd.noBacklight();
@@ -165,48 +171,61 @@ void stackmatLoop() {
 
   if (stackmatState != state.lastTimerState && stackmatState != ST_Unknown) {
     Logger.printf("Stackmat state change to: %d\n", stackmatState);
-    
+
     switch (stackmatState) {
-      case ST_Stopped:
-        if (state.solveTime > 0) break;
-        if (state.competitorCardId == 0) {
-          state.currentScene = SCENE_WAITING_FOR_COMPETITOR_WITH_TIME;
-          break;
-        }
-
-        Logger.printf("FINISH! Final time is %i:%02i.%03i!\n", stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds());
-        startSolveSession(stackmat.time());
+    case ST_Stopped:
+      if (state.solveTime > 0)
         break;
-
-      case ST_Reset:
-        if(state.competitorCardId == 0 && (state.currentScene == SCENE_TIMER_TIME || state.currentScene == SCENE_WAITING_FOR_COMPETITOR_WITH_TIME)) {
-          resetSolveState();
-        }
-
-        Logger.println("Timer reset!");
+      if (state.competitorCardId == 0) {
+        state.currentScene = SCENE_WAITING_FOR_COMPETITOR_WITH_TIME;
         break;
+      }
 
-      case ST_Running:
-        if (state.solveTime > 0) break;
-        if (state.useInspection) stopInspection();
-        // if (state.competitorCardId == 0) break;
+      Logger.printf("FINISH! Final time is %i:%02i.%03i!\n",
+                    stackmat.displayMinutes(), stackmat.displaySeconds(),
+                    stackmat.displayMilliseconds());
+      startSolveSession(stackmat.time());
+      break;
 
-        state.currentScene = SCENE_TIMER_TIME;
-        Logger.println("Solve started!");
+    case ST_Reset:
+      if (state.competitorCardId == 0 &&
+          (state.currentScene == SCENE_TIMER_TIME ||
+           state.currentScene == SCENE_WAITING_FOR_COMPETITOR_WITH_TIME)) {
+        resetSolveState();
+      }
+
+      Logger.println("Timer reset!");
+      break;
+
+    case ST_Running:
+      if (state.solveTime > 0)
         break;
+      if (state.useInspection)
+        stopInspection();
+      // if (state.competitorCardId == 0) break;
 
-      default:
-        break;
+      state.currentScene = SCENE_TIMER_TIME;
+      Logger.println("Solve started!");
+      break;
+
+    default:
+      break;
     }
 
     stateHasChanged = true;
   }
 
-  if (stackmatState == StackmatTimerState::ST_Running && state.currentScene == SCENE_TIMER_TIME) {
-    lcdPrintf(0, true, ALIGN_CENTER, "%s", displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds()).c_str());
-    displayStr(displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(), stackmat.displayMilliseconds(), false));
+  if (stackmatState == StackmatTimerState::ST_Running &&
+      state.currentScene == SCENE_TIMER_TIME) {
+    lcdPrintf(0, true, ALIGN_CENTER, "%s",
+              displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(),
+                          stackmat.displayMilliseconds())
+                  .c_str());
+    displayStr(displayTime(stackmat.displayMinutes(), stackmat.displaySeconds(),
+                           stackmat.displayMilliseconds(), false));
     lcdClearLine(1);
   }
 
-  if(stackmatState != ST_Unknown) state.lastTimerState = stackmatState;
+  if (stackmatState != ST_Unknown)
+    state.lastTimerState = stackmatState;
 }

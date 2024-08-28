@@ -5,3 +5,5 @@
 .vscode/ipch
 .versum
 version.h
+.cache
+compile_commands.json

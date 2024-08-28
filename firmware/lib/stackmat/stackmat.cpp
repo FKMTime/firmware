@@ -1,11 +1,9 @@
-#include <Arduino.h>
 #include "stackmat.h"
+#include <Arduino.h>
 
 Stackmat::Stackmat() {}
 
-void Stackmat::begin(Stream *_serial) {
-    serial = _serial;
-}
+void Stackmat::begin(Stream *_serial) { serial = _serial; }
 
 void Stackmat::loop() {
   String data;
@@ -18,28 +16,18 @@ void Stackmat::loop() {
   }
 }
 
-uint8_t Stackmat::displayMinutes() {
-  return timerTime / 60000;
-}
+uint8_t Stackmat::displayMinutes() { return timerTime / 60000; }
 
-uint8_t Stackmat::displaySeconds() {
-  return (timerTime % 60000) / 1000;
-}
+uint8_t Stackmat::displaySeconds() { return (timerTime % 60000) / 1000; }
 
-uint16_t Stackmat::displayMilliseconds() {
-  return timerTime % 1000;
-}
+uint16_t Stackmat::displayMilliseconds() { return timerTime % 1000; }
 
-StackmatTimerState Stackmat::state() {
-    return currentTimerState;
-}
+StackmatTimerState Stackmat::state() { return currentTimerState; }
 
-int Stackmat::time() {
-    return timerTime;
-}
+int Stackmat::time() { return timerTime; }
 
 bool Stackmat::connected() {
-    return millis() - lastUpdated < STACKMAT_TIMER_TIMEOUT;
+  return millis() - lastUpdated < STACKMAT_TIMER_TIMEOUT;
 }
 
 String Stackmat::ReadStackmatString() {

@@ -1,6 +1,7 @@
 #ifndef __STACKMAT_H__
 #define __STACKMAT_H__
 
+#include "Stream.h"
 #define STACKMAT_TIMER_BAUD_RATE 1200
 #define STACKMAT_TIMER_TIMEOUT 1000
 
