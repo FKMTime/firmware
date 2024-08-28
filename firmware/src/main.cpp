@@ -103,8 +103,13 @@ void loop2() {
   if (update)
     return; // return if update'ing
 
-  rfidLoop();     // blocking (when card is close to scanner)
-  buttons.loop(); // blocking
+  rfidLoop();                      // blocking (when card is close to scanner)
+  int pressedIdx = buttons.loop(); // blocking
+  if (pressedIdx != -1) {
+    // Button* b = buttons.getButton(pressedIdx);
+    Logger.printf("Button pressed with idx: %d (hold time: %d)\n", pressedIdx,
+                  buttons.getLastHoldTime());
+  }
 
   if (millis() - lastBatRead > BATTERY_READ_INTERVAL) {
     currentBatteryVoltage = readBatteryVoltage(BAT_ADC, 15);
@@ -184,7 +189,7 @@ void stackmatLoop() {
       Logger.printf("FINISH! Final time is %i:%02i.%03i!\n",
                     stackmat.displayMinutes(), stackmat.displaySeconds(),
                     stackmat.displayMilliseconds());
-      startSolveSession(stackmat.time());
+      endSolveSession(stackmat.time());
       break;
 
     case ST_Reset:

@@ -37,11 +37,19 @@ public:
                    callback_t callback);
   void addButtonReocCb(size_t idx, int _callInterval, reoc_callback_t callback);
   void testButtonClick(std::vector<uint8_t> pins, int pressTime);
-  void loop();
+
+  Button* getButton(size_t idx);
+  int getLastHoldTime();
+
+  /// @breif Loop function for button presses detection
+  /// @return Index of pressed button event
+  size_t loop();
 
 private:
   int checkDelay = 15;
   std::vector<Button> buttons;
+
+  int lastHoldTime = -1;
 };
 
 #endif

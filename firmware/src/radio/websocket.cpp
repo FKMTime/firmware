@@ -70,7 +70,7 @@ void parseCardInfoResponse(JsonObject doc) {
           stopInspection();
 
         if (state.lastTimerState == ST_Stopped || state.testMode) {
-          startSolveSession(time);
+          endSolveSession(time);
         } else {
           state.currentScene = SCENE_TIMER_TIME;
         }
@@ -221,7 +221,7 @@ void parseTestPacket(JsonObject doc) {
     testModeStackmatTime = solveTime;
 
     if (state.competitorCardId > 0) {
-      startSolveSession(solveTime);
+      endSolveSession(solveTime);
     } else {
       state.currentScene = SCENE_WAITING_FOR_COMPETITOR_WITH_TIME;
     }
@@ -284,6 +284,9 @@ void parseUpdateData(uint8_t *payload, size_t length) {
 
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
   if (type == WStype_TEXT) {
+    // TODO: idk if not too messy
+    Logger.printf("Received websocket message: %s", payload);
+
     JsonDocument doc;
     deserializeJson(doc, payload);
 

@@ -119,7 +119,7 @@ void resetWifiButton(Button &b) {
 void debugButton(Button &b) {
   logState();
   // state.competitorCardId = 3004425529;
-  // startSolveSession(6969);
+  // endSolveSession(6969);
 }
 
 void calibrationButton(Button &b) {

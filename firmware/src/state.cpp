@@ -225,7 +225,7 @@ void stateLoop() {
 
 /// @brief Called after time is finished
 /// @param solveTime
-void startSolveSession(int solveTime) {
+void endSolveSession(int solveTime) {
   stopInspection();
   if (solveTime == state.lastSolveTime)
     return;
@@ -250,7 +250,7 @@ void startSolveSession(int solveTime) {
     state.penalty = -1;
   }
 
-  Logger.printf("Start Solve Session\n");
+  Logger.printf("End Solve Session\n");
 
   stateHasChanged = true;
   saveState();
@@ -283,6 +283,7 @@ void startInspection() {
   // if (state.competitorCardId <= 0)
   //   return;
 
+  Logger.printf("Start inspection\n");
   state.currentScene = SCENE_INSPECTION;
   state.inspectionStarted = millis();
   stateHasChanged = true;
@@ -295,6 +296,7 @@ void stopInspection() {
   // i think this code causes errors!
   // if (state.currentScene != SCENE_INSPECTION) return;
 
+  Logger.printf("Stop inspection\n");
   state.currentScene = state.competitorCardId > 0
                            ? SCENE_TIMER_TIME
                            : SCENE_WAITING_FOR_COMPETITOR;
@@ -315,6 +317,8 @@ void sendSolve(bool delegate) {
     uuid.generate();
     strncpy(state.solveSessionId, uuid.toCharArray(), UUID_LENGTH);
   }
+
+  Logger.printf("Send solve time: %d\n", state.solveTime);
 
   JsonDocument doc;
   doc["solve"]["solve_time"] = state.solveTime;

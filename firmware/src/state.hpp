@@ -76,7 +76,7 @@ void readState();
 void initState();
 void checkConnectionStatus();
 void stateLoop();
-void startSolveSession(int solveTime);
+void endSolveSession(int solveTime);
 void resetSolveState(bool save = true);
 void startInspection();
 void stopInspection();

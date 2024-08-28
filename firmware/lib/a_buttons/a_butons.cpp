@@ -43,7 +43,7 @@ bool isAnyPinPressed(std::vector<uint8_t> pins) {
 
 AButtons::AButtons() {}
 
-void AButtons::loop() {
+size_t AButtons::loop() {
   unsigned long bPressedTime = 0;
   unsigned long lastReocCbTime = 0;
 
@@ -101,8 +101,16 @@ void AButtons::loop() {
 
     if (b.afterReleaseCb != NULL)
       b.afterReleaseCb(b);
+
+    lastHoldTime = millis() - bPressedTime;
+    return i;
   }
+
+  return -1;
 }
+
+Button *AButtons::getButton(size_t idx) { return &buttons.at(idx); }
+int AButtons::getLastHoldTime() { return lastHoldTime; }
 
 size_t AButtons::addButton(uint8_t _pin, callback_t _beforeReleaseCb,
                            callback_t _afterReleaseCb) {
