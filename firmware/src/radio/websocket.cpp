@@ -133,18 +133,10 @@ void parseDeviceSettings(JsonObject doc) {
     return;
   }
 
-  if (doc.containsKey("use_inspection")) {
-    bool useInspection = doc["use_inspection"];
-    state.useInspection = useInspection;
-  }
-
-  if (doc.containsKey("secondary_text")) {
-    String secondaryText = doc["secondary_text"];
-    strncpy(state.secondaryText, secondaryText.c_str(), 32);
-  }
-
-  bool added = doc["added"];
-  state.added = added;
+  String secondaryText = doc["secondary_text"];
+  strncpy(state.secondaryText, secondaryText.c_str(), 32);
+  state.useInspection = doc["use_inspection"];
+  state.added = doc["added"];
 
   stateHasChanged = true;
 }
