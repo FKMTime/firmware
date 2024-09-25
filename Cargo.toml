@@ -1,0 +1,49 @@
+[package]
+name = "fkm-firmware"
+version = "0.1.0"
+authors = ["filipton <filipton12@gmail.com>"]
+edition = "2021"
+
+[dependencies]
+esp-backtrace = { version = "0.14.1", features = [
+    "esp32c3",
+    "exception-handler",
+    "panic-handler",
+    "println",
+] }
+esp-hal = { version = "0.20.1", features = [ "esp32c3" ] }
+esp-println = { version = "0.11.0", features = ["esp32c3", "log"] }
+log = { version = "0.4.22" }
+esp-alloc = { version = "0.4.0" }
+embedded-io = "0.6.1"
+esp-wifi = { version = "0.8.0", features = [
+    "esp32c3",
+    "phy-enable-usb",
+    "utils",
+    "wifi",
+] }
+heapless = { version = "0.8.0", default-features = false }
+smoltcp = { version = "0.11.0", default-features = false, features = [
+    "medium-ethernet",
+    "proto-dhcpv4",
+    "proto-igmp",
+    "proto-ipv4",
+    "socket-dhcpv4",
+    "socket-icmp",
+    "socket-raw",
+    "socket-tcp",
+    "socket-udp",
+] }
+[profile.dev]
+# Rust debug is too slow.
+# For debug builds always builds with some optimization
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1 # LLVM can perform better optimizations using a single thread
+debug = 2
+debug-assertions = false
+incremental = false
+lto = 'fat'
+opt-level = 's'
+overflow-checks = false
