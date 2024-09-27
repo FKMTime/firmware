@@ -20,6 +20,11 @@ static_cell = { version = "2.1.0", features = ["nightly"] }
 heapless = { version = "0.8.0", default-features = false }
 esp-alloc = "0.4.0"
 esp-hal-wifimanager = { path = "../../esp-hal-wifimanager", features = ["esp32c3"] } # TODO: CHANGE
+serde = { version = "1.0.210", features = ["alloc", "derive"], default-features = false }
+serde_json = { version = "1.0.128", default-features = false, features = ["alloc"] }
+adv-shift-registers = "0.2.1"
+embedded-hal = "1.0.0"
+esp-hal-mfrc522 = { version = "0.1.1", features = ["embassy-time"] }
 
 [profile.dev]
 # Rust debug is too slow.

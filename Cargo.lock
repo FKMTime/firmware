@@ -3,6 +3,16 @@
 version = 3
 
 [[package]]
+name = "adv-shift-registers"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "35b423b253c7501ed8b9da7600f84292800257d292eaedadca3a4ddcab56a4b9"
+dependencies = [
+ "embedded-hal 1.0.0",
+ "log",
+]
+
+[[package]]
 name = "anstream"
 version = "0.6.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -712,6 +722,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "esp-hal-mfrc522"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "758af6baa61900e79f6c7984bff607257a58441076dbded66fd5a6b8f899a754"
+dependencies = [
+ "embassy-time",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "heapless",
+ "log",
+]
+
+[[package]]
 name = "esp-hal-procmacros"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -857,20 +880,25 @@ dependencies = [
 name = "fkm-firmware"
 version = "0.1.0"
 dependencies = [
+ "adv-shift-registers",
  "embassy-executor",
  "embassy-net",
  "embassy-time",
+ "embedded-hal 1.0.0",
  "embedded-storage",
  "esp-alloc",
  "esp-backtrace",
  "esp-hal",
  "esp-hal-embassy",
+ "esp-hal-mfrc522",
  "esp-hal-wifimanager",
  "esp-println",
  "esp-storage",
  "esp-wifi",
  "heapless",
  "log",
+ "serde",
+ "serde_json",
  "static_cell",
 ]
 
