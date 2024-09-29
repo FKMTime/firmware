@@ -4,6 +4,10 @@
 use adv_shift_registers::wrappers::ShifterPin;
 use core::mem::MaybeUninit;
 use embassy_executor::Spawner;
+use embassy_net::{
+    udp::{PacketMetadata, UdpSocket},
+    IpAddress, IpEndpoint,
+};
 use embassy_time::{Duration, Timer};
 use embedded_hal::digital::OutputPin;
 use esp_backtrace as _;
@@ -22,6 +26,7 @@ use esp_hal::{
     timer::timg::TimerGroup,
     Async,
 };
+use esp_hal_mdns::MdnsQuery;
 
 extern crate alloc;
 
@@ -99,9 +104,10 @@ async fn main(spawner: Spawner) {
         peripherals.BT,
         &spawner,
     )
-    .await;
+    .await
+    .unwrap();
 
-    log::info!("wifi_res: {wifi_res:?}");
+    log::info!("wifi_res: {:?}", wifi_res.2);
 
     _ = spawner.spawn(rfid_task(
         miso,
@@ -112,6 +118,47 @@ async fn main(spawner: Spawner) {
         peripherals.SPI2,
         peripherals.DMA,
     ));
+
+    log::info!("Start mdns lookup...");
+    let mut rx_buffer = [0; 1024];
+    let mut tx_buffer = [0; 1024];
+    let mut rx_meta = [PacketMetadata::EMPTY; 16];
+    let mut tx_meta = [PacketMetadata::EMPTY; 16];
+    let mut sock = UdpSocket::new(
+        &wifi_res.1,
+        &mut rx_meta,
+        &mut rx_buffer,
+        &mut tx_meta,
+        &mut tx_buffer,
+    );
+
+    let ip_addr = IpAddress::v4(224, 0, 0, 251);
+    let ip_endpoint = IpEndpoint::new(ip_addr, 5353);
+    _ = sock.bind(5353);
+    _ = wifi_res.1.join_multicast_group(ip_addr).await;
+
+    let mut mdns = MdnsQuery::new("_stackmat._tcp.local", 2500, esp_wifi::current_millis);
+    let mut data_buf = [0; 1024];
+    loop {
+        if let Some(data) = mdns.should_send_mdns_packet() {
+            _ = sock.send_to(&data, ip_endpoint).await;
+        }
+
+        if sock.may_recv() {
+            let res = sock.recv_from(&mut data_buf).await;
+            if let Ok((n, _endpoint)) = res {
+                let resp = mdns.parse_mdns_query(&data_buf[..n], Some("ws"));
+                log::info!("{resp:?}");
+
+                if resp.2.is_some() {
+                    break;
+                }
+            }
+        }
+
+        Timer::after(Duration::from_millis(50)).await;
+    }
+    _ = wifi_res.1.leave_multicast_group(ip_addr).await;
 
     loop {
         log::info!("bump {}", esp_hal::time::current_time());

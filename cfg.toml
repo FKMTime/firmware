@@ -1,2 +1,2 @@
 [esp-wifi]
-heap_size = 81920
+heap_size = 90000

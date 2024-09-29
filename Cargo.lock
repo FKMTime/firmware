@@ -320,6 +320,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dns-protocol"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96e95919581371ae96cbf05b0aeec65cdc20bd3a2dca282ab6af808fbddaddb4"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "document-features"
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -722,6 +731,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "esp-hal-mdns"
+version = "0.1.0"
+source = "git+https://github.com/filipton/esp-hal-mdns.git#67f2463b7b66964407511b1036680f1391d1ec3c"
+dependencies = [
+ "dns-protocol",
+ "heapless",
+ "log",
+]
+
+[[package]]
 name = "esp-hal-mfrc522"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -890,6 +909,7 @@ dependencies = [
  "esp-backtrace",
  "esp-hal",
  "esp-hal-embassy",
+ "esp-hal-mdns",
  "esp-hal-mfrc522",
  "esp-hal-wifimanager",
  "esp-println",
