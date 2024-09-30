@@ -107,7 +107,8 @@ async fn main(spawner: Spawner) {
     .await
     .unwrap();
 
-    log::info!("wifi_res: {:?}", wifi_res.2);
+    log::info!("wifi_res: {:?}", wifi_res.ip_address);
+    log::info!("wifi_res: {:?}", wifi_res.data);
 
     _ = spawner.spawn(rfid_task(
         miso,
@@ -125,7 +126,7 @@ async fn main(spawner: Spawner) {
     let mut rx_meta = [PacketMetadata::EMPTY; 16];
     let mut tx_meta = [PacketMetadata::EMPTY; 16];
     let mut sock = UdpSocket::new(
-        &wifi_res.1,
+        &wifi_res.sta_stack,
         &mut rx_meta,
         &mut rx_buffer,
         &mut tx_meta,
@@ -135,7 +136,7 @@ async fn main(spawner: Spawner) {
     let ip_addr = IpAddress::v4(224, 0, 0, 251);
     let ip_endpoint = IpEndpoint::new(ip_addr, 5353);
     _ = sock.bind(5353);
-    _ = wifi_res.1.join_multicast_group(ip_addr).await;
+    _ = wifi_res.sta_stack.join_multicast_group(ip_addr).await;
 
     let mut mdns = MdnsQuery::new("_stackmat._tcp.local", 2500, esp_wifi::current_millis);
     let mut data_buf = [0; 1024];
@@ -158,7 +159,7 @@ async fn main(spawner: Spawner) {
 
         Timer::after(Duration::from_millis(50)).await;
     }
-    _ = wifi_res.1.leave_multicast_group(ip_addr).await;
+    _ = wifi_res.sta_stack.leave_multicast_group(ip_addr).await;
 
     loop {
         log::info!("bump {}", esp_hal::time::current_time());
