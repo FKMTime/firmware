@@ -26,7 +26,9 @@ pub async fn mdns_query(
     _ = sock.bind(5353);
     _ = stack.join_multicast_group(ip_addr).await;
 
-    let mut mdns = MdnsQuery::new("_stackmat._tcp.local", 2500, esp_wifi::current_millis);
+    let mut mdns = MdnsQuery::new("_stackmat._tcp.local", 2500, || {
+        esp_hal::time::now().duration_since_epoch().to_millis()
+    });
     let mut data_buf = [0; 1024];
 
     let tmp;
