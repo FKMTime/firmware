@@ -18,8 +18,10 @@ use esp_hal::{
 };
 use esp_hal_mfrc522::consts::UidSize;
 use esp_wifi::EspWifiInitFor;
+use structs::ConnSettings;
 
 mod mdns;
+mod structs;
 
 /*
 macro_rules! mk_static {
@@ -89,6 +91,10 @@ async fn main(spawner: Spawner) {
     .await
     .unwrap();
 
+    if let Some(ref data) = wifi_res.data {
+        let conn_settings: ConnSettings = serde_json::from_value(data.clone()).unwrap();
+        log::info!("conn_settings: {conn_settings:?}");
+    }
     log::info!("wifi_res: {:?}", wifi_res);
 
     _ = spawner.spawn(rfid_task(
