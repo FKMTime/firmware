@@ -822,6 +822,7 @@ dependencies = [
  "esp-wifi",
  "heapless",
  "log",
+ "nb 1.1.0",
  "serde",
  "serde_json",
  "static_cell",

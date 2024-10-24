@@ -3,14 +3,16 @@
 
 extern crate alloc;
 use adv_shift_registers::wrappers::ShifterPin;
+use battery::batter_read_task;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 use embedded_hal::digital::OutputPin;
 use esp_backtrace as _;
 use esp_hal::{
+    analog::adc::{Adc, AdcConfig, Attenuation},
     dma::{Dma, DmaRxBuf, DmaTxBuf},
     dma_buffers,
-    gpio::{AnyPin, Io, Output},
+    gpio::{AnyPin, GpioPin, Io, Output},
     peripherals::DMA,
     prelude::*,
     spi::{master::Spi, SpiMode},
@@ -20,6 +22,7 @@ use esp_hal_mfrc522::consts::UidSize;
 use esp_wifi::EspWifiInitFor;
 use structs::ConnSettings;
 
+mod battery;
 mod mdns;
 mod structs;
 
@@ -50,6 +53,9 @@ async fn main(spawner: Spawner) {
     let sck = io.pins.gpio4.degrade();
     let miso = io.pins.gpio5.degrade();
     let mosi = io.pins.gpio6.degrade();
+    let battery_input_pin = io.pins.gpio2;
+
+    _ = spawner.spawn(batter_read_task(battery_input_pin, peripherals.ADC1));
 
     let data_pin = Output::new(io.pins.gpio10, esp_hal::gpio::Level::Low);
     let clk_pin = Output::new(io.pins.gpio21, esp_hal::gpio::Level::Low);
