@@ -12,18 +12,19 @@ use esp_hal::{
     dma::{Dma, DmaRxBuf, DmaTxBuf},
     dma_buffers,
     gpio::{AnyPin, Io, Output},
-    peripherals::{self, DMA, UART0},
+    peripherals::DMA,
     prelude::*,
     spi::{master::Spi, SpiMode},
     timer::timg::TimerGroup,
-    uart::UartRx,
 };
 use esp_hal_mfrc522::consts::UidSize;
 use esp_wifi::EspWifiInitFor;
+use stackmat::stackmat_task;
 use structs::ConnSettings;
 
 mod battery;
 mod mdns;
+mod stackmat;
 mod structs;
 
 /*
@@ -121,17 +122,6 @@ async fn main(spawner: Spawner) {
     loop {
         log::info!("bump {}", esp_hal::time::now());
         Timer::after_millis(15000).await;
-    }
-}
-
-#[embassy_executor::task]
-async fn stackmat_task(uart: UART0, uart_pin: AnyPin) {
-    let mut uart = UartRx::new_async(uart, uart_pin).unwrap();
-    let mut buf = [0; 30];
-    loop {
-        if let Ok(n) = embedded_io_async::Read::read(&mut uart, &mut buf).await {
-            log::warn!("uart read byte (n:{n}): {:?}", &buf);
-        }
     }
 }
 
