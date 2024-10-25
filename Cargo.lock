@@ -809,6 +809,7 @@ dependencies = [
  "embassy-net",
  "embassy-time",
  "embedded-hal 1.0.0",
+ "embedded-io-async",
  "embedded-storage",
  "esp-alloc",
  "esp-backtrace",

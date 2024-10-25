@@ -9,14 +9,14 @@ use embassy_time::{Duration, Timer};
 use embedded_hal::digital::OutputPin;
 use esp_backtrace as _;
 use esp_hal::{
-    analog::adc::{Adc, AdcConfig, Attenuation},
     dma::{Dma, DmaRxBuf, DmaTxBuf},
     dma_buffers,
-    gpio::{AnyPin, GpioPin, Io, Output},
-    peripherals::DMA,
+    gpio::{AnyPin, Io, Output},
+    peripherals::{self, DMA, UART0},
     prelude::*,
     spi::{master::Spi, SpiMode},
     timer::timg::TimerGroup,
+    uart::UartRx,
 };
 use esp_hal_mfrc522::consts::UidSize;
 use esp_wifi::EspWifiInitFor;
@@ -54,6 +54,7 @@ async fn main(spawner: Spawner) {
     let miso = io.pins.gpio5.degrade();
     let mosi = io.pins.gpio6.degrade();
     let battery_input_pin = io.pins.gpio2;
+    let stackmat_rx = io.pins.gpio20.degrade();
 
     _ = spawner.spawn(batter_read_task(battery_input_pin, peripherals.ADC1));
 
@@ -103,6 +104,7 @@ async fn main(spawner: Spawner) {
     }
     log::info!("wifi_res: {:?}", wifi_res);
 
+    _ = spawner.spawn(stackmat_task(peripherals.UART0, stackmat_rx));
     _ = spawner.spawn(rfid_task(
         miso,
         mosi,
@@ -119,6 +121,17 @@ async fn main(spawner: Spawner) {
     loop {
         log::info!("bump {}", esp_hal::time::now());
         Timer::after_millis(15000).await;
+    }
+}
+
+#[embassy_executor::task]
+async fn stackmat_task(uart: UART0, uart_pin: AnyPin) {
+    let mut uart = UartRx::new_async(uart, uart_pin).unwrap();
+    let mut buf = [0; 30];
+    loop {
+        if let Ok(n) = embedded_io_async::Read::read(&mut uart, &mut buf).await {
+            log::warn!("uart read byte (n:{n}): {:?}", &buf);
+        }
     }
 }
 

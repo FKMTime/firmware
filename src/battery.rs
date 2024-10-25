@@ -5,6 +5,8 @@ use esp_hal::{
 };
 
 type AdcCal = esp_hal::analog::adc::AdcCalCurve<esp_hal::peripherals::ADC1>;
+const BAT_MIN: f64 = 3300.0;
+const BAT_MAX: f64 = 4200.0;
 /*
 const R1: f64 = 6900.0;
 const R2: f64 = 10000.0;
@@ -21,6 +23,7 @@ pub async fn batter_read_task(adc_pin: GpioPin<2>, adc: esp_hal::peripherals::AD
         let read = read_adc_avg(&mut adc, &mut adc_pin);
         //let bat_mv = read * ((R1 + R2) / R2);
         let bat_calc_mv = calculate(read);
+        //let bat_percentage = bat_calc_mv
         //log::info!("read: {read}    bat_avg_mv: {bat_mv}mV   calc: {bat_calc_mv}mV");
         log::info!("calc: {bat_calc_mv}mV");
         Timer::after_millis(1500).await;
