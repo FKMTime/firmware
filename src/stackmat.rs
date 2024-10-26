@@ -1,3 +1,4 @@
+use embassy_time::Timer;
 use esp_hal::{gpio::AnyPin, peripherals::UART0, uart::UartRx};
 
 #[embassy_executor::task]
@@ -6,24 +7,29 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin) {
     let mut uart = UartRx::new_async_with_config(uart, serial_config, uart_pin).unwrap();
 
     let mut buf = [0; 8];
-    let mut buf_i = 0;
-
-    let mut read_buf = [0; 1];
+    let mut read_buf = [0; 8];
     loop {
-        if let Ok(n) = embedded_io_async::Read::read(&mut uart, &mut read_buf).await {
-            if n == 0 {
+        let n = UartRx::drain_fifo(&mut uart, &mut read_buf);
+        if n == 0 {
+            continue;
+        }
+
+        for &r in &read_buf[..n] {
+            if n == 0 || r == 0 || r == b'\r' {
                 continue;
             }
 
-            if read_buf[0] == 0 || read_buf[0] == b'\r' || buf_i == 8 {
-                let parsed = parse_stackmat_data(&buf);
+            unsafe {
+                core::ptr::copy(buf.as_ptr().offset(1), buf.as_mut_ptr(), 7);
+            }
+
+            buf[7] = r;
+            if let Ok(parsed) = parse_stackmat_data(&buf) {
                 log::warn!("parsed: {:?}", parsed);
-                buf_i = 0;
-            } else {
-                buf[buf_i] = read_buf[0];
-                buf_i += 1;
             }
         }
+
+        Timer::after_millis(10).await;
     }
 }
 
@@ -62,7 +68,7 @@ fn parse_time_str(data: &[u8]) -> Option<u16> {
 
 #[allow(dead_code)]
 #[derive(PartialEq, Debug)]
-enum StackmatTimerState {
+pub enum StackmatTimerState {
     Unknown,
     Reset,
     Running,
