@@ -806,6 +806,7 @@ version = "0.1.0"
 dependencies = [
  "adv-shift-registers",
  "embassy-executor",
+ "embassy-futures",
  "embassy-net",
  "embassy-time",
  "embedded-hal 1.0.0",
@@ -824,6 +825,7 @@ dependencies = [
  "heapless",
  "log",
  "macros",
+ "nb 1.1.0",
  "serde",
  "serde_json",
  "static_cell",

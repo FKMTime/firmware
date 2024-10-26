@@ -20,7 +20,7 @@ pub async fn batter_read_task(adc_pin: GpioPin<2>, adc: esp_hal::peripherals::AD
     let mut adc = Adc::new(adc, adc_config);
 
     loop {
-        let read = read_adc_avg(&mut adc, &mut adc_pin);
+        let read = read_adc_avg(&mut adc, &mut adc_pin).await;
         //let bat_mv = read * ((R1 + R2) / R2);
         let bat_calc_mv = calculate(read);
         //let bat_percentage = bat_calc_mv
@@ -31,7 +31,7 @@ pub async fn batter_read_task(adc_pin: GpioPin<2>, adc: esp_hal::peripherals::AD
 }
 
 const ADC_AVG_COUNT: usize = 32;
-fn read_adc_avg(
+async fn read_adc_avg(
     adc: &mut Adc<'_, esp_hal::peripherals::ADC1>,
     adc_pin: &mut esp_hal::analog::adc::AdcPin<
         esp_hal::gpio::GpioPin<2>,
@@ -42,8 +42,11 @@ fn read_adc_avg(
     let mut sum = 0.0;
 
     for _ in 0..ADC_AVG_COUNT {
-        //let pin_mv = nb::block!(adc.read_oneshot(adc_pin)).unwrap() as f64;
-        //sum += pin_mv;
+        let pin_mv = macros::nb_to_fut!(adc.read_oneshot(adc_pin))
+            .await
+            .unwrap_or(0) as f64;
+
+        sum += pin_mv;
     }
 
     sum / ADC_AVG_COUNT as f64
