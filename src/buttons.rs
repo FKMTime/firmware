@@ -1,33 +1,60 @@
 use adv_shift_registers::wrappers::ShifterValue;
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::{boxed::Box, vec::Vec};
 use core::{future::Future, pin::Pin};
-use embassy_time::Timer;
+use embassy_time::{Instant, Timer};
 use esp_hal::gpio::Input;
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
+pub enum Button {
+    First,
+    Second,
+    Third,
+    Fourth,
+    Unknown,
+}
+
+impl From<u8> for Button {
+    fn from(value: u8) -> Self {
+        match value {
+            0b00000001 => Self::First,
+            0b00000010 => Self::Second,
+            0b00000100 => Self::Third,
+            0b00001000 => Self::Fourth,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ButtonTrigger {
     Down,
     Up,
-    Hold(u64),
+    HoldTimed(u64, u64),
+    Hold,
 }
 
 type ButtonFunc = fn(ButtonTrigger, u64) -> Pin<Box<dyn Future<Output = Result<(), ()>> + Send>>;
-//type ButtonFunc = ;
 
 #[embassy_executor::task]
 pub async fn buttons_task(button_input: Input<'static>, button_reg: ShifterValue) {
-    let button_handler: ButtonFunc = |trigger, value| {
-        Box::pin(async move {
-            log::info!("Handling trigger: {:?} with value: {}", trigger, value);
-            Ok(())
-        })
-    };
+    let mut handler = ButtonsHandler::new();
+    handler.add_handler(Button::First, ButtonTrigger::Down, button_test());
+    handler.add_handler(
+        Button::First,
+        ButtonTrigger::HoldTimed(500, 300),
+        button_test(),
+    );
+    handler.add_handler(Button::First, ButtonTrigger::Up, button_test());
+
+    /*
     let mut triggers = vec![button_handler, button_test()];
     for trigger in triggers {
-        let res = (trigger)(ButtonTrigger::Down, 6940).await;
+        let res = (trigger)(ButtonTrigger::Down(Button::First), 6940).await;
         log::info!("trigger res: {res:?}");
     }
+    */
 
     let mut debounce_time = esp_hal::time::now();
     let mut old_debounced = i32::MAX;
@@ -59,7 +86,13 @@ pub async fn buttons_task(button_input: Input<'static>, button_reg: ShifterValue
             if old_debounced != out_val {
                 let duration = esp_hal::time::now() - debounce_time;
                 if duration.to_millis() > 50 {
-                    log::info!("CHANGE: {out_val:08b}");
+                    if old_debounced == 0 {
+                        handler.button_down((out_val as u8).into()).await;
+                    } else {
+                        handler.button_up().await;
+                    }
+
+                    //log::info!("CHANGE: {out_val:08b}");
                     old_debounced = out_val;
                 }
             } else {
@@ -67,12 +100,115 @@ pub async fn buttons_task(button_input: Input<'static>, button_reg: ShifterValue
             }
         }
 
+        if old_debounced != 0 {
+            handler.button_hold().await;
+        }
         Timer::after_millis(5).await;
+    }
+}
+
+struct ButtonHandler {
+    button: Button,
+    handlers: Vec<(ButtonTrigger, ButtonFunc)>,
+}
+
+struct ButtonsHandler {
+    handlers: Vec<ButtonHandler>,
+    press_time: Instant,
+    last_hold_execute: Instant,
+    current_handler_down: Option<usize>,
+}
+
+impl ButtonsHandler {
+    pub fn new() -> Self {
+        Self {
+            handlers: Vec::new(),
+            press_time: Instant::now(),
+            last_hold_execute: Instant::now(),
+            current_handler_down: None,
+        }
+    }
+
+    pub fn add_handler(&mut self, button: Button, trigger: ButtonTrigger, func: ButtonFunc) {
+        let existing_handler = self.handlers.iter_mut().find(|h| h.button == button);
+        match existing_handler {
+            Some(handler) => handler.handlers.push((trigger, func)),
+            None => self.handlers.push(ButtonHandler {
+                button,
+                handlers: alloc::vec![(trigger, func)],
+            }),
+        }
+    }
+
+    pub async fn button_down(&mut self, button: Button) {
+        let handler = self
+            .handlers
+            .iter()
+            .enumerate()
+            .find(|(_, h)| h.button == button);
+
+        if let Some((i, handler)) = handler {
+            self.current_handler_down = Some(i);
+
+            let handler = handler.handlers.iter().find(|h| h.0 == ButtonTrigger::Down);
+            if let Some(handler) = handler {
+                let res = (handler.1)(handler.0.clone(), 0).await;
+                self.press_time = Instant::now();
+                log::warn!("down res: {res:?}");
+            }
+        }
+    }
+
+    pub async fn button_hold(&mut self) {
+        if self.current_handler_down.is_none() {
+            return;
+        }
+
+        let handler = &self.handlers[self.current_handler_down.expect("Cant fail")];
+        let hold_time = (Instant::now() - self.press_time).as_millis();
+
+        for (trigger, handler) in &handler.handlers {
+            match trigger {
+                ButtonTrigger::Down => continue,
+                ButtonTrigger::Up => continue,
+                ButtonTrigger::HoldTimed(offset, gap) => {
+                    if hold_time < *offset
+                        || (Instant::now() - self.last_hold_execute).as_millis() < *gap
+                    {
+                        break;
+                    }
+
+                    let res = (handler)(trigger.clone(), hold_time).await;
+                    log::warn!("hold res: {res:?}");
+                    self.last_hold_execute = Instant::now();
+                    break;
+                }
+                ButtonTrigger::Hold => {
+                    let res = (handler)(trigger.clone(), hold_time).await;
+                    log::warn!("hold res: {res:?}");
+                    break;
+                }
+            }
+        }
+    }
+
+    pub async fn button_up(&mut self) {
+        if self.current_handler_down.is_none() {
+            return;
+        }
+
+        let handler = &self.handlers[self.current_handler_down.expect("Cant fail")];
+        let handler = handler.handlers.iter().find(|h| h.0 == ButtonTrigger::Up);
+        if let Some(handler) = handler {
+            let res = (handler.1)(handler.0.clone(), 0).await;
+            log::warn!("up res: {res:?}");
+        }
+        self.current_handler_down = None;
     }
 }
 
 #[macros::button_handler]
 async fn button_test(triggered: ButtonTrigger, hold_time: u64) -> Result<(), ()> {
-    log::warn!("Triggered: {triggered:?}");
-    Err(())
+    log::warn!("Triggered: {triggered:?} - {hold_time}");
+    Ok(())
 }

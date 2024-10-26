@@ -23,13 +23,17 @@ pub fn button_handler(_args: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     let inputs = f.sig.inputs;
-    let output = f.sig.output;
+    let output = match f.sig.output {
+        syn::ReturnType::Default => quote! { () },
+        syn::ReturnType::Type(_, tp) => quote! { #tp },
+    };
+
     let name = f.sig.ident;
     let vis = f.vis;
     let block = f.block;
 
     quote! {
-        #vis fn #name() -> fn(#unnamed_inputs) -> core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = Result<(), ()>> + Send>> {
+        #vis fn #name() -> fn(#unnamed_inputs) -> core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = #output> + Send>> {
             |#inputs| {
                 Box::pin(async move #block)
             }
