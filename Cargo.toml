@@ -26,8 +26,8 @@ adv-shift-registers = "0.2.1"
 embedded-hal = "1.0.0"
 esp-hal-mfrc522 = { version = "0.1.1", features = ["embassy-time"] }
 esp-hal-mdns = { git = "https://github.com/filipton/esp-hal-mdns.git" }
-nb = "1.1.0"
 embedded-io-async = "0.6.1"
+macros = { path = "./macros" }
 
 [profile.dev]
 # Rust debug is too slow.

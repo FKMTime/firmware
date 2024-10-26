@@ -7,7 +7,7 @@ use embassy_time::Timer;
 use embedded_hal::digital::OutputPin;
 use esp_backtrace as _;
 use esp_hal::{
-    gpio::{Io, Output},
+    gpio::{Input, Io, Output},
     prelude::*,
     timer::timg::TimerGroup,
 };
@@ -15,6 +15,7 @@ use esp_wifi::EspWifiInitFor;
 use structs::ConnSettings;
 
 mod battery;
+mod buttons;
 mod mdns;
 mod rfid;
 mod stackmat;
@@ -49,11 +50,7 @@ async fn main(spawner: Spawner) {
     let mosi = io.pins.gpio6.degrade();
     let battery_input_pin = io.pins.gpio2;
     let stackmat_rx = io.pins.gpio20.degrade();
-
-    _ = spawner.spawn(battery::batter_read_task(
-        battery_input_pin,
-        peripherals.ADC1,
-    ));
+    let button_input = Input::new(io.pins.gpio3, esp_hal::gpio::Pull::Down);
 
     let data_pin = Output::new(io.pins.gpio10, esp_hal::gpio::Level::Low);
     let clk_pin = Output::new(io.pins.gpio21, esp_hal::gpio::Level::Low);
@@ -65,6 +62,7 @@ async fn main(spawner: Spawner) {
     let digits_shifters = adv_shift_reg.get_shifter_range_mut(2..8);
     digits_shifters.set_data(&[255; 6]);
 
+    let buttons_shifter = adv_shift_reg.get_shifter_mut(0);
     let mut cs_pin = adv_shift_reg.get_pin_mut(1, 0, true);
     _ = cs_pin.set_high();
 
@@ -101,6 +99,11 @@ async fn main(spawner: Spawner) {
     }
     log::info!("wifi_res: {:?}", wifi_res);
 
+    _ = spawner.spawn(battery::batter_read_task(
+        battery_input_pin,
+        peripherals.ADC1,
+    ));
+    _ = spawner.spawn(buttons::buttons_task(button_input, buttons_shifter));
     _ = spawner.spawn(stackmat::stackmat_task(peripherals.UART0, stackmat_rx));
     _ = spawner.spawn(rfid::rfid_task(
         miso,

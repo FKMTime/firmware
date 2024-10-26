@@ -26,7 +26,7 @@ pub async fn batter_read_task(adc_pin: GpioPin<2>, adc: esp_hal::peripherals::AD
         //let bat_percentage = bat_calc_mv
         //log::info!("read: {read}    bat_avg_mv: {bat_mv}mV   calc: {bat_calc_mv}mV");
         log::info!("calc: {bat_calc_mv}mV");
-        Timer::after_millis(1500).await;
+        Timer::after_millis(15000).await;
     }
 }
 
@@ -42,13 +42,14 @@ fn read_adc_avg(
     let mut sum = 0.0;
 
     for _ in 0..ADC_AVG_COUNT {
-        let pin_mv = nb::block!(adc.read_oneshot(adc_pin)).unwrap() as f64;
-        sum += pin_mv;
+        //let pin_mv = nb::block!(adc.read_oneshot(adc_pin)).unwrap() as f64;
+        //sum += pin_mv;
     }
 
     sum / ADC_AVG_COUNT as f64
 }
 
+// TODO: measure cooficients on real pcb
 // https://www.dcode.fr/function-equation-finder
 fn calculate(x: f64) -> f64 {
     let coefficient_1 = -0.000447414;

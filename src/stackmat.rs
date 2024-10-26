@@ -9,6 +9,7 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin) {
     let mut buf = [0; 8];
     let mut read_buf = [0; 8];
     loop {
+        Timer::after_millis(10).await;
         let n = UartRx::drain_fifo(&mut uart, &mut read_buf);
         if n == 0 {
             continue;
@@ -28,8 +29,6 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin) {
                 log::warn!("parsed: {:?}", parsed);
             }
         }
-
-        Timer::after_millis(10).await;
     }
 }
 
