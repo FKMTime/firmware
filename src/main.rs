@@ -2,28 +2,21 @@
 #![no_main]
 
 extern crate alloc;
-use adv_shift_registers::wrappers::ShifterPin;
-use battery::batter_read_task;
 use embassy_executor::Spawner;
-use embassy_time::{Duration, Timer};
+use embassy_time::Timer;
 use embedded_hal::digital::OutputPin;
 use esp_backtrace as _;
 use esp_hal::{
-    dma::{Dma, DmaRxBuf, DmaTxBuf},
-    dma_buffers,
-    gpio::{AnyPin, Io, Output},
-    peripherals::DMA,
+    gpio::{Io, Output},
     prelude::*,
-    spi::{master::Spi, SpiMode},
     timer::timg::TimerGroup,
 };
-use esp_hal_mfrc522::consts::UidSize;
 use esp_wifi::EspWifiInitFor;
-use stackmat::stackmat_task;
 use structs::ConnSettings;
 
 mod battery;
 mod mdns;
+mod rfid;
 mod stackmat;
 mod structs;
 
@@ -57,7 +50,10 @@ async fn main(spawner: Spawner) {
     let battery_input_pin = io.pins.gpio2;
     let stackmat_rx = io.pins.gpio20.degrade();
 
-    _ = spawner.spawn(batter_read_task(battery_input_pin, peripherals.ADC1));
+    _ = spawner.spawn(battery::batter_read_task(
+        battery_input_pin,
+        peripherals.ADC1,
+    ));
 
     let data_pin = Output::new(io.pins.gpio10, esp_hal::gpio::Level::Low);
     let clk_pin = Output::new(io.pins.gpio21, esp_hal::gpio::Level::Low);
@@ -105,8 +101,8 @@ async fn main(spawner: Spawner) {
     }
     log::info!("wifi_res: {:?}", wifi_res);
 
-    _ = spawner.spawn(stackmat_task(peripherals.UART0, stackmat_rx));
-    _ = spawner.spawn(rfid_task(
+    _ = spawner.spawn(stackmat::stackmat_task(peripherals.UART0, stackmat_rx));
+    _ = spawner.spawn(rfid::rfid_task(
         miso,
         mosi,
         sck,
@@ -122,62 +118,5 @@ async fn main(spawner: Spawner) {
     loop {
         log::info!("bump {}", esp_hal::time::now());
         Timer::after_millis(15000).await;
-    }
-}
-
-#[embassy_executor::task]
-async fn rfid_task(
-    miso: AnyPin,
-    mosi: AnyPin,
-    sck: AnyPin,
-    cs_pin: ShifterPin,
-    spi: esp_hal::peripherals::SPI2,
-    dma: DMA,
-) {
-    let dma = Dma::new(dma);
-    let dma_chan = dma.channel0;
-    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(32000);
-    let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
-    let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
-
-    let dma_chan = dma_chan.configure_for_async(false, esp_hal::dma::DmaPriority::Priority0);
-
-    //let cs = Output::new(cs, Level::High);
-    let spi = Spi::new(spi, 5.MHz(), SpiMode::Mode0);
-    let spi = spi.with_sck(sck).with_miso(miso).with_mosi(mosi);
-    let spi = spi.with_dma(dma_chan).with_buffers(dma_rx_buf, dma_tx_buf);
-
-    //esp_hal_mfrc522::MFRC522::new(spi, cs, || esp_hal::time::current_time().ticks());
-    let mut mfrc522 = esp_hal_mfrc522::MFRC522::new(spi, cs_pin); // embassy-time feature is enabled,
-                                                                  // so no need to pass current_time
-                                                                  // function
-
-    _ = mfrc522.pcd_init().await;
-    _ = mfrc522.pcd_selftest().await;
-    log::debug!("PCD ver: {:?}", mfrc522.pcd_get_version().await);
-
-    if !mfrc522.pcd_is_init().await {
-        log::error!("MFRC522 init failed! Try to power cycle to module!");
-    }
-
-    loop {
-        if mfrc522.picc_is_new_card_present().await.is_ok() {
-            let card = mfrc522.get_card(UidSize::Four).await;
-            if let Ok(card) = card {
-                log::info!("Card UID: {}", card.get_number());
-
-                let mut buff = [0; 18];
-                let mut byte_count = 18;
-                _ = mfrc522.mifare_read(0, &mut buff, &mut byte_count).await;
-
-                log::info!("{:02X?}", buff);
-
-                //_ = mfrc522.debug_dump_card(&card).await;
-            }
-
-            _ = mfrc522.picc_halta().await;
-        }
-
-        Timer::after(Duration::from_millis(1)).await;
     }
 }
