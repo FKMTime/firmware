@@ -153,8 +153,11 @@ impl ButtonsHandler {
             let handler = handler.handlers.iter().find(|h| h.0 == ButtonTrigger::Down);
             if let Some(handler) = handler {
                 let res = (handler.1)(handler.0.clone(), 0).await;
+                if let Err(e) = res {
+                    log::error!("buttons_handler:down_err: {e:?}");
+                }
+
                 self.press_time = Instant::now();
-                log::warn!("down res: {res:?}");
             }
         }
     }
@@ -179,13 +182,19 @@ impl ButtonsHandler {
                     }
 
                     let res = (handler)(trigger.clone(), hold_time).await;
-                    log::warn!("hold res: {res:?}");
+                    if let Err(e) = res {
+                        log::error!("buttons_handler:hold_timed_err: {e:?}");
+                    }
+
                     self.last_hold_execute = Instant::now();
                     break;
                 }
                 ButtonTrigger::Hold => {
                     let res = (handler)(trigger.clone(), hold_time).await;
-                    log::warn!("hold res: {res:?}");
+                    if let Err(e) = res {
+                        log::error!("buttons_handler:hold_err: {e:?}");
+                    }
+
                     break;
                 }
             }
@@ -200,15 +209,19 @@ impl ButtonsHandler {
         let handler = &self.handlers[self.current_handler_down.expect("Cant fail")];
         let handler = handler.handlers.iter().find(|h| h.0 == ButtonTrigger::Up);
         if let Some(handler) = handler {
-            let res = (handler.1)(handler.0.clone(), 0).await;
-            log::warn!("up res: {res:?}");
+            let hold_time = (Instant::now() - self.press_time).as_millis();
+            let res = (handler.1)(handler.0.clone(), hold_time).await;
+            if let Err(e) = res {
+                log::error!("buttons_handler:up_err: {e:?}");
+            }
         }
+
         self.current_handler_down = None;
     }
 }
 
 #[macros::button_handler]
 async fn button_test(triggered: ButtonTrigger, hold_time: u64) -> Result<(), ()> {
-    log::warn!("Triggered: {triggered:?} - {hold_time}");
+    log::info!("Triggered: {triggered:?} - {hold_time}");
     Ok(())
 }
