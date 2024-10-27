@@ -97,19 +97,18 @@ async fn main(spawner: Spawner) {
         _ = core::fmt::write(&mut generated_name, format_args!("FKM-{:X}", efuse));
         generated_name
     };
-    wm_settings.wifi_seed = rng.random() as u64;
 
     let timg0 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0);
     let wifi_res = esp_hal_wifimanager::init_wm(
         EspWifiInitFor::Wifi,
         wm_settings,
         timg0.timer0,
+        &spawner,
+        &nvs,
         rng.clone(),
         peripherals.RADIO_CLK,
         peripherals.WIFI,
         peripherals.BT,
-        &spawner,
-        &nvs,
     )
     .await
     .unwrap();

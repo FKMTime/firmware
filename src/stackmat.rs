@@ -28,7 +28,7 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, time_sig: Rc<Signal<No
 
             buf[7] = r;
             if let Ok(parsed) = parse_stackmat_data(&buf) {
-                log::warn!("parsed: {:?}", parsed);
+                //log::warn!("parsed: {:?}", parsed);
                 time_sig.signal(parsed.1);
             }
         }

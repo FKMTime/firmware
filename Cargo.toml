@@ -19,7 +19,7 @@ embedded-storage = "0.3.1"
 static_cell = { version = "2.1.0", features = ["nightly"] }
 heapless = { version = "0.8.0", default-features = false }
 esp-alloc = "0.5.0"
-esp-hal-wifimanager = { path = "../../esp-hal-wifimanager", default-features = false, features = ["esp32c3"] } # TODO: CHANGE
+esp-hal-wifimanager = { path = "../../esp-hal-wifimanager", default-features = false, features = ["esp32c3", "ap", "ble"] } # TODO: CHANGE
 serde = { version = "1.0.213", features = ["alloc", "derive"], default-features = false }
 serde_json = { version = "1.0.132", default-features = false, features = ["alloc"] }
 adv-shift-registers = "0.2.2"
@@ -46,3 +46,6 @@ incremental = false
 lto = 'fat'
 opt-level = 3
 overflow-checks = false
+
+[build-dependencies]
+dotenvy = "0.15.7"
