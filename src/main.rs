@@ -3,6 +3,7 @@
 
 extern crate alloc;
 use embassy_executor::Spawner;
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::Timer;
 use embedded_hal::digital::OutputPin;
 use esp_backtrace as _;
@@ -46,7 +47,7 @@ async fn main(spawner: Spawner) {
     esp_alloc::heap_allocator!(110 * 1024);
     let nvs = esp_hal_wifimanager::Nvs::new(0x9000, 0x6000);
 
-    let rng = esp_hal::rng::Rng::new(peripherals.RNG);
+    let mut rng = esp_hal::rng::Rng::new(peripherals.RNG);
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
     let sck = io.pins.gpio4.degrade();
     let miso = io.pins.gpio5.degrade();
@@ -76,10 +77,11 @@ async fn main(spawner: Spawner) {
     let timg1 = TimerGroup::new(peripherals.TIMG1);
     esp_hal_embassy::init(timg1.timer0);
 
-    _ = spawner.spawn(lcd::lcd_task(lcd_shifter));
+    let test_time_signal = alloc::rc::Rc::new(Signal::<NoopRawMutex, u64>::new());
+    _ = spawner.spawn(lcd::lcd_task(lcd_shifter, test_time_signal.clone()));
     _ = spawner.spawn(battery::batter_read_task(battery_input, peripherals.ADC1));
     _ = spawner.spawn(buttons::buttons_task(button_input, buttons_shifter));
-    _ = spawner.spawn(stackmat::stackmat_task(peripherals.UART0, stackmat_rx));
+    _ = spawner.spawn(stackmat::stackmat_task(peripherals.UART0, stackmat_rx, test_time_signal));
     _ = spawner.spawn(rfid::rfid_task(
         miso,
         mosi,
@@ -95,6 +97,7 @@ async fn main(spawner: Spawner) {
         _ = core::fmt::write(&mut generated_name, format_args!("FKM-{:X}", efuse));
         generated_name
     };
+    wm_settings.wifi_seed = rng.random() as u64;
 
     let timg0 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0);
     let wifi_res = esp_hal_wifimanager::init_wm(

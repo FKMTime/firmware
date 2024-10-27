@@ -1,8 +1,10 @@
+use alloc::rc::Rc;
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::Timer;
 use esp_hal::{gpio::AnyPin, peripherals::UART0, uart::UartRx};
 
 #[embassy_executor::task]
-pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin) {
+pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, time_sig: Rc<Signal<NoopRawMutex, u64>>) {
     let serial_config = esp_hal::uart::config::Config::default().baudrate(1200);
     let mut uart = UartRx::new_async_with_config(uart, serial_config, uart_pin).unwrap();
 
@@ -27,6 +29,7 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin) {
             buf[7] = r;
             if let Ok(parsed) = parse_stackmat_data(&buf) {
                 log::warn!("parsed: {:?}", parsed);
+                time_sig.signal(parsed.1);
             }
         }
     }

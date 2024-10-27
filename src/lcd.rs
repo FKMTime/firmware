@@ -1,10 +1,12 @@
 use adv_shift_registers::wrappers::ShifterValue;
+use alloc::rc::Rc;
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Delay, Timer};
-use embedded_hal::{delay::DelayNs, digital::OutputPin};
+use embedded_hal::digital::OutputPin;
 use hd44780_driver::{bus::FourBitBusPins, charset::CharsetA02, memory_map::MemoryMap1602, non_blocking::HD44780, setup::DisplayOptions4Bit, DisplayMode};
 
 #[embassy_executor::task]
-pub async fn lcd_task(lcd_shifter: ShifterValue) {
+pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMutex, u64>>) {
     let mut bl_pin = lcd_shifter.get_pin_mut(1, true);
     let reg_sel_pin = lcd_shifter.get_pin_mut(2, true);
     let e_pin = lcd_shifter.get_pin_mut(3, true);
@@ -60,14 +62,11 @@ pub async fn lcd_task(lcd_shifter: ShifterValue) {
     _ = lcd.set_cursor_xy((5, 1), &mut delay).await;
     _ = lcd.write_bytes(&[b' '; 11], &mut delay).await;
 
-    let start = esp_hal::time::now();
     loop {
-        Timer::after_millis(66).await;
-
-        let elapsed = esp_hal::time::now() - start;
+        let time = time_sig.wait().await;
         _ = lcd.set_cursor_xy((5, 1), &mut delay).await;
 
-        let (digits, n) = num_to_digits(elapsed.to_millis() as u128);
+        let (digits, n) = num_to_digits(time as u128);
         for digit in &digits[..n] {
             if *digit == 0xFF {
                 break;
