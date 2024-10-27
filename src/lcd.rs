@@ -63,10 +63,23 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMute
     _ = lcd.write_bytes(&[b' '; 11], &mut delay).await;
 
     loop {
-        let time = time_sig.wait().await;
+        let time_ms = time_sig.wait().await;
         _ = lcd.set_cursor_xy((5, 1), &mut delay).await;
 
-        let (digits, n) = num_to_digits(time as u128);
+        let minutes: u8 = (time_ms / 60000) as u8;
+        let seconds: u8 = ((time_ms % 60000) / 1000) as u8;
+        let ms: u16 = (time_ms % 1000) as u16;
+
+        let mut time_str = heapless::String::<8>::new();
+        if minutes > 0 {
+            _ = time_str.push((minutes + b'0') as char);
+            _ = time_str.push(':');
+        }
+        _ = time_str.push_str(&alloc::format!("{seconds:02}.{ms:03}"));
+
+        _ = lcd.write_str(&time_str, &mut delay).await;
+        /*
+        let (digits, n) = num_to_digits(time_ms as u128);
         for digit in &digits[..n] {
             if *digit == 0xFF {
                 break;
@@ -74,6 +87,7 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMute
 
             _ = lcd.write_char((digit + 0x30) as char, &mut delay).await;
         }
+        */
     }
 }
 
