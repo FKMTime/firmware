@@ -47,6 +47,7 @@ pub async fn buttons_task(button_input: Input<'static>, button_reg: ShifterValue
         button_test(),
     );
     handler.add_handler(Button::First, ButtonTrigger::Up, button_test());
+    handler.add_handler(Button::Fourth, ButtonTrigger::Down, button_test());
 
     /*
     let mut triggers = vec![button_handler, button_test()];

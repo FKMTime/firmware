@@ -16,8 +16,10 @@ use structs::ConnSettings;
 
 mod battery;
 mod buttons;
+mod lcd;
 mod mdns;
 mod rfid;
+mod scenes;
 mod stackmat;
 mod structs;
 
@@ -44,32 +46,48 @@ async fn main(spawner: Spawner) {
     esp_alloc::heap_allocator!(110 * 1024);
     let nvs = esp_hal_wifimanager::Nvs::new(0x9000, 0x6000);
 
+    let rng = esp_hal::rng::Rng::new(peripherals.RNG);
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
     let sck = io.pins.gpio4.degrade();
     let miso = io.pins.gpio5.degrade();
     let mosi = io.pins.gpio6.degrade();
-    let battery_input_pin = io.pins.gpio2;
+    let battery_input = io.pins.gpio2;
     let stackmat_rx = io.pins.gpio20.degrade();
     let button_input = Input::new(io.pins.gpio3, esp_hal::gpio::Pull::Down);
+    let shifter_data_pin = Output::new(io.pins.gpio10, esp_hal::gpio::Level::Low);
+    let shifter_clk_pin = Output::new(io.pins.gpio21, esp_hal::gpio::Level::Low);
+    let shifter_latch_pin = Output::new(io.pins.gpio1, esp_hal::gpio::Level::Low);
+    let mut adv_shift_reg = adv_shift_registers::AdvancedShiftRegister::<8, _>::new(
+        shifter_data_pin,
+        shifter_clk_pin,
+        shifter_latch_pin,
+        0,
+    );
 
-    let data_pin = Output::new(io.pins.gpio10, esp_hal::gpio::Level::Low);
-    let clk_pin = Output::new(io.pins.gpio21, esp_hal::gpio::Level::Low);
-    let latch_pin = Output::new(io.pins.gpio1, esp_hal::gpio::Level::Low);
-    let mut adv_shift_reg =
-        adv_shift_registers::AdvancedShiftRegister::<8, _>::new(data_pin, clk_pin, latch_pin, 0);
-
-    // off digits
+    // display digits
     let digits_shifters = adv_shift_reg.get_shifter_range_mut(2..8);
     digits_shifters.set_data(&[255; 6]);
 
     let buttons_shifter = adv_shift_reg.get_shifter_mut(0);
+    let lcd_shifter = adv_shift_reg.get_shifter_mut(1);
     let mut cs_pin = adv_shift_reg.get_pin_mut(1, 0, true);
     _ = cs_pin.set_high();
 
     let timg1 = TimerGroup::new(peripherals.TIMG1);
     esp_hal_embassy::init(timg1.timer0);
 
-    let rng = esp_hal::rng::Rng::new(peripherals.RNG);
+    _ = spawner.spawn(lcd::lcd_task(lcd_shifter));
+    _ = spawner.spawn(battery::batter_read_task(battery_input, peripherals.ADC1));
+    _ = spawner.spawn(buttons::buttons_task(button_input, buttons_shifter));
+    _ = spawner.spawn(stackmat::stackmat_task(peripherals.UART0, stackmat_rx));
+    _ = spawner.spawn(rfid::rfid_task(
+        miso,
+        mosi,
+        sck,
+        cs_pin,
+        peripherals.SPI2,
+        peripherals.DMA,
+    ));
 
     let mut wm_settings = esp_hal_wifimanager::WmSettings::default();
     wm_settings.ssid_generator = |efuse| {
@@ -98,21 +116,6 @@ async fn main(spawner: Spawner) {
         log::info!("conn_settings: {conn_settings:?}");
     }
     log::info!("wifi_res: {:?}", wifi_res);
-
-    _ = spawner.spawn(battery::batter_read_task(
-        battery_input_pin,
-        peripherals.ADC1,
-    ));
-    _ = spawner.spawn(buttons::buttons_task(button_input, buttons_shifter));
-    _ = spawner.spawn(stackmat::stackmat_task(peripherals.UART0, stackmat_rx));
-    _ = spawner.spawn(rfid::rfid_task(
-        miso,
-        mosi,
-        sck,
-        cs_pin,
-        peripherals.SPI2,
-        peripherals.DMA,
-    ));
 
     log::info!("Start mdns lookup...");
     let mdns_option = mdns::mdns_query(&wifi_res.sta_stack).await;
