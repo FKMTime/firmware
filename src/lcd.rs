@@ -41,6 +41,7 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMute
     _ = bl_pin.set_high();
 
     _ = lcd.clear(&mut delay).await;
+    _ = lcd.reset(&mut delay).await;
     _ = lcd.set_display_mode(
         DisplayMode {
             display: hd44780_driver::Display::On,
@@ -75,9 +76,10 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMute
             _ = time_str.push((minutes + b'0') as char);
             _ = time_str.push(':');
         }
-        _ = time_str.push_str(&alloc::format!("{seconds:02}.{ms:03}"));
 
+        _ = time_str.push_str(&alloc::format!("{seconds:02}.{ms:03}"));
         _ = lcd.write_str(&time_str, &mut delay).await;
+        _ = lcd.write_str(&" ".repeat(16 - 5 - time_str.len()), &mut delay).await;
         /*
         let (digits, n) = num_to_digits(time_ms as u128);
         for digit in &digits[..n] {
