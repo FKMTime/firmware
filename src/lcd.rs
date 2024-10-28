@@ -76,9 +76,11 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMute
             if minutes > 0 {
                 _ = time_str.push((minutes + b'0') as char);
                 _ = time_str.push(':');
+                _ = time_str.push_str(&alloc::format!("{seconds:02}.{ms:03}"));
+            } else {
+                _ = time_str.push_str(&alloc::format!("{seconds:01}.{ms:03}"));
             }
 
-            _ = time_str.push_str(&alloc::format!("{seconds:02}.{ms:03}"));
             _ = lcd.write_str(&time_str, &mut delay).await;
             _ = lcd.write_str(&" ".repeat(16 - 5 - time_str.len()), &mut delay).await;
         } else {
