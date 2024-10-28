@@ -4,13 +4,19 @@ use embassy_time::Timer;
 use esp_hal::{gpio::AnyPin, peripherals::UART0, uart::UartRx};
 
 #[embassy_executor::task]
-pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, time_sig: Rc<Signal<NoopRawMutex, u64>>) {
+pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, time_sig: Rc<Signal<NoopRawMutex, Option<u64>>>) {
     let serial_config = esp_hal::uart::config::Config::default().baudrate(1200);
     let mut uart = UartRx::new_async_with_config(uart, serial_config, uart_pin).unwrap();
 
     let mut buf = [0; 8];
     let mut read_buf = [0; 8];
+    let mut last_read = esp_hal::time::now();
     loop {
+        if (esp_hal::time::now() - last_read).to_millis() > 1500 {
+            //log::error!("Stackmat read timeout! (Probably disconnected)");
+            time_sig.signal(None);
+        }
+
         Timer::after_millis(10).await;
         let n = UartRx::drain_fifo(&mut uart, &mut read_buf);
         if n == 0 {
@@ -29,9 +35,11 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, time_sig: Rc<Signal<No
             buf[7] = r;
             if let Ok(parsed) = parse_stackmat_data(&buf) {
                 //log::warn!("parsed: {:?}", parsed);
-                time_sig.signal(parsed.1);
+                time_sig.signal(Some(parsed.1));
             }
         }
+
+        last_read = esp_hal::time::now();
     }
 }
 

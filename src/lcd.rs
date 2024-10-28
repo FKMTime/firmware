@@ -6,7 +6,7 @@ use embedded_hal::digital::OutputPin;
 use hd44780_driver::{bus::FourBitBusPins, charset::CharsetA02, memory_map::MemoryMap1602, non_blocking::HD44780, setup::DisplayOptions4Bit, DisplayMode};
 
 #[embassy_executor::task]
-pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMutex, u64>>) {
+pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMutex, Option<u64>>>) {
     let mut bl_pin = lcd_shifter.get_pin_mut(1, true);
     let reg_sel_pin = lcd_shifter.get_pin_mut(2, true);
     let e_pin = lcd_shifter.get_pin_mut(3, true);
@@ -67,19 +67,23 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMute
         let time_ms = time_sig.wait().await;
         _ = lcd.set_cursor_xy((5, 1), &mut delay).await;
 
-        let minutes: u8 = (time_ms / 60000) as u8;
-        let seconds: u8 = ((time_ms % 60000) / 1000) as u8;
-        let ms: u16 = (time_ms % 1000) as u16;
+        if let Some(time_ms) = time_ms {
+            let minutes: u8 = (time_ms / 60000) as u8;
+            let seconds: u8 = ((time_ms % 60000) / 1000) as u8;
+            let ms: u16 = (time_ms % 1000) as u16;
 
-        let mut time_str = heapless::String::<8>::new();
-        if minutes > 0 {
-            _ = time_str.push((minutes + b'0') as char);
-            _ = time_str.push(':');
+            let mut time_str = heapless::String::<8>::new();
+            if minutes > 0 {
+                _ = time_str.push((minutes + b'0') as char);
+                _ = time_str.push(':');
+            }
+
+            _ = time_str.push_str(&alloc::format!("{seconds:02}.{ms:03}"));
+            _ = lcd.write_str(&time_str, &mut delay).await;
+            _ = lcd.write_str(&" ".repeat(16 - 5 - time_str.len()), &mut delay).await;
+        } else {
+            _ = lcd.write_str(&" ".repeat(16 - 5), &mut delay).await;
         }
-
-        _ = time_str.push_str(&alloc::format!("{seconds:02}.{ms:03}"));
-        _ = lcd.write_str(&time_str, &mut delay).await;
-        _ = lcd.write_str(&" ".repeat(16 - 5 - time_str.len()), &mut delay).await;
         /*
         let (digits, n) = num_to_digits(time_ms as u128);
         for digit in &digits[..n] {

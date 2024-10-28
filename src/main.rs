@@ -77,7 +77,7 @@ async fn main(spawner: Spawner) {
     let timg1 = TimerGroup::new(peripherals.TIMG1);
     esp_hal_embassy::init(timg1.timer0);
 
-    let test_time_signal = alloc::rc::Rc::new(Signal::<NoopRawMutex, u64>::new());
+    let test_time_signal = alloc::rc::Rc::new(Signal::<NoopRawMutex, Option<u64>>::new());
     _ = spawner.spawn(lcd::lcd_task(lcd_shifter, test_time_signal.clone()));
     _ = spawner.spawn(battery::batter_read_task(battery_input, peripherals.ADC1));
     _ = spawner.spawn(buttons::buttons_task(button_input, buttons_shifter));
