@@ -285,6 +285,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "either"
+version = "1.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
+
+[[package]]
 name = "embassy-executor"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -838,6 +844,7 @@ dependencies = [
  "serde",
  "serde_json",
  "static_cell",
+ "ws-framer",
 ]
 
 [[package]]
@@ -1033,6 +1040,15 @@ checksum = "68b900aa2f7301e21c36462b170ee99994de34dff39a4a6a528e80e7376d07e5"
 dependencies = [
  "equivalent",
  "hashbrown",
+]
+
+[[package]]
+name = "itertools"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
+dependencies = [
+ "either",
 ]
 
 [[package]]
@@ -1652,6 +1668,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "36c1fec1a2bb5866f07c25f68c26e565c4c200aebb96d7e55710c19d3e8ac49b"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "ws-framer"
+version = "0.1.0"
+dependencies = [
+ "httparse",
+ "itoa",
+ "ws-framer-macros",
+]
+
+[[package]]
+name = "ws-framer-macros"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.85",
 ]
 
 [[package]]

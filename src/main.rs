@@ -23,6 +23,7 @@ mod rfid;
 mod scenes;
 mod stackmat;
 mod structs;
+mod ws;
 
 /*
 macro_rules! mk_static {
@@ -34,6 +35,13 @@ macro_rules! mk_static {
     }};
 }
 */
+
+pub fn random() -> u32 {
+    unsafe { &*esp_hal::peripherals::RNG::PTR }
+        .data()
+        .read()
+        .bits()
+}
 
 #[main]
 async fn main(spawner: Spawner) {
@@ -47,7 +55,7 @@ async fn main(spawner: Spawner) {
     esp_alloc::heap_allocator!(110 * 1024);
     let nvs = esp_hal_wifimanager::Nvs::new(0x9000, 0x6000);
 
-    let mut rng = esp_hal::rng::Rng::new(peripherals.RNG);
+    let rng = esp_hal::rng::Rng::new(peripherals.RNG);
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
     let sck = io.pins.gpio4.degrade();
     let miso = io.pins.gpio5.degrade();
@@ -118,6 +126,7 @@ async fn main(spawner: Spawner) {
         log::info!("conn_settings: {conn_settings:?}");
     }
     log::info!("wifi_res: {:?}", wifi_res);
+    _ = spawner.spawn(ws::ws_task(wifi_res.sta_stack));
 
     log::info!("Start mdns lookup...");
     let mdns_option = mdns::mdns_query(&wifi_res.sta_stack).await;
