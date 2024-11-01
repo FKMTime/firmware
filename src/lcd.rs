@@ -3,10 +3,11 @@ use alloc::rc::Rc;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Delay, Timer};
 use embedded_hal::digital::OutputPin;
-use hd44780_driver::{bus::FourBitBusPins, charset::CharsetA02, memory_map::MemoryMap1602, non_blocking::HD44780, setup::DisplayOptions4Bit, DisplayMode};
+use embedded_hal_async::delay::DelayNs;
+use hd44780_driver::{bus::FourBitBusPins, charset::{CharsetA02, CharsetWithFallback}, memory_map::{DisplayMemoryMap, MemoryMap1602}, non_blocking::{HD44780, bus::DataBus}, setup::DisplayOptions4Bit, DisplayMode};
 
 #[embassy_executor::task]
-pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMutex, Option<u64>>>) {
+pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMutex, Option<u64>>>, /*lcd_change_sig: Rc<Signal<NoopRawMutex, u8>>*/) {
     let mut bl_pin = lcd_shifter.get_pin_mut(1, true);
     let reg_sel_pin = lcd_shifter.get_pin_mut(2, true);
     let e_pin = lcd_shifter.get_pin_mut(3, true);
@@ -52,20 +53,15 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMute
     ).await;
     _ = lcd.clear(&mut delay).await;
 
-    _ = lcd.write_str("Lorem Ipsum", &mut delay).await;
-    _ = lcd.set_cursor_xy((13, 0), &mut delay).await;
-    _ = lcd.write_str("WOW", &mut delay).await;
-
-    _ = lcd.set_cursor_xy((0, 1), &mut delay).await;
-    _ = lcd.write_str("Test 1234567890", &mut delay).await;
+    _ = lcd.print(&alloc::format!("ID: {:X}", 694202137), 0, PrintAlign::Left, true, &mut delay).await;
+    _ = lcd.print(&alloc::format!("{}%", 69), 0, PrintAlign::Right, false, &mut delay).await;
+    _ = lcd.print(&alloc::format!("VER: {}", "v3.0"), 1, PrintAlign::Left, true, &mut delay).await;
 
     Timer::after_millis(5000).await;
-    _ = lcd.set_cursor_xy((5, 1), &mut delay).await;
-    _ = lcd.write_bytes(&[b' '; 11], &mut delay).await;
 
     loop {
         let time_ms = time_sig.wait().await;
-        _ = lcd.set_cursor_xy((5, 1), &mut delay).await;
+        //_ = lcd.set_cursor_xy((5, 1), &mut delay).await;
 
         if let Some(time_ms) = time_ms {
             let minutes: u8 = (time_ms / 60000) as u8;
@@ -81,10 +77,9 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMute
                 _ = time_str.push_str(&alloc::format!("{seconds:01}.{ms:03}"));
             }
 
-            _ = lcd.write_str(&time_str, &mut delay).await;
-            _ = lcd.write_str(&" ".repeat(16 - 5 - time_str.len()), &mut delay).await;
+            _ = lcd.print(&time_str, 1, PrintAlign::Center, true, &mut delay).await;
         } else {
-            _ = lcd.write_str(&" ".repeat(16 - 5), &mut delay).await;
+            _ = lcd.print("", 1, PrintAlign::Center, true, &mut delay).await;
         }
         /*
         let (digits, n) = num_to_digits(time_ms as u128);
@@ -117,4 +112,53 @@ fn num_to_digits(mut num: u128) -> ([u8; 40], usize) {
     }
 
     (tmp, pos)
+}
+
+/*
+impl<B, M, C> HD44780<B, M, C>
+where
+	B: DataBus,
+	M: DisplayMemoryMap,
+	C: CharsetWithFallback,
+*/
+
+pub enum PrintAlign {
+    Left,
+    Center,
+    Right
+}
+
+pub trait LcdExt {
+    async fn print<'a, D: DelayNs>(&mut self, text: &str, line: u8, align: PrintAlign, pad: bool, delay: &'a mut D) -> Result<(), ()>;
+}
+
+impl<B, M, C> LcdExt for HD44780<B, M, C>
+where
+	B: DataBus,
+	M: DisplayMemoryMap,
+	C: CharsetWithFallback {
+    async fn print<'a, D: DelayNs>(&mut self, text: &str, line: u8, align: PrintAlign, pad: bool, delay: &'a mut D) -> Result<(), ()> {
+        if line > 1 {
+            return Err(());
+        }
+
+        let x_offset = match align {
+            PrintAlign::Left => 0,
+            PrintAlign::Center => (16 - text.len()) / 2,
+            PrintAlign::Right => 16 - text.len(),
+        };
+
+        if pad {
+            let mut tmp_line = [b' '; 16];
+            tmp_line[x_offset..x_offset + text.len()].copy_from_slice(text.as_bytes());
+
+            self.set_cursor_xy((0, line), delay).await.map_err(|_| ())?;
+            self.write_bytes(&tmp_line, delay).await.map_err(|_| ())?;
+        } else {
+            self.set_cursor_xy((x_offset as u8, line), delay).await.map_err(|_| ())?;
+            self.write_str(text, delay).await.map_err(|_| ())?;
+        }
+
+        Ok(())
+    }
 }

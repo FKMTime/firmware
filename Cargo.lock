@@ -824,6 +824,7 @@ dependencies = [
  "embassy-sync 0.6.0",
  "embassy-time",
  "embedded-hal 1.0.0",
+ "embedded-hal-async",
  "embedded-io-async",
  "embedded-storage",
  "esp-alloc",

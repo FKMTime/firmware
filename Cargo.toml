@@ -33,6 +33,7 @@ embassy-futures = "0.1.1"
 hd44780-driver = { git = "https://github.com/JohnDoneth/hd44780-driver.git", features = ["async"] }
 embassy-sync = "0.6.0"
 ws-framer = { path = "../../ws-framer" }
+embedded-hal-async = "1.0.0"
 
 [profile.dev]
 # Rust debug is too slow.

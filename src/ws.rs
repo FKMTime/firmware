@@ -26,6 +26,7 @@ pub async fn ws_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>, 
         let r = socket.connect(remote_endpoint).await;
         if let Err(e) = r {
             log::error!("connect error: {:?}", e);
+            Timer::after_millis(1000).await;
             continue;
         }
 
@@ -61,6 +62,7 @@ pub async fn ws_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>, 
 
             if res.is_err() {
                 log::error!("ws: reader or writer err!");
+                Timer::after_millis(1000).await;
                 break;
             }
         }
