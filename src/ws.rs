@@ -1,5 +1,5 @@
 use core::str::FromStr;
-use embassy_net::{tcp::TcpSocket, Stack};
+use embassy_net::{tcp::{TcpReader, TcpSocket, TcpWriter}, Stack};
 use embassy_time::{Duration, Timer, WithTimeout};
 use embedded_io_async::Write;
 use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
@@ -13,7 +13,9 @@ pub async fn ws_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>, 
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
 
-    let mut buf = alloc::vec![0; 4096];
+    let mut ws_rx_buf = alloc::vec![0; 4096];
+    let mut ws_tx_buf = alloc::vec![0; 4096];
+
     'outer: loop {
         let mut socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
         socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
@@ -26,38 +28,61 @@ pub async fn ws_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>, 
         }
 
         log::info!("connected!");
-        let mut framer = WsFramer::<HalRandom>::new(true, &mut buf);
+        let mut tx_framer = WsFramer::<HalRandom>::new(true, &mut ws_tx_buf);
+        let mut rx_framer = WsFramer::<HalRandom>::new(false, &mut ws_rx_buf);
+
         let path = alloc::format!("{}?id={}&ver={}&chip={}&bt={}&firmware={}", ws_url.path, 694202137, "3.0", "no-chip", 69420, "no-firmware");
-        socket.write_all(&framer.gen_connect_packet(ws_url.host, &path, None)).await.unwrap();
+        socket.write_all(&tx_framer.gen_connect_packet(ws_url.host, &path, None)).await.unwrap();
 
 
         let mut buf = [0; 1024];
         let n = socket.read(&mut buf).await.unwrap();
         log::warn!("read: {n}");
 
-        // TODO: split
-        //socket.spl
+        let (mut reader, mut writer) = socket.split();
         loop {
-            loop {
-                let res = socket.read(framer.mut_buf()).with_timeout(Duration::from_millis(1)).await;
-                if let Ok(read_n) = res {
-                    let read_n = read_n.unwrap();
-                    if read_n == 0 {
-                        break 'outer;
-                    }
+            let res = embassy_futures::select::select(
+                ws_reader(&mut reader, &mut rx_framer), 
+                ws_writer(&mut writer, &mut tx_framer)
+            ).await;
 
-                    let res = framer.process_data(read_n);
-                    if res.is_some() {
-                        log::info!("recv: {res:?}");
-                    }
-                } else {
-                    break;
-                }
+            let res = match res {
+                embassy_futures::select::Either::First(res) => res,
+                embassy_futures::select::Either::Second(res) => res
+            };
+
+            if res.is_err() {
+                log::error!("ws: reader or writer err!");
+                break;
             }
-
-            socket.write_all(&framer.text("Lorem")).await.unwrap();
-            Timer::after_millis(1000).await;
         }
+    }
+}
+
+async fn ws_reader(reader: &mut TcpReader<'_>, framer: &mut WsFramer<'_, HalRandom>) -> Result<(), ()> {
+    loop {
+        let res = reader.read(framer.mut_buf()).await;
+        if let Err(e) = res {
+            log::error!("ws_read: {e:?}");
+            return Err(());
+        }
+
+        let n = res.unwrap();
+        if n == 0 {
+            log::warn!("read_n: 0");
+            return Err(());
+        }
+
+        if let Some(frame) = framer.process_data(n) {
+            log::info!("recv_frame: {:?}", frame);
+        }
+    }
+}
+
+async fn ws_writer(writer: &mut TcpWriter<'_>, framer: &mut WsFramer<'_, HalRandom>) -> Result<(), ()> {
+    loop {
+        writer.write_all(&framer.text("{\"logs\": {\"esp_id\": 694202137, \"logs\": [{\"millis\": 69420, \"msg\": \"wowowowowo\"}]}}")).await.map_err(|_| ())?;
+        Timer::after_millis(1000).await;
     }
 }
 
