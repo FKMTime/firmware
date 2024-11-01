@@ -7,7 +7,7 @@ use embedded_hal_async::delay::DelayNs;
 use hd44780_driver::{bus::FourBitBusPins, charset::{CharsetA02, CharsetWithFallback}, memory_map::{DisplayMemoryMap, MemoryMap1602}, non_blocking::{HD44780, bus::DataBus}, setup::DisplayOptions4Bit, DisplayMode};
 
 #[embassy_executor::task]
-pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMutex, Option<u64>>>, /*lcd_change_sig: Rc<Signal<NoopRawMutex, u8>>*/) {
+pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMutex, Option<u64>>>, lcd_change_sig: Rc<Signal<NoopRawMutex, u8>>) {
     let mut bl_pin = lcd_shifter.get_pin_mut(1, true);
     let reg_sel_pin = lcd_shifter.get_pin_mut(2, true);
     let e_pin = lcd_shifter.get_pin_mut(3, true);
@@ -53,11 +53,30 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMute
     ).await;
     _ = lcd.clear(&mut delay).await;
 
+    let mut signal_val = 0;
     _ = lcd.print(&alloc::format!("ID: {:X}", 694202137), 0, PrintAlign::Left, true, &mut delay).await;
     _ = lcd.print(&alloc::format!("{}%", 69), 0, PrintAlign::Right, false, &mut delay).await;
     _ = lcd.print(&alloc::format!("VER: {}", "v3.0"), 1, PrintAlign::Left, true, &mut delay).await;
 
-    Timer::after_millis(5000).await;
+    Timer::after_millis(2500).await;
+
+    // TODO: print to lcd if wifi setup active
+    _ = lcd.clear(&mut delay).await;
+    _ = lcd.print("Waiting for", 0, PrintAlign::Center, false, &mut delay).await;
+    _ = lcd.print("WIFI connection", 1, PrintAlign::Center, false, &mut delay).await;
+
+    signal_val = signal_val.max(lcd_change_sig.wait().await);
+    if signal_val == 0 {
+        _ = lcd.print("MDNS", 1, PrintAlign::Center, true, &mut delay).await;
+        loop {
+            signal_val = signal_val.max(lcd_change_sig.wait().await);
+            if signal_val >= 1 {
+                break;
+            }
+        }
+    }
+
+    _ = lcd.clear(&mut delay).await;
 
     loop {
         let time_ms = time_sig.wait().await;
