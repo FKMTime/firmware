@@ -1,22 +1,24 @@
 use core::str::FromStr;
+use alloc::rc::Rc;
 use embassy_net::{tcp::{TcpReader, TcpSocket, TcpWriter}, Stack};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer, WithTimeout};
 use embedded_io_async::Write;
 use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
-use ws_framer::{RngProvider, WsFramer, WsUrl};
+use ws_framer::{RngProvider, WsRxFramer, WsTxFramer, WsUrl};
 
 
 #[embassy_executor::task]
 pub async fn ws_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>, ws_url: heapless::String<255>) {
     let ws_url = WsUrl::from_str(&ws_url).unwrap();
 
-    let mut rx_buffer = [0; 4096];
-    let mut tx_buffer = [0; 4096];
+    let mut rx_buffer = [0; 8192];
+    let mut tx_buffer = [0; 8192];
 
-    let mut ws_rx_buf = alloc::vec![0; 4096];
-    let mut ws_tx_buf = alloc::vec![0; 4096];
+    let mut ws_rx_buf = alloc::vec![0; 8192];
+    let mut ws_tx_buf = alloc::vec![0; 8192];
 
-    'outer: loop {
+    loop {
         let mut socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
         socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
@@ -28,22 +30,28 @@ pub async fn ws_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>, 
         }
 
         log::info!("connected!");
-        let mut tx_framer = WsFramer::<HalRandom>::new(true, &mut ws_tx_buf);
-        let mut rx_framer = WsFramer::<HalRandom>::new(false, &mut ws_rx_buf);
+        let mut tx_framer = WsTxFramer::<HalRandom>::new(true, &mut ws_tx_buf);
+        let mut rx_framer = WsRxFramer::new(&mut ws_rx_buf);
 
         let path = alloc::format!("{}?id={}&ver={}&chip={}&bt={}&firmware={}", ws_url.path, 694202137, "3.0", "no-chip", 69420, "no-firmware");
-        socket.write_all(&tx_framer.gen_connect_packet(ws_url.host, &path, None)).await.unwrap();
+        socket.write_all(&tx_framer.generate_http_upgrade(ws_url.host, &path, None)).await.unwrap();
+        loop {
+            let n = socket.read(rx_framer.mut_buf()).await.unwrap();
+            let res = rx_framer.process_http_response(n);
 
+            if let Some(code) = res {
+                log::info!("http_resp_code: {code}");
+                break;
+            }
+        }
 
-        let mut buf = [0; 1024];
-        let n = socket.read(&mut buf).await.unwrap();
-        log::warn!("read: {n}");
 
         let (mut reader, mut writer) = socket.split();
+        let update_sig = Rc::new(Signal::new());
         loop {
             let res = embassy_futures::select::select(
-                ws_reader(&mut reader, &mut rx_framer), 
-                ws_writer(&mut writer, &mut tx_framer)
+                ws_reader(&mut reader, &mut rx_framer, update_sig.clone()), 
+                ws_writer(&mut writer, &mut tx_framer, update_sig.clone())
             ).await;
 
             let res = match res {
@@ -59,7 +67,7 @@ pub async fn ws_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>, 
     }
 }
 
-async fn ws_reader(reader: &mut TcpReader<'_>, framer: &mut WsFramer<'_, HalRandom>) -> Result<(), ()> {
+async fn ws_reader(reader: &mut TcpReader<'_>, framer: &mut WsRxFramer<'_>, update_sig: Rc<Signal<NoopRawMutex, ()>>) -> Result<(), ()> {
     loop {
         let res = reader.read(framer.mut_buf()).await;
         if let Err(e) = res {
@@ -74,13 +82,16 @@ async fn ws_reader(reader: &mut TcpReader<'_>, framer: &mut WsFramer<'_, HalRand
         }
 
         if let Some(frame) = framer.process_data(n) {
-            log::info!("recv_frame: {:?}", frame);
+            log::info!("recv_frame: {:?}", frame.opcode());
+            update_sig.signal(());
         }
     }
 }
 
-async fn ws_writer(writer: &mut TcpWriter<'_>, framer: &mut WsFramer<'_, HalRandom>) -> Result<(), ()> {
+async fn ws_writer(writer: &mut TcpWriter<'_>, framer: &mut WsTxFramer<'_, HalRandom>, update_sig: Rc<Signal<NoopRawMutex, ()>>) -> Result<(), ()> {
     loop {
+        //update_sig.wait().await;
+        //writer.write_all(&framer.pong(&[])).await.map_err(|_| ())?;
         writer.write_all(&framer.text("{\"logs\": {\"esp_id\": 694202137, \"logs\": [{\"millis\": 69420, \"msg\": \"wowowowowo\"}]}}")).await.map_err(|_| ())?;
         Timer::after_millis(1000).await;
     }
