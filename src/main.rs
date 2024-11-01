@@ -126,11 +126,14 @@ async fn main(spawner: Spawner) {
         log::info!("conn_settings: {conn_settings:?}");
     }
     log::info!("wifi_res: {:?}", wifi_res);
-    _ = spawner.spawn(ws::ws_task(wifi_res.sta_stack));
 
     log::info!("Start mdns lookup...");
     let mdns_option = mdns::mdns_query(&wifi_res.sta_stack).await;
     log::info!("mdns: {:?}", mdns_option);
+
+    if let Some(ws_url) = mdns_option {
+        _ = spawner.spawn(ws::ws_task(wifi_res.sta_stack, ws_url));
+    }
 
     loop {
         log::info!("bump {}", esp_hal::time::now());
