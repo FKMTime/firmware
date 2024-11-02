@@ -2,13 +2,14 @@ use core::str::FromStr;
 use alloc::rc::Rc;
 use embassy_net::{tcp::{TcpReader, TcpSocket, TcpWriter}, Stack};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use embassy_time::{Duration, Timer, WithTimeout};
+use embassy_time::Timer;
 use embedded_io_async::Write;
 use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
 use ws_framer::{RngProvider, WsRxFramer, WsTxFramer, WsUrl};
+use crate::scenes::GlobalState;
 
 #[embassy_executor::task]
-pub async fn ws_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>, ws_url: heapless::String<255>) {
+pub async fn ws_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>, ws_url: heapless::String<255>, global_state: GlobalState) {
     let ws_url = WsUrl::from_str(&ws_url).unwrap();
 
     let mut rx_buffer = [0; 8192];
@@ -18,10 +19,10 @@ pub async fn ws_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>, 
     let mut ws_tx_buf = alloc::vec![0; 8192];
 
     loop {
-        /*
-        crate::scenes::CURRENT_STATE.lock().await.server_connected = Some(false);
-        crate::scenes::STATE_CHANGED.signal(());
-        */
+        {
+            global_state.lock().await.server_connected = Some(false);
+        }
+
         let mut socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
         socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
@@ -33,11 +34,9 @@ pub async fn ws_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>, 
             continue;
         }
 
-        /*
-        crate::scenes::CURRENT_STATE.lock().await.server_connected = Some(true);
-        crate::scenes::STATE_CHANGED.signal(());
-        */
-
+        {
+            global_state.lock().await.server_connected = Some(true);
+        }
         log::info!("connected!");
         let mut tx_framer = WsTxFramer::<HalRandom>::new(true, &mut ws_tx_buf);
         let mut rx_framer = WsRxFramer::new(&mut ws_rx_buf);

@@ -1,4 +1,5 @@
-use embassy_sync::{blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex}, mutex::{Mutex, MutexGuard}, signal::Signal};
+use alloc::rc::Rc;
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::{Mutex, MutexGuard}, signal::Signal};
 
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
@@ -36,6 +37,7 @@ pub struct SignaledNoopMutex<T> {
     update_sig: Signal<NoopRawMutex, ()>
 }
 
+#[allow(dead_code)]
 impl<T> SignaledNoopMutex<T> {
     pub fn new(initial: T) -> Self {
         let sig = Signal::new();
@@ -62,9 +64,9 @@ impl<T> SignaledNoopMutex<T> {
         }
     }
 
-    pub async fn wait_lock(&self) -> SignaledNoopMutexGuard<'_, T> {
+    pub async fn wait_lock(&self) -> MutexGuard<'_, NoopRawMutex, T> {
         self.update_sig.wait().await;
-        self.lock().await
+        self.inner.lock().await
     }
 }
 
@@ -92,25 +94,20 @@ impl<'a, T> core::ops::DerefMut for SignaledNoopMutexGuard<'a, T> {
     }
 }
 
-pub struct GlobalState {
-    pub scene: SignaledNoopMutex<Scene>,
-    pub server_connected: SignaledNoopMutex<Option<bool>>
-    //pub server_connected: Option<bool>,
+pub type GlobalState = Rc<SignaledNoopMutex<GlobalStateInner>>;
+
+#[derive(Debug, Clone)]
+pub struct GlobalStateInner {
+    pub scene: Scene,
+    pub server_connected: Option<bool>
 }
 
-impl GlobalState {
+impl GlobalStateInner {
     pub fn new() -> Self {
         Self {
-            scene: SignaledNoopMutex::new(Scene::WifiConnect),
-            server_connected: SignaledNoopMutex::new(None)
+            scene: Scene::WifiConnect,
+            server_connected: None
         }
-    }
-}
-
-impl core::fmt::Debug for GlobalState {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str("GlobalState TODO")?;
-        Ok(())
     }
 }
 

@@ -14,7 +14,7 @@ use esp_hal::{
     timer::timg::TimerGroup,
 };
 use esp_wifi::EspWifiInitFor;
-use scenes::{GlobalState, Scene};
+use scenes::{GlobalStateInner, Scene, SignaledNoopMutex};
 use structs::ConnSettings;
 
 mod battery;
@@ -26,24 +26,6 @@ mod scenes;
 mod stackmat;
 mod structs;
 mod ws;
-
-/*
-macro_rules! mk_static {
-    ($t:ty,$val:expr) => {{
-        static STATIC_CELL: static_cell::StaticCell<$t> = static_cell::StaticCell::new();
-        #[deny(unused_attributes)]
-        let x = STATIC_CELL.uninit().write(($val));
-        x
-    }};
-}
-*/
-
-pub fn random() -> u32 {
-    unsafe { &*esp_hal::peripherals::RNG::PTR }
-        .data()
-        .read()
-        .bits()
-}
 
 #[main]
 async fn main(spawner: Spawner) {
@@ -86,7 +68,7 @@ async fn main(spawner: Spawner) {
 
     let timg1 = TimerGroup::new(peripherals.TIMG1);
     esp_hal_embassy::init(timg1.timer0);
-    let global_state = Rc::new(GlobalState::new());
+    let global_state = Rc::new(SignaledNoopMutex::new(GlobalStateInner::new()));
 
     let test_time_signal = alloc::rc::Rc::new(Signal::<NoopRawMutex, Option<u64>>::new());
     _ = spawner.spawn(lcd::lcd_task(lcd_shifter, global_state.clone()));
@@ -129,7 +111,7 @@ async fn main(spawner: Spawner) {
         log::info!("conn_settings: {conn_settings:?}");
     }
     log::info!("wifi_res: {:?}", wifi_res);
-    *global_state.scene.lock().await = Scene::MdnsWait;
+    global_state.lock().await.scene = Scene::MdnsWait;
 
     log::info!("Start mdns lookup...");
     let mdns_option = mdns::mdns_query(&wifi_res.sta_stack).await;
@@ -141,10 +123,10 @@ async fn main(spawner: Spawner) {
         scenes::STATE_CHANGED.signal(());
         */
 
-        _ = spawner.spawn(ws::ws_task(wifi_res.sta_stack, ws_url));
+        _ = spawner.spawn(ws::ws_task(wifi_res.sta_stack, ws_url, global_state.clone()));
     }
 
-    *global_state.scene.lock().await = Scene::WaitingForCompetitor { time: None };
+    global_state.lock().await.scene = Scene::WaitingForCompetitor { time: None };
     loop {
         log::info!("bump {}", esp_hal::time::now());
         Timer::after_millis(15000).await;
