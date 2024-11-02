@@ -89,8 +89,7 @@ async fn main(spawner: Spawner) {
     let global_state = Rc::new(GlobalState::new());
 
     let test_time_signal = alloc::rc::Rc::new(Signal::<NoopRawMutex, Option<u64>>::new());
-    let lcd_change_sig = alloc::rc::Rc::new(Signal::<NoopRawMutex, u8>::new());
-    _ = spawner.spawn(lcd::lcd_task(lcd_shifter, test_time_signal.clone(), lcd_change_sig.clone()));
+    _ = spawner.spawn(lcd::lcd_task(lcd_shifter, global_state.clone()));
     _ = spawner.spawn(battery::batter_read_task(battery_input, peripherals.ADC1));
     _ = spawner.spawn(buttons::buttons_task(button_input, buttons_shifter));
     _ = spawner.spawn(stackmat::stackmat_task(peripherals.UART0, stackmat_rx, test_time_signal));
@@ -130,10 +129,8 @@ async fn main(spawner: Spawner) {
         log::info!("conn_settings: {conn_settings:?}");
     }
     log::info!("wifi_res: {:?}", wifi_res);
-    /*
-    scenes::CURRENT_STATE.lock().await.scene = Scene::MdnsWait;
-    scenes::STATE_CHANGED.signal(());
-    */
+    *global_state.scene.lock().await = Scene::MdnsWait;
+    global_state.scene.signal();
 
     log::info!("Start mdns lookup...");
     let mdns_option = mdns::mdns_query(&wifi_res.sta_stack).await;
@@ -148,10 +145,8 @@ async fn main(spawner: Spawner) {
         _ = spawner.spawn(ws::ws_task(wifi_res.sta_stack, ws_url));
     }
 
-    /*
-    scenes::CURRENT_STATE.lock().await.scene = Scene::WaitingForCompetitor { time: None };
-    scenes::STATE_CHANGED.signal(());
-    */
+    *global_state.scene.lock().await = Scene::WaitingForCompetitor { time: None };
+    global_state.scene.signal();
     loop {
         log::info!("bump {}", esp_hal::time::now());
         Timer::after_millis(15000).await;

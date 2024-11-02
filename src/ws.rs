@@ -7,9 +7,6 @@ use embedded_io_async::Write;
 use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
 use ws_framer::{RngProvider, WsRxFramer, WsTxFramer, WsUrl};
 
-use crate::scenes::Scene;
-
-
 #[embassy_executor::task]
 pub async fn ws_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>, ws_url: heapless::String<255>) {
     let ws_url = WsUrl::from_str(&ws_url).unwrap();

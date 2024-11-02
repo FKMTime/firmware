@@ -38,9 +38,12 @@ pub struct SignaledNoopMutex<T> {
 
 impl<T> SignaledNoopMutex<T> {
     pub fn new(initial: T) -> Self {
+        let sig = Signal::new();
+        sig.signal(());
+
         Self {
             inner: Mutex::new(initial),
-            update_sig: Signal::new()
+            update_sig: sig
         }
     }
 
@@ -48,7 +51,16 @@ impl<T> SignaledNoopMutex<T> {
         self.update_sig.wait().await;
     }
 
-    pub async fn value(&self) -> MutexGuard<'_, NoopRawMutex, T> {
+    pub fn signal(&self) {
+        self.update_sig.signal(());
+    }
+
+    pub async fn lock(&self) -> MutexGuard<'_, NoopRawMutex, T> {
+        self.inner.lock().await
+    }
+
+    pub async fn wait_lock(&self) -> MutexGuard<'_, NoopRawMutex, T> {
+        self.update_sig.wait().await;
         self.inner.lock().await
     }
 }
