@@ -130,7 +130,6 @@ async fn main(spawner: Spawner) {
     }
     log::info!("wifi_res: {:?}", wifi_res);
     *global_state.scene.lock().await = Scene::MdnsWait;
-    global_state.scene.signal();
 
     log::info!("Start mdns lookup...");
     let mdns_option = mdns::mdns_query(&wifi_res.sta_stack).await;
@@ -146,7 +145,6 @@ async fn main(spawner: Spawner) {
     }
 
     *global_state.scene.lock().await = Scene::WaitingForCompetitor { time: None };
-    global_state.scene.signal();
     loop {
         log::info!("bump {}", esp_hal::time::now());
         Timer::after_millis(15000).await;

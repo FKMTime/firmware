@@ -55,13 +55,40 @@ impl<T> SignaledNoopMutex<T> {
         self.update_sig.signal(());
     }
 
-    pub async fn lock(&self) -> MutexGuard<'_, NoopRawMutex, T> {
-        self.inner.lock().await
+    pub async fn lock(&self) -> SignaledNoopMutexGuard<'_, T> {
+        SignaledNoopMutexGuard {
+            update_sig: &self.update_sig,
+            inner_guard: self.inner.lock().await
+        }
     }
 
-    pub async fn wait_lock(&self) -> MutexGuard<'_, NoopRawMutex, T> {
+    pub async fn wait_lock(&self) -> SignaledNoopMutexGuard<'_, T> {
         self.update_sig.wait().await;
-        self.inner.lock().await
+        self.lock().await
+    }
+}
+
+pub struct SignaledNoopMutexGuard<'a, T> {
+    update_sig: &'a Signal<NoopRawMutex, ()>,
+    inner_guard: MutexGuard<'a, NoopRawMutex, T>
+}
+
+impl<'a, T> Drop for SignaledNoopMutexGuard<'a, T> {
+    fn drop(&mut self) {
+        self.update_sig.signal(()); // signal value
+    }
+}
+
+impl<'a, T> core::ops::Deref for SignaledNoopMutexGuard<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        self.inner_guard.deref()
+    }
+}
+
+impl<'a, T> core::ops::DerefMut for SignaledNoopMutexGuard<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner_guard.deref_mut()
     }
 }
 
