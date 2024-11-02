@@ -3,6 +3,8 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::Timer;
 use esp_hal::{gpio::AnyPin, peripherals::UART0, uart::UartRx};
 
+use crate::scenes::Scene;
+
 #[embassy_executor::task]
 pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, time_sig: Rc<Signal<NoopRawMutex, Option<u64>>>) {
     let serial_config = esp_hal::uart::config::Config::default().baudrate(1200);
@@ -34,8 +36,13 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, time_sig: Rc<Signal<No
 
             buf[7] = r;
             if let Ok(parsed) = parse_stackmat_data(&buf) {
+                /*
+                crate::scenes::CURRENT_STATE.lock().await.scene = Scene::Timer { inspection_time: parsed.1 };
+                crate::scenes::STATE_CHANGED.signal(());
+                */
+
                 //log::warn!("parsed: {:?}", parsed);
-                time_sig.signal(Some(parsed.1));
+                //time_sig.signal(Some(parsed.1));
             }
         }
 

@@ -53,7 +53,6 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMute
     ).await;
     _ = lcd.clear(&mut delay).await;
 
-    let mut signal_val = 0;
     _ = lcd.print(&alloc::format!("ID: {:X}", 694202137), 0, PrintAlign::Left, true, &mut delay).await;
     _ = lcd.print(&alloc::format!("{}%", 69), 0, PrintAlign::Right, false, &mut delay).await;
     _ = lcd.print(&alloc::format!("VER: {}", "v3.0"), 1, PrintAlign::Left, true, &mut delay).await;
@@ -62,20 +61,60 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMute
 
     // TODO: print to lcd if wifi setup active
     _ = lcd.clear(&mut delay).await;
-    _ = lcd.print("Waiting for", 0, PrintAlign::Center, false, &mut delay).await;
-    _ = lcd.print("WIFI connection", 1, PrintAlign::Center, false, &mut delay).await;
+    /*
+    loop {
+        let current = crate::scenes::CURRENT_STATE.lock().await.clone();
+        if current.server_connected == Some(false) {
+            _ = lcd.print("Server", 0, PrintAlign::Center, true, &mut delay).await;
+            _ = lcd.print("Disconnected", 1, PrintAlign::Center, true, &mut delay).await;
+        } else {
+            let current_scene = current.scene.clone();
+            log::warn!("current_scene: {:?}", current_scene);
 
-    signal_val = signal_val.max(lcd_change_sig.wait().await);
-    if signal_val == 0 {
-        _ = lcd.print("MDNS", 1, PrintAlign::Center, true, &mut delay).await;
-        loop {
-            signal_val = signal_val.max(lcd_change_sig.wait().await);
-            if signal_val >= 1 {
-                break;
+            match current_scene {
+                crate::scenes::Scene::WifiConnect => {
+                    _ = lcd.print("Waiting for", 0, PrintAlign::Center, true, &mut delay).await;
+                    _ = lcd.print("WIFI connection", 1, PrintAlign::Center, true, &mut delay).await;
+                },
+                crate::scenes::Scene::AutoSetupWait => todo!(),
+                crate::scenes::Scene::MdnsWait => {
+                    _ = lcd.print("Waiting for", 0, PrintAlign::Center, true, &mut delay).await;
+                    _ = lcd.print("MDNS", 1, PrintAlign::Center, true, &mut delay).await;
+                },
+                crate::scenes::Scene::WaitingForCompetitor { time } => {
+                    _ = lcd.print("Waiting for", 0, PrintAlign::Center, true, &mut delay).await;
+                    _ = lcd.print("Competitor", 1, PrintAlign::Center, true, &mut delay).await;
+                },
+                crate::scenes::Scene::CompetitorInfo() => todo!(),
+                crate::scenes::Scene::Inspection { start_time } => todo!(),
+                crate::scenes::Scene::Timer { inspection_time } => {
+                    let time_ms = inspection_time;
+                    let minutes: u8 = (time_ms / 60000) as u8;
+                    let seconds: u8 = ((time_ms % 60000) / 1000) as u8;
+                    let ms: u16 = (time_ms % 1000) as u16;
+
+                    let mut time_str = heapless::String::<8>::new();
+                    if minutes > 0 {
+                        _ = time_str.push((minutes + b'0') as char);
+                        _ = time_str.push(':');
+                        _ = time_str.push_str(&alloc::format!("{seconds:02}.{ms:03}"));
+                    } else {
+                        _ = time_str.push_str(&alloc::format!("{seconds:01}.{ms:03}"));
+                    }
+
+                    _ = lcd.print(&time_str, 0, PrintAlign::Center, true, &mut delay).await;
+                    _ = lcd.print("", 1, PrintAlign::Left, true, &mut delay).await;
+                },
+                crate::scenes::Scene::Finished { inspection_time, solve_time } => todo!(),
+                crate::scenes::Scene::Error { msg } => todo!(),
             }
         }
-    }
 
+        crate::scenes::STATE_CHANGED.wait().await;
+    }
+    */
+
+    /*
     _ = lcd.clear(&mut delay).await;
 
     loop {
@@ -111,6 +150,7 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, time_sig: Rc<Signal<NoopRawMute
         }
         */
     }
+    */
 }
 
 fn num_to_digits(mut num: u128) -> ([u8; 40], usize) {
@@ -161,21 +201,28 @@ where
             return Err(());
         }
 
-        let x_offset = match align {
-            PrintAlign::Left => 0,
-            PrintAlign::Center => (16 - text.len()) / 2,
-            PrintAlign::Right => 16 - text.len(),
+        let x_offset = if text.len() < 16 {
+            match align {
+                PrintAlign::Left => 0,
+                PrintAlign::Center => (16 - text.len()) / 2,
+                PrintAlign::Right => 16 - text.len(),
+            }
+        } else {
+            0
         };
 
+        let text = if text.len() > 16 { &text[..16] } else { text };
         if pad {
             let mut tmp_line = [b' '; 16];
-            tmp_line[x_offset..x_offset + text.len()].copy_from_slice(text.as_bytes());
+            let end_offset = (x_offset + text.len()).min(16);
+            tmp_line[x_offset..end_offset].copy_from_slice(&text.as_bytes()[..(end_offset - x_offset)]);
 
             self.set_cursor_xy((0, line), delay).await.map_err(|_| ())?;
             self.write_bytes(&tmp_line, delay).await.map_err(|_| ())?;
         } else {
+
             self.set_cursor_xy((x_offset as u8, line), delay).await.map_err(|_| ())?;
-            self.write_str(text, delay).await.map_err(|_| ())?;
+            self.write_str(&text, delay).await.map_err(|_| ())?;
         }
 
         Ok(())

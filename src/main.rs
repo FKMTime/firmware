@@ -2,6 +2,7 @@
 #![no_main]
 
 extern crate alloc;
+use alloc::rc::Rc;
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::Timer;
@@ -13,6 +14,7 @@ use esp_hal::{
     timer::timg::TimerGroup,
 };
 use esp_wifi::EspWifiInitFor;
+use scenes::{GlobalState, Scene};
 use structs::ConnSettings;
 
 mod battery;
@@ -84,6 +86,7 @@ async fn main(spawner: Spawner) {
 
     let timg1 = TimerGroup::new(peripherals.TIMG1);
     esp_hal_embassy::init(timg1.timer0);
+    let global_state = Rc::new(GlobalState::new());
 
     let test_time_signal = alloc::rc::Rc::new(Signal::<NoopRawMutex, Option<u64>>::new());
     let lcd_change_sig = alloc::rc::Rc::new(Signal::<NoopRawMutex, u8>::new());
@@ -127,17 +130,28 @@ async fn main(spawner: Spawner) {
         log::info!("conn_settings: {conn_settings:?}");
     }
     log::info!("wifi_res: {:?}", wifi_res);
-    lcd_change_sig.signal(0);
+    /*
+    scenes::CURRENT_STATE.lock().await.scene = Scene::MdnsWait;
+    scenes::STATE_CHANGED.signal(());
+    */
 
     log::info!("Start mdns lookup...");
     let mdns_option = mdns::mdns_query(&wifi_res.sta_stack).await;
     log::info!("mdns: {:?}", mdns_option);
-    lcd_change_sig.signal(1);
 
     if let Some(ws_url) = mdns_option {
+        /*
+        scenes::CURRENT_STATE.lock().await.server_connected = Some(false);
+        scenes::STATE_CHANGED.signal(());
+        */
+
         _ = spawner.spawn(ws::ws_task(wifi_res.sta_stack, ws_url));
     }
 
+    /*
+    scenes::CURRENT_STATE.lock().await.scene = Scene::WaitingForCompetitor { time: None };
+    scenes::STATE_CHANGED.signal(());
+    */
     loop {
         log::info!("bump {}", esp_hal::time::now());
         Timer::after_millis(15000).await;
