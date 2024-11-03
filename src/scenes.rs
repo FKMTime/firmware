@@ -36,6 +36,22 @@ pub enum Scene {
     },
 }
 
+impl Scene {
+    pub fn can_be_lcd_overwritten(&self) -> bool {
+        match self {
+            Scene::WifiConnect => false,
+            Scene::AutoSetupWait => false,
+            Scene::MdnsWait => false,
+            Scene::WaitingForCompetitor { .. } => true,
+            Scene::CompetitorInfo() => true,
+            Scene::Inspection { .. } => false,
+            Scene::Timer { .. } => false,
+            Scene::Finished { .. } => false,
+            Scene::Error { .. } => false,
+        }
+    }
+}
+
 pub struct SignaledNoopMutex<T> {
     inner: Mutex<NoopRawMutex, T>,
     update_sig: Signal<NoopRawMutex, ()>,
