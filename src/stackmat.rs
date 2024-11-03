@@ -1,6 +1,6 @@
+use crate::scenes::GlobalState;
 use embassy_time::Timer;
 use esp_hal::{gpio::AnyPin, peripherals::UART0, uart::UartRx};
-use crate::scenes::GlobalState;
 
 #[embassy_executor::task]
 pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, global_state: GlobalState) {

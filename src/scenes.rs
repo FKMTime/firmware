@@ -1,5 +1,9 @@
 use alloc::rc::Rc;
-use embassy_sync::{blocking_mutex::raw::{NoopRawMutex, RawMutex}, mutex::{Mutex, MutexGuard}, signal::Signal};
+use embassy_sync::{
+    blocking_mutex::raw::{NoopRawMutex, RawMutex},
+    mutex::{Mutex, MutexGuard},
+    signal::Signal,
+};
 
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
@@ -34,7 +38,7 @@ pub enum Scene {
 
 pub struct SignaledNoopMutex<T> {
     inner: Mutex<NoopRawMutex, T>,
-    update_sig: Signal<NoopRawMutex, ()>
+    update_sig: Signal<NoopRawMutex, ()>,
 }
 
 #[allow(dead_code)]
@@ -45,7 +49,7 @@ impl<T> SignaledNoopMutex<T> {
 
         Self {
             inner: Mutex::new(initial),
-            update_sig: sig
+            update_sig: sig,
         }
     }
 
@@ -60,7 +64,7 @@ impl<T> SignaledNoopMutex<T> {
     pub async fn lock(&self) -> SignaledNoopMutexGuard<'_, T> {
         SignaledNoopMutexGuard {
             update_sig: &self.update_sig,
-            inner_guard: self.inner.lock().await
+            inner_guard: self.inner.lock().await,
         }
     }
 
@@ -76,7 +80,7 @@ impl<T> SignaledNoopMutex<T> {
 
 pub struct SignaledNoopMutexGuard<'a, T> {
     update_sig: &'a Signal<NoopRawMutex, ()>,
-    inner_guard: MutexGuard<'a, NoopRawMutex, T>
+    inner_guard: MutexGuard<'a, NoopRawMutex, T>,
 }
 
 impl<'a, T> Drop for SignaledNoopMutexGuard<'a, T> {
@@ -103,14 +107,14 @@ pub type GlobalState = Rc<GlobalStateInner>;
 
 pub struct GlobalStateInner {
     pub state: SignaledNoopMutex<SignaledGlobalStateInner>,
-    pub timer_signal: Signal<NoopRawMutex, Option<u64>>
+    pub timer_signal: Signal<NoopRawMutex, Option<u64>>,
 }
 
 impl GlobalStateInner {
     pub fn new() -> Self {
         Self {
             state: SignaledNoopMutex::new(SignaledGlobalStateInner::new()),
-            timer_signal: Signal::new()
+            timer_signal: Signal::new(),
         }
     }
 
@@ -126,7 +130,7 @@ impl GlobalStateInner {
 pub struct SignaledGlobalStateInner {
     pub scene: Scene,
     pub server_connected: Option<bool>,
-    pub stackmat_connected: Option<bool>
+    pub stackmat_connected: Option<bool>,
 }
 
 impl SignaledGlobalStateInner {
@@ -134,7 +138,7 @@ impl SignaledGlobalStateInner {
         Self {
             scene: Scene::WifiConnect,
             server_connected: None,
-            stackmat_connected: None
+            stackmat_connected: None,
         }
     }
 }

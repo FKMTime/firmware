@@ -21,7 +21,7 @@ pub async fn rfid_task(
 ) {
     let dma = Dma::new(dma);
     let dma_chan = dma.channel0;
-    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(32000);
+    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(2048);
     let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
     let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
 
@@ -38,7 +38,7 @@ pub async fn rfid_task(
                                                                   // function
 
     _ = mfrc522.pcd_init().await;
-    _ = mfrc522.pcd_selftest().await;
+    //_ = mfrc522.pcd_selftest().await;
     log::debug!("PCD ver: {:?}", mfrc522.pcd_get_version().await);
 
     if !mfrc522.pcd_is_init().await {

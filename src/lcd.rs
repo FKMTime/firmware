@@ -2,7 +2,14 @@ use adv_shift_registers::wrappers::{ShifterPin, ShifterValue};
 use embassy_time::{Delay, Timer};
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::delay::DelayNs;
-use hd44780_driver::{bus::{FourBitBus, FourBitBusPins}, charset::{CharsetA02, CharsetWithFallback, Fallback}, memory_map::{DisplayMemoryMap, MemoryMap1602, StandardMemoryMap}, non_blocking::{bus::DataBus, HD44780}, setup::DisplayOptions4Bit, DisplayMode};
+use hd44780_driver::{
+    bus::{FourBitBus, FourBitBusPins},
+    charset::{CharsetA02, CharsetWithFallback},
+    memory_map::{DisplayMemoryMap, MemoryMap1602, StandardMemoryMap},
+    non_blocking::{bus::DataBus, HD44780},
+    setup::DisplayOptions4Bit,
+    DisplayMode,
+};
 
 use crate::scenes::{GlobalState, SignaledGlobalStateInner};
 
@@ -25,7 +32,7 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
             d6: d6_pin,
             d7: d7_pin,
         })
-    .with_charset(CharsetA02::QUESTION_FALLBACK);
+        .with_charset(CharsetA02::QUESTION_FALLBACK);
 
     let mut delay = Delay;
 
@@ -35,7 +42,7 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
                 log::error!("Error creating CLD driver: {e:?}");
                 options = opt;
                 Timer::after_millis(100).await;
-            },
+            }
             Ok(lcd) => break lcd,
         }
     };
@@ -43,19 +50,45 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
 
     _ = lcd.clear(&mut delay).await;
     _ = lcd.reset(&mut delay).await;
-    _ = lcd.set_display_mode(
-        DisplayMode {
-            display: hd44780_driver::Display::On,
-            cursor_visibility: hd44780_driver::Cursor::Invisible,
-            cursor_blink: hd44780_driver::CursorBlink::Off,
-        },
-        &mut delay,
-    ).await;
+    _ = lcd
+        .set_display_mode(
+            DisplayMode {
+                display: hd44780_driver::Display::On,
+                cursor_visibility: hd44780_driver::Cursor::Invisible,
+                cursor_blink: hd44780_driver::CursorBlink::Off,
+            },
+            &mut delay,
+        )
+        .await;
     _ = lcd.clear(&mut delay).await;
 
-    _ = lcd.print(&alloc::format!("ID: {:X}", 694202137), 0, PrintAlign::Left, true, &mut delay).await;
-    _ = lcd.print(&alloc::format!("{}%", 69), 0, PrintAlign::Right, false, &mut delay).await;
-    _ = lcd.print(&alloc::format!("VER: {}", "v3.0"), 1, PrintAlign::Left, true, &mut delay).await;
+    _ = lcd
+        .print(
+            &alloc::format!("ID: {:X}", 694202137),
+            0,
+            PrintAlign::Left,
+            true,
+            &mut delay,
+        )
+        .await;
+    _ = lcd
+        .print(
+            &alloc::format!("{}%", 69),
+            0,
+            PrintAlign::Right,
+            false,
+            &mut delay,
+        )
+        .await;
+    _ = lcd
+        .print(
+            &alloc::format!("VER: {}", "v3.0"),
+            1,
+            PrintAlign::Left,
+            true,
+            &mut delay,
+        )
+        .await;
 
     Timer::after_millis(2500).await;
 
@@ -111,29 +144,56 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
     */
 }
 
-type LcdType<C> = HD44780<FourBitBus<ShifterPin, ShifterPin, ShifterPin, ShifterPin, ShifterPin, ShifterPin>, StandardMemoryMap<16, 2>, C>;
-async fn process_lcd<C: CharsetWithFallback>(current_state: SignaledGlobalStateInner, global_state: &GlobalState, lcd: &mut LcdType<C>, delay: &mut Delay) -> Option<()> {
+type LcdType<C> = HD44780<
+    FourBitBus<ShifterPin, ShifterPin, ShifterPin, ShifterPin, ShifterPin, ShifterPin>,
+    StandardMemoryMap<16, 2>,
+    C,
+>;
+async fn process_lcd<C: CharsetWithFallback>(
+    current_state: SignaledGlobalStateInner,
+    global_state: &GlobalState,
+    lcd: &mut LcdType<C>,
+    delay: &mut Delay,
+) -> Option<()> {
     if current_state.server_connected == Some(false) {
-        _ = lcd.print("Server", 0, PrintAlign::Center, true, delay).await;
-        _ = lcd.print("Disconnected", 1, PrintAlign::Center, true, delay).await;
+        _ = lcd
+            .print("Server", 0, PrintAlign::Center, true, delay)
+            .await;
+        _ = lcd
+            .print("Disconnected", 1, PrintAlign::Center, true, delay)
+            .await;
     } else if current_state.stackmat_connected == Some(false) {
-        _ = lcd.print("Stackmat", 0, PrintAlign::Center, true, delay).await;
-        _ = lcd.print("Disconnected", 1, PrintAlign::Center, true, delay).await;
+        _ = lcd
+            .print("Stackmat", 0, PrintAlign::Center, true, delay)
+            .await;
+        _ = lcd
+            .print("Disconnected", 1, PrintAlign::Center, true, delay)
+            .await;
     } else {
         match current_state.scene {
             crate::scenes::Scene::WifiConnect => {
-                _ = lcd.print("Waiting for", 0, PrintAlign::Center, true, delay).await;
-                _ = lcd.print("WIFI connection", 1, PrintAlign::Center, true, delay).await;
-            },
+                _ = lcd
+                    .print("Waiting for", 0, PrintAlign::Center, true, delay)
+                    .await;
+                _ = lcd
+                    .print("WIFI connection", 1, PrintAlign::Center, true, delay)
+                    .await;
+            }
             crate::scenes::Scene::AutoSetupWait => todo!(),
             crate::scenes::Scene::MdnsWait => {
-                _ = lcd.print("Waiting for", 0, PrintAlign::Center, true, delay).await;
+                _ = lcd
+                    .print("Waiting for", 0, PrintAlign::Center, true, delay)
+                    .await;
                 _ = lcd.print("MDNS", 1, PrintAlign::Center, true, delay).await;
-            },
+            }
             crate::scenes::Scene::WaitingForCompetitor { time } => {
-                _ = lcd.print("Waiting for", 0, PrintAlign::Center, true, delay).await;
-                _ = lcd.print("Competitor", 1, PrintAlign::Center, true, delay).await;
-            },
+                _ = lcd
+                    .print("Waiting for", 0, PrintAlign::Center, true, delay)
+                    .await;
+                _ = lcd
+                    .print("Competitor", 1, PrintAlign::Center, true, delay)
+                    .await;
+            }
             crate::scenes::Scene::CompetitorInfo() => todo!(),
             crate::scenes::Scene::Inspection { start_time } => todo!(),
             crate::scenes::Scene::Timer { inspection_time } => {
@@ -141,7 +201,9 @@ async fn process_lcd<C: CharsetWithFallback>(current_state: SignaledGlobalStateI
                 _ = lcd.print("", 1, PrintAlign::Left, true, delay).await;
 
                 loop {
-                    let time = global_state.sig_or_update(&global_state.timer_signal).await?;
+                    let time = global_state
+                        .sig_or_update(&global_state.timer_signal)
+                        .await?;
                     let time_ms = time.unwrap_or(0);
                     let minutes: u8 = (time_ms / 60000) as u8;
                     let seconds: u8 = ((time_ms % 60000) / 1000) as u8;
@@ -156,10 +218,15 @@ async fn process_lcd<C: CharsetWithFallback>(current_state: SignaledGlobalStateI
                         _ = time_str.push_str(&alloc::format!("{seconds:01}.{ms:03}"));
                     }
 
-                    _ = lcd.print(&time_str, 0, PrintAlign::Center, true, delay).await;
+                    _ = lcd
+                        .print(&time_str, 0, PrintAlign::Center, true, delay)
+                        .await;
                 }
-            },
-            crate::scenes::Scene::Finished { inspection_time, solve_time } => todo!(),
+            }
+            crate::scenes::Scene::Finished {
+                inspection_time,
+                solve_time,
+            } => todo!(),
             crate::scenes::Scene::Error { msg } => todo!(),
         }
     }
@@ -190,19 +257,34 @@ fn num_to_digits(mut num: u128) -> ([u8; 40], usize) {
 pub enum PrintAlign {
     Left,
     Center,
-    Right
+    Right,
 }
 
 pub trait LcdExt {
-    async fn print<'a, D: DelayNs>(&mut self, text: &str, line: u8, align: PrintAlign, pad: bool, delay: &'a mut D) -> Result<(), ()>;
+    async fn print<'a, D: DelayNs>(
+        &mut self,
+        text: &str,
+        line: u8,
+        align: PrintAlign,
+        pad: bool,
+        delay: &'a mut D,
+    ) -> Result<(), ()>;
 }
 
 impl<B, M, C> LcdExt for HD44780<B, M, C>
 where
-	B: DataBus,
-	M: DisplayMemoryMap,
-	C: CharsetWithFallback {
-    async fn print<'a, D: DelayNs>(&mut self, text: &str, line: u8, align: PrintAlign, pad: bool, delay: &'a mut D) -> Result<(), ()> {
+    B: DataBus,
+    M: DisplayMemoryMap,
+    C: CharsetWithFallback,
+{
+    async fn print<'a, D: DelayNs>(
+        &mut self,
+        text: &str,
+        line: u8,
+        align: PrintAlign,
+        pad: bool,
+        delay: &'a mut D,
+    ) -> Result<(), ()> {
         if line > 1 {
             return Err(());
         }
@@ -221,13 +303,15 @@ where
         if pad {
             let mut tmp_line = [b' '; 16];
             let end_offset = (x_offset + text.len()).min(16);
-            tmp_line[x_offset..end_offset].copy_from_slice(&text.as_bytes()[..(end_offset - x_offset)]);
+            tmp_line[x_offset..end_offset]
+                .copy_from_slice(&text.as_bytes()[..(end_offset - x_offset)]);
 
             self.set_cursor_xy((0, line), delay).await.map_err(|_| ())?;
             self.write_bytes(&tmp_line, delay).await.map_err(|_| ())?;
         } else {
-
-            self.set_cursor_xy((x_offset as u8, line), delay).await.map_err(|_| ())?;
+            self.set_cursor_xy((x_offset as u8, line), delay)
+                .await
+                .map_err(|_| ())?;
             self.write_str(&text, delay).await.map_err(|_| ())?;
         }
 

@@ -4,5 +4,5 @@ use serde::Deserialize;
 #[derive(Deserialize, Debug)]
 pub struct ConnSettings {
     pub mdns: bool,
-    pub ws_url: Option<String>
+    pub ws_url: Option<String>,
 }

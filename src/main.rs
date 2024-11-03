@@ -4,7 +4,6 @@
 extern crate alloc;
 use alloc::rc::Rc;
 use embassy_executor::Spawner;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::Timer;
 use embedded_hal::digital::OutputPin;
 use esp_backtrace as _;
@@ -14,7 +13,7 @@ use esp_hal::{
     timer::timg::TimerGroup,
 };
 use esp_wifi::EspWifiInitFor;
-use scenes::{GlobalStateInner, Scene, SignaledNoopMutex};
+use scenes::{GlobalStateInner, Scene};
 use structs::ConnSettings;
 
 mod battery;
@@ -36,7 +35,7 @@ async fn main(spawner: Spawner) {
     });
 
     esp_println::logger::init_logger_from_env();
-    esp_alloc::heap_allocator!(110 * 1024);
+    esp_alloc::heap_allocator!(120 * 1024);
     let nvs = esp_hal_wifimanager::Nvs::new(0x9000, 0x6000);
 
     let rng = esp_hal::rng::Rng::new(peripherals.RNG);
@@ -73,7 +72,11 @@ async fn main(spawner: Spawner) {
     _ = spawner.spawn(lcd::lcd_task(lcd_shifter, global_state.clone()));
     _ = spawner.spawn(battery::batter_read_task(battery_input, peripherals.ADC1));
     _ = spawner.spawn(buttons::buttons_task(button_input, buttons_shifter));
-    _ = spawner.spawn(stackmat::stackmat_task(peripherals.UART0, stackmat_rx, global_state.clone()));
+    _ = spawner.spawn(stackmat::stackmat_task(
+        peripherals.UART0,
+        stackmat_rx,
+        global_state.clone(),
+    ));
     _ = spawner.spawn(rfid::rfid_task(
         miso,
         mosi,
@@ -122,7 +125,11 @@ async fn main(spawner: Spawner) {
         scenes::STATE_CHANGED.signal(());
         */
 
-        _ = spawner.spawn(ws::ws_task(wifi_res.sta_stack, ws_url, global_state.clone()));
+        _ = spawner.spawn(ws::ws_task(
+            wifi_res.sta_stack,
+            ws_url,
+            global_state.clone(),
+        ));
     }
 
     //global_state.state.lock().await.scene = Scene::WaitingForCompetitor { time: None };
