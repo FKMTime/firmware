@@ -20,7 +20,7 @@ pub async fn ws_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>, 
 
     loop {
         {
-            global_state.lock().await.server_connected = Some(false);
+            global_state.state.lock().await.server_connected = Some(false);
         }
 
         let mut socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
@@ -35,7 +35,7 @@ pub async fn ws_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>, 
         }
 
         {
-            global_state.lock().await.server_connected = Some(true);
+            global_state.state.lock().await.server_connected = Some(true);
         }
         log::info!("connected!");
         let mut tx_framer = WsTxFramer::<HalRandom>::new(true, &mut ws_tx_buf);

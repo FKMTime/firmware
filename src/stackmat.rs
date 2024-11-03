@@ -1,12 +1,9 @@
-use alloc::rc::Rc;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::Timer;
 use esp_hal::{gpio::AnyPin, peripherals::UART0, uart::UartRx};
-
-use crate::scenes::Scene;
+use crate::scenes::GlobalState;
 
 #[embassy_executor::task]
-pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, time_sig: Rc<Signal<NoopRawMutex, Option<u64>>>) {
+pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, global_state: GlobalState) {
     let serial_config = esp_hal::uart::config::Config::default().baudrate(1200);
     let mut uart = UartRx::new_async_with_config(uart, serial_config, uart_pin).unwrap();
 
@@ -16,7 +13,8 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, time_sig: Rc<Signal<No
     loop {
         if (esp_hal::time::now() - last_read).to_millis() > 1500 {
             //log::error!("Stackmat read timeout! (Probably disconnected)");
-            time_sig.signal(None);
+            //time_sig.signal(None);
+            global_state.timer_signal.signal(None);
         }
 
         Timer::after_millis(10).await;
@@ -36,6 +34,7 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, time_sig: Rc<Signal<No
 
             buf[7] = r;
             if let Ok(parsed) = parse_stackmat_data(&buf) {
+                global_state.timer_signal.signal(Some(parsed.1));
                 /*
                 crate::scenes::CURRENT_STATE.lock().await.scene = Scene::Timer { inspection_time: parsed.1 };
                 crate::scenes::STATE_CHANGED.signal(());

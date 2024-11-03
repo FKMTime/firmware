@@ -41,7 +41,7 @@ pub struct SignaledNoopMutex<T> {
 impl<T> SignaledNoopMutex<T> {
     pub fn new(initial: T) -> Self {
         let sig = Signal::new();
-        sig.signal(());
+        //sig.signal(());
 
         Self {
             inner: Mutex::new(initial),
@@ -66,6 +66,10 @@ impl<T> SignaledNoopMutex<T> {
 
     pub async fn wait_lock(&self) -> MutexGuard<'_, NoopRawMutex, T> {
         self.update_sig.wait().await;
+        self.inner.lock().await
+    }
+
+    pub async fn value(&self) -> MutexGuard<'_, NoopRawMutex, T> {
         self.inner.lock().await
     }
 }
@@ -94,15 +98,30 @@ impl<'a, T> core::ops::DerefMut for SignaledNoopMutexGuard<'a, T> {
     }
 }
 
-pub type GlobalState = Rc<SignaledNoopMutex<GlobalStateInner>>;
+//pub type GlobalState
+pub type GlobalState = Rc<GlobalStateInner>;
+
+pub struct GlobalStateInner {
+    pub state: SignaledNoopMutex<SignaledGlobalStateInner>,
+    pub timer_signal: Signal<NoopRawMutex, Option<u64>>
+}
+
+impl GlobalStateInner {
+    pub fn new() -> Self {
+        Self {
+            state: SignaledNoopMutex::new(SignaledGlobalStateInner::new()),
+            timer_signal: Signal::new()
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
-pub struct GlobalStateInner {
+pub struct SignaledGlobalStateInner {
     pub scene: Scene,
     pub server_connected: Option<bool>
 }
 
-impl GlobalStateInner {
+impl SignaledGlobalStateInner {
     pub fn new() -> Self {
         Self {
             scene: Scene::WifiConnect,
@@ -110,12 +129,3 @@ impl GlobalStateInner {
         }
     }
 }
-
-//pub static PREVIOUS_SCENE: Mutex<CriticalSectionRawMutex, Scene> = Mutex::new(Scene::WifiConnect);
-/*
-pub static STATE_CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
-pub static CURRENT_STATE: Mutex<CriticalSectionRawMutex, GlobalState> = Mutex::new(GlobalState {
-    scene: Scene::WifiConnect,
-    server_connected: None
-});
-*/

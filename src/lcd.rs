@@ -61,11 +61,10 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
 
     // TODO: print to lcd if wifi setup active
     _ = lcd.clear(&mut delay).await;
-    loop {
+    'outer: loop {
         //let res = embassy_futures::select::select(global_state.scene.wait_lock(), global_state.server_connected.wait_lock()).await;
-        let current_state = global_state.wait_lock().await.clone();
+        let current_state = global_state.state.value().await.clone();
         log::warn!("current_state: {:?}", current_state);
-
 
         if current_state.server_connected == Some(false) {
             _ = lcd.print("Server", 0, PrintAlign::Center, true, &mut delay).await;
@@ -88,27 +87,39 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
                 crate::scenes::Scene::CompetitorInfo() => todo!(),
                 crate::scenes::Scene::Inspection { start_time } => todo!(),
                 crate::scenes::Scene::Timer { inspection_time } => {
-                    let time_ms = inspection_time;
-                    let minutes: u8 = (time_ms / 60000) as u8;
-                    let seconds: u8 = ((time_ms % 60000) / 1000) as u8;
-                    let ms: u16 = (time_ms % 1000) as u16;
-
-                    let mut time_str = heapless::String::<8>::new();
-                    if minutes > 0 {
-                        _ = time_str.push((minutes + b'0') as char);
-                        _ = time_str.push(':');
-                        _ = time_str.push_str(&alloc::format!("{seconds:02}.{ms:03}"));
-                    } else {
-                        _ = time_str.push_str(&alloc::format!("{seconds:01}.{ms:03}"));
-                    }
-
-                    _ = lcd.print(&time_str, 0, PrintAlign::Center, true, &mut delay).await;
+                    _ = lcd.print("", 0, PrintAlign::Left, true, &mut delay).await;
                     _ = lcd.print("", 1, PrintAlign::Left, true, &mut delay).await;
+
+                    loop {
+                        let res = embassy_futures::select::select(global_state.state.wait(), global_state.timer_signal.wait()).await;
+                        match res {
+                            embassy_futures::select::Either::First(_) => continue 'outer,
+                            embassy_futures::select::Either::Second(time) => {
+                                let time_ms = time.unwrap_or(0);
+                                let minutes: u8 = (time_ms / 60000) as u8;
+                                let seconds: u8 = ((time_ms % 60000) / 1000) as u8;
+                                let ms: u16 = (time_ms % 1000) as u16;
+
+                                let mut time_str = heapless::String::<8>::new();
+                                if minutes > 0 {
+                                    _ = time_str.push((minutes + b'0') as char);
+                                    _ = time_str.push(':');
+                                    _ = time_str.push_str(&alloc::format!("{seconds:02}.{ms:03}"));
+                                } else {
+                                    _ = time_str.push_str(&alloc::format!("{seconds:01}.{ms:03}"));
+                                }
+
+                                _ = lcd.print(&time_str, 0, PrintAlign::Center, true, &mut delay).await;
+                            },
+                        }
+                    }
                 },
                 crate::scenes::Scene::Finished { inspection_time, solve_time } => todo!(),
                 crate::scenes::Scene::Error { msg } => todo!(),
             }
         }
+
+        global_state.state.wait().await;
     }
 
     /*
