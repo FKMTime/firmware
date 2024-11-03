@@ -1,10 +1,10 @@
-use adv_shift_registers::wrappers::ShifterValue;
+use adv_shift_registers::wrappers::{ShifterPin, ShifterValue};
 use embassy_time::{Delay, Timer};
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::delay::DelayNs;
-use hd44780_driver::{bus::FourBitBusPins, charset::{CharsetA02, CharsetWithFallback}, memory_map::{DisplayMemoryMap, MemoryMap1602}, non_blocking::{HD44780, bus::DataBus}, setup::DisplayOptions4Bit, DisplayMode};
+use hd44780_driver::{bus::{FourBitBus, FourBitBusPins}, charset::{CharsetA02, CharsetWithFallback, Fallback}, memory_map::{DisplayMemoryMap, MemoryMap1602, StandardMemoryMap}, non_blocking::{bus::DataBus, HD44780}, setup::DisplayOptions4Bit, DisplayMode};
 
-use crate::scenes::GlobalState;
+use crate::scenes::{GlobalState, SignaledGlobalStateInner};
 
 #[embassy_executor::task]
 pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
@@ -61,62 +61,12 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
 
     // TODO: print to lcd if wifi setup active
     _ = lcd.clear(&mut delay).await;
-    'outer: loop {
-        //let res = embassy_futures::select::select(global_state.scene.wait_lock(), global_state.server_connected.wait_lock()).await;
+    loop {
         let current_state = global_state.state.value().await.clone();
         log::warn!("current_state: {:?}", current_state);
-
-        if current_state.server_connected == Some(false) {
-            _ = lcd.print("Server", 0, PrintAlign::Center, true, &mut delay).await;
-            _ = lcd.print("Disconnected", 1, PrintAlign::Center, true, &mut delay).await;
-        } else {
-            match current_state.scene {
-                crate::scenes::Scene::WifiConnect => {
-                    _ = lcd.print("Waiting for", 0, PrintAlign::Center, true, &mut delay).await;
-                    _ = lcd.print("WIFI connection", 1, PrintAlign::Center, true, &mut delay).await;
-                },
-                crate::scenes::Scene::AutoSetupWait => todo!(),
-                crate::scenes::Scene::MdnsWait => {
-                    _ = lcd.print("Waiting for", 0, PrintAlign::Center, true, &mut delay).await;
-                    _ = lcd.print("MDNS", 1, PrintAlign::Center, true, &mut delay).await;
-                },
-                crate::scenes::Scene::WaitingForCompetitor { time } => {
-                    _ = lcd.print("Waiting for", 0, PrintAlign::Center, true, &mut delay).await;
-                    _ = lcd.print("Competitor", 1, PrintAlign::Center, true, &mut delay).await;
-                },
-                crate::scenes::Scene::CompetitorInfo() => todo!(),
-                crate::scenes::Scene::Inspection { start_time } => todo!(),
-                crate::scenes::Scene::Timer { inspection_time } => {
-                    _ = lcd.print("", 0, PrintAlign::Left, true, &mut delay).await;
-                    _ = lcd.print("", 1, PrintAlign::Left, true, &mut delay).await;
-
-                    loop {
-                        let res = embassy_futures::select::select(global_state.state.wait(), global_state.timer_signal.wait()).await;
-                        match res {
-                            embassy_futures::select::Either::First(_) => continue 'outer,
-                            embassy_futures::select::Either::Second(time) => {
-                                let time_ms = time.unwrap_or(0);
-                                let minutes: u8 = (time_ms / 60000) as u8;
-                                let seconds: u8 = ((time_ms % 60000) / 1000) as u8;
-                                let ms: u16 = (time_ms % 1000) as u16;
-
-                                let mut time_str = heapless::String::<8>::new();
-                                if minutes > 0 {
-                                    _ = time_str.push((minutes + b'0') as char);
-                                    _ = time_str.push(':');
-                                    _ = time_str.push_str(&alloc::format!("{seconds:02}.{ms:03}"));
-                                } else {
-                                    _ = time_str.push_str(&alloc::format!("{seconds:01}.{ms:03}"));
-                                }
-
-                                _ = lcd.print(&time_str, 0, PrintAlign::Center, true, &mut delay).await;
-                            },
-                        }
-                    }
-                },
-                crate::scenes::Scene::Finished { inspection_time, solve_time } => todo!(),
-                crate::scenes::Scene::Error { msg } => todo!(),
-            }
+        let res = process_lcd(current_state, &global_state, &mut lcd, &mut delay).await;
+        if res.is_none() {
+            continue;
         }
 
         global_state.state.wait().await;
@@ -161,6 +111,59 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
     */
 }
 
+type LcdType<C> = HD44780<FourBitBus<ShifterPin, ShifterPin, ShifterPin, ShifterPin, ShifterPin, ShifterPin>, StandardMemoryMap<16, 2>, C>;
+async fn process_lcd<C: CharsetWithFallback>(current_state: SignaledGlobalStateInner, global_state: &GlobalState, lcd: &mut LcdType<C>, delay: &mut Delay) -> Option<()> {
+    if current_state.server_connected == Some(false) {
+        _ = lcd.print("Server", 0, PrintAlign::Center, true, delay).await;
+        _ = lcd.print("Disconnected", 1, PrintAlign::Center, true, delay).await;
+    } else {
+        match current_state.scene {
+            crate::scenes::Scene::WifiConnect => {
+                _ = lcd.print("Waiting for", 0, PrintAlign::Center, true, delay).await;
+                _ = lcd.print("WIFI connection", 1, PrintAlign::Center, true, delay).await;
+            },
+            crate::scenes::Scene::AutoSetupWait => todo!(),
+            crate::scenes::Scene::MdnsWait => {
+                _ = lcd.print("Waiting for", 0, PrintAlign::Center, true, delay).await;
+                _ = lcd.print("MDNS", 1, PrintAlign::Center, true, delay).await;
+            },
+            crate::scenes::Scene::WaitingForCompetitor { time } => {
+                _ = lcd.print("Waiting for", 0, PrintAlign::Center, true, delay).await;
+                _ = lcd.print("Competitor", 1, PrintAlign::Center, true, delay).await;
+            },
+            crate::scenes::Scene::CompetitorInfo() => todo!(),
+            crate::scenes::Scene::Inspection { start_time } => todo!(),
+            crate::scenes::Scene::Timer { inspection_time } => {
+                _ = lcd.print("", 0, PrintAlign::Left, true, delay).await;
+                _ = lcd.print("", 1, PrintAlign::Left, true, delay).await;
+
+                loop {
+                    let time = global_state.sig_or_update(&global_state.timer_signal).await?;
+                    let time_ms = time.unwrap_or(0);
+                    let minutes: u8 = (time_ms / 60000) as u8;
+                    let seconds: u8 = ((time_ms % 60000) / 1000) as u8;
+                    let ms: u16 = (time_ms % 1000) as u16;
+
+                    let mut time_str = heapless::String::<8>::new();
+                    if minutes > 0 {
+                        _ = time_str.push((minutes + b'0') as char);
+                        _ = time_str.push(':');
+                        _ = time_str.push_str(&alloc::format!("{seconds:02}.{ms:03}"));
+                    } else {
+                        _ = time_str.push_str(&alloc::format!("{seconds:01}.{ms:03}"));
+                    }
+
+                    _ = lcd.print(&time_str, 0, PrintAlign::Center, true, delay).await;
+                }
+            },
+            crate::scenes::Scene::Finished { inspection_time, solve_time } => todo!(),
+            crate::scenes::Scene::Error { msg } => todo!(),
+        }
+    }
+
+    Some(())
+}
+
 fn num_to_digits(mut num: u128) -> ([u8; 40], usize) {
     let mut tmp = [0xFF; 40];
     let mut pos = 0;
@@ -180,14 +183,6 @@ fn num_to_digits(mut num: u128) -> ([u8; 40], usize) {
 
     (tmp, pos)
 }
-
-/*
-impl<B, M, C> HD44780<B, M, C>
-where
-	B: DataBus,
-	M: DisplayMemoryMap,
-	C: CharsetWithFallback,
-*/
 
 pub enum PrintAlign {
     Left,

@@ -1,5 +1,5 @@
 use alloc::rc::Rc;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::{Mutex, MutexGuard}, signal::Signal};
+use embassy_sync::{blocking_mutex::raw::{NoopRawMutex, RawMutex}, mutex::{Mutex, MutexGuard}, signal::Signal};
 
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
@@ -111,6 +111,13 @@ impl GlobalStateInner {
         Self {
             state: SignaledNoopMutex::new(SignaledGlobalStateInner::new()),
             timer_signal: Signal::new()
+        }
+    }
+
+    pub async fn sig_or_update<M: RawMutex, T: Send>(&self, signal: &Signal<M, T>) -> Option<T> {
+        match embassy_futures::select::select(self.state.wait(), signal.wait()).await {
+            embassy_futures::select::Either::First(_) => None,
+            embassy_futures::select::Either::Second(val) => Some(val),
         }
     }
 }
