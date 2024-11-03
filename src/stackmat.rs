@@ -10,8 +10,14 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, global_state: GlobalSt
     let mut buf = [0; 8];
     let mut read_buf = [0; 8];
     let mut last_read = esp_hal::time::now();
+    let mut last_state = None;
     loop {
         if (esp_hal::time::now() - last_read).to_millis() > 1500 {
+            if last_state != Some(false) {
+                global_state.state.lock().await.stackmat_connected = Some(false);
+                last_state = Some(false);
+            }
+
             //log::error!("Stackmat read timeout! (Probably disconnected)");
             //time_sig.signal(None);
             global_state.timer_signal.signal(None);
@@ -34,6 +40,11 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, global_state: GlobalSt
 
             buf[7] = r;
             if let Ok(parsed) = parse_stackmat_data(&buf) {
+                if last_state != Some(true) {
+                    global_state.state.lock().await.stackmat_connected = Some(true);
+                    last_state = Some(true);
+                }
+
                 global_state.timer_signal.signal(Some(parsed.1));
                 /*
                 crate::scenes::CURRENT_STATE.lock().await.scene = Scene::Timer { inspection_time: parsed.1 };

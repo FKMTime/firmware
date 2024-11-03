@@ -116,6 +116,9 @@ async fn process_lcd<C: CharsetWithFallback>(current_state: SignaledGlobalStateI
     if current_state.server_connected == Some(false) {
         _ = lcd.print("Server", 0, PrintAlign::Center, true, delay).await;
         _ = lcd.print("Disconnected", 1, PrintAlign::Center, true, delay).await;
+    } else if current_state.stackmat_connected == Some(false) {
+        _ = lcd.print("Stackmat", 0, PrintAlign::Center, true, delay).await;
+        _ = lcd.print("Disconnected", 1, PrintAlign::Center, true, delay).await;
     } else {
         match current_state.scene {
             crate::scenes::Scene::WifiConnect => {
