@@ -1,4 +1,4 @@
-use crate::scenes::GlobalState;
+use crate::scenes::{GlobalState, Scene};
 use embassy_time::Timer;
 use esp_hal::{gpio::AnyPin, peripherals::UART0, uart::UartRx};
 
@@ -11,6 +11,7 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, global_state: GlobalSt
     let mut read_buf = [0; 8];
     let mut last_read = esp_hal::time::now();
     let mut last_state = None;
+    let mut last_stackmat_state = StackmatTimerState::Unknown;
     loop {
         if (esp_hal::time::now() - last_read).to_millis() > 1500 {
             if last_state != Some(false) {
@@ -43,6 +44,23 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, global_state: GlobalSt
                 if last_state != Some(true) {
                     global_state.state.lock().await.stackmat_connected = Some(true);
                     last_state = Some(true);
+                }
+
+                if parsed.0 != last_stackmat_state {
+                    last_stackmat_state = parsed.0;
+                    if last_stackmat_state == StackmatTimerState::Running {
+                        let mut state = global_state.state.lock().await;
+                        match state.scene {
+                            Scene::WaitingForCompetitor { .. } => {}
+                            Scene::CompetitorInfo(_) => {}
+                            Scene::Inspection { .. } => {}
+                            _ => {
+                                continue;
+                            }
+                        }
+
+                        state.scene = Scene::Timer { inspection_time: 0 };
+                    }
                 }
 
                 global_state.timer_signal.signal(Some(parsed.1));

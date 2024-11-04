@@ -1,3 +1,4 @@
+use crate::scenes::GlobalState;
 use adv_shift_registers::wrappers::ShifterPin;
 use embassy_time::{Duration, Timer};
 use esp_hal::prelude::*;
@@ -18,6 +19,7 @@ pub async fn rfid_task(
     cs_pin: ShifterPin,
     spi: esp_hal::peripherals::SPI2,
     dma: DMA,
+    global_state: GlobalState,
 ) {
     let dma = Dma::new(dma);
     let dma_chan = dma.channel0;
@@ -49,7 +51,18 @@ pub async fn rfid_task(
         if mfrc522.picc_is_new_card_present().await.is_ok() {
             let card = mfrc522.get_card(UidSize::Four).await;
             if let Ok(card) = card {
-                log::info!("Card UID: {}", card.get_number());
+                let card_uid = card.get_number();
+                log::info!("Card UID: {card_uid}");
+
+                let mut state = global_state.state.lock().await;
+                match state.scene {
+                    crate::scenes::Scene::WaitingForCompetitor { .. } => {
+                        state.current_competitor = Some(card_uid);
+                        state.scene = crate::scenes::Scene::CompetitorInfo(card_uid);
+                    },
+                    crate::scenes::Scene::Finished { .. } => todo!(),
+                    _ => {}
+                }
             }
 
             _ = mfrc522.picc_halta().await;

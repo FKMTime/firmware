@@ -20,7 +20,7 @@ pub enum Scene {
     WaitingForCompetitor {
         time: Option<u64>,
     },
-    CompetitorInfo(/* Competitor info struct? */),
+    CompetitorInfo(u128),
     Inspection {
         start_time: u64,
     },
@@ -43,7 +43,7 @@ impl Scene {
             Scene::AutoSetupWait => false,
             Scene::MdnsWait => false,
             Scene::WaitingForCompetitor { .. } => true,
-            Scene::CompetitorInfo() => true,
+            Scene::CompetitorInfo(_) => true,
             Scene::Inspection { .. } => false,
             Scene::Timer { .. } => false,
             Scene::Finished { .. } => false,
@@ -147,6 +147,7 @@ pub struct SignaledGlobalStateInner {
     pub scene: Scene,
     pub server_connected: Option<bool>,
     pub stackmat_connected: Option<bool>,
+    pub current_competitor: Option<u128>
 }
 
 impl SignaledGlobalStateInner {
@@ -155,6 +156,7 @@ impl SignaledGlobalStateInner {
             scene: Scene::WifiConnect,
             server_connected: None,
             stackmat_connected: None,
+            current_competitor: None
         }
     }
 }

@@ -185,7 +185,20 @@ async fn process_lcd<C: CharsetWithFallback>(
                 .print("Competitor", 1, PrintAlign::Center, true, delay)
                 .await;
         }
-        Scene::CompetitorInfo() => todo!(),
+        Scene::CompetitorInfo(competitor_info) => {
+            _ = lcd
+                .print("Competitor", 0, PrintAlign::Center, true, delay)
+                .await;
+            _ = lcd
+                .print(
+                    &alloc::format!("{}", competitor_info),
+                    1,
+                    PrintAlign::Center,
+                    true,
+                    delay,
+                )
+                .await;
+        }
         Scene::Inspection { .. } => todo!(),
         Scene::Timer { .. } => {
             _ = lcd.print("", 0, PrintAlign::Left, true, delay).await;
@@ -195,6 +208,7 @@ async fn process_lcd<C: CharsetWithFallback>(
                 let time = global_state
                     .sig_or_update(&global_state.timer_signal)
                     .await?;
+
                 let time_ms = time.unwrap_or(0);
                 let minutes: u8 = (time_ms / 60000) as u8;
                 let seconds: u8 = ((time_ms % 60000) / 1000) as u8;

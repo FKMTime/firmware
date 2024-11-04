@@ -84,6 +84,7 @@ async fn main(spawner: Spawner) {
         cs_pin,
         peripherals.SPI2,
         peripherals.DMA,
+        global_state.clone()
     ));
 
     let mut wm_settings = esp_hal_wifimanager::WmSettings::default();
