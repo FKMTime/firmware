@@ -19,8 +19,6 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, global_state: GlobalSt
                 last_state = Some(false);
             }
 
-            //log::error!("Stackmat read timeout! (Probably disconnected)");
-            //time_sig.signal(None);
             global_state.timer_signal.signal(None);
         }
 
@@ -49,13 +47,8 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, global_state: GlobalSt
                 if parsed.0 != last_stackmat_state {
                     if parsed.0 == StackmatTimerState::Running {
                         let mut state = global_state.state.lock().await;
-                        match state.scene {
-                            Scene::WaitingForCompetitor { .. } => {}
-                            Scene::CompetitorInfo(_) => {}
-                            Scene::Inspection { .. } => {}
-                            _ => {
-                                continue;
-                            }
+                        if state.scene > Scene::Inspection {
+                            continue;
                         }
 
                         state.scene = Scene::Timer;
@@ -65,13 +58,6 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, global_state: GlobalSt
                 }
 
                 global_state.timer_signal.signal(Some(parsed.1));
-                /*
-                crate::scenes::CURRENT_STATE.lock().await.scene = Scene::Timer { inspection_time: parsed.1 };
-                crate::scenes::STATE_CHANGED.signal(());
-                */
-
-                //log::warn!("parsed: {:?}", parsed);
-                //time_sig.signal(Some(parsed.1));
             }
         }
 

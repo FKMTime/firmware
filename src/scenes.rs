@@ -41,6 +41,26 @@ impl Scene {
             Scene::Error { .. } => false,
         }
     }
+
+    pub fn to_index(&self) -> usize {
+        match self {
+            Scene::WifiConnect => 0,
+            Scene::AutoSetupWait => 1,
+            Scene::MdnsWait => 2,
+            Scene::WaitingForCompetitor => 3,
+            Scene::CompetitorInfo(_) => 4,
+            Scene::Inspection => 5,
+            Scene::Timer => 6,
+            Scene::Finished => 7,
+            Scene::Error { .. } => 8,
+        }
+    }
+}
+
+impl PartialOrd for Scene {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.to_index().cmp(&other.to_index()))
+    }
 }
 
 pub struct SignaledNoopMutex<T> {

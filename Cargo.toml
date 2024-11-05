@@ -22,8 +22,8 @@ esp-alloc = "0.5.0"
 esp-hal-wifimanager = { path = "../../esp-hal-wifimanager", default-features = false, features = ["esp32c3", "ap", "ble"] } # TODO: CHANGE
 serde = { version = "1.0.213", features = ["alloc", "derive"], default-features = false }
 serde_json = { version = "1.0.132", default-features = false, features = ["alloc"] }
-#adv-shift-registers = "0.2.3"
-adv-shift-registers = { path = "../../adv-shift-registers" }
+adv-shift-registers = "0.2.4"
+#adv-shift-registers = { path = "../../adv-shift-registers" }
 embedded-hal = "1.0.0"
 esp-hal-mfrc522 = { version = "0.1.1", features = ["embassy-time"] }
 esp-hal-mdns = { git = "https://github.com/filipton/esp-hal-mdns.git" }

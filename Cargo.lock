@@ -5,6 +5,8 @@ version = 4
 [[package]]
 name = "adv-shift-registers"
 version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a95094bd10579121de429a4514b5115db45730375e64deba8a0c2d6b332858b9"
 dependencies = [
  "embedded-hal 1.0.0",
  "log",
