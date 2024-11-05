@@ -17,20 +17,11 @@ pub enum Scene {
     /// Waiting for MDNS
     MdnsWait,
 
-    WaitingForCompetitor {
-        time: Option<u64>,
-    },
+    WaitingForCompetitor,
     CompetitorInfo(u128),
-    Inspection {
-        start_time: u64,
-    },
-    Timer {
-        inspection_time: u64,
-    },
-    Finished {
-        inspection_time: u64,
-        solve_time: u64,
-    },
+    Inspection,
+    Timer,
+    Finished,
     Error {
         msg: alloc::string::String,
     },
@@ -42,11 +33,11 @@ impl Scene {
             Scene::WifiConnect => false,
             Scene::AutoSetupWait => false,
             Scene::MdnsWait => false,
-            Scene::WaitingForCompetitor { .. } => true,
+            Scene::WaitingForCompetitor => true,
             Scene::CompetitorInfo(_) => true,
-            Scene::Inspection { .. } => false,
-            Scene::Timer { .. } => false,
-            Scene::Finished { .. } => false,
+            Scene::Inspection => false,
+            Scene::Timer => false,
+            Scene::Finished => false,
             Scene::Error { .. } => false,
         }
     }
@@ -147,7 +138,7 @@ pub struct SignaledGlobalStateInner {
     pub scene: Scene,
     pub server_connected: Option<bool>,
     pub stackmat_connected: Option<bool>,
-    pub current_competitor: Option<u128>
+    pub current_competitor: Option<u128>,
 }
 
 impl SignaledGlobalStateInner {
@@ -156,7 +147,7 @@ impl SignaledGlobalStateInner {
             scene: Scene::WifiConnect,
             server_connected: None,
             stackmat_connected: None,
-            current_competitor: None
+            current_competitor: None,
         }
     }
 }

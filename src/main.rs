@@ -133,7 +133,7 @@ async fn main(spawner: Spawner) {
         ));
     }
 
-    global_state.state.lock().await.scene = Scene::WaitingForCompetitor { time: None };
+    global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
     //global_state.state.lock().await.scene = Scene::Timer { inspection_time: 0 };
     loop {
         log::info!("bump {}", esp_hal::time::now());
