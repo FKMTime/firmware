@@ -113,8 +113,10 @@ async fn ws_reader(reader: &mut TcpReader<'_>, framer: &mut WsRxFramer<'_>) -> R
             return Err(());
         }
 
-        if let Some(frame) = framer.process_data(n) {
-            log::warn!("recv_frame: opcode:{}", frame.opcode());
+        framer.revolve_write_offset(n);
+        while let Some(frame) = framer.process_data() {
+            //log::warn!("recv_frame: opcode:{}", frame.opcode());
+
             match frame {
                 WsFrame::Text(text) => match serde_json::from_str::<TimerPacket>(text) {
                     Ok(timer_packet) => {
