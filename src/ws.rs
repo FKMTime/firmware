@@ -5,10 +5,14 @@ use embassy_net::{
     tcp::{TcpReader, TcpSocket, TcpWriter},
     Stack,
 };
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
 use embassy_time::Timer;
 use embedded_io_async::Write;
 use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
 use ws_framer::{RngProvider, WsFrame, WsRxFramer, WsTxFramer, WsUrl};
+
+static PACKET_CHANNEL: Channel<CriticalSectionRawMutex, TimerPacket, 10> = Channel::new();
+static FRAME_CHANNEL: Channel<CriticalSectionRawMutex, WsFrame, 5> = Channel::new();
 
 #[embassy_executor::task]
 pub async fn ws_task(
@@ -110,15 +114,22 @@ async fn ws_reader(reader: &mut TcpReader<'_>, framer: &mut WsRxFramer<'_>) -> R
         }
 
         if let Some(frame) = framer.process_data(n) {
-            if let WsFrame::Text(text) = frame {
-                match serde_json::from_str::<TimerPacket>(text) {
+            log::warn!("recv_frame: opcode:{}", frame.opcode());
+            match frame {
+                WsFrame::Text(text) => match serde_json::from_str::<TimerPacket>(text) {
                     Ok(timer_packet) => {
                         log::info!("Timer packet recv: {timer_packet:?}");
                     }
                     Err(e) => {
                         log::error!("timer_packet_fail: {e:?}\nTried to parse:\n{text}\n\n");
                     }
+                },
+                WsFrame::Binary(_) => todo!(),
+                WsFrame::Close(_, _) => todo!(),
+                WsFrame::Ping(_) => {
+                    FRAME_CHANNEL.send(WsFrame::Pong(&[])).await;
                 }
+                _ => {}
             }
         }
     }
@@ -128,11 +139,32 @@ async fn ws_writer(
     writer: &mut TcpWriter<'_>,
     framer: &mut WsTxFramer<'_, HalRandom>,
 ) -> Result<(), ()> {
+    let recv = PACKET_CHANNEL.receiver();
+    let frame_recv = FRAME_CHANNEL.receiver();
     loop {
+        match embassy_futures::select::select(recv.receive(), frame_recv.receive()).await {
+            embassy_futures::select::Either::First(to_send) => {
+                log::info!("to_send_packet: {to_send:?}");
+
+                writer
+                    .write_all(&framer.text(&serde_json::to_string(&to_send).unwrap()))
+                    .await
+                    .map_err(|_| ())?;
+            }
+            embassy_futures::select::Either::Second(to_send) => {
+                log::info!("to_send_frame: opcode:{}", to_send.opcode());
+
+                writer
+                    .write_all(&framer.frame(to_send))
+                    .await
+                    .map_err(|_| ())?;
+            }
+        }
+
         //update_sig.wait().await;
         //writer.write_all(&framer.pong(&[])).await.map_err(|_| ())?;
-        writer.write_all(&framer.text("{\"logs\": {\"esp_id\": 694202137, \"logs\": [{\"millis\": 69420, \"msg\": \"wowowowowo\"}]}}")).await.map_err(|_| ())?;
-        Timer::after_millis(1000).await;
+        //writer.write_all(&framer.text("{\"logs\": {\"esp_id\": 694202137, \"logs\": [{\"millis\": 69420, \"msg\": \"wowowowowo\"}]}}")).await.map_err(|_| ())?;
+        //Timer::after_millis(1000).await;
     }
 }
 
@@ -144,4 +176,8 @@ impl RngProvider for HalRandom {
             .read()
             .bits()
     }
+}
+
+pub async fn send_packet(packet: TimerPacket) {
+    PACKET_CHANNEL.send(packet).await;
 }
