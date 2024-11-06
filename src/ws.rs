@@ -1,20 +1,19 @@
-use crate::scenes::GlobalState;
-use alloc::rc::Rc;
+use crate::{scenes::GlobalState, structs::TimerPacket};
+use alloc::string::String;
 use core::str::FromStr;
 use embassy_net::{
     tcp::{TcpReader, TcpSocket, TcpWriter},
     Stack,
 };
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::Timer;
 use embedded_io_async::Write;
 use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
-use ws_framer::{RngProvider, WsRxFramer, WsTxFramer, WsUrl};
+use ws_framer::{RngProvider, WsFrame, WsRxFramer, WsTxFramer, WsUrl};
 
 #[embassy_executor::task]
 pub async fn ws_task(
     stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>,
-    ws_url: heapless::String<255>,
+    ws_url: String,
     global_state: GlobalState,
 ) {
     let ws_url = WsUrl::from_str(&ws_url).unwrap();
@@ -75,11 +74,10 @@ pub async fn ws_task(
         }
 
         let (mut reader, mut writer) = socket.split();
-        let update_sig = Rc::new(Signal::new());
         loop {
             let res = embassy_futures::select::select(
-                ws_reader(&mut reader, &mut rx_framer, update_sig.clone()),
-                ws_writer(&mut writer, &mut tx_framer, update_sig.clone()),
+                ws_reader(&mut reader, &mut rx_framer),
+                ws_writer(&mut writer, &mut tx_framer),
             )
             .await;
 
@@ -97,11 +95,7 @@ pub async fn ws_task(
     }
 }
 
-async fn ws_reader(
-    reader: &mut TcpReader<'_>,
-    framer: &mut WsRxFramer<'_>,
-    update_sig: Rc<Signal<NoopRawMutex, ()>>,
-) -> Result<(), ()> {
+async fn ws_reader(reader: &mut TcpReader<'_>, framer: &mut WsRxFramer<'_>) -> Result<(), ()> {
     loop {
         let res = reader.read(framer.mut_buf()).await;
         if let Err(e) = res {
@@ -116,8 +110,16 @@ async fn ws_reader(
         }
 
         if let Some(frame) = framer.process_data(n) {
-            log::info!("recv_frame: {:?}", frame.opcode());
-            update_sig.signal(());
+            if let WsFrame::Text(text) = frame {
+                match serde_json::from_str::<TimerPacket>(text) {
+                    Ok(timer_packet) => {
+                        log::info!("Timer packet recv: {timer_packet:?}");
+                    }
+                    Err(e) => {
+                        log::error!("timer_packet_fail: {e:?}\nTried to parse:\n{text}\n\n");
+                    }
+                }
+            }
         }
     }
 }
@@ -125,7 +127,6 @@ async fn ws_reader(
 async fn ws_writer(
     writer: &mut TcpWriter<'_>,
     framer: &mut WsTxFramer<'_, HalRandom>,
-    update_sig: Rc<Signal<NoopRawMutex, ()>>,
 ) -> Result<(), ()> {
     loop {
         //update_sig.wait().await;

@@ -2,6 +2,8 @@
 #![no_main]
 
 extern crate alloc;
+use core::str::FromStr;
+
 use alloc::rc::Rc;
 use embassy_executor::Spawner;
 use embassy_time::Timer;
@@ -84,7 +86,7 @@ async fn main(spawner: Spawner) {
         cs_pin,
         peripherals.SPI2,
         peripherals.DMA,
-        global_state.clone()
+        global_state.clone(),
     ));
 
     let mut wm_settings = esp_hal_wifimanager::WmSettings::default();
@@ -95,7 +97,7 @@ async fn main(spawner: Spawner) {
     };
 
     let timg0 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0);
-    let wifi_res = esp_hal_wifimanager::init_wm(
+    let mut wifi_res = esp_hal_wifimanager::init_wm(
         EspWifiInitFor::Wifi,
         wm_settings,
         timg0.timer0,
@@ -109,32 +111,32 @@ async fn main(spawner: Spawner) {
     .await
     .unwrap();
 
-    if let Some(ref data) = wifi_res.data {
-        let conn_settings: ConnSettings = serde_json::from_value(data.clone()).unwrap();
-        log::info!("conn_settings: {conn_settings:?}");
-    }
-    log::info!("wifi_res: {:?}", wifi_res);
-    global_state.state.lock().await.scene = Scene::MdnsWait;
+    let conn_settings: Option<ConnSettings> = wifi_res
+        .data
+        .take()
+        .and_then(|d| serde_json::from_value(d).ok());
 
-    log::info!("Start mdns lookup...");
-    let mdns_option = mdns::mdns_query(&wifi_res.sta_stack).await;
-    log::info!("mdns: {:?}", mdns_option);
+    let ws_url = if conn_settings.is_none()
+        || conn_settings.as_ref().unwrap().mdns
+        || conn_settings.as_ref().unwrap().ws_url.is_none()
+    {
+        log::info!("Start mdns lookup...");
+        global_state.state.lock().await.scene = Scene::MdnsWait;
+        let mdns_res = mdns::mdns_query(&wifi_res.sta_stack).await;
+        log::info!("Mdns result: {:?}", mdns_res);
 
-    if let Some(ws_url) = mdns_option {
-        /*
-        scenes::CURRENT_STATE.lock().await.server_connected = Some(false);
-        scenes::STATE_CHANGED.signal(());
-        */
+        alloc::string::String::from_str(&mdns_res.expect("MDNS HOW?")).unwrap()
+    } else {
+        conn_settings.unwrap().ws_url.unwrap()
+    };
 
-        _ = spawner.spawn(ws::ws_task(
-            wifi_res.sta_stack,
-            ws_url,
-            global_state.clone(),
-        ));
-    }
+    _ = spawner.spawn(ws::ws_task(
+        wifi_res.sta_stack,
+        ws_url,
+        global_state.clone(),
+    ));
 
     global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
-    //global_state.state.lock().await.scene = Scene::Timer { inspection_time: 0 };
     loop {
         log::info!("bump {}", esp_hal::time::now());
         Timer::after_millis(15000).await;
