@@ -1,4 +1,7 @@
-use crate::{scenes::GlobalState, structs::TimerPacket};
+use crate::{
+    scenes::{GlobalState, Scene},
+    structs::TimerPacket,
+};
 use alloc::string::String;
 use core::str::FromStr;
 use embassy_net::{
@@ -80,7 +83,7 @@ pub async fn ws_task(
         let (mut reader, mut writer) = socket.split();
         loop {
             let res = embassy_futures::select::select(
-                ws_reader(&mut reader, &mut rx_framer),
+                ws_reader(&mut reader, &mut rx_framer, global_state.clone()),
                 ws_writer(&mut writer, &mut tx_framer),
             )
             .await;
@@ -99,7 +102,11 @@ pub async fn ws_task(
     }
 }
 
-async fn ws_reader(reader: &mut TcpReader<'_>, framer: &mut WsRxFramer<'_>) -> Result<(), ()> {
+async fn ws_reader(
+    reader: &mut TcpReader<'_>,
+    framer: &mut WsRxFramer<'_>,
+    global_state: GlobalState,
+) -> Result<(), ()> {
     loop {
         let res = reader.read(framer.mut_buf()).await;
         if let Err(e) = res {
@@ -121,6 +128,26 @@ async fn ws_reader(reader: &mut TcpReader<'_>, framer: &mut WsRxFramer<'_>) -> R
                 WsFrame::Text(text) => match serde_json::from_str::<TimerPacket>(text) {
                     Ok(timer_packet) => {
                         log::info!("Timer packet recv: {timer_packet:?}");
+                        match timer_packet {
+                            TimerPacket::CardInfoResponse {
+                                card_id,
+                                esp_id,
+                                display,
+                                country_iso2,
+                                can_compete,
+                            } => {
+                                // TODO: this packet should be parsed in rfid.rs using channels
+                                global_state.state.lock().await.scene =
+                                    Scene::CompetitorInfo(display);
+                            }
+                            //TimerPacket::StartUpdate { esp_id, version, build_time, size, firmware } => todo!(),
+                            //TimerPacket::SolveConfirm { esp_id, competitor_id, session_id } => todo!(),
+                            //TimerPacket::DelegateResponse { esp_id, should_scan_cards, solve_time, penalty } => todo!(),
+                            //TimerPacket::ApiError { esp_id, error, should_reset_time } => todo!(),
+                            //TimerPacket::DeviceSettings { esp_id, use_inspection, secondary_text, added } => todo!(),
+                            //TimerPacket::EpochTime { current_epoch } => todo!(),
+                            _ => {}
+                        }
                     }
                     Err(e) => {
                         log::error!("timer_packet_fail: {e:?}\nTried to parse:\n{text}\n\n");
@@ -144,29 +171,15 @@ async fn ws_writer(
     let recv = PACKET_CHANNEL.receiver();
     let frame_recv = FRAME_CHANNEL.receiver();
     loop {
-        match embassy_futures::select::select(recv.receive(), frame_recv.receive()).await {
+        let data = match embassy_futures::select::select(recv.receive(), frame_recv.receive()).await
+        {
             embassy_futures::select::Either::First(to_send) => {
-                log::info!("to_send_packet: {to_send:?}");
-
-                writer
-                    .write_all(&framer.text(&serde_json::to_string(&to_send).unwrap()))
-                    .await
-                    .map_err(|_| ())?;
+                framer.text(&serde_json::to_string(&to_send).unwrap())
             }
-            embassy_futures::select::Either::Second(to_send) => {
-                log::info!("to_send_frame: opcode:{}", to_send.opcode());
+            embassy_futures::select::Either::Second(to_send) => framer.frame(to_send),
+        };
 
-                writer
-                    .write_all(&framer.frame(to_send))
-                    .await
-                    .map_err(|_| ())?;
-            }
-        }
-
-        //update_sig.wait().await;
-        //writer.write_all(&framer.pong(&[])).await.map_err(|_| ())?;
-        //writer.write_all(&framer.text("{\"logs\": {\"esp_id\": 694202137, \"logs\": [{\"millis\": 69420, \"msg\": \"wowowowowo\"}]}}")).await.map_err(|_| ())?;
-        //Timer::after_millis(1000).await;
+        writer.write_all(data).await.map_err(|_| ())?;
     }
 }
 

@@ -64,7 +64,7 @@ pub async fn rfid_task(
                 match state.scene {
                     crate::scenes::Scene::WaitingForCompetitor { .. } => {
                         state.current_competitor = Some(card_uid);
-                        state.scene = crate::scenes::Scene::CompetitorInfo(card_uid);
+                        //state.scene = crate::scenes::Scene::CompetitorInfo(card_uid);
                     }
                     crate::scenes::Scene::Finished { .. } => todo!(),
                     _ => {}

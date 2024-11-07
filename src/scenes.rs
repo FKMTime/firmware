@@ -1,4 +1,4 @@
-use alloc::rc::Rc;
+use alloc::{rc::Rc, string::String};
 use embassy_sync::{
     blocking_mutex::raw::{NoopRawMutex, RawMutex},
     mutex::{Mutex, MutexGuard},
@@ -18,7 +18,7 @@ pub enum Scene {
     MdnsWait,
 
     WaitingForCompetitor,
-    CompetitorInfo(u128),
+    CompetitorInfo(String),
     Inspection,
     Timer,
     Finished,
