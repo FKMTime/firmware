@@ -1,6 +1,6 @@
 use crate::{
     scenes::{GlobalState, Scene},
-    structs::TimerPacket,
+    structs::{TimerPacket, TimerPacketInner},
 };
 use alloc::string::String;
 use core::str::FromStr;
@@ -128,10 +128,9 @@ async fn ws_reader(
                 WsFrame::Text(text) => match serde_json::from_str::<TimerPacket>(text) {
                     Ok(timer_packet) => {
                         log::info!("Timer packet recv: {timer_packet:?}");
-                        match timer_packet {
-                            TimerPacket::CardInfoResponse {
+                        match timer_packet.data {
+                            TimerPacketInner::CardInfoResponse {
                                 card_id,
-                                esp_id,
                                 display,
                                 country_iso2,
                                 can_compete,
