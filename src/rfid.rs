@@ -53,15 +53,15 @@ pub async fn rfid_task(
             if let Ok(card) = card {
                 let card_uid = card.get_number();
                 log::info!("Card UID: {card_uid}");
-                // TODO: generate tag
-                crate::ws::send_packet(crate::structs::TimerPacket {
-                    tag: None,
-                    data: crate::structs::TimerPacketInner::CardInfoRequest {
+
+                let resp = crate::ws::send_tagged_packet(
+                    crate::structs::TimerPacketInner::CardInfoRequest {
                         card_id: card_uid as u64,
                         attendance_device: None,
                     },
-                })
+                )
                 .await;
+                log::info!("WS RESP: {:?}", resp);
 
                 let mut state = global_state.state.lock().await;
                 match state.scene {

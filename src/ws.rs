@@ -8,13 +8,17 @@ use embassy_net::{
     tcp::{TcpReader, TcpSocket, TcpWriter},
     Stack,
 };
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
+use embassy_sync::{
+    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, pubsub::PubSubChannel,
+};
 use embassy_time::Timer;
 use embedded_io_async::Write;
 use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
 use ws_framer::{RngProvider, WsFrame, WsFrameOwned, WsRxFramer, WsTxFramer, WsUrl};
 
 static FRAME_CHANNEL: Channel<CriticalSectionRawMutex, WsFrameOwned, 10> = Channel::new();
+static TAGGED_RETURN: PubSubChannel<CriticalSectionRawMutex, (u64, TimerPacket), 20, 20, 4> =
+    PubSubChannel::new();
 
 #[embassy_executor::task]
 pub async fn ws_task(
@@ -106,6 +110,8 @@ async fn ws_reader(
     framer: &mut WsRxFramer<'_>,
     global_state: GlobalState,
 ) -> Result<(), ()> {
+    let tagged_publisher = TAGGED_RETURN.publisher().map_err(|_| ())?;
+
     loop {
         let res = reader.read(framer.mut_buf()).await;
         if let Err(e) = res {
@@ -127,6 +133,11 @@ async fn ws_reader(
                 WsFrame::Text(text) => match serde_json::from_str::<TimerPacket>(text) {
                     Ok(timer_packet) => {
                         log::info!("Timer packet recv: {timer_packet:?}");
+                        if let Some(tag) = timer_packet.tag {
+                            tagged_publisher.publish((tag, timer_packet)).await;
+                            continue;
+                        }
+
                         match timer_packet.data {
                             TimerPacketInner::CardInfoResponse {
                                 card_id,
@@ -190,4 +201,26 @@ pub async fn send_packet(packet: TimerPacket) {
     FRAME_CHANNEL
         .send(WsFrameOwned::Text(serde_json::to_string(&packet).unwrap()))
         .await;
+}
+
+pub async fn send_tagged_packet(packet: TimerPacketInner) -> TimerPacket {
+    let tag: u64 = HalRandom::random_u32() as u64;
+    let packet = TimerPacket {
+        tag: Some(tag),
+        data: packet,
+    };
+    send_packet(packet).await;
+
+    // TODO: timeout
+    wait_for_tagged_response(tag).await
+}
+
+async fn wait_for_tagged_response(tag: u64) -> TimerPacket {
+    let mut subscriber = TAGGED_RETURN.subscriber().unwrap();
+    loop {
+        let (packet_tag, packet) = subscriber.next_message_pure().await;
+        if packet_tag == tag {
+            return packet;
+        }
+    }
 }
