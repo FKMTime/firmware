@@ -12,10 +12,9 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channe
 use embassy_time::Timer;
 use embedded_io_async::Write;
 use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
-use ws_framer::{RngProvider, WsFrame, WsRxFramer, WsTxFramer, WsUrl};
+use ws_framer::{RngProvider, WsFrame, WsFrameOwned, WsRxFramer, WsTxFramer, WsUrl};
 
-static PACKET_CHANNEL: Channel<CriticalSectionRawMutex, TimerPacket, 10> = Channel::new();
-static FRAME_CHANNEL: Channel<CriticalSectionRawMutex, WsFrame, 5> = Channel::new();
+static FRAME_CHANNEL: Channel<CriticalSectionRawMutex, WsFrameOwned, 10> = Channel::new();
 
 #[embassy_executor::task]
 pub async fn ws_task(
@@ -155,7 +154,9 @@ async fn ws_reader(
                 WsFrame::Binary(_) => todo!(),
                 WsFrame::Close(_, _) => todo!(),
                 WsFrame::Ping(_) => {
-                    FRAME_CHANNEL.send(WsFrame::Pong(&[])).await;
+                    FRAME_CHANNEL
+                        .send(WsFrameOwned::Pong(alloc::vec::Vec::new()))
+                        .await;
                 }
                 _ => {}
             }
@@ -167,17 +168,10 @@ async fn ws_writer(
     writer: &mut TcpWriter<'_>,
     framer: &mut WsTxFramer<'_, HalRandom>,
 ) -> Result<(), ()> {
-    let recv = PACKET_CHANNEL.receiver();
-    let frame_recv = FRAME_CHANNEL.receiver();
+    let recv = FRAME_CHANNEL.receiver();
     loop {
-        let data = match embassy_futures::select::select(recv.receive(), frame_recv.receive()).await
-        {
-            embassy_futures::select::Either::First(to_send) => {
-                framer.text(&serde_json::to_string(&to_send).unwrap())
-            }
-            embassy_futures::select::Either::Second(to_send) => framer.frame(to_send),
-        };
-
+        let frame = recv.receive().await;
+        let data = framer.frame(frame.into_ref());
         writer.write_all(data).await.map_err(|_| ())?;
     }
 }
@@ -193,5 +187,7 @@ impl RngProvider for HalRandom {
 }
 
 pub async fn send_packet(packet: TimerPacket) {
-    PACKET_CHANNEL.send(packet).await;
+    FRAME_CHANNEL
+        .send(WsFrameOwned::Text(serde_json::to_string(&packet).unwrap()))
+        .await;
 }
