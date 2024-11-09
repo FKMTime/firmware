@@ -1,6 +1,6 @@
 use crate::{
     scenes::{GlobalState, Scene},
-    structs::{TimerPacket, TimerPacketInner},
+    structs::{ApiError, FromPacket, TimerPacket, TimerPacketInner},
 };
 use alloc::string::String;
 use core::str::FromStr;
@@ -191,6 +191,22 @@ pub async fn send_packet(packet: TimerPacket) {
     FRAME_CHANNEL
         .send(WsFrameOwned::Text(serde_json::to_string(&packet).unwrap()))
         .await;
+}
+
+pub async fn send_request<T>(packet: TimerPacketInner) -> Result<T, ApiError>
+where
+    T: FromPacket,
+{
+    let tag: u64 = HalRandom::random_u32() as u64;
+    let packet = TimerPacket {
+        tag: Some(tag),
+        data: packet,
+    };
+    send_packet(packet).await;
+
+    // TODO: timeout
+    let packet = wait_for_tagged_response(tag).await;
+    FromPacket::from_packet(packet)
 }
 
 pub async fn send_tagged_packet(packet: TimerPacketInner) -> TimerPacket {

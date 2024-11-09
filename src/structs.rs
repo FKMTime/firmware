@@ -92,17 +92,19 @@ pub struct ApiError {
     pub should_reset_time: bool,
 }
 
-impl TryInto<CardInfoResponsePacket> for TimerPacketInner {
-    type Error = ApiError;
+pub trait FromPacket: Sized {
+    fn from_packet(packet: TimerPacket) -> Result<Self, ApiError>;
+}
 
-    fn try_into(self) -> Result<CardInfoResponsePacket, Self::Error> {
-        match self {
+impl FromPacket for CardInfoResponsePacket {
+    fn from_packet(packet: TimerPacket) -> Result<Self, ApiError> {
+        match packet.data {
             TimerPacketInner::CardInfoResponse(card_info_response_packet) => {
                 Ok(card_info_response_packet)
             }
             TimerPacketInner::ApiError(api_error) => Err(api_error),
             _ => Err(ApiError {
-                error: "Wrong response!".to_string(),
+                error: "Wrong response type!".to_string(),
                 should_reset_time: false,
             }),
         }
