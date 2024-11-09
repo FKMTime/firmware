@@ -61,14 +61,32 @@ pub async fn rfid_task(
                     },
                 )
                 .await;
-                log::info!("WS RESP: {:?}", resp);
 
                 let mut state = global_state.state.lock().await;
-                match state.scene {
-                    crate::scenes::Scene::WaitingForCompetitor { .. } => {
-                        state.current_competitor = Some(card_uid);
-                        //state.scene = crate::scenes::Scene::CompetitorInfo(card_uid);
+                match resp.data {
+                    crate::structs::TimerPacketInner::ApiError {
+                        error,
+                        should_reset_time,
+                    } => {
+                        log::error!("Error ({should_reset_time}): {error:?}");
+                        continue;
                     }
+                    _ => {}
+                }
+
+                match state.scene {
+                    crate::scenes::Scene::WaitingForCompetitor => match resp.data {
+                        crate::structs::TimerPacketInner::CardInfoResponse {
+                            card_id,
+                            display,
+                            country_iso2: _,
+                            can_compete: _,
+                        } => {
+                            state.scene = crate::scenes::Scene::CompetitorInfo(display);
+                            state.current_competitor = Some(card_id as u128);
+                        }
+                        _ => {}
+                    },
                     crate::scenes::Scene::Finished { .. } => todo!(),
                     _ => {}
                 }
