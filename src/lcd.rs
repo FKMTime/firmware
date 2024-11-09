@@ -161,6 +161,23 @@ async fn process_lcd<C: CharsetWithFallback>(
         return Some(());
     }
 
+    if let Some(time) = current_state.test_hold {
+        _ = lcd
+            .print("Holding button", 0, PrintAlign::Center, true, delay)
+            .await;
+
+        _ = lcd
+            .print(
+                &alloc::format!("{time}"),
+                1,
+                PrintAlign::Center,
+                true,
+                delay,
+            )
+            .await;
+        return Some(());
+    }
+
     match current_state.scene {
         Scene::WifiConnect => {
             _ = lcd

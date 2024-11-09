@@ -5,6 +5,7 @@ extern crate alloc;
 use core::str::FromStr;
 
 use alloc::rc::Rc;
+use arc::Arc;
 use embassy_executor::Spawner;
 use embassy_time::Timer;
 use embedded_hal::digital::OutputPin;
@@ -18,6 +19,7 @@ use esp_wifi::EspWifiInitFor;
 use scenes::{GlobalStateInner, Scene};
 use structs::ConnSettings;
 
+mod arc;
 mod battery;
 mod buttons;
 mod lcd;
@@ -69,11 +71,15 @@ async fn main(spawner: Spawner) {
 
     let timg1 = TimerGroup::new(peripherals.TIMG1);
     esp_hal_embassy::init(timg1.timer0);
-    let global_state = Rc::new(GlobalStateInner::new());
+    let global_state = Arc::new(GlobalStateInner::new());
 
     _ = spawner.spawn(lcd::lcd_task(lcd_shifter, global_state.clone()));
     _ = spawner.spawn(battery::batter_read_task(battery_input, peripherals.ADC1));
-    _ = spawner.spawn(buttons::buttons_task(button_input, buttons_shifter));
+    _ = spawner.spawn(buttons::buttons_task(
+        button_input,
+        buttons_shifter,
+        global_state.clone(),
+    ));
     _ = spawner.spawn(stackmat::stackmat_task(
         peripherals.UART0,
         stackmat_rx,

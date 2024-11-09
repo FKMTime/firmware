@@ -1,9 +1,11 @@
 use alloc::{rc::Rc, string::String};
 use embassy_sync::{
-    blocking_mutex::raw::{NoopRawMutex, RawMutex},
+    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, RawMutex},
     mutex::{Mutex, MutexGuard},
     signal::Signal,
 };
+
+use crate::arc::Arc;
 
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
@@ -63,13 +65,13 @@ impl PartialOrd for Scene {
     }
 }
 
-pub struct SignaledNoopMutex<T> {
-    inner: Mutex<NoopRawMutex, T>,
-    update_sig: Signal<NoopRawMutex, ()>,
+pub struct SignaledMutex<M: RawMutex, T> {
+    inner: Mutex<M, T>,
+    update_sig: Signal<M, ()>,
 }
 
 #[allow(dead_code)]
-impl<T> SignaledNoopMutex<T> {
+impl<M: RawMutex, T> SignaledMutex<M, T> {
     pub fn new(initial: T) -> Self {
         let sig = Signal::new();
         //sig.signal(());
@@ -88,59 +90,59 @@ impl<T> SignaledNoopMutex<T> {
         self.update_sig.signal(());
     }
 
-    pub async fn lock(&self) -> SignaledNoopMutexGuard<'_, T> {
-        SignaledNoopMutexGuard {
+    pub async fn lock(&self) -> SignaledMutexGuard<'_, M, T> {
+        SignaledMutexGuard {
             update_sig: &self.update_sig,
             inner_guard: self.inner.lock().await,
         }
     }
 
-    pub async fn wait_lock(&self) -> MutexGuard<'_, NoopRawMutex, T> {
+    pub async fn wait_lock(&self) -> MutexGuard<'_, M, T> {
         self.update_sig.wait().await;
         self.inner.lock().await
     }
 
-    pub async fn value(&self) -> MutexGuard<'_, NoopRawMutex, T> {
+    pub async fn value(&self) -> MutexGuard<'_, M, T> {
         self.inner.lock().await
     }
 }
 
-pub struct SignaledNoopMutexGuard<'a, T> {
-    update_sig: &'a Signal<NoopRawMutex, ()>,
-    inner_guard: MutexGuard<'a, NoopRawMutex, T>,
+pub struct SignaledMutexGuard<'a, M: RawMutex, T> {
+    update_sig: &'a Signal<M, ()>,
+    inner_guard: MutexGuard<'a, M, T>,
 }
 
-impl<'a, T> Drop for SignaledNoopMutexGuard<'a, T> {
+impl<'a, M: RawMutex, T> Drop for SignaledMutexGuard<'a, M, T> {
     fn drop(&mut self) {
         self.update_sig.signal(()); // signal value
     }
 }
 
-impl<'a, T> core::ops::Deref for SignaledNoopMutexGuard<'a, T> {
+impl<'a, M: RawMutex, T> core::ops::Deref for SignaledMutexGuard<'a, M, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         self.inner_guard.deref()
     }
 }
 
-impl<'a, T> core::ops::DerefMut for SignaledNoopMutexGuard<'a, T> {
+impl<'a, M: RawMutex, T> core::ops::DerefMut for SignaledMutexGuard<'a, M, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.inner_guard.deref_mut()
     }
 }
 
 //pub type GlobalState
-pub type GlobalState = Rc<GlobalStateInner>;
+pub type GlobalState = Arc<GlobalStateInner>;
 
 pub struct GlobalStateInner {
-    pub state: SignaledNoopMutex<SignaledGlobalStateInner>,
-    pub timer_signal: Signal<NoopRawMutex, Option<u64>>,
+    pub state: SignaledMutex<CriticalSectionRawMutex, SignaledGlobalStateInner>,
+    pub timer_signal: Signal<CriticalSectionRawMutex, Option<u64>>,
 }
 
 impl GlobalStateInner {
     pub fn new() -> Self {
         Self {
-            state: SignaledNoopMutex::new(SignaledGlobalStateInner::new()),
+            state: SignaledMutex::new(SignaledGlobalStateInner::new()),
             timer_signal: Signal::new(),
         }
     }
@@ -159,6 +161,7 @@ pub struct SignaledGlobalStateInner {
     pub server_connected: Option<bool>,
     pub stackmat_connected: Option<bool>,
     pub current_competitor: Option<u128>,
+    pub test_hold: Option<u64>
 }
 
 impl SignaledGlobalStateInner {
@@ -168,6 +171,7 @@ impl SignaledGlobalStateInner {
             server_connected: None,
             stackmat_connected: None,
             current_competitor: None,
+            test_hold: None
         }
     }
 }
