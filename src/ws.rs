@@ -139,16 +139,6 @@ async fn ws_reader(
                         }
 
                         match timer_packet.data {
-                            TimerPacketInner::CardInfoResponse {
-                                card_id,
-                                display,
-                                country_iso2,
-                                can_compete,
-                            } => {
-                                // TODO: this packet should be parsed in rfid.rs using channels
-                                global_state.state.lock().await.scene =
-                                    Scene::CompetitorInfo(display);
-                            }
                             //TimerPacket::StartUpdate { esp_id, version, build_time, size, firmware } => todo!(),
                             //TimerPacket::SolveConfirm { esp_id, competitor_id, session_id } => todo!(),
                             //TimerPacket::DelegateResponse { esp_id, should_scan_cards, solve_time, penalty } => todo!(),

@@ -1,4 +1,4 @@
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug)]
@@ -45,22 +45,14 @@ pub enum TimerPacketInner {
         #[serde(skip_serializing_if = "Option::is_none")]
         penalty: Option<i64>,
     },
-    ApiError {
-        error: String,
-        should_reset_time: bool,
-    },
+    ApiError(ApiError),
     CardInfoRequest {
         card_id: u64,
 
         #[serde(skip_serializing_if = "Option::is_none")]
         attendance_device: Option<bool>,
     },
-    CardInfoResponse {
-        card_id: u64,
-        display: String,
-        country_iso2: String,
-        can_compete: bool,
-    },
+    CardInfoResponse(CardInfoResponsePacket),
     AttendanceMarked,
     DeviceSettings {
         use_inspection: bool,
@@ -80,9 +72,39 @@ pub enum TimerPacketInner {
     EpochTime {
         current_epoch: u64,
     },
-
     // packet for end to end testing
     //TestPacket(TestPacketData),
     //Snapshot(SnapshotData),
     //TestAck,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CardInfoResponsePacket {
+    pub card_id: u64,
+    pub display: String,
+    pub country_iso2: String,
+    pub can_compete: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ApiError {
+    pub error: String,
+    pub should_reset_time: bool,
+}
+
+impl TryInto<CardInfoResponsePacket> for TimerPacketInner {
+    type Error = ApiError;
+
+    fn try_into(self) -> Result<CardInfoResponsePacket, Self::Error> {
+        match self {
+            TimerPacketInner::CardInfoResponse(card_info_response_packet) => {
+                Ok(card_info_response_packet)
+            }
+            TimerPacketInner::ApiError(api_error) => Err(api_error),
+            _ => Err(ApiError {
+                error: "Wrong response!".to_string(),
+                should_reset_time: false,
+            }),
+        }
+    }
 }

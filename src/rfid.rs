@@ -1,4 +1,5 @@
 use crate::scenes::GlobalState;
+use crate::structs::CardInfoResponsePacket;
 use adv_shift_registers::wrappers::ShifterPin;
 use embassy_time::{Duration, Timer};
 use esp_hal::prelude::*;
@@ -61,34 +62,22 @@ pub async fn rfid_task(
                     },
                 )
                 .await;
-
-                let mut state = global_state.state.lock().await;
-                match resp.data {
-                    crate::structs::TimerPacketInner::ApiError {
-                        error,
-                        should_reset_time,
-                    } => {
-                        log::error!("Error ({should_reset_time}): {error:?}");
-                        continue;
-                    }
-                    _ => {}
-                }
-
-                match state.scene {
-                    crate::scenes::Scene::WaitingForCompetitor => match resp.data {
-                        crate::structs::TimerPacketInner::CardInfoResponse {
-                            card_id,
-                            display,
-                            country_iso2: _,
-                            can_compete: _,
-                        } => {
-                            state.scene = crate::scenes::Scene::CompetitorInfo(display);
-                            state.current_competitor = Some(card_id as u128);
+                let resp: Result<CardInfoResponsePacket, _> = resp.data.try_into();
+                match resp {
+                    Ok(resp) => {
+                        let mut state = global_state.state.lock().await;
+                        match state.scene {
+                            crate::scenes::Scene::WaitingForCompetitor => {
+                                state.scene = crate::scenes::Scene::CompetitorInfo(resp.display);
+                                state.current_competitor = Some(resp.card_id as u128);
+                            }
+                            crate::scenes::Scene::Finished { .. } => todo!(),
+                            _ => {}
                         }
-                        _ => {}
-                    },
-                    crate::scenes::Scene::Finished { .. } => todo!(),
-                    _ => {}
+                    }
+                    Err(e) => {
+                        log::error!("Error ({}): {:?}", e.should_reset_time, e.error);
+                    }
                 }
             }
 
