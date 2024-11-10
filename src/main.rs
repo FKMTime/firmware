@@ -23,6 +23,7 @@ mod arc;
 mod battery;
 mod buttons;
 mod lcd;
+mod lcd_abstract;
 mod mdns;
 mod rfid;
 mod scenes;

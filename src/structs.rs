@@ -96,6 +96,7 @@ pub trait FromPacket: Sized {
     fn from_packet(packet: TimerPacket) -> Result<Self, ApiError>;
 }
 
+// TODO: macro for this shit
 impl FromPacket for CardInfoResponsePacket {
     fn from_packet(packet: TimerPacket) -> Result<Self, ApiError> {
         match packet.data {
