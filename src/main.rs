@@ -25,9 +25,10 @@ mod lcd;
 mod lcd_abstract;
 mod mdns;
 mod rfid;
-mod state;
 mod stackmat;
+mod state;
 mod structs;
+mod utils;
 mod ws;
 
 #[main]

@@ -1,6 +1,6 @@
-use crate::state::GlobalState;
+use crate::state::{GlobalState, Scene};
 use adv_shift_registers::wrappers::ShifterValue;
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, string::ToString, vec::Vec};
 use core::{future::Future, pin::Pin};
 use embassy_time::{Instant, Timer};
 use esp_hal::gpio::Input;
@@ -46,8 +46,8 @@ pub async fn buttons_task(
     state: GlobalState,
 ) {
     let mut handler = ButtonsHandler::new();
-    handler.add_handler(Button::Third, ButtonTrigger::Up, button_test());
     handler.add_handler(Button::Third, ButtonTrigger::Up, submit_up());
+    handler.add_handler(Button::Fourth, ButtonTrigger::Up, inspection_up());
 
     handler.add_handler(Button::Second, ButtonTrigger::Hold, test_hold());
     handler.add_handler(Button::Second, ButtonTrigger::Up, test_hold());
@@ -256,6 +256,42 @@ async fn submit_up(
         })
         .await;
 
+        return Ok(());
+    }
+
+    Ok(())
+}
+
+#[macros::button_handler]
+async fn inspection_up(
+    _triggered: ButtonTrigger,
+    hold_time: u64,
+    state: GlobalState,
+) -> Result<(), ()> {
+    let mut state_val = state.state.value().await;
+    if !state_val.use_inspection {
+        return Ok(());
+    }
+
+    if state_val.scene != Scene::Inspection && state_val.inspection_start.is_none() {
+        state_val.inspection_start = Some(Instant::now());
+        state_val.scene = Scene::Inspection;
+        state.state.signal();
+
+        return Ok(());
+    }
+
+    if hold_time > 1000 && state_val.scene == Scene::Inspection {
+        let scene = if state_val.current_competitor.is_none() {
+            Scene::WaitingForCompetitor
+        } else {
+            Scene::CompetitorInfo("TODO: Fix".to_string())
+        };
+
+        state_val.scene = scene;
+        state_val.inspection_start = None;
+        //state_val.inspection_end = None;
+        state.state.signal();
         return Ok(());
     }
 

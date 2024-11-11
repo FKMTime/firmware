@@ -1,5 +1,5 @@
 use adv_shift_registers::wrappers::{ShifterPin, ShifterValue};
-use embassy_time::{Delay, Duration, Timer, WithTimeout};
+use embassy_time::{Delay, Duration, Instant, Timer, WithTimeout};
 use embedded_hal::digital::OutputPin;
 use hd44780_driver::{
     bus::{FourBitBus, FourBitBusPins},
@@ -208,25 +208,37 @@ async fn process_lcd<C: CharsetWithFallback>(
                     .ok()?;
             }
         }
-        Scene::Inspection { .. } => todo!(),
-        Scene::Timer { .. } => loop {
+        Scene::Inspection => {
+            let inspection_start = global_state
+                .state
+                .value()
+                .await
+                .inspection_start
+                .unwrap_or(Instant::now());
+
+            loop {
+                let elapsed = (Instant::now() - inspection_start).as_millis();
+                let time_str = crate::utils::ms_to_time_str(elapsed);
+
+                lcd_driver
+                    .print(0, &time_str, PrintAlign::Center, true)
+                    .ok()?;
+
+                lcd_driver.display_on_lcd(lcd, delay).await.ok()?;
+
+                Timer::after_millis(5).await;
+                if global_state.state.signalled() {
+                    return None;
+                }
+            }
+        }
+        Scene::Timer => loop {
             let time = global_state
                 .sig_or_update(&global_state.timer_signal)
                 .await?;
 
             let time_ms = time.unwrap_or(0);
-            let minutes: u8 = (time_ms / 60000) as u8;
-            let seconds: u8 = ((time_ms % 60000) / 1000) as u8;
-            let ms: u16 = (time_ms % 1000) as u16;
-
-            let mut time_str = heapless::String::<8>::new();
-            if minutes > 0 {
-                _ = time_str.push((minutes + b'0') as char);
-                _ = time_str.push(':');
-                _ = time_str.push_str(&alloc::format!("{seconds:02}.{ms:03}"));
-            } else {
-                _ = time_str.push_str(&alloc::format!("{seconds:01}.{ms:03}"));
-            }
+            let time_str = crate::utils::ms_to_time_str(time_ms);
 
             lcd_driver
                 .print(0, &time_str, PrintAlign::Center, true)
@@ -234,8 +246,7 @@ async fn process_lcd<C: CharsetWithFallback>(
 
             lcd_driver.display_on_lcd(lcd, delay).await.ok()?;
         },
-        Scene::Finished { .. } => todo!(),
-        Scene::Error { .. } => todo!(),
+        Scene::Finished => todo!(),
     }
 
     Some(())

@@ -5,6 +5,7 @@ use embassy_sync::{
     mutex::{Mutex, MutexGuard},
     signal::Signal,
 };
+use embassy_time::Instant;
 
 pub static mut EPOCH_BASE: u64 = 1431212400;
 
@@ -25,9 +26,6 @@ pub enum Scene {
     Inspection,
     Timer,
     Finished,
-    Error {
-        msg: alloc::string::String,
-    },
 }
 
 impl Scene {
@@ -41,7 +39,6 @@ impl Scene {
             Scene::Inspection => false,
             Scene::Timer => false,
             Scene::Finished => false,
-            Scene::Error { .. } => false,
         }
     }
 
@@ -55,7 +52,6 @@ impl Scene {
             Scene::Inspection => 5,
             Scene::Timer => 6,
             Scene::Finished => 7,
-            Scene::Error { .. } => 8,
         }
     }
 }
@@ -89,6 +85,10 @@ impl<M: RawMutex, T> SignaledMutex<M, T> {
 
     pub fn signal(&self) {
         self.update_sig.signal(());
+    }
+
+    pub fn signalled(&self) -> bool {
+        self.update_sig.signaled()
     }
 
     pub async fn lock(&self) -> SignaledMutexGuard<'_, M, T> {
@@ -160,6 +160,8 @@ impl GlobalStateInner {
 pub struct SignaledGlobalStateInner {
     pub scene: Scene,
 
+    pub inspection_start: Option<Instant>,
+
     pub use_inspection: bool,
     pub secondary_text: Option<String>,
     pub error_text: Option<String>,
@@ -175,6 +177,9 @@ impl SignaledGlobalStateInner {
     pub fn new() -> Self {
         Self {
             scene: Scene::WifiConnect,
+
+            inspection_start: None,
+
             use_inspection: true,
             secondary_text: None,
 
