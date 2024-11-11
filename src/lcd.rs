@@ -248,7 +248,7 @@ async fn process_lcd<C: CharsetWithFallback>(
 
                 Timer::after_millis(5).await;
                 if global_state.state.signalled() {
-                    return None;
+                    return Some(());
                 }
             }
         }

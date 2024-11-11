@@ -48,7 +48,11 @@ pub async fn buttons_task(
 ) {
     let mut handler = ButtonsHandler::new();
     handler.add_handler(Button::Third, ButtonTrigger::Up, submit_up());
-    handler.add_handler(Button::Third, ButtonTrigger::HoldOnce(3000), submit_reset_competitor());
+    handler.add_handler(
+        Button::Third,
+        ButtonTrigger::HoldOnce(3000),
+        submit_reset_competitor(),
+    );
 
     handler.add_handler(Button::Fourth, ButtonTrigger::Down, inspection_start());
     handler.add_handler(
@@ -295,7 +299,10 @@ async fn inspection_start(
         return Ok(false);
     }
 
-    if state_val.scene < Scene::Inspection && state_val.inspection_start.is_none() {
+    if state_val.scene < Scene::Inspection
+        && state_val.inspection_start.is_none()
+        && state_val.solve_time.is_none()
+    {
         state_val.inspection_start = Some(Instant::now());
         state_val.scene = Scene::Inspection;
         state.state.signal();
