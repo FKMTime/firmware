@@ -54,12 +54,15 @@ pub async fn buttons_task(
         submit_reset_competitor(),
     );
 
-    handler.add_handler(Button::Fourth, ButtonTrigger::Down, inspection_start());
+    handler.add_handler(Button::First, ButtonTrigger::Down, inspection_start());
     handler.add_handler(
-        Button::Fourth,
+        Button::First,
         ButtonTrigger::HoldOnce(1000),
         inspection_hold_stop(),
     );
+
+    handler.add_handler(Button::Fourth, ButtonTrigger::HoldOnce(1000), dnf_button());
+    handler.add_handler(Button::Fourth, ButtonTrigger::Up, penalty_button());
 
     handler.add_handler(Button::Second, ButtonTrigger::Hold, test_hold());
     handler.add_handler(Button::Second, ButtonTrigger::Up, test_hold());
@@ -205,21 +208,35 @@ impl ButtonsHandler {
                     }
 
                     self.last_hold_execute = Instant::now();
+                    if res == Ok(true) {
+                        self.current_handler_down = None; // skip other handlers
+                        break;
+                    }
                 }
                 ButtonTrigger::Hold => {
                     let res = (handler)(trigger.clone(), hold_time, state.clone()).await;
                     if let Err(e) = res {
                         log::error!("buttons_handler:hold_err: {e:?}");
                     }
+
+                    if res == Ok(true) {
+                        self.current_handler_down = None; // skip other handlers
+                        break;
+                    }
                 }
                 ButtonTrigger::HoldOnce(after) => {
                     if hold_time > *after && !*activated {
+                        *activated = true;
+
                         let res = (handler)(trigger.clone(), hold_time, state.clone()).await;
                         if let Err(e) = res {
                             log::error!("buttons_handler:hold_once_err: {e:?}");
                         }
 
-                        *activated = true;
+                        if res == Ok(true) {
+                            self.current_handler_down = None; // skip other handlers
+                            break;
+                        }
                     }
                 }
             }
@@ -332,6 +349,54 @@ async fn inspection_hold_stop(
         state_val.inspection_end = None;
         state.state.signal();
         return Ok(true);
+    }
+
+    Ok(false)
+}
+
+#[macros::button_handler]
+async fn dnf_button(
+    _triggered: ButtonTrigger,
+    _hold_time: u64,
+    state: GlobalState,
+) -> Result<bool, ()> {
+    let mut state_val = state.state.value().await;
+    if state_val.scene == Scene::Inspection {
+        state_val.solve_time = Some(0);
+        state_val.scene = Scene::Finished;
+        state_val.penalty = Some(-1);
+        //state_val.time_confirmed = true; // TODO:
+
+        state.state.signal();
+        return Ok(true);
+    } else if state_val.scene == Scene::Finished {
+        let old_penalty = state_val.penalty.unwrap_or(0);
+        state_val.penalty = Some(if old_penalty == -1 { 0 } else { -1 });
+
+        state.state.signal();
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
+#[macros::button_handler]
+async fn penalty_button(
+    _triggered: ButtonTrigger,
+    _hold_time: u64,
+    state: GlobalState,
+) -> Result<bool, ()> {
+    let mut state_val = state.state.value().await;
+    if state_val.scene == Scene::Finished {
+        let old_penalty = state_val.penalty.unwrap_or(0);
+        state_val.penalty = Some(if old_penalty >= 16 || old_penalty == -1 {
+            0
+        } else {
+            old_penalty + 2
+        });
+
+        state.state.signal();
+        return Ok(false);
     }
 
     Ok(false)

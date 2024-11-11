@@ -275,10 +275,22 @@ async fn process_lcd<C: CharsetWithFallback>(
                 .print(0, &time_str, PrintAlign::Left, true)
                 .ok()?;
 
+            let penalty = current_state.penalty.unwrap_or(0);
+            let penalty_str = match penalty {
+                -2 => "DNS",
+                -1 => "DNF",
+                1.. => &alloc::format!("+{penalty}"),
+                _ => "",
+            };
+
+            lcd_driver
+                .print(0, &penalty_str, PrintAlign::Right, false)
+                .ok()?;
+
             if current_state.use_inspection {
                 let time_str = crate::utils::ms_to_time_str(inspection_time.unwrap_or(0));
                 lcd_driver
-                    .print(0, &time_str, PrintAlign::Right, false)
+                    .print(1, &time_str, PrintAlign::Right, false)
                     .ok()?;
             }
         }
