@@ -38,7 +38,7 @@ pub enum ButtonTrigger {
 }
 
 type ButtonFunc =
-    fn(ButtonTrigger, u64, GlobalState) -> Pin<Box<dyn Future<Output = Result<(), ()>> + Send>>;
+    fn(ButtonTrigger, u64, GlobalState) -> Pin<Box<dyn Future<Output = Result<bool, ()>> + Send>>;
 
 #[embassy_executor::task]
 pub async fn buttons_task(
@@ -48,11 +48,12 @@ pub async fn buttons_task(
 ) {
     let mut handler = ButtonsHandler::new();
     handler.add_handler(Button::Third, ButtonTrigger::Up, submit_up());
-    handler.add_handler(Button::Fourth, ButtonTrigger::Up, inspection_up());
+
+    handler.add_handler(Button::Fourth, ButtonTrigger::Down, inspection_start());
     handler.add_handler(
         Button::Fourth,
         ButtonTrigger::HoldOnce(1000),
-        inspection_hold_disable(),
+        inspection_hold_stop(),
     );
 
     handler.add_handler(Button::Second, ButtonTrigger::Hold, test_hold());
@@ -164,6 +165,11 @@ impl ButtonsHandler {
                     if let Err(e) = res {
                         log::error!("buttons_handler:down_err: {e:?}");
                     }
+
+                    if res == Ok(true) {
+                        self.current_handler_down = None; // skip other handlers
+                        break;
+                    }
                 }
             }
         }
@@ -239,9 +245,9 @@ async fn button_test(
     triggered: ButtonTrigger,
     hold_time: u64,
     _state: GlobalState,
-) -> Result<(), ()> {
+) -> Result<bool, ()> {
     log::info!("Triggered: {triggered:?} - {hold_time}");
-    Ok(())
+    Ok(false)
 }
 
 #[macros::button_handler]
@@ -249,7 +255,7 @@ async fn submit_up(
     _triggered: ButtonTrigger,
     _hold_time: u64,
     state: GlobalState,
-) -> Result<(), ()> {
+) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
 
     // Clear error (text)
@@ -257,7 +263,7 @@ async fn submit_up(
         state_val.error_text = None;
         state.state.signal();
 
-        return Ok(());
+        return Ok(false);
     }
 
     // Device add
@@ -271,43 +277,40 @@ async fn submit_up(
         })
         .await;
 
-        return Ok(());
+        return Ok(false);
     }
 
-    Ok(())
+    Ok(false)
 }
 
 #[macros::button_handler]
-async fn inspection_up(
+async fn inspection_start(
     _triggered: ButtonTrigger,
-    hold_time: u64,
+    _hold_time: u64,
     state: GlobalState,
-) -> Result<(), ()> {
+) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
     if !state_val.use_inspection {
-        return Ok(());
+        return Ok(false);
     }
 
-    if hold_time < 1000
-        && state_val.scene != Scene::Inspection
-        && state_val.inspection_start.is_none()
-    {
+    if state_val.scene != Scene::Inspection && state_val.inspection_start.is_none() {
         state_val.inspection_start = Some(Instant::now());
         state_val.scene = Scene::Inspection;
         state.state.signal();
 
-        return Ok(());
+        return Ok(true);
     }
 
-    Ok(())
+    Ok(false)
 }
 
 #[macros::button_handler]
-async fn inspection_hold_disable(
+async fn inspection_hold_stop(
     _triggered: ButtonTrigger,
     _hold_time: u64,
     state: GlobalState,
-) -> Result<(), ()> {
+) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
     if state_val.scene == Scene::Inspection {
         let scene = if state_val.current_competitor.is_none() {
@@ -320,14 +323,18 @@ async fn inspection_hold_disable(
         state_val.inspection_start = None;
         //state_val.inspection_end = None;
         state.state.signal();
-        return Ok(());
+        return Ok(true);
     }
 
-    Ok(())
+    Ok(false)
 }
 
 #[macros::button_handler]
-async fn test_hold(triggered: ButtonTrigger, hold_time: u64, state: GlobalState) -> Result<(), ()> {
+async fn test_hold(
+    triggered: ButtonTrigger,
+    hold_time: u64,
+    state: GlobalState,
+) -> Result<bool, ()> {
     match triggered {
         ButtonTrigger::Up => {
             state.state.lock().await.test_hold = None;
@@ -337,5 +344,5 @@ async fn test_hold(triggered: ButtonTrigger, hold_time: u64, state: GlobalState)
         }
         _ => {}
     }
-    Ok(())
+    Ok(false)
 }
