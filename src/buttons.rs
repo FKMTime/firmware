@@ -1,10 +1,9 @@
+use crate::state::GlobalState;
 use adv_shift_registers::wrappers::ShifterValue;
 use alloc::{boxed::Box, vec::Vec};
 use core::{future::Future, pin::Pin};
 use embassy_time::{Instant, Timer};
 use esp_hal::gpio::Input;
-
-use crate::{arc::Arc, scenes::GlobalState};
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq)]
@@ -48,7 +47,7 @@ pub async fn buttons_task(
 ) {
     let mut handler = ButtonsHandler::new();
     handler.add_handler(Button::Third, ButtonTrigger::Up, button_test());
-    handler.add_handler(Button::Third, ButtonTrigger::Up, device_add());
+    handler.add_handler(Button::Third, ButtonTrigger::Up, submit_up());
 
     handler.add_handler(Button::Second, ButtonTrigger::Hold, test_hold());
     handler.add_handler(Button::Second, ButtonTrigger::Up, test_hold());
@@ -231,23 +230,35 @@ async fn button_test(
 }
 
 #[macros::button_handler]
-async fn device_add(
+async fn submit_up(
     _triggered: ButtonTrigger,
     _hold_time: u64,
     state: GlobalState,
 ) -> Result<(), ()> {
-    if state.state.value().await.device_added.unwrap_or(false) {
+    let mut state_val = state.state.value().await;
+
+    // Clear error (text)
+    if state_val.error_text.is_some() {
+        state_val.error_text = None;
+        state.state.signal();
+
         return Ok(());
     }
 
-    log::info!("Device add!");
-    crate::ws::send_packet(crate::structs::TimerPacket {
-        tag: None,
-        data: crate::structs::TimerPacketInner::Add {
-            firmware: alloc::string::ToString::to_string(&"STATION"),
-        },
-    })
-    .await;
+    // Device add
+    if !state_val.device_added.unwrap_or(false) {
+        log::info!("Device add!");
+        crate::ws::send_packet(crate::structs::TimerPacket {
+            tag: None,
+            data: crate::structs::TimerPacketInner::Add {
+                firmware: alloc::string::ToString::to_string(&"STATION"),
+            },
+        })
+        .await;
+
+        return Ok(());
+    }
+
     Ok(())
 }
 

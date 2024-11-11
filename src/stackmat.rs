@@ -1,4 +1,4 @@
-use crate::scenes::{GlobalState, Scene};
+use crate::state::{GlobalState, Scene};
 use embassy_time::Timer;
 use esp_hal::{gpio::AnyPin, peripherals::UART0, uart::UartRx};
 

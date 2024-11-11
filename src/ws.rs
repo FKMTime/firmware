@@ -1,5 +1,5 @@
 use crate::{
-    scenes::{GlobalState, Scene},
+    state::GlobalState,
     structs::{ApiError, FromPacket, TimerPacket, TimerPacketInner},
 };
 use alloc::string::String;
@@ -63,7 +63,7 @@ pub async fn ws_task(
         let path = alloc::format!(
             "{}?id={}&ver={}&chip={}&bt={}&firmware={}",
             ws_url.path,
-            694202137,
+            esp_hal_wifimanager::get_efuse_u32(),
             "3.0",
             "no-chip",
             69420,
@@ -134,8 +134,7 @@ async fn ws_reader(
                     Ok(timer_packet) => {
                         log::info!("Timer packet recv: {timer_packet:?}");
                         if let Some(tag) = timer_packet.tag {
-                            tagged_publisher.publish((tag, timer_packet)).await;
-                            continue;
+                            tagged_publisher.publish((tag, timer_packet.clone())).await;
                         }
 
                         match timer_packet.data {
@@ -144,13 +143,22 @@ async fn ws_reader(
                                 secondary_text,
                                 added,
                             } => {
-                                global_state.state.lock().await.device_added = Some(added);
+                                let mut state = global_state.state.lock().await;
+                                state.use_inspection = use_inspection;
+                                state.device_added = Some(added);
+                                state.secondary_text = Some(secondary_text);
                             }
+                            TimerPacketInner::ApiError(e) => {
+                                // if should_reset_time reset time
+                                let mut state = global_state.state.lock().await;
+                                state.error_text = Some(e.error);
+                            }
+                            TimerPacketInner::EpochTime { current_epoch } => unsafe {
+                                crate::state::EPOCH_BASE = current_epoch;
+                            },
                             //TimerPacket::StartUpdate { esp_id, version, build_time, size, firmware } => todo!(),
                             //TimerPacket::SolveConfirm { esp_id, competitor_id, session_id } => todo!(),
                             //TimerPacket::DelegateResponse { esp_id, should_scan_cards, solve_time, penalty } => todo!(),
-                            //TimerPacket::ApiError { esp_id, error, should_reset_time } => todo!(),
-                            //TimerPacket::EpochTime { current_epoch } => todo!(),
                             _ => {}
                         }
                     }

@@ -1,4 +1,4 @@
-use crate::scenes::GlobalState;
+use crate::state::GlobalState;
 use crate::structs::CardInfoResponsePacket;
 use adv_shift_registers::wrappers::ShifterPin;
 use embassy_time::{Duration, Timer};
@@ -67,11 +67,11 @@ pub async fn rfid_task(
                     Ok(resp) => {
                         let mut state = global_state.state.lock().await;
                         match state.scene {
-                            crate::scenes::Scene::WaitingForCompetitor => {
-                                state.scene = crate::scenes::Scene::CompetitorInfo(resp.display);
+                            crate::state::Scene::WaitingForCompetitor => {
+                                state.scene = crate::state::Scene::CompetitorInfo(resp.display);
                                 state.current_competitor = Some(resp.card_id as u128);
                             }
-                            crate::scenes::Scene::Finished { .. } => todo!(),
+                            crate::state::Scene::Finished { .. } => todo!(),
                             _ => {}
                         }
                     }

@@ -4,7 +4,6 @@
 extern crate alloc;
 use core::str::FromStr;
 
-use alloc::rc::Rc;
 use arc::Arc;
 use embassy_executor::Spawner;
 use embassy_time::Timer;
@@ -16,7 +15,7 @@ use esp_hal::{
     timer::timg::TimerGroup,
 };
 use esp_wifi::EspWifiInitFor;
-use scenes::{GlobalStateInner, Scene};
+use state::{GlobalStateInner, Scene};
 use structs::ConnSettings;
 
 mod arc;
@@ -26,7 +25,7 @@ mod lcd;
 mod lcd_abstract;
 mod mdns;
 mod rfid;
-mod scenes;
+mod state;
 mod stackmat;
 mod structs;
 mod ws;

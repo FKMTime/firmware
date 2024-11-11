@@ -12,7 +12,7 @@ use hd44780_driver::{
 
 use crate::{
     lcd_abstract::{LcdAbstract, PrintAlign},
-    scenes::{GlobalState, Scene, SignaledGlobalStateInner},
+    state::{GlobalState, Scene, SignaledGlobalStateInner},
 };
 
 #[embassy_executor::task]
@@ -139,6 +139,18 @@ async fn process_lcd<C: CharsetWithFallback>(
     lcd: &mut LcdType<C>,
     delay: &mut Delay,
 ) -> Option<()> {
+    if let Some(error_text) = current_state.error_text {
+        lcd_driver
+            .print(0, "Error", PrintAlign::Center, true)
+            .ok()?;
+
+        lcd_driver
+            .print(1, &error_text, PrintAlign::Left, true)
+            .ok()?;
+
+        return Some(());
+    }
+
     let overwritten =
         process_lcd_overwrite(&current_state, global_state, lcd_driver, lcd, delay).await;
     if overwritten {
@@ -187,13 +199,14 @@ async fn process_lcd<C: CharsetWithFallback>(
         }
         Scene::CompetitorInfo(competitor_info) => {
             lcd_driver
-                .print(
-                    0,
-                    &alloc::format!("{}", competitor_info),
-                    PrintAlign::Center,
-                    true,
-                )
+                .print(0, &competitor_info, PrintAlign::Center, true)
                 .ok()?;
+
+            if let Some(secondary_text) = current_state.secondary_text {
+                lcd_driver
+                    .print(1, &secondary_text, PrintAlign::Center, true)
+                    .ok()?;
+            }
         }
         Scene::Inspection { .. } => todo!(),
         Scene::Timer { .. } => loop {

@@ -1,11 +1,12 @@
-use alloc::{rc::Rc, string::String};
+use crate::arc::Arc;
+use alloc::string::String;
 use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, RawMutex},
+    blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex},
     mutex::{Mutex, MutexGuard},
     signal::Signal,
 };
 
-use crate::arc::Arc;
+pub static mut EPOCH_BASE: u64 = 1431212400;
 
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
@@ -158,6 +159,11 @@ impl GlobalStateInner {
 #[derive(Debug, Clone)]
 pub struct SignaledGlobalStateInner {
     pub scene: Scene,
+
+    pub use_inspection: bool,
+    pub secondary_text: Option<String>,
+    pub error_text: Option<String>,
+
     pub device_added: Option<bool>,
     pub server_connected: Option<bool>,
     pub stackmat_connected: Option<bool>,
@@ -169,6 +175,10 @@ impl SignaledGlobalStateInner {
     pub fn new() -> Self {
         Self {
             scene: Scene::WifiConnect,
+            use_inspection: true,
+            secondary_text: None,
+
+            error_text: None,
             device_added: None,
             server_connected: None,
             stackmat_connected: None,
