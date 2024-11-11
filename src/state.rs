@@ -22,7 +22,7 @@ pub enum Scene {
     MdnsWait,
 
     WaitingForCompetitor,
-    CompetitorInfo(String),
+    CompetitorInfo,
     Inspection,
     Timer,
     Finished,
@@ -35,7 +35,7 @@ impl Scene {
             Scene::AutoSetupWait => false,
             Scene::MdnsWait => false,
             Scene::WaitingForCompetitor => true,
-            Scene::CompetitorInfo(_) => true,
+            Scene::CompetitorInfo => true,
             Scene::Inspection => false,
             Scene::Timer => false,
             Scene::Finished => false,
@@ -48,7 +48,7 @@ impl Scene {
             Scene::AutoSetupWait => 1,
             Scene::MdnsWait => 2,
             Scene::WaitingForCompetitor => 3,
-            Scene::CompetitorInfo(_) => 4,
+            Scene::CompetitorInfo => 4,
             Scene::Inspection => 5,
             Scene::Timer => 6,
             Scene::Finished => 7,
@@ -170,6 +170,7 @@ pub struct SignaledGlobalStateInner {
     pub server_connected: Option<bool>,
     pub stackmat_connected: Option<bool>,
     pub current_competitor: Option<u128>,
+    pub competitor_display: Option<String>,
     pub test_hold: Option<u64>,
 }
 
@@ -188,6 +189,7 @@ impl SignaledGlobalStateInner {
             server_connected: None,
             stackmat_connected: None,
             current_competitor: None,
+            competitor_display: None,
             test_hold: None,
         }
     }

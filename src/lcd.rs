@@ -1,4 +1,5 @@
 use adv_shift_registers::wrappers::{ShifterPin, ShifterValue};
+use alloc::string::ToString;
 use embassy_time::{Delay, Duration, Instant, Timer, WithTimeout};
 use embedded_hal::digital::OutputPin;
 use hd44780_driver::{
@@ -197,9 +198,16 @@ async fn process_lcd<C: CharsetWithFallback>(
                 .print(1, "Competitor", PrintAlign::Center, true)
                 .ok()?;
         }
-        Scene::CompetitorInfo(competitor_info) => {
+        Scene::CompetitorInfo => {
             lcd_driver
-                .print(0, &competitor_info, PrintAlign::Center, true)
+                .print(
+                    0,
+                    &current_state
+                        .competitor_display
+                        .unwrap_or("Unknown competitor?".to_string()),
+                    PrintAlign::Center,
+                    true,
+                )
                 .ok()?;
 
             if let Some(secondary_text) = current_state.secondary_text {

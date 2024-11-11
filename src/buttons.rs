@@ -1,6 +1,6 @@
 use crate::state::{GlobalState, Scene};
 use adv_shift_registers::wrappers::ShifterValue;
-use alloc::{boxed::Box, string::ToString, vec::Vec};
+use alloc::{boxed::Box, vec::Vec};
 use core::{future::Future, pin::Pin};
 use embassy_time::{Instant, Timer};
 use esp_hal::gpio::Input;
@@ -32,6 +32,7 @@ impl From<u8> for Button {
 pub enum ButtonTrigger {
     Down,
     Up,
+    HoldOnce(u64),
     HoldTimed(u64, u64),
     Hold,
 }
@@ -48,6 +49,11 @@ pub async fn buttons_task(
     let mut handler = ButtonsHandler::new();
     handler.add_handler(Button::Third, ButtonTrigger::Up, submit_up());
     handler.add_handler(Button::Fourth, ButtonTrigger::Up, inspection_up());
+    handler.add_handler(
+        Button::Fourth,
+        ButtonTrigger::HoldOnce(1000),
+        inspection_hold_disable(),
+    );
 
     handler.add_handler(Button::Second, ButtonTrigger::Hold, test_hold());
     handler.add_handler(Button::Second, ButtonTrigger::Up, test_hold());
@@ -108,7 +114,7 @@ pub async fn buttons_task(
 
 struct ButtonHandler {
     button: Button,
-    handlers: Vec<(ButtonTrigger, ButtonFunc)>,
+    handlers: Vec<(ButtonTrigger, bool, ButtonFunc)>,
 }
 
 struct ButtonsHandler {
@@ -131,34 +137,33 @@ impl ButtonsHandler {
     pub fn add_handler(&mut self, button: Button, trigger: ButtonTrigger, func: ButtonFunc) {
         let existing_handler = self.handlers.iter_mut().find(|h| h.button == button);
         match existing_handler {
-            Some(handler) => handler.handlers.push((trigger, func)),
+            Some(handler) => handler.handlers.push((trigger, false, func)),
             None => self.handlers.push(ButtonHandler {
                 button,
-                handlers: alloc::vec![(trigger, func)],
+                handlers: alloc::vec![(trigger, false, func)],
             }),
         }
     }
 
     pub async fn button_down(&mut self, button: Button, state: GlobalState) {
         self.press_time = Instant::now();
-        let handler = self
+        let mut handler = self
             .handlers
-            .iter()
+            .iter_mut()
             .enumerate()
             .find(|(_, h)| h.button == button);
 
-        if let Some((i, handler)) = handler {
-            self.current_handler_down = Some(i);
+        if let Some((i, handler)) = &mut handler {
+            self.current_handler_down = Some(*i);
 
-            let handlers = handler
-                .handlers
-                .iter()
-                .filter(|h| h.0 == ButtonTrigger::Down);
+            for handler in &mut handler.handlers {
+                handler.1 = false;
 
-            for handler in handlers {
-                let res = (handler.1)(handler.0.clone(), 0, state.clone()).await;
-                if let Err(e) = res {
-                    log::error!("buttons_handler:down_err: {e:?}");
+                if handler.0 == ButtonTrigger::Down {
+                    let res = (handler.2)(handler.0.clone(), 0, state.clone()).await;
+                    if let Err(e) = res {
+                        log::error!("buttons_handler:down_err: {e:?}");
+                    }
                 }
             }
         }
@@ -169,10 +174,10 @@ impl ButtonsHandler {
             return;
         }
 
-        let handler = &self.handlers[self.current_handler_down.expect("Cant fail")];
+        let handler = &mut self.handlers[self.current_handler_down.expect("Cant fail")];
         let hold_time = (Instant::now() - self.press_time).as_millis();
 
-        for (trigger, handler) in &handler.handlers {
+        for (trigger, activated, handler) in &mut handler.handlers {
             match trigger {
                 ButtonTrigger::Down => continue,
                 ButtonTrigger::Up => continue,
@@ -196,6 +201,16 @@ impl ButtonsHandler {
                         log::error!("buttons_handler:hold_err: {e:?}");
                     }
                 }
+                ButtonTrigger::HoldOnce(after) => {
+                    if hold_time > *after && !*activated {
+                        let res = (handler)(trigger.clone(), hold_time, state.clone()).await;
+                        if let Err(e) = res {
+                            log::error!("buttons_handler:hold_once_err: {e:?}");
+                        }
+
+                        *activated = true;
+                    }
+                }
             }
         }
     }
@@ -209,7 +224,7 @@ impl ButtonsHandler {
         let handlers = handler.handlers.iter().filter(|h| h.0 == ButtonTrigger::Up);
         for handler in handlers {
             let hold_time = (Instant::now() - self.press_time).as_millis();
-            let res = (handler.1)(handler.0.clone(), hold_time, state.clone()).await;
+            let res = (handler.2)(handler.0.clone(), hold_time, state.clone()).await;
             if let Err(e) = res {
                 log::error!("buttons_handler:up_err: {e:?}");
             }
@@ -273,7 +288,10 @@ async fn inspection_up(
         return Ok(());
     }
 
-    if state_val.scene != Scene::Inspection && state_val.inspection_start.is_none() {
+    if hold_time < 1000
+        && state_val.scene != Scene::Inspection
+        && state_val.inspection_start.is_none()
+    {
         state_val.inspection_start = Some(Instant::now());
         state_val.scene = Scene::Inspection;
         state.state.signal();
@@ -281,11 +299,21 @@ async fn inspection_up(
         return Ok(());
     }
 
-    if hold_time > 1000 && state_val.scene == Scene::Inspection {
+    Ok(())
+}
+
+#[macros::button_handler]
+async fn inspection_hold_disable(
+    _triggered: ButtonTrigger,
+    _hold_time: u64,
+    state: GlobalState,
+) -> Result<(), ()> {
+    let mut state_val = state.state.value().await;
+    if state_val.scene == Scene::Inspection {
         let scene = if state_val.current_competitor.is_none() {
             Scene::WaitingForCompetitor
         } else {
-            Scene::CompetitorInfo("TODO: Fix".to_string())
+            Scene::CompetitorInfo
         };
 
         state_val.scene = scene;

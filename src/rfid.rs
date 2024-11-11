@@ -68,7 +68,7 @@ pub async fn rfid_task(
                         let mut state = global_state.state.lock().await;
                         match state.scene {
                             crate::state::Scene::WaitingForCompetitor => {
-                                state.scene = crate::state::Scene::CompetitorInfo(resp.display);
+                                state.competitor_display = Some(resp.display);
                                 state.current_competitor = Some(resp.card_id as u128);
                             }
                             crate::state::Scene::Finished { .. } => todo!(),
