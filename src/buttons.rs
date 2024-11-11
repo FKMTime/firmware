@@ -294,7 +294,7 @@ async fn inspection_start(
         return Ok(false);
     }
 
-    if state_val.scene != Scene::Inspection && state_val.inspection_start.is_none() {
+    if state_val.scene < Scene::Inspection && state_val.inspection_start.is_none() {
         state_val.inspection_start = Some(Instant::now());
         state_val.scene = Scene::Inspection;
         state.state.signal();
@@ -321,7 +321,7 @@ async fn inspection_hold_stop(
 
         state_val.scene = scene;
         state_val.inspection_start = None;
-        //state_val.inspection_end = None;
+        state_val.inspection_end = None;
         state.state.signal();
         return Ok(true);
     }

@@ -137,7 +137,7 @@ pub type GlobalState = Arc<GlobalStateInner>;
 
 pub struct GlobalStateInner {
     pub state: SignaledMutex<CriticalSectionRawMutex, SignaledGlobalStateInner>,
-    pub timer_signal: Signal<CriticalSectionRawMutex, Option<u64>>,
+    pub timer_signal: Signal<CriticalSectionRawMutex, u64>,
 }
 
 impl GlobalStateInner {
@@ -161,6 +161,8 @@ pub struct SignaledGlobalStateInner {
     pub scene: Scene,
 
     pub inspection_start: Option<Instant>,
+    pub inspection_end: Option<Instant>,
+    pub solve_time: Option<u64>,
 
     pub use_inspection: bool,
     pub secondary_text: Option<String>,
@@ -180,6 +182,8 @@ impl SignaledGlobalStateInner {
             scene: Scene::WifiConnect,
 
             inspection_start: None,
+            inspection_end: None,
+            solve_time: None,
 
             use_inspection: true,
             secondary_text: None,

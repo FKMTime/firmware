@@ -189,14 +189,26 @@ async fn process_lcd<C: CharsetWithFallback>(
 
             lcd_driver.print(1, "MDNS", PrintAlign::Center, true).ok()?;
         }
-        Scene::WaitingForCompetitor { .. } => {
+        Scene::WaitingForCompetitor => {
             lcd_driver
-                .print(0, "Waiting for", PrintAlign::Center, true)
+                .print(0, "Scan the card", PrintAlign::Center, true)
                 .ok()?;
 
-            lcd_driver
-                .print(1, "Competitor", PrintAlign::Center, true)
-                .ok()?;
+            if let Some(solve_time) = current_state.solve_time {
+                let time_str = crate::utils::ms_to_time_str(solve_time);
+                lcd_driver
+                    .print(
+                        1,
+                        &alloc::format!("of a competitor ({time_str})"),
+                        PrintAlign::Center,
+                        true,
+                    )
+                    .ok()?;
+            } else {
+                lcd_driver
+                    .print(1, "of a competitor", PrintAlign::Center, true)
+                    .ok()?;
+            }
         }
         Scene::CompetitorInfo => {
             lcd_driver
@@ -245,16 +257,31 @@ async fn process_lcd<C: CharsetWithFallback>(
                 .sig_or_update(&global_state.timer_signal)
                 .await?;
 
-            let time_ms = time.unwrap_or(0);
-            let time_str = crate::utils::ms_to_time_str(time_ms);
-
+            let time_str = crate::utils::ms_to_time_str(time);
             lcd_driver
                 .print(0, &time_str, PrintAlign::Center, true)
                 .ok()?;
 
             lcd_driver.display_on_lcd(lcd, delay).await.ok()?;
         },
-        Scene::Finished => todo!(),
+        Scene::Finished => {
+            let solve_time = current_state.solve_time.unwrap_or(0);
+            let inspection_time = current_state
+                .inspection_start
+                .and_then(|x| Some((current_state.inspection_end.unwrap() - x).as_millis()));
+
+            let time_str = crate::utils::ms_to_time_str(solve_time);
+            lcd_driver
+                .print(0, &time_str, PrintAlign::Left, true)
+                .ok()?;
+
+            if current_state.use_inspection {
+                let time_str = crate::utils::ms_to_time_str(inspection_time.unwrap_or(0));
+                lcd_driver
+                    .print(0, &time_str, PrintAlign::Right, false)
+                    .ok()?;
+            }
+        }
     }
 
     Some(())

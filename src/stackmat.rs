@@ -1,5 +1,5 @@
 use crate::state::{GlobalState, Scene};
-use embassy_time::Timer;
+use embassy_time::{Instant, Timer};
 use esp_hal::{gpio::AnyPin, peripherals::UART0, uart::UartRx};
 
 #[embassy_executor::task]
@@ -18,8 +18,6 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, global_state: GlobalSt
                 global_state.state.lock().await.stackmat_connected = Some(false);
                 last_state = Some(false);
             }
-
-            global_state.timer_signal.signal(None);
         }
 
         Timer::after_millis(10).await;
@@ -47,17 +45,39 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, global_state: GlobalSt
                 if parsed.0 != last_stackmat_state {
                     if parsed.0 == StackmatTimerState::Running {
                         let mut state = global_state.state.lock().await;
-                        if state.scene > Scene::Inspection {
-                            continue;
-                        }
+                        if state.scene <= Scene::Inspection {
+                            if state.use_inspection {
+                                state.inspection_end = Some(Instant::now());
+                            }
 
-                        state.scene = Scene::Timer;
+                            state.scene = Scene::Timer;
+                        }
+                    } else if parsed.0 == StackmatTimerState::Stopped {
+                        let mut state = global_state.state.value().await;
+                        if state.solve_time.is_none() {
+                            state.solve_time = Some(parsed.1);
+
+                            if state.current_competitor.is_some() {
+                                state.scene = Scene::Finished;
+                            } else {
+                                state.scene = Scene::WaitingForCompetitor;
+                            }
+
+                            global_state.state.signal();
+                        }
+                    } else if parsed.0 == StackmatTimerState::Reset {
+                        let mut state = global_state.state.value().await;
+                        if state.current_competitor.is_none() {
+                            state.scene = Scene::WaitingForCompetitor;
+                            state.solve_time = None;
+                            global_state.state.signal();
+                        }
                     }
 
                     last_stackmat_state = parsed.0;
                 }
 
-                global_state.timer_signal.signal(Some(parsed.1));
+                global_state.timer_signal.signal(parsed.1);
             }
         }
 
