@@ -1,12 +1,11 @@
 use adv_shift_registers::wrappers::{ShifterPin, ShifterValue};
 use embassy_time::{Delay, Duration, Timer, WithTimeout};
 use embedded_hal::digital::OutputPin;
-use embedded_hal_async::delay::DelayNs;
 use hd44780_driver::{
     bus::{FourBitBus, FourBitBusPins},
     charset::{CharsetA02, CharsetWithFallback},
-    memory_map::{DisplayMemoryMap, MemoryMap1602, StandardMemoryMap},
-    non_blocking::{bus::DataBus, HD44780},
+    memory_map::{MemoryMap1602, StandardMemoryMap},
+    non_blocking::HD44780,
     setup::DisplayOptions4Bit,
     DisplayMode,
 };
@@ -106,7 +105,24 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
             continue;
         }
 
-        global_state.state.wait().await;
+        loop {
+            let res = global_state
+                .state
+                .wait()
+                .with_timeout(Duration::from_millis(500))
+                .await;
+
+            match res {
+                Ok(_) => break,
+                Err(_) => {
+                    lcd_driver.scroll_step().unwrap();
+                    lcd_driver
+                        .display_on_lcd(&mut lcd, &mut delay)
+                        .await
+                        .unwrap();
+                }
+            }
+        }
     }
 }
 
@@ -226,6 +242,9 @@ async fn process_lcd_overwrite<C: CharsetWithFallback>(
     if current_state.server_connected == Some(false) {
         _ = lcd_driver.print(0, "Server", PrintAlign::Center, true);
         _ = lcd_driver.print(1, "Disconnected", PrintAlign::Center, true);
+    } else if current_state.device_added == Some(false) {
+        _ = lcd_driver.print(0, "Device not added", PrintAlign::Center, true);
+        _ = lcd_driver.print(1, "Press submit to connect", PrintAlign::Center, true);
     } else if current_state.stackmat_connected == Some(false) {
         _ = lcd_driver.print(0, "Stackmat", PrintAlign::Center, true);
         _ = lcd_driver.print(1, "Disconnected", PrintAlign::Center, true);
@@ -237,6 +256,7 @@ async fn process_lcd_overwrite<C: CharsetWithFallback>(
     return true;
 }
 
+/*
 fn num_to_digits(mut num: u128) -> ([u8; 40], usize) {
     let mut tmp = [0xFF; 40];
     let mut pos = 0;
@@ -256,3 +276,4 @@ fn num_to_digits(mut num: u128) -> ([u8; 40], usize) {
 
     (tmp, pos)
 }
+*/

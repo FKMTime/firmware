@@ -139,11 +139,17 @@ async fn ws_reader(
                         }
 
                         match timer_packet.data {
+                            TimerPacketInner::DeviceSettings {
+                                use_inspection,
+                                secondary_text,
+                                added,
+                            } => {
+                                global_state.state.lock().await.device_added = Some(added);
+                            }
                             //TimerPacket::StartUpdate { esp_id, version, build_time, size, firmware } => todo!(),
                             //TimerPacket::SolveConfirm { esp_id, competitor_id, session_id } => todo!(),
                             //TimerPacket::DelegateResponse { esp_id, should_scan_cards, solve_time, penalty } => todo!(),
                             //TimerPacket::ApiError { esp_id, error, should_reset_time } => todo!(),
-                            //TimerPacket::DeviceSettings { esp_id, use_inspection, secondary_text, added } => todo!(),
                             //TimerPacket::EpochTime { current_epoch } => todo!(),
                             _ => {}
                         }
@@ -207,18 +213,6 @@ where
     // TODO: timeout
     let packet = wait_for_tagged_response(tag).await;
     FromPacket::from_packet(packet)
-}
-
-pub async fn send_tagged_packet(packet: TimerPacketInner) -> TimerPacket {
-    let tag: u64 = HalRandom::random_u32() as u64;
-    let packet = TimerPacket {
-        tag: Some(tag),
-        data: packet,
-    };
-    send_packet(packet).await;
-
-    // TODO: timeout
-    wait_for_tagged_response(tag).await
 }
 
 async fn wait_for_tagged_response(tag: u64) -> TimerPacket {

@@ -158,20 +158,22 @@ impl GlobalStateInner {
 #[derive(Debug, Clone)]
 pub struct SignaledGlobalStateInner {
     pub scene: Scene,
+    pub device_added: Option<bool>,
     pub server_connected: Option<bool>,
     pub stackmat_connected: Option<bool>,
     pub current_competitor: Option<u128>,
-    pub test_hold: Option<u64>
+    pub test_hold: Option<u64>,
 }
 
 impl SignaledGlobalStateInner {
     pub fn new() -> Self {
         Self {
             scene: Scene::WifiConnect,
+            device_added: None,
             server_connected: None,
             stackmat_connected: None,
             current_competitor: None,
-            test_hold: None
+            test_hold: None,
         }
     }
 }
