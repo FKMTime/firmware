@@ -70,7 +70,12 @@ pub async fn rfid_task(
                             crate::state::Scene::WaitingForCompetitor => {
                                 state.competitor_display = Some(resp.display);
                                 state.current_competitor = Some(resp.card_id as u128);
-                                state.scene = crate::state::Scene::CompetitorInfo;
+
+                                if state.solve_time.is_some() {
+                                    state.scene = crate::state::Scene::Finished;
+                                } else {
+                                    state.scene = crate::state::Scene::CompetitorInfo;
+                                }
                             }
                             crate::state::Scene::Finished { .. } => todo!(),
                             _ => {}

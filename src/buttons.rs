@@ -48,6 +48,7 @@ pub async fn buttons_task(
 ) {
     let mut handler = ButtonsHandler::new();
     handler.add_handler(Button::Third, ButtonTrigger::Up, submit_up());
+    handler.add_handler(Button::Third, ButtonTrigger::HoldOnce(3000), submit_reset_competitor());
 
     handler.add_handler(Button::Fourth, ButtonTrigger::Down, inspection_start());
     handler.add_handler(
@@ -325,6 +326,23 @@ async fn inspection_hold_stop(
         state.state.signal();
         return Ok(true);
     }
+
+    Ok(false)
+}
+
+#[macros::button_handler]
+async fn submit_reset_competitor(
+    _triggered: ButtonTrigger,
+    _hold_time: u64,
+    state: GlobalState,
+) -> Result<bool, ()> {
+    let mut state = state.state.lock().await;
+    state.solve_time = None;
+    state.inspection_start = None;
+    state.inspection_end = None;
+    state.competitor_display = None;
+    state.current_competitor = None;
+    state.scene = Scene::WaitingForCompetitor;
 
     Ok(false)
 }
