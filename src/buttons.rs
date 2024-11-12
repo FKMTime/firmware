@@ -497,14 +497,17 @@ async fn delegate_hold(
                 0
             };
 
-            let session_id = uuid::Uuid::new_v4().to_string();
+            if state_val.session_id.is_none() {
+                state_val.session_id = Some(uuid::Uuid::new_v4().to_string());
+            }
+
             let packet = crate::structs::TimerPacketInner::Solve {
                 solve_time: state_val.solve_time.unwrap_or(0),
                 penalty: state_val.penalty.unwrap_or(0) as i64,
                 competitor_id: state_val.current_competitor.unwrap(),
                 judge_id: state_val.current_judge.unwrap_or(0),
                 timestamp: get_current_epoch(),
-                session_id,
+                session_id: state_val.session_id.clone().unwrap(),
                 delegate: true,
                 inspection_time,
             };

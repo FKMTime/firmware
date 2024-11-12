@@ -176,6 +176,7 @@ pub struct SignaledGlobalStateInner {
     pub solve_time: Option<u64>,
     pub last_solve_time: Option<u64>,
     pub penalty: Option<i8>,
+    pub session_id: Option<String>,
     pub time_confirmed: bool,
 
     pub use_inspection: bool,
@@ -202,6 +203,7 @@ impl SignaledGlobalStateInner {
             solve_time: None,
             last_solve_time: None,
             penalty: None,
+            session_id: None,
             time_confirmed: false,
 
             use_inspection: true,
@@ -248,9 +250,10 @@ impl SignaledGlobalStateInner {
         self.penalty = None;
         self.inspection_start = None;
         self.inspection_end = None;
-        self.competitor_display = None;
         self.current_competitor = None;
         self.current_judge = None;
+        self.competitor_display = None;
+        self.session_id = None;
         self.time_confirmed = false;
         self.scene = Scene::WaitingForCompetitor;
     }

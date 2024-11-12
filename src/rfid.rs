@@ -103,7 +103,11 @@ pub async fn rfid_task(
                                             0
                                         };
 
-                                        let session_id = uuid::Uuid::new_v4().to_string();
+                                        if state.session_id.is_none() {
+                                            state.session_id =
+                                                Some(uuid::Uuid::new_v4().to_string());
+                                        }
+
                                         let resp = crate::ws::send_request::<SolveConfirmPacket>(
                                             crate::structs::TimerPacketInner::Solve {
                                                 solve_time: state.solve_time.unwrap(),
@@ -111,7 +115,7 @@ pub async fn rfid_task(
                                                 competitor_id: state.current_competitor.unwrap(),
                                                 judge_id: state.current_judge.unwrap(),
                                                 timestamp: get_current_epoch(),
-                                                session_id,
+                                                session_id: state.session_id.clone().unwrap(),
                                                 delegate: false,
                                                 inspection_time,
                                             },
