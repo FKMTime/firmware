@@ -85,7 +85,7 @@ pub async fn rfid_task(
                                 {
                                     state.current_judge = Some(resp.card_id as u128);
                                 } else if state.current_competitor.is_some()
-                                    && state.current_competitor.is_some()
+                                    && state.current_competitor == Some(resp.card_id as u128)
                                     && state.time_confirmed
                                 {
                                     log::info!("SEND SOLVE!");

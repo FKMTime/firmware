@@ -131,6 +131,7 @@ impl<const LINE_SIZE: usize, const X: usize, const Y: usize, const SCROLLER_WT: 
             self.sizes[line] = text.len();
         }
 
+        self.scroll_wait_ticks = SCROLLER_WT - 1;
         Ok(())
     }
 

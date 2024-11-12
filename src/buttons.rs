@@ -368,10 +368,16 @@ async fn dnf_button(
 ) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
     if state_val.scene == Scene::Inspection {
+        state_val.inspection_end = Some(Instant::now());
         state_val.solve_time = Some(0);
-        state_val.scene = Scene::Finished;
         state_val.penalty = Some(-1);
         state_val.time_confirmed = true;
+
+        if state_val.current_competitor.is_some() {
+            state_val.scene = Scene::Finished;
+        } else {
+            state_val.scene = Scene::WaitingForCompetitor;
+        }
 
         state.state.signal();
         return Ok(true);

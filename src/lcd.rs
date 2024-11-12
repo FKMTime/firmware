@@ -266,7 +266,12 @@ async fn process_lcd<C: CharsetWithFallback>(
         },
         Scene::Finished => {
             let solve_time = current_state.solve_time.unwrap_or(0);
-            let time_str = crate::utils::ms_to_time_str(solve_time);
+            let time_str = if solve_time > 0 {
+                crate::utils::ms_to_time_str(solve_time)
+            } else {
+                heapless::String::new()
+            };
+
             let inspection_time = current_state
                 .inspection_start
                 .and_then(|x| Some((current_state.inspection_end.unwrap() - x).as_millis()));
