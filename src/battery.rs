@@ -19,11 +19,19 @@ pub async fn batter_read_task(adc_pin: GpioPin<2>, adc: esp_hal::peripherals::AD
         adc_config.enable_pin_with_cal::<_, AdcCal>(adc_pin, Attenuation::Attenuation11dB);
     let mut adc = Adc::new(adc, adc_config);
 
-    let mut smooth = 0.0;
     let mut count = 0;
+
+    let base_freq = 2.0;
+    let sample_freq = 1000.0;
+    let sensitivity = 0.5;
+    let mut smoother = dyn_smooth::DynamicSmootherEcoF32::new(base_freq, sample_freq, sensitivity);
     loop {
         Timer::after_millis(500).await;
-        let read = read_adc_smooth(&mut adc, &mut adc_pin, &mut smooth).await;
+        let read = macros::nb_to_fut!(adc.read_oneshot(&mut adc_pin))
+            .await
+            .unwrap_or(0);
+        let read = smoother.tick(read as f32);
+
         count += 1;
 
         if count < 30 {
@@ -36,24 +44,6 @@ pub async fn batter_read_task(adc_pin: GpioPin<2>, adc: esp_hal::peripherals::AD
         let bat_percentage = bat_perctentage(bat_calc_mv);
         log::info!("calc({read}): {bat_calc_mv}mV {bat_percentage}%");
     }
-}
-
-const ALPHA: f64 = 0.25;
-async fn read_adc_smooth(
-    adc: &mut Adc<'_, esp_hal::peripherals::ADC1>,
-    adc_pin: &mut esp_hal::analog::adc::AdcPin<
-        esp_hal::gpio::GpioPin<2>,
-        esp_hal::peripherals::ADC1,
-        AdcCal,
-    >,
-    smooth: &mut f64,
-) -> f64 {
-    let reading = macros::nb_to_fut!(adc.read_oneshot(adc_pin))
-        .await
-        .unwrap_or(0);
-
-    *smooth = ALPHA * reading as f64 + (1.0 - ALPHA) * *smooth;
-    *smooth
 }
 
 fn bat_perctentage(mv: f64) -> u8 {

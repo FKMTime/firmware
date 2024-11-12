@@ -262,6 +262,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
+name = "dyn-smooth"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47fac87554ece38a037e0d53e750ee5129670b6f97e712bb0c411268181f3700"
+
+[[package]]
 name = "edge-dhcp"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -819,6 +825,7 @@ dependencies = [
  "adv-shift-registers",
  "critical-section",
  "dotenvy",
+ "dyn-smooth",
  "embassy-executor",
  "embassy-futures",
  "embassy-net",

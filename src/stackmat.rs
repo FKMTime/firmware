@@ -53,7 +53,7 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, global_state: GlobalSt
                             state.scene = Scene::Timer;
                         }
                     } else if parsed.0 == StackmatTimerState::Stopped {
-                        let mut state = global_state.state.value().await;
+                        let mut state = global_state.state.lock().await;
                         if state.solve_time.is_none() && state.last_solve_time != Some(parsed.1) {
                             state.solve_time = Some(parsed.1);
 
@@ -62,11 +62,9 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, global_state: GlobalSt
                             } else if state.scene >= Scene::WaitingForCompetitor {
                                 state.scene = Scene::WaitingForCompetitor;
                             }
-
-                            global_state.state.signal();
                         }
                     } else if parsed.0 == StackmatTimerState::Reset {
-                        let mut state = global_state.state.value().await;
+                        let mut state = global_state.state.lock().await;
                         if state.current_competitor.is_none()
                             && state.penalty.is_none()
                             && (state.scene == Scene::Timer
@@ -74,7 +72,6 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, global_state: GlobalSt
                         {
                             state.scene = Scene::WaitingForCompetitor;
                             state.solve_time = None;
-                            global_state.state.signal();
                         }
                     }
 
