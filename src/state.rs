@@ -174,6 +174,7 @@ pub struct SignaledGlobalStateInner {
     pub server_connected: Option<bool>,
     pub stackmat_connected: Option<bool>,
     pub current_competitor: Option<u128>,
+    pub current_judge: Option<u128>,
     pub competitor_display: Option<String>,
     pub test_hold: Option<u64>,
 }
@@ -197,6 +198,7 @@ impl SignaledGlobalStateInner {
             server_connected: None,
             stackmat_connected: None,
             current_competitor: None,
+            current_judge: None,
             competitor_display: None,
             test_hold: None,
         }

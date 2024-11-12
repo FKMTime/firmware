@@ -299,10 +299,19 @@ async fn process_lcd<C: CharsetWithFallback>(
                 .print(0, &penalty_str, PrintAlign::Right, false)
                 .ok()?;
 
-            if current_state.use_inspection {
-                let time_str = crate::utils::ms_to_time_str(inspection_time.unwrap_or(0));
+            if !current_state.time_confirmed {
                 lcd_driver
-                    .print(1, &time_str, PrintAlign::Right, false)
+                    .print(1, "Confirm the time", PrintAlign::Right, true)
+                    .ok()?;
+            } else if current_state.current_judge.is_none() {
+                lcd_driver
+                    .print(1, "Scan the judge's card", PrintAlign::Right, true)
+                    .ok()?;
+            } else if current_state.current_competitor.is_some()
+                && current_state.current_judge.is_some()
+            {
+                lcd_driver
+                    .print(1, "Scan the competitor's card", PrintAlign::Right, true)
                     .ok()?;
             }
         }
