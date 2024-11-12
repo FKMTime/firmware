@@ -1,6 +1,9 @@
-use crate::state::{GlobalState, Scene};
+use crate::{
+    state::{get_current_epoch, GlobalState, Scene},
+    structs::DelegateResponsePacket,
+};
 use adv_shift_registers::wrappers::ShifterValue;
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, string::ToString, vec::Vec};
 use core::{future::Future, pin::Pin};
 use embassy_time::{Instant, Timer};
 use esp_hal::gpio::Input;
@@ -67,6 +70,11 @@ pub async fn buttons_task(
     handler.add_handler(
         Button::Second,
         ButtonTrigger::HoldTimed(0, 1000),
+        delegate_hold(),
+    );
+    handler.add_handler(
+        Button::Second,
+        ButtonTrigger::HoldOnce(3000),
         delegate_hold(),
     );
     handler.add_handler(Button::Second, ButtonTrigger::Up, delegate_hold());
@@ -471,6 +479,52 @@ async fn delegate_hold(
 
                 state_val.delegate_hold = Some(hold_secs);
                 state.state.signal();
+            }
+        }
+        ButtonTrigger::HoldOnce(_) => {
+            let mut state_val = state.state.lock().await;
+            if state_val.should_skip_other_actions() {
+                return Ok(false);
+            }
+
+            let inspection_time = if state_val.use_inspection
+                && state_val.inspection_start.is_some()
+                && state_val.inspection_end.is_some()
+            {
+                (state_val.inspection_end.unwrap() - state_val.inspection_start.unwrap())
+                    .as_millis() as i64
+            } else {
+                0
+            };
+
+            let session_id = uuid::Uuid::new_v4().to_string();
+            let packet = crate::structs::TimerPacketInner::Solve {
+                solve_time: state_val.solve_time.unwrap_or(0),
+                penalty: state_val.penalty.unwrap_or(0) as i64,
+                competitor_id: state_val.current_competitor.unwrap(),
+                judge_id: state_val.current_judge.unwrap_or(0),
+                timestamp: get_current_epoch(),
+                session_id,
+                delegate: true,
+                inspection_time,
+            };
+
+            state_val.delegate_hold = Some(3);
+            drop(state_val);
+
+            let resp =
+                crate::ws::send_tagged_request::<DelegateResponsePacket>(69420, packet).await;
+            log::info!("{:?}", resp);
+
+            if let Ok(resp) = resp {
+                let mut state_val = state.state.lock().await;
+                state_val.solve_time =
+                    Some(resp.solve_time.unwrap_or(state_val.solve_time.unwrap_or(0)));
+
+                state_val.penalty = Some(
+                    resp.penalty
+                        .unwrap_or(state_val.penalty.unwrap_or(0) as i64) as i8,
+                );
             }
         }
         _ => {}

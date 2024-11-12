@@ -33,15 +33,7 @@ pub enum TimerPacketInner {
         inspection_time: i64,
     },
     SolveConfirm(SolveConfirmPacket),
-    DelegateResponse {
-        should_scan_cards: bool,
-
-        #[serde(skip_serializing_if = "Option::is_none")]
-        solve_time: Option<u64>,
-
-        #[serde(skip_serializing_if = "Option::is_none")]
-        penalty: Option<i64>,
-    },
+    DelegateResponse(DelegateResponsePacket),
     ApiError(ApiError),
     CardInfoRequest {
         card_id: u64,
@@ -90,6 +82,17 @@ pub struct SolveConfirmPacket {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DelegateResponsePacket {
+    pub should_scan_cards: bool,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub solve_time: Option<u64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub penalty: Option<i64>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ApiError {
     pub error: String,
     pub should_reset_time: bool,
@@ -119,6 +122,21 @@ impl FromPacket for SolveConfirmPacket {
     fn from_packet(packet: TimerPacket) -> Result<Self, ApiError> {
         match packet.data {
             TimerPacketInner::SolveConfirm(solve_confirm_packet) => Ok(solve_confirm_packet),
+            TimerPacketInner::ApiError(api_error) => Err(api_error),
+            _ => Err(ApiError {
+                error: "Wrong response type!".to_string(),
+                should_reset_time: false,
+            }),
+        }
+    }
+}
+
+impl FromPacket for DelegateResponsePacket {
+    fn from_packet(packet: TimerPacket) -> Result<Self, ApiError> {
+        match packet.data {
+            TimerPacketInner::DelegateResponse(delegate_response_packet) => {
+                Ok(delegate_response_packet)
+            }
             TimerPacketInner::ApiError(api_error) => Err(api_error),
             _ => Err(ApiError {
                 error: "Wrong response type!".to_string(),

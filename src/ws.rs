@@ -156,9 +156,11 @@ async fn ws_reader(
                             TimerPacketInner::EpochTime { current_epoch } => unsafe {
                                 crate::state::EPOCH_BASE = current_epoch - Instant::now().as_secs();
                             },
+                            TimerPacketInner::DelegateResponse(_) => {
+                                tagged_publisher.publish((69420, timer_packet)).await;
+                            }
                             //TimerPacket::StartUpdate { esp_id, version, build_time, size, firmware } => todo!(),
                             //TimerPacket::SolveConfirm { esp_id, competitor_id, session_id } => todo!(),
-                            //TimerPacket::DelegateResponse { esp_id, should_scan_cards, solve_time, penalty } => todo!(),
                             _ => {}
                         }
                     }
@@ -202,6 +204,13 @@ where
     _ = getrandom::getrandom(&mut tag_bytes);
     let tag = u64::from_be_bytes(tag_bytes);
 
+    send_tagged_request(tag, packet).await
+}
+
+pub async fn send_tagged_request<T>(tag: u64, packet: TimerPacketInner) -> Result<T, ApiError>
+where
+    T: FromPacket,
+{
     let packet = TimerPacket {
         tag: Some(tag),
         data: packet,
