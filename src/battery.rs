@@ -4,7 +4,7 @@ use esp_hal::{
     gpio::GpioPin,
 };
 
-type AdcCal = esp_hal::analog::adc::AdcCalCurve<esp_hal::peripherals::ADC1>;
+type AdcCal = esp_hal::analog::adc::AdcCalBasic<esp_hal::peripherals::ADC1>;
 const BAT_MIN: f64 = 3300.0;
 const BAT_MAX: f64 = 4200.0;
 /*
@@ -19,35 +19,41 @@ pub async fn batter_read_task(adc_pin: GpioPin<2>, adc: esp_hal::peripherals::AD
         adc_config.enable_pin_with_cal::<_, AdcCal>(adc_pin, Attenuation::Attenuation11dB);
     let mut adc = Adc::new(adc, adc_config);
 
+    let mut smooth = 0.0;
+    let mut count = 0;
     loop {
-        let read = read_adc_avg(&mut adc, &mut adc_pin).await;
-        let bat_calc_mv = calculate(read);
+        Timer::after_millis(500).await;
+        let read = read_adc_smooth(&mut adc, &mut adc_pin, &mut smooth).await;
+        count += 1;
+
+        if count < 30 {
+            // 15s
+            continue;
+        }
+
+        count = 0;
+        let bat_calc_mv = calculate(read as f64);
         let bat_percentage = bat_perctentage(bat_calc_mv);
-        log::info!("calc: {bat_calc_mv}mV {bat_percentage}%");
-        Timer::after_millis(15000).await;
+        log::info!("calc({read}): {bat_calc_mv}mV {bat_percentage}%");
     }
 }
 
-const ADC_AVG_COUNT: usize = 32;
-async fn read_adc_avg(
+const ALPHA: f64 = 0.25;
+async fn read_adc_smooth(
     adc: &mut Adc<'_, esp_hal::peripherals::ADC1>,
     adc_pin: &mut esp_hal::analog::adc::AdcPin<
         esp_hal::gpio::GpioPin<2>,
         esp_hal::peripherals::ADC1,
         AdcCal,
     >,
+    smooth: &mut f64,
 ) -> f64 {
-    let mut sum = 0.0;
+    let reading = macros::nb_to_fut!(adc.read_oneshot(adc_pin))
+        .await
+        .unwrap_or(0);
 
-    for _ in 0..ADC_AVG_COUNT {
-        let pin_mv = macros::nb_to_fut!(adc.read_oneshot(adc_pin))
-            .await
-            .unwrap_or(0) as f64;
-
-        sum += pin_mv;
-    }
-
-    sum / ADC_AVG_COUNT as f64
+    *smooth = ALPHA * reading as f64 + (1.0 - ALPHA) * *smooth;
+    *smooth
 }
 
 fn bat_perctentage(mv: f64) -> u8 {
