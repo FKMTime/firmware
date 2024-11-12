@@ -159,13 +159,20 @@ async fn process_lcd<C: CharsetWithFallback>(
     }
 
     lcd_driver.clear_all().ok()?;
-    if let Some(time) = current_state.test_hold {
+    if let Some(time) = current_state.delegate_hold {
+        let delegate_remaining = 3 - time;
+
         lcd_driver
-            .print(0, "Holding button", PrintAlign::Center, true)
+            .print(0, "Delegate", PrintAlign::Center, true)
             .ok()?;
 
         lcd_driver
-            .print(1, &alloc::format!("{time}"), PrintAlign::Center, true)
+            .print(
+                1,
+                &alloc::format!("In: {delegate_remaining}"),
+                PrintAlign::Center,
+                true,
+            )
             .ok()?;
 
         return Some(());

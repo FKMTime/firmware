@@ -64,8 +64,12 @@ pub async fn buttons_task(
     handler.add_handler(Button::Fourth, ButtonTrigger::HoldOnce(1000), dnf_button());
     handler.add_handler(Button::Fourth, ButtonTrigger::Up, penalty_button());
 
-    handler.add_handler(Button::Second, ButtonTrigger::Hold, test_hold());
-    handler.add_handler(Button::Second, ButtonTrigger::Up, test_hold());
+    handler.add_handler(
+        Button::Second,
+        ButtonTrigger::HoldTimed(0, 1000),
+        delegate_hold(),
+    );
+    handler.add_handler(Button::Second, ButtonTrigger::Up, delegate_hold());
     /*
     handler.add_handler(Button::First, ButtonTrigger::Down, button_test());
     handler.add_handler(
@@ -279,6 +283,9 @@ async fn submit_up(
     state: GlobalState,
 ) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
+    if state_val.should_skip_other_actions() {
+        return Ok(false);
+    }
 
     // Clear error (text)
     if state_val.error_text.is_some() {
@@ -318,7 +325,7 @@ async fn inspection_start(
     state: GlobalState,
 ) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
-    if !state_val.use_inspection {
+    if !state_val.use_inspection || state_val.should_skip_other_actions() {
         return Ok(false);
     }
 
@@ -343,6 +350,10 @@ async fn inspection_hold_stop(
     state: GlobalState,
 ) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
+    if state_val.should_skip_other_actions() {
+        return Ok(false);
+    }
+
     if state_val.scene == Scene::Inspection {
         let scene = if state_val.current_competitor.is_none() {
             Scene::WaitingForCompetitor
@@ -367,6 +378,10 @@ async fn dnf_button(
     state: GlobalState,
 ) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
+    if state_val.should_skip_other_actions() {
+        return Ok(false);
+    }
+
     if state_val.scene == Scene::Inspection {
         state_val.inspection_end = Some(Instant::now());
         state_val.solve_time = Some(0);
@@ -399,6 +414,10 @@ async fn penalty_button(
     state: GlobalState,
 ) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
+    if state_val.should_skip_other_actions() {
+        return Ok(false);
+    }
+
     if state_val.scene == Scene::Finished && !state_val.time_confirmed {
         let old_penalty = state_val.penalty.unwrap_or(0);
         state_val.penalty = Some(if old_penalty >= 16 || old_penalty == -1 {
@@ -421,6 +440,10 @@ async fn submit_reset_competitor(
     state: GlobalState,
 ) -> Result<bool, ()> {
     let mut state = state.state.lock().await;
+    if state.should_skip_other_actions() {
+        return Ok(false);
+    }
+
     state.solve_time = None;
     state.inspection_start = None;
     state.inspection_end = None;
@@ -433,17 +456,28 @@ async fn submit_reset_competitor(
 }
 
 #[macros::button_handler]
-async fn test_hold(
+async fn delegate_hold(
     triggered: ButtonTrigger,
     hold_time: u64,
     state: GlobalState,
 ) -> Result<bool, ()> {
     match triggered {
         ButtonTrigger::Up => {
-            state.state.lock().await.test_hold = None;
+            state.state.lock().await.delegate_hold = None;
         }
-        ButtonTrigger::Hold => {
-            state.state.lock().await.test_hold = Some(hold_time);
+        ButtonTrigger::HoldTimed(_, _) => {
+            let mut state_val = state.state.value().await;
+            if state_val.should_skip_other_actions() {
+                return Ok(false);
+            }
+
+            if state_val.current_competitor.is_some() {
+                let hold_secs = hold_time / 1000;
+                let hold_secs = if hold_secs > 3 { 3 } else { hold_secs as u8 };
+
+                state_val.delegate_hold = Some(hold_secs);
+                state.state.signal();
+            }
         }
         _ => {}
     }

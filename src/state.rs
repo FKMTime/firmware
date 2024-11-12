@@ -176,7 +176,8 @@ pub struct SignaledGlobalStateInner {
     pub current_competitor: Option<u128>,
     pub current_judge: Option<u128>,
     pub competitor_display: Option<String>,
-    pub test_hold: Option<u64>,
+
+    pub delegate_hold: Option<u8>,
 }
 
 impl SignaledGlobalStateInner {
@@ -200,7 +201,28 @@ impl SignaledGlobalStateInner {
             current_competitor: None,
             current_judge: None,
             competitor_display: None,
-            test_hold: None,
+
+            delegate_hold: None,
         }
+    }
+
+    pub fn should_skip_other_actions(&self) -> bool {
+        if self.error_text.is_some() {
+            return true;
+        }
+
+        if self.server_connected == Some(false) {
+            return true;
+        }
+
+        if self.stackmat_connected == Some(false) {
+            return true;
+        }
+
+        if self.scene <= Scene::MdnsWait {
+            return true;
+        }
+
+        false
     }
 }

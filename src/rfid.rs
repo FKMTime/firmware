@@ -66,32 +66,34 @@ pub async fn rfid_task(
                 match resp {
                     Ok(resp) => {
                         let mut state = global_state.state.lock().await;
-                        match state.scene {
-                            crate::state::Scene::WaitingForCompetitor => {
-                                if state.current_competitor.is_none() && resp.can_compete {
-                                    state.competitor_display = Some(resp.display);
-                                    state.current_competitor = Some(resp.card_id as u128);
+                        if !state.should_skip_other_actions() {
+                            match state.scene {
+                                crate::state::Scene::WaitingForCompetitor => {
+                                    if state.current_competitor.is_none() && resp.can_compete {
+                                        state.competitor_display = Some(resp.display);
+                                        state.current_competitor = Some(resp.card_id as u128);
 
-                                    if state.solve_time.is_some() {
-                                        state.scene = crate::state::Scene::Finished;
-                                    } else {
-                                        state.scene = crate::state::Scene::CompetitorInfo;
+                                        if state.solve_time.is_some() {
+                                            state.scene = crate::state::Scene::Finished;
+                                        } else {
+                                            state.scene = crate::state::Scene::CompetitorInfo;
+                                        }
                                     }
                                 }
-                            }
-                            crate::state::Scene::Finished => {
-                                if state.current_competitor != Some(resp.card_id as u128)
-                                    && state.time_confirmed
-                                {
-                                    state.current_judge = Some(resp.card_id as u128);
-                                } else if state.current_competitor.is_some()
-                                    && state.current_competitor == Some(resp.card_id as u128)
-                                    && state.time_confirmed
-                                {
-                                    log::info!("SEND SOLVE!");
+                                crate::state::Scene::Finished => {
+                                    if state.current_competitor != Some(resp.card_id as u128)
+                                        && state.time_confirmed
+                                    {
+                                        state.current_judge = Some(resp.card_id as u128);
+                                    } else if state.current_competitor.is_some()
+                                        && state.current_competitor == Some(resp.card_id as u128)
+                                        && state.time_confirmed
+                                    {
+                                        log::info!("SEND SOLVE!");
+                                    }
                                 }
+                                _ => {}
                             }
-                            _ => {}
                         }
                     }
                     Err(e) => {
