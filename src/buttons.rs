@@ -525,6 +525,11 @@ async fn delegate_hold(
                     resp.penalty
                         .unwrap_or(state_val.penalty.unwrap_or(0) as i64) as i8,
                 );
+
+                state_val.time_confirmed = true;
+                if !resp.should_scan_cards {
+                    state_val.reset_solve_state();
+                }
             }
         }
         _ => {}
