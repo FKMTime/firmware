@@ -445,16 +445,7 @@ async fn submit_reset_competitor(
         return Ok(false);
     }
 
-    state.solve_time = None;
-    state.penalty = None;
-    state.inspection_start = None;
-    state.inspection_end = None;
-    state.competitor_display = None;
-    state.current_competitor = None;
-    state.current_judge = None;
-    state.time_confirmed = false;
-    state.scene = Scene::WaitingForCompetitor;
-
+    state.reset_solve_state();
     Ok(false)
 }
 

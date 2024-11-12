@@ -174,6 +174,7 @@ pub struct SignaledGlobalStateInner {
     pub inspection_start: Option<Instant>,
     pub inspection_end: Option<Instant>,
     pub solve_time: Option<u64>,
+    pub last_solve_time: Option<u64>,
     pub penalty: Option<i8>,
     pub time_confirmed: bool,
 
@@ -199,6 +200,7 @@ impl SignaledGlobalStateInner {
             inspection_start: None,
             inspection_end: None,
             solve_time: None,
+            last_solve_time: None,
             penalty: None,
             time_confirmed: false,
 
@@ -222,12 +224,14 @@ impl SignaledGlobalStateInner {
             return true;
         }
 
-        if self.server_connected == Some(false) {
-            return true;
-        }
+        if self.scene.can_be_lcd_overwritten() {
+            if self.server_connected == Some(false) {
+                return true;
+            }
 
-        if self.stackmat_connected == Some(false) {
-            return true;
+            if self.stackmat_connected == Some(false) {
+                return true;
+            }
         }
 
         if self.scene <= Scene::MdnsWait {
@@ -235,5 +239,19 @@ impl SignaledGlobalStateInner {
         }
 
         false
+    }
+
+    pub fn reset_solve_state(&mut self) {
+        self.last_solve_time = self.solve_time;
+
+        self.solve_time = None;
+        self.penalty = None;
+        self.inspection_start = None;
+        self.inspection_end = None;
+        self.competitor_display = None;
+        self.current_competitor = None;
+        self.current_judge = None;
+        self.time_confirmed = false;
+        self.scene = Scene::WaitingForCompetitor;
     }
 }

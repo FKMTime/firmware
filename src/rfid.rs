@@ -1,8 +1,8 @@
-use crate::state::{get_current_epoch, GlobalState, EPOCH_BASE};
+use crate::state::{get_current_epoch, GlobalState};
 use crate::structs::{CardInfoResponsePacket, SolveConfirmPacket};
 use adv_shift_registers::wrappers::ShifterPin;
 use alloc::string::ToString;
-use embassy_time::{Duration, Instant, Timer};
+use embassy_time::{Duration, Timer};
 use esp_hal::prelude::*;
 use esp_hal::{
     dma::{Dma, DmaRxBuf, DmaTxBuf},
@@ -87,6 +87,7 @@ pub async fn rfid_task(
                                     {
                                         state.current_judge = Some(resp.card_id);
                                     } else if state.current_competitor.is_some()
+                                        && state.current_judge.is_some()
                                         && state.current_competitor == Some(resp.card_id)
                                         && state.time_confirmed
                                     {
@@ -116,7 +117,10 @@ pub async fn rfid_task(
                                         )
                                         .await;
 
-                                        log::info!("solve_resp: {resp:?}");
+                                        if resp.is_ok() {
+                                            log::info!("solve_resp: {resp:?}");
+                                            state.reset_solve_state();
+                                        }
                                     }
                                 }
                                 _ => {}
