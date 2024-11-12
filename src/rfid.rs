@@ -1,7 +1,8 @@
-use crate::state::GlobalState;
-use crate::structs::CardInfoResponsePacket;
+use crate::state::{GlobalState, EPOCH_BASE};
+use crate::structs::{CardInfoResponsePacket, SolveConfirmPacket};
 use adv_shift_registers::wrappers::ShifterPin;
-use embassy_time::{Duration, Timer};
+use alloc::string::ToString;
+use embassy_time::{Duration, Instant, Timer};
 use esp_hal::prelude::*;
 use esp_hal::{
     dma::{Dma, DmaRxBuf, DmaTxBuf},
@@ -71,7 +72,7 @@ pub async fn rfid_task(
                                 crate::state::Scene::WaitingForCompetitor => {
                                     if state.current_competitor.is_none() && resp.can_compete {
                                         state.competitor_display = Some(resp.display);
-                                        state.current_competitor = Some(resp.card_id as u128);
+                                        state.current_competitor = Some(resp.card_id);
 
                                         if state.solve_time.is_some() {
                                             state.scene = crate::state::Scene::Finished;
@@ -81,15 +82,40 @@ pub async fn rfid_task(
                                     }
                                 }
                                 crate::state::Scene::Finished => {
-                                    if state.current_competitor != Some(resp.card_id as u128)
+                                    if state.current_competitor != Some(resp.card_id)
                                         && state.time_confirmed
                                     {
-                                        state.current_judge = Some(resp.card_id as u128);
+                                        state.current_judge = Some(resp.card_id);
                                     } else if state.current_competitor.is_some()
-                                        && state.current_competitor == Some(resp.card_id as u128)
+                                        && state.current_competitor == Some(resp.card_id)
                                         && state.time_confirmed
                                     {
-                                        log::info!("SEND SOLVE!");
+                                        let inspection_time = if state.use_inspection {
+                                            (state.inspection_end.unwrap()
+                                                - state.inspection_start.unwrap())
+                                            .as_millis()
+                                                as i64
+                                        } else {
+                                            0
+                                        };
+
+                                        let resp = crate::ws::send_request::<SolveConfirmPacket>(
+                                            crate::structs::TimerPacketInner::Solve {
+                                                solve_time: state.solve_time.unwrap(),
+                                                penalty: state.penalty.unwrap() as i64,
+                                                competitor_id: state.current_competitor.unwrap(),
+                                                judge_id: state.current_judge.unwrap(),
+                                                timestamp: unsafe {
+                                                    EPOCH_BASE + Instant::now().as_millis()
+                                                },
+                                                session_id: "TODO-random-gen-uuid-here".to_string(),
+                                                delegate: false,
+                                                inspection_time,
+                                            },
+                                        )
+                                        .await;
+
+                                        log::info!("solve_resp: {resp:?}");
                                     }
                                 }
                                 _ => {}

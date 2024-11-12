@@ -181,8 +181,8 @@ pub struct SignaledGlobalStateInner {
     pub device_added: Option<bool>,
     pub server_connected: Option<bool>,
     pub stackmat_connected: Option<bool>,
-    pub current_competitor: Option<u128>,
-    pub current_judge: Option<u128>,
+    pub current_competitor: Option<u64>,
+    pub current_judge: Option<u64>,
     pub competitor_display: Option<String>,
 
     pub delegate_hold: Option<u8>,

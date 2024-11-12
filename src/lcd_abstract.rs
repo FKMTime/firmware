@@ -47,8 +47,8 @@ impl<const LINE_SIZE: usize, const X: usize, const Y: usize, const SCROLLER_WT: 
         }
     }
 
-    pub fn display_data<'a>(&'a mut self) -> [(&'a [u8], bool); Y] {
-        let mut tmp: [(&'a [u8], bool); Y] = [(&[], false); Y];
+    pub fn display_data<'a>(&'a mut self) -> ([(&'a [u8], bool); Y], &'a mut [[u8; X]; Y]) {
+        let mut tmp: [(&[u8], bool); Y] = [(&[], false); Y];
 
         for y in 0..Y {
             let scroll_max = self.sizes[y].saturating_sub(X);
@@ -56,10 +56,9 @@ impl<const LINE_SIZE: usize, const X: usize, const Y: usize, const SCROLLER_WT: 
             let scrolled_data = &self.lines[y][scroll_offset..X + scroll_offset];
 
             tmp[y] = (scrolled_data, scrolled_data != &self.old_display[y]);
-            self.old_display[y].copy_from_slice(scrolled_data);
         }
 
-        tmp
+        (tmp, &mut self.old_display)
     }
 
     pub fn scroll_step(&mut self) -> Result<(), LcdError> {
@@ -163,7 +162,8 @@ impl<const LINE_SIZE: usize, const X: usize, const Y: usize, const SCROLLER_WT: 
         lcd: &mut HD44780<B, M, C>,
         delay: &mut D,
     ) -> Result<(), LcdError> {
-        for (y, line) in self.display_data().iter().enumerate() {
+        let display_data = self.display_data();
+        for (y, line) in display_data.0.iter().enumerate() {
             if line.1 {
                 lcd.set_cursor_xy((0, y as u8), delay)
                     .await
@@ -172,6 +172,8 @@ impl<const LINE_SIZE: usize, const X: usize, const Y: usize, const SCROLLER_WT: 
                 lcd.write_bytes(line.0, delay)
                     .await
                     .map_err(|_| LcdError::Other)?;
+
+                display_data.1[y].copy_from_slice(line.0);
             }
         }
 

@@ -1,4 +1,4 @@
-use crate::state::{self, GlobalState, Scene};
+use crate::state::{GlobalState, Scene};
 use adv_shift_registers::wrappers::ShifterValue;
 use alloc::{boxed::Box, vec::Vec};
 use core::{future::Future, pin::Pin};

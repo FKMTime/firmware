@@ -11,7 +11,7 @@ use embassy_net::{
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, pubsub::PubSubChannel,
 };
-use embassy_time::Timer;
+use embassy_time::{Instant, Timer};
 use embedded_io_async::Write;
 use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
 use ws_framer::{RngProvider, WsFrame, WsFrameOwned, WsRxFramer, WsTxFramer, WsUrl};
@@ -154,7 +154,8 @@ async fn ws_reader(
                                 state.error_text = Some(e.error);
                             }
                             TimerPacketInner::EpochTime { current_epoch } => unsafe {
-                                crate::state::EPOCH_BASE = current_epoch;
+                                crate::state::EPOCH_BASE =
+                                    current_epoch - Instant::now().as_millis();
                             },
                             //TimerPacket::StartUpdate { esp_id, version, build_time, size, firmware } => todo!(),
                             //TimerPacket::SolveConfirm { esp_id, competitor_id, session_id } => todo!(),

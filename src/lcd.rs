@@ -97,14 +97,14 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
         )
         .await;
 
+        if res.is_none() {
+            continue;
+        }
+
         lcd_driver
             .display_on_lcd(&mut lcd, &mut delay)
             .await
             .unwrap();
-
-        if res.is_none() {
-            continue;
-        }
 
         loop {
             let res = global_state
