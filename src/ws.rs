@@ -14,7 +14,7 @@ use embassy_sync::{
 use embassy_time::{Instant, Timer};
 use embedded_io_async::Write;
 use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
-use ws_framer::{RngProvider, WsFrame, WsFrameOwned, WsRxFramer, WsTxFramer, WsUrl};
+use ws_framer::{WsFrame, WsFrameOwned, WsRxFramer, WsTxFramer, WsUrl};
 
 static FRAME_CHANNEL: Channel<CriticalSectionRawMutex, WsFrameOwned, 10> = Channel::new();
 static TAGGED_RETURN: PubSubChannel<CriticalSectionRawMutex, (u64, TimerPacket), 20, 20, 4> =
@@ -57,7 +57,7 @@ pub async fn ws_task(
             global_state.state.lock().await.server_connected = Some(true);
         }
         log::info!("connected!");
-        let mut tx_framer = WsTxFramer::<HalRandom>::new(true, &mut ws_tx_buf);
+        let mut tx_framer = WsTxFramer::new(true, &mut ws_tx_buf);
         let mut rx_framer = WsRxFramer::new(&mut ws_rx_buf);
 
         let path = alloc::format!(
@@ -179,25 +179,12 @@ async fn ws_reader(
     }
 }
 
-async fn ws_writer(
-    writer: &mut TcpWriter<'_>,
-    framer: &mut WsTxFramer<'_, HalRandom>,
-) -> Result<(), ()> {
+async fn ws_writer(writer: &mut TcpWriter<'_>, framer: &mut WsTxFramer<'_>) -> Result<(), ()> {
     let recv = FRAME_CHANNEL.receiver();
     loop {
         let frame = recv.receive().await;
         let data = framer.frame(frame.into_ref());
         writer.write_all(data).await.map_err(|_| ())?;
-    }
-}
-
-pub struct HalRandom;
-impl RngProvider for HalRandom {
-    fn random_u32() -> u32 {
-        unsafe { &*esp_hal::peripherals::RNG::PTR }
-            .data()
-            .read()
-            .bits()
     }
 }
 
@@ -211,7 +198,10 @@ pub async fn send_request<T>(packet: TimerPacketInner) -> Result<T, ApiError>
 where
     T: FromPacket,
 {
-    let tag: u64 = HalRandom::random_u32() as u64;
+    let mut tag_bytes = [0; 8];
+    _ = getrandom::getrandom(&mut tag_bytes);
+    let tag = u64::from_be_bytes(tag_bytes);
+
     let packet = TimerPacket {
         tag: Some(tag),
         data: packet,

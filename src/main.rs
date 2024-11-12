@@ -31,6 +31,21 @@ mod structs;
 mod utils;
 mod ws;
 
+pub fn custom_rng(buf: &mut [u8]) -> Result<(), getrandom::Error> {
+    for chunk in buf.chunks_mut(4) {
+        let random_u32 = unsafe { &*esp_hal::peripherals::RNG::PTR }
+            .data()
+            .read()
+            .bits();
+
+        let len = chunk.len();
+        chunk[..].copy_from_slice(&random_u32.to_be_bytes()[..len]);
+    }
+
+    Ok(())
+}
+getrandom::register_custom_getrandom!(custom_rng);
+
 #[main]
 async fn main(spawner: Spawner) {
     let peripherals = esp_hal::init({
