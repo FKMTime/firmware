@@ -62,13 +62,13 @@ impl PartialOrd for Scene {
     }
 }
 
-pub struct SignaledMutex<M: RawMutex, T> {
+pub struct SignaledMutex<M: RawMutex, T: Clone + PartialEq> {
     inner: Mutex<M, T>,
     update_sig: Signal<M, ()>,
 }
 
 #[allow(dead_code)]
-impl<M: RawMutex, T> SignaledMutex<M, T> {
+impl<M: RawMutex, T: Clone + PartialEq> SignaledMutex<M, T> {
     pub fn new(initial: T) -> Self {
         let sig = Signal::new();
         //sig.signal(());
@@ -92,9 +92,13 @@ impl<M: RawMutex, T> SignaledMutex<M, T> {
     }
 
     pub async fn lock(&self) -> SignaledMutexGuard<'_, M, T> {
+        let inner_guard = self.inner.lock().await;
+        let old_value = (*inner_guard).clone();
+
         SignaledMutexGuard {
             update_sig: &self.update_sig,
-            inner_guard: self.inner.lock().await,
+            inner_guard,
+            old_value,
         }
     }
 
@@ -108,25 +112,29 @@ impl<M: RawMutex, T> SignaledMutex<M, T> {
     }
 }
 
-pub struct SignaledMutexGuard<'a, M: RawMutex, T> {
+pub struct SignaledMutexGuard<'a, M: RawMutex, T: Clone + PartialEq> {
     update_sig: &'a Signal<M, ()>,
     inner_guard: MutexGuard<'a, M, T>,
+
+    old_value: T,
 }
 
-impl<'a, M: RawMutex, T> Drop for SignaledMutexGuard<'a, M, T> {
+impl<'a, M: RawMutex, T: Clone + PartialEq> Drop for SignaledMutexGuard<'a, M, T> {
     fn drop(&mut self) {
-        self.update_sig.signal(()); // signal value
+        if *self.inner_guard != self.old_value {
+            self.update_sig.signal(()); // signal value change (if actually changed)
+        }
     }
 }
 
-impl<'a, M: RawMutex, T> core::ops::Deref for SignaledMutexGuard<'a, M, T> {
+impl<'a, M: RawMutex, T: Clone + PartialEq> core::ops::Deref for SignaledMutexGuard<'a, M, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         self.inner_guard.deref()
     }
 }
 
-impl<'a, M: RawMutex, T> core::ops::DerefMut for SignaledMutexGuard<'a, M, T> {
+impl<'a, M: RawMutex, T: Clone + PartialEq> core::ops::DerefMut for SignaledMutexGuard<'a, M, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.inner_guard.deref_mut()
     }
@@ -156,7 +164,7 @@ impl GlobalStateInner {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SignaledGlobalStateInner {
     pub scene: Scene,
 
