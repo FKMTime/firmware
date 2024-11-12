@@ -38,6 +38,7 @@ embedded-hal-async = "1.0.0"
 portable-atomic = { version = "1.9.0", default-features = false }
 critical-section = "1.2.0"
 getrandom = { version = "0.2.15", features = ["custom"] }
+uuid = { version = "1.11.0", default-features = false, features = ["v4"] }
 
 [profile.dev]
 # Rust debug is too slow.
