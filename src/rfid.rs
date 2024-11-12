@@ -1,4 +1,4 @@
-use crate::state::{GlobalState, EPOCH_BASE};
+use crate::state::{get_current_epoch, GlobalState, EPOCH_BASE};
 use crate::structs::{CardInfoResponsePacket, SolveConfirmPacket};
 use adv_shift_registers::wrappers::ShifterPin;
 use alloc::string::ToString;
@@ -90,7 +90,10 @@ pub async fn rfid_task(
                                         && state.current_competitor == Some(resp.card_id)
                                         && state.time_confirmed
                                     {
-                                        let inspection_time = if state.use_inspection {
+                                        let inspection_time = if state.use_inspection
+                                            && state.inspection_start.is_some()
+                                            && state.inspection_end.is_some()
+                                        {
                                             (state.inspection_end.unwrap()
                                                 - state.inspection_start.unwrap())
                                             .as_millis()
@@ -102,12 +105,10 @@ pub async fn rfid_task(
                                         let resp = crate::ws::send_request::<SolveConfirmPacket>(
                                             crate::structs::TimerPacketInner::Solve {
                                                 solve_time: state.solve_time.unwrap(),
-                                                penalty: state.penalty.unwrap() as i64,
+                                                penalty: state.penalty.unwrap_or(0) as i64,
                                                 competitor_id: state.current_competitor.unwrap(),
                                                 judge_id: state.current_judge.unwrap(),
-                                                timestamp: unsafe {
-                                                    EPOCH_BASE + Instant::now().as_millis()
-                                                },
+                                                timestamp: get_current_epoch(),
                                                 session_id: "TODO-random-gen-uuid-here".to_string(),
                                                 delegate: false,
                                                 inspection_time,

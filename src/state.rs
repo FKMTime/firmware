@@ -8,6 +8,9 @@ use embassy_sync::{
 use embassy_time::Instant;
 
 pub static mut EPOCH_BASE: u64 = 1431212400;
+pub fn get_current_epoch() -> u64 {
+    unsafe { EPOCH_BASE + Instant::now().as_secs() }
+}
 
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]

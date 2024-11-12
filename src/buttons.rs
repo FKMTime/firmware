@@ -283,9 +283,6 @@ async fn submit_up(
     state: GlobalState,
 ) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
-    if state_val.should_skip_other_actions() {
-        return Ok(false);
-    }
 
     // Clear error (text)
     if state_val.error_text.is_some() {
@@ -296,6 +293,10 @@ async fn submit_up(
     }
 
     // Device add
+    if state_val.should_skip_other_actions() {
+        return Ok(false);
+    }
+
     if !state_val.device_added.unwrap_or(false) {
         crate::ws::send_packet(crate::structs::TimerPacket {
             tag: None,
@@ -445,10 +446,12 @@ async fn submit_reset_competitor(
     }
 
     state.solve_time = None;
+    state.penalty = None;
     state.inspection_start = None;
     state.inspection_end = None;
     state.competitor_display = None;
     state.current_competitor = None;
+    state.current_judge = None;
     state.time_confirmed = false;
     state.scene = Scene::WaitingForCompetitor;
 

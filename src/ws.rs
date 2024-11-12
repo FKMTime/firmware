@@ -154,8 +154,7 @@ async fn ws_reader(
                                 state.error_text = Some(e.error);
                             }
                             TimerPacketInner::EpochTime { current_epoch } => unsafe {
-                                crate::state::EPOCH_BASE =
-                                    current_epoch - Instant::now().as_millis();
+                                crate::state::EPOCH_BASE = current_epoch - Instant::now().as_secs();
                             },
                             //TimerPacket::StartUpdate { esp_id, version, build_time, size, firmware } => todo!(),
                             //TimerPacket::SolveConfirm { esp_id, competitor_id, session_id } => todo!(),
