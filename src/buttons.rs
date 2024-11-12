@@ -1,4 +1,4 @@
-use crate::state::{GlobalState, Scene};
+use crate::state::{self, GlobalState, Scene};
 use adv_shift_registers::wrappers::ShifterValue;
 use alloc::{boxed::Box, vec::Vec};
 use core::{future::Future, pin::Pin};
@@ -290,7 +290,6 @@ async fn submit_up(
 
     // Device add
     if !state_val.device_added.unwrap_or(false) {
-        log::info!("Device add!");
         crate::ws::send_packet(crate::structs::TimerPacket {
             tag: None,
             data: crate::structs::TimerPacketInner::Add {
@@ -298,6 +297,13 @@ async fn submit_up(
             },
         })
         .await;
+
+        return Ok(false);
+    }
+
+    if state_val.scene == Scene::Finished && !state_val.time_confirmed {
+        state_val.time_confirmed = true;
+        state.state.signal();
 
         return Ok(false);
     }
@@ -365,11 +371,11 @@ async fn dnf_button(
         state_val.solve_time = Some(0);
         state_val.scene = Scene::Finished;
         state_val.penalty = Some(-1);
-        //state_val.time_confirmed = true; // TODO:
+        state_val.time_confirmed = true;
 
         state.state.signal();
         return Ok(true);
-    } else if state_val.scene == Scene::Finished {
+    } else if state_val.scene == Scene::Finished && !state_val.time_confirmed {
         let old_penalty = state_val.penalty.unwrap_or(0);
         state_val.penalty = Some(if old_penalty == -1 { 0 } else { -1 });
 
@@ -387,7 +393,7 @@ async fn penalty_button(
     state: GlobalState,
 ) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
-    if state_val.scene == Scene::Finished {
+    if state_val.scene == Scene::Finished && !state_val.time_confirmed {
         let old_penalty = state_val.penalty.unwrap_or(0);
         state_val.penalty = Some(if old_penalty >= 16 || old_penalty == -1 {
             0
@@ -414,6 +420,7 @@ async fn submit_reset_competitor(
     state.inspection_end = None;
     state.competitor_display = None;
     state.current_competitor = None;
+    state.time_confirmed = false;
     state.scene = Scene::WaitingForCompetitor;
 
     Ok(false)

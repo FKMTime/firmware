@@ -266,14 +266,26 @@ async fn process_lcd<C: CharsetWithFallback>(
         },
         Scene::Finished => {
             let solve_time = current_state.solve_time.unwrap_or(0);
+            let time_str = crate::utils::ms_to_time_str(solve_time);
             let inspection_time = current_state
                 .inspection_start
                 .and_then(|x| Some((current_state.inspection_end.unwrap() - x).as_millis()));
 
-            let time_str = crate::utils::ms_to_time_str(solve_time);
-            lcd_driver
-                .print(0, &time_str, PrintAlign::Left, true)
-                .ok()?;
+            if current_state.use_inspection && inspection_time.unwrap_or(0) > 15000 {
+                let inspections_seconds = inspection_time.unwrap_or(0) / 1000;
+                lcd_driver
+                    .print(
+                        0,
+                        &alloc::format!("{time_str} ({inspections_seconds}s)"),
+                        PrintAlign::Left,
+                        true,
+                    )
+                    .ok()?;
+            } else {
+                lcd_driver
+                    .print(0, &time_str, PrintAlign::Left, true)
+                    .ok()?;
+            }
 
             let penalty = current_state.penalty.unwrap_or(0);
             let penalty_str = match penalty {

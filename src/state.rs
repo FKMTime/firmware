@@ -164,6 +164,7 @@ pub struct SignaledGlobalStateInner {
     pub inspection_end: Option<Instant>,
     pub solve_time: Option<u64>,
     pub penalty: Option<i8>,
+    pub time_confirmed: bool,
 
     pub use_inspection: bool,
     pub secondary_text: Option<String>,
@@ -186,6 +187,7 @@ impl SignaledGlobalStateInner {
             inspection_end: None,
             solve_time: None,
             penalty: None,
+            time_confirmed: false,
 
             use_inspection: true,
             secondary_text: None,
