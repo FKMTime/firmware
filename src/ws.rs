@@ -172,6 +172,7 @@ async fn ws_reader(
                                 crc,
                                 firmware: _,
                             } => {
+                                log::info!("Begin update size: {size} crc: {crc}");
                                 ota.ota_begin(size, crc).map_err(|_| ())?;
                                 ota_update = true;
 

@@ -56,7 +56,7 @@ async fn main(spawner: Spawner) {
 
     esp_println::logger::init_logger_from_env();
     esp_alloc::heap_allocator!(120 * 1024);
-    let nvs = esp_hal_wifimanager::Nvs::new(0x9000, 0x6000);
+    let nvs = esp_hal_wifimanager::Nvs::new(0x9000, 0x4000);
 
     let rng = esp_hal::rng::Rng::new(peripherals.RNG);
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
