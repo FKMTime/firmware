@@ -19,7 +19,8 @@ pub enum TimerPacketInner {
     StartUpdate {
         version: String,
         build_time: u64, // NOT USED
-        size: i64,
+        size: u32,
+        crc: u32,
         firmware: String,
     },
     Solve {

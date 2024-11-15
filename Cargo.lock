@@ -681,6 +681,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "esp-hal-ota"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dad1ece4ee6e6db22e0457e7429bf104244ddc83216e083b4bf9eb983c137986"
+dependencies = [
+ "embedded-storage",
+ "log",
+]
+
+[[package]]
 name = "esp-hal-procmacros"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -841,6 +851,7 @@ dependencies = [
  "esp-hal-embassy",
  "esp-hal-mdns",
  "esp-hal-mfrc522",
+ "esp-hal-ota",
  "esp-hal-wifimanager",
  "esp-println",
  "esp-storage",

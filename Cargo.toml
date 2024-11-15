@@ -40,6 +40,7 @@ critical-section = "1.2.0"
 getrandom = { version = "0.2.15", features = ["custom"] }
 uuid = { version = "1.11.0", default-features = false, features = ["v4"] }
 dyn-smooth = "0.2.0"
+esp-hal-ota = { version = "0.1.4", features = ["esp32c3"] }
 
 [profile.dev]
 # Rust debug is too slow.

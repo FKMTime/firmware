@@ -13,6 +13,8 @@ use embassy_sync::{
 };
 use embassy_time::{Instant, Timer};
 use embedded_io_async::Write;
+use esp_hal_ota::Ota;
+use esp_storage::FlashStorage;
 use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
 use ws_framer::{WsFrame, WsFrameOwned, WsRxFramer, WsTxFramer, WsUrl};
 
@@ -64,15 +66,17 @@ pub async fn ws_task(
             "{}?id={}&ver={}&chip={}&bt={}&firmware={}",
             ws_url.path,
             esp_hal_wifimanager::get_efuse_u32(),
-            "3.0",
+            "v3.0",
             "no-chip",
             69420,
             "no-firmware"
         );
+
         socket
             .write_all(&tx_framer.generate_http_upgrade(ws_url.host, &path, None))
             .await
             .unwrap();
+
         loop {
             let n = socket.read(rx_framer.mut_buf()).await.unwrap();
             let res = rx_framer.process_http_response(n);
@@ -110,6 +114,8 @@ async fn ws_reader(
     framer: &mut WsRxFramer<'_>,
     global_state: GlobalState,
 ) -> Result<(), ()> {
+    let mut ota_update = false;
+    let mut ota = Ota::new(FlashStorage::new()).map_err(|_| ())?;
     let tagged_publisher = TAGGED_RETURN.publisher().map_err(|_| ())?;
 
     loop {
@@ -159,7 +165,20 @@ async fn ws_reader(
                             TimerPacketInner::DelegateResponse(_) => {
                                 tagged_publisher.publish((69420, timer_packet)).await;
                             }
-                            //TimerPacket::StartUpdate { esp_id, version, build_time, size, firmware } => todo!(),
+                            TimerPacketInner::StartUpdate {
+                                version: _,
+                                build_time: _,
+                                size,
+                                crc,
+                                firmware: _,
+                            } => {
+                                ota.ota_begin(size, crc).map_err(|_| ())?;
+                                ota_update = true;
+
+                                FRAME_CHANNEL
+                                    .send(WsFrameOwned::Binary(alloc::vec::Vec::new()))
+                                    .await;
+                            }
                             //TimerPacket::SolveConfirm { esp_id, competitor_id, session_id } => todo!(),
                             _ => {}
                         }
@@ -168,7 +187,29 @@ async fn ws_reader(
                         log::error!("timer_packet_fail: {e:?}\nTried to parse:\n{text}\n\n");
                     }
                 },
-                WsFrame::Binary(_) => todo!(),
+                WsFrame::Binary(data) => {
+                    if !ota_update {
+                        continue;
+                    }
+
+                    let res = ota.ota_write_chunk(data);
+                    if res == Ok(true) {
+                        log::info!("OTA complete! Veryfying..");
+                        if ota.ota_flush(true).is_ok() {
+                            log::info!("OTA restart!");
+                            esp_hal::reset::software_reset();
+                        } else {
+                            log::error!("OTA flash verify failed!");
+                        }
+                    }
+
+                    let progress = (ota.get_ota_progress() * 100.0) as u8;
+                    log::info!("Ota progress: {}%", progress);
+
+                    FRAME_CHANNEL
+                        .send(WsFrameOwned::Binary(alloc::vec::Vec::new()))
+                        .await;
+                }
                 WsFrame::Close(_, _) => todo!(),
                 WsFrame::Ping(_) => {
                     FRAME_CHANNEL
