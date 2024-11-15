@@ -85,34 +85,31 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
     loop {
         let current_state = global_state.state.value().await.clone();
         log::warn!("current_state: {:?}", current_state);
-        let res = process_lcd(
-            current_state,
-            &global_state,
-            &mut lcd_driver,
-            &mut lcd,
-            &mut delay,
-        )
-        .await;
 
-        if res.is_none() {
-            continue;
-        }
+        let fut = async {
+            let _ = process_lcd(
+                current_state,
+                &global_state,
+                &mut lcd_driver,
+                &mut lcd,
+                &mut delay,
+            )
+            .await;
+            lcd_driver.display_on_lcd(&mut lcd, &mut delay).unwrap();
 
-        lcd_driver.display_on_lcd(&mut lcd, &mut delay).unwrap();
+            let mut scroll_ticker = embassy_time::Ticker::every(Duration::from_millis(500));
+            loop {
+                scroll_ticker.next().await;
+                lcd_driver.scroll_step().unwrap();
+                lcd_driver.display_on_lcd(&mut lcd, &mut delay).unwrap();
+            }
+        };
 
-        loop {
-            let res = global_state
-                .state
-                .wait()
-                .with_timeout(Duration::from_millis(500))
-                .await;
-
-            match res {
-                Ok(_) => break,
-                Err(_) => {
-                    lcd_driver.scroll_step().unwrap();
-                    lcd_driver.display_on_lcd(&mut lcd, &mut delay).unwrap();
-                }
+        let res = embassy_futures::select::select(fut, global_state.state.wait()).await;
+        match res {
+            embassy_futures::select::Either::First(_) => {}
+            embassy_futures::select::Either::Second(_) => {
+                continue;
             }
         }
     }
@@ -252,18 +249,11 @@ async fn process_lcd<C: CharsetWithFallback>(
                     .ok()?;
 
                 lcd_driver.display_on_lcd(lcd, delay).ok()?;
-
                 Timer::after_millis(5).await;
-                if global_state.state.signalled() {
-                    return Some(());
-                }
             }
         }
         Scene::Timer => loop {
-            let time = global_state
-                .sig_or_update(&global_state.timer_signal)
-                .await?;
-
+            let time = global_state.timer_signal.wait().await;
             let time_str = crate::utils::ms_to_time_str(time);
             lcd_driver
                 .print(0, &time_str, PrintAlign::Center, true)
