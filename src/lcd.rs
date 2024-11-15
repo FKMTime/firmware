@@ -6,9 +6,8 @@ use hd44780_driver::{
     bus::{FourBitBus, FourBitBusPins},
     charset::{CharsetA02, CharsetWithFallback},
     memory_map::{MemoryMap1602, StandardMemoryMap},
-    non_blocking::HD44780,
     setup::DisplayOptions4Bit,
-    DisplayMode,
+    DisplayMode, HD44780,
 };
 
 use crate::{
@@ -40,7 +39,7 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
     let mut delay = Delay;
 
     let mut lcd = loop {
-        match HD44780::new(options, &mut delay).await {
+        match HD44780::new(options, &mut delay) {
             Err((opt, e)) => {
                 log::error!("Error creating CLD driver: {e:?}");
                 options = opt;
@@ -51,19 +50,17 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
     };
     _ = bl_pin.set_high();
 
-    _ = lcd.clear(&mut delay).await;
-    _ = lcd.reset(&mut delay).await;
-    _ = lcd
-        .set_display_mode(
-            DisplayMode {
-                display: hd44780_driver::Display::On,
-                cursor_visibility: hd44780_driver::Cursor::Invisible,
-                cursor_blink: hd44780_driver::CursorBlink::Off,
-            },
-            &mut delay,
-        )
-        .await;
-    _ = lcd.clear(&mut delay).await;
+    _ = lcd.clear(&mut delay);
+    _ = lcd.reset(&mut delay);
+    _ = lcd.set_display_mode(
+        DisplayMode {
+            display: hd44780_driver::Display::On,
+            cursor_visibility: hd44780_driver::Cursor::Invisible,
+            cursor_blink: hd44780_driver::CursorBlink::Off,
+        },
+        &mut delay,
+    );
+    _ = lcd.clear(&mut delay);
     let mut lcd_driver: LcdAbstract<80, 16, 2, 3> = LcdAbstract::new();
 
     _ = lcd_driver.print(
@@ -80,7 +77,7 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
         true,
     );
 
-    _ = lcd_driver.display_on_lcd(&mut lcd, &mut delay).await;
+    _ = lcd_driver.display_on_lcd(&mut lcd, &mut delay);
     Timer::after_millis(2500).await;
 
     // TODO: print to lcd if wifi setup active
@@ -101,10 +98,7 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
             continue;
         }
 
-        lcd_driver
-            .display_on_lcd(&mut lcd, &mut delay)
-            .await
-            .unwrap();
+        lcd_driver.display_on_lcd(&mut lcd, &mut delay).unwrap();
 
         loop {
             let res = global_state
@@ -117,10 +111,7 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
                 Ok(_) => break,
                 Err(_) => {
                     lcd_driver.scroll_step().unwrap();
-                    lcd_driver
-                        .display_on_lcd(&mut lcd, &mut delay)
-                        .await
-                        .unwrap();
+                    lcd_driver.display_on_lcd(&mut lcd, &mut delay).unwrap();
                 }
             }
         }
@@ -152,8 +143,7 @@ async fn process_lcd<C: CharsetWithFallback>(
         return Some(());
     }
 
-    let overwritten =
-        process_lcd_overwrite(&current_state, global_state, lcd_driver, lcd, delay).await;
+    let overwritten = process_lcd_overwrite(&current_state, global_state, lcd_driver).await;
     if overwritten {
         return Some(());
     }
@@ -261,7 +251,7 @@ async fn process_lcd<C: CharsetWithFallback>(
                     .print(0, &time_str, PrintAlign::Center, true)
                     .ok()?;
 
-                lcd_driver.display_on_lcd(lcd, delay).await.ok()?;
+                lcd_driver.display_on_lcd(lcd, delay).ok()?;
 
                 Timer::after_millis(5).await;
                 if global_state.state.signalled() {
@@ -279,7 +269,7 @@ async fn process_lcd<C: CharsetWithFallback>(
                 .print(0, &time_str, PrintAlign::Center, true)
                 .ok()?;
 
-            lcd_driver.display_on_lcd(lcd, delay).await.ok()?;
+            lcd_driver.display_on_lcd(lcd, delay).ok()?;
         },
         Scene::Finished => {
             let solve_time = current_state.solve_time.unwrap_or(0);
@@ -342,12 +332,10 @@ async fn process_lcd<C: CharsetWithFallback>(
     Some(())
 }
 
-async fn process_lcd_overwrite<C: CharsetWithFallback>(
+async fn process_lcd_overwrite(
     current_state: &SignaledGlobalStateInner,
     _global_state: &GlobalState,
     lcd_driver: &mut LcdAbstract<80, 16, 2, 3>,
-    lcd: &mut LcdType<C>,
-    delay: &mut Delay,
 ) -> bool {
     if !current_state.scene.can_be_lcd_overwritten() {
         return false;
@@ -366,7 +354,6 @@ async fn process_lcd_overwrite<C: CharsetWithFallback>(
         return false;
     }
 
-    _ = lcd_driver.display_on_lcd(lcd, delay).await;
     return true;
 }
 
