@@ -42,6 +42,16 @@ pub async fn batter_read_task(adc_pin: GpioPin<2>, adc: esp_hal::peripherals::AD
         count = 0;
         let bat_calc_mv = calculate(read as f64);
         let bat_percentage = bat_perctentage(bat_calc_mv);
+
+        crate::ws::send_packet(crate::structs::TimerPacket {
+            tag: None,
+            data: crate::structs::TimerPacketInner::Battery {
+                level: Some(bat_percentage as f64),
+                voltage: Some(bat_calc_mv / 1000.0),
+            },
+        })
+        .await;
+
         log::info!("calc({read}): {bat_calc_mv}mV {bat_percentage}%");
     }
 }
