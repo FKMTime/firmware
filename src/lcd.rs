@@ -65,7 +65,7 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
 
     _ = lcd_driver.print(
         0,
-        &alloc::format!("ID: {:X}", 694202137),
+        &alloc::format!("ID: {:X}", esp_hal_wifimanager::get_efuse_u32()),
         PrintAlign::Left,
         true,
     );

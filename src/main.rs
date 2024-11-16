@@ -111,9 +111,12 @@ async fn main(spawner: Spawner) {
     ));
 
     let mut wm_settings = esp_hal_wifimanager::WmSettings::default();
-    wm_settings.ssid_generator = |efuse| {
+    wm_settings.ssid_generator = |_efuse| {
         let mut generated_name = heapless::String::<32>::new();
-        _ = core::fmt::write(&mut generated_name, format_args!("FKM-{:X}", efuse));
+        _ = core::fmt::write(
+            &mut generated_name,
+            format_args!("FKM-{:X}", esp_hal_wifimanager::get_efuse_u32()),
+        );
         generated_name
     };
 
