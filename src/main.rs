@@ -77,7 +77,7 @@ async fn main(spawner: Spawner) {
 
     // display digits
     let digits_shifters = adv_shift_reg.get_shifter_range_mut(2..8);
-    digits_shifters.set_data(&[255; 6]);
+    digits_shifters.set_data(&[!stackmat::DEC_DIGITS[8] ^ stackmat::DOT_MOD; 6]);
 
     let buttons_shifter = adv_shift_reg.get_shifter_mut(0);
     let lcd_shifter = adv_shift_reg.get_shifter_mut(1);
