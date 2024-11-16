@@ -55,7 +55,23 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, global_state: GlobalSt
                     } else if parsed.0 == StackmatTimerState::Stopped {
                         let mut state = global_state.state.lock().await;
                         if state.solve_time.is_none() && state.last_solve_time != Some(parsed.1) {
+                            let inspection_time = state
+                                .inspection_end
+                                .and_then(|x| Some(x - state.inspection_start?));
+                            let inspection_time = if let Some(ins) = inspection_time {
+                                ins.as_millis()
+                            } else {
+                                0
+                            };
+
                             state.solve_time = Some(parsed.1);
+                            state.penalty = if inspection_time >= 17000 {
+                                Some(-1)
+                            } else if inspection_time >= 15000 {
+                                Some(2)
+                            } else {
+                                None
+                            };
 
                             if state.current_competitor.is_some() {
                                 state.scene = Scene::Finished;

@@ -2,9 +2,8 @@
 #![no_main]
 
 extern crate alloc;
-use core::{str::FromStr, time::Duration};
-
 use arc::Arc;
+use core::str::FromStr;
 use embassy_executor::Spawner;
 use embassy_time::Timer;
 use embedded_hal::digital::OutputPin;
@@ -12,10 +11,6 @@ use esp_backtrace as _;
 use esp_hal::{
     gpio::{Input, Io, Output},
     prelude::*,
-    rtc_cntl::{
-        sleep::{RtcSleepConfig, TimerWakeupSource},
-        Rtc,
-    },
     timer::timg::TimerGroup,
 };
 use esp_wifi::EspWifiInitFor;
@@ -161,12 +156,6 @@ async fn main(spawner: Spawner) {
         ws_url,
         global_state.clone(),
     ));
-
-    /*
-    let mut rtc = Rtc::new(peripherals.LPWR);
-    let timer = TimerWakeupSource::new(Duration::from_secs(5));
-    rtc.sleep_light(&[&timer]);
-    */
 
     global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
     loop {
