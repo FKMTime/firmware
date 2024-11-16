@@ -63,7 +63,16 @@ pub fn generate_button_handler_enum(args: TokenStream) -> TokenStream {
     }
 
     let path = source_file.path();
-    let read = std::fs::read_to_string(path).unwrap();
+    let read = std::fs::read_to_string(&path);
+    if let Err(_) = read {
+        return quote! {
+            #[doc(hidden)]
+            enum HandlersDerive {}
+        }
+        .into();
+    }
+
+    let read = read.unwrap();
     let input_file = syn::parse_file(&read).unwrap();
 
     let mut output_ty: Option<proc_macro2::TokenStream> = None;
@@ -155,6 +164,7 @@ pub fn button_handler(_args: TokenStream, item: TokenStream) -> TokenStream {
     let block = f.block;
 
     quote! {
+        #[allow(non_camel_case_types)]
         #vis struct #handler_name;
 
         impl #handler_name {
