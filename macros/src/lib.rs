@@ -1,11 +1,9 @@
 #![feature(proc_macro_span)]
 
 use proc_macro::TokenStream;
-use proc_macro2::TokenTree;
 use quote::{format_ident, quote};
 use syn::{
     parse::{Parse, ParseStream},
-    token::Paren,
     Ident, Item, Meta, Token, Type,
 };
 
@@ -150,26 +148,30 @@ pub fn button_handler(_args: TokenStream, item: TokenStream) -> TokenStream {
         syn::ReturnType::Type(_, tp) => quote! { #tp },
     };
 
-    let name = f.sig.ident.to_string();
-    let name = format_ident!("_button_handler_{name}");
+    let name = f.sig.ident;
+    let handler_name = format_ident!("_button_handler_{}", name.to_string());
 
     let vis = f.vis;
     let block = f.block;
 
     quote! {
-        #vis struct #name;
+        #vis struct #handler_name;
 
-        impl #name {
+        impl #handler_name {
             pub async fn execute(&self, #inputs) -> #output
                 #block
 
+        }
+
+        #vis fn #name() -> HandlersDerive {
+            HandlersDerive::#handler_name(#handler_name)
         }
     }
     .into()
 }
 
 #[proc_macro_attribute]
-pub fn button_handler2(_args: TokenStream, item: TokenStream) -> TokenStream {
+pub fn button_handler_old(_args: TokenStream, item: TokenStream) -> TokenStream {
     let f = syn::parse_macro_input!(item as syn::ItemFn);
     if f.sig.asyncness.is_none() {
         panic!("Function has to by async!");

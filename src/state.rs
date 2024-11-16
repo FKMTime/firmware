@@ -6,6 +6,7 @@ use embassy_sync::{
     signal::Signal,
 };
 use embassy_time::Instant;
+use esp_hal_wifimanager::Nvs;
 
 pub static mut EPOCH_BASE: u64 = 1431212400;
 pub fn get_current_epoch() -> u64 {
@@ -149,13 +150,17 @@ pub type GlobalState = Arc<GlobalStateInner>;
 pub struct GlobalStateInner {
     pub state: SignaledMutex<CriticalSectionRawMutex, SignaledGlobalStateInner>,
     pub timer_signal: Signal<CriticalSectionRawMutex, u64>,
+
+    pub nvs: Nvs
 }
 
 impl GlobalStateInner {
-    pub fn new() -> Self {
+    pub fn new(nvs: &Nvs) -> Self {
         Self {
             state: SignaledMutex::new(SignaledGlobalStateInner::new()),
             timer_signal: Signal::new(),
+
+            nvs: nvs.clone()
         }
     }
 
