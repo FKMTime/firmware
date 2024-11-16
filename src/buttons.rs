@@ -8,6 +8,26 @@ use core::{future::Future, pin::Pin};
 use embassy_time::{Instant, Timer};
 use esp_hal::gpio::Input;
 
+macros::generate_button_handler_enum!(/* triggered: &ButtonTrigger, */ hold_time: u64, state: &GlobalState);
+
+#[macros::button_handler]
+async fn button_test(hold_time: u64, state: &GlobalState) -> Result<bool, ()> {
+    let mut d = 1;
+    d += 1;
+
+    log::info!("test");
+    Ok(false)
+}
+
+#[macros::button_handler]
+async fn button_test2(hold_time: u64, state: &GlobalState) -> Result<bool, ()> {
+    let mut d = 1;
+    d += 1;
+
+    Ok(false)
+}
+
+/*
 #[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub enum Button {
@@ -42,6 +62,7 @@ pub enum ButtonTrigger {
 
 type ButtonFunc =
     fn(ButtonTrigger, u64, GlobalState) -> Pin<Box<dyn Future<Output = Result<bool, ()>> + Send>>;
+*/
 
 #[embassy_executor::task]
 pub async fn buttons_task(
@@ -49,12 +70,18 @@ pub async fn buttons_task(
     button_reg: ShifterValue,
     state: GlobalState,
 ) {
+    /*
     let mut handler = ButtonsHandler::new();
     handler.add_handler(Button::Third, ButtonTrigger::Up, submit_up());
     handler.add_handler(
         Button::Third,
         ButtonTrigger::HoldOnce(3000),
         submit_reset_competitor(),
+    );
+    handler.add_handler(
+        Button::Third,
+        ButtonTrigger::HoldOnce(15000),
+        submit_reset_wifi(),
     );
 
     handler.add_handler(Button::First, ButtonTrigger::Down, inspection_start());
@@ -78,16 +105,6 @@ pub async fn buttons_task(
         delegate_hold(),
     );
     handler.add_handler(Button::Second, ButtonTrigger::Up, delegate_hold());
-    /*
-    handler.add_handler(Button::First, ButtonTrigger::Down, button_test());
-    handler.add_handler(
-        Button::First,
-        ButtonTrigger::HoldTimed(500, 300),
-        button_test(),
-    );
-    handler.add_handler(Button::First, ButtonTrigger::Up, button_test());
-    handler.add_handler(Button::Fourth, ButtonTrigger::Down, button_test());
-    */
 
     let mut debounce_time = esp_hal::time::now();
     let mut old_debounced = i32::MAX;
@@ -131,8 +148,10 @@ pub async fn buttons_task(
         }
         Timer::after_millis(5).await;
     }
+    */
 }
 
+/*
 struct ButtonHandler {
     button: Button,
     handlers: Vec<(ButtonTrigger, bool, ButtonFunc)>,
@@ -273,7 +292,9 @@ impl ButtonsHandler {
         self.current_handler_down = None;
     }
 }
+*/
 
+/*
 #[macros::button_handler]
 async fn button_test(
     triggered: ButtonTrigger,
@@ -458,6 +479,18 @@ async fn submit_reset_competitor(
 }
 
 #[macros::button_handler]
+async fn submit_reset_wifi(
+    _triggered: ButtonTrigger,
+    _hold_time: u64,
+    _state: GlobalState,
+) -> Result<bool, ()> {
+    //let nvs = state.get_nvs();
+    //nvs.invalidate_key(esp_hal_wifimanager::WIFI_NVS_KEY).await;
+
+    Ok(false)
+}
+
+#[macros::button_handler]
 async fn delegate_hold(
     triggered: ButtonTrigger,
     hold_time: u64,
@@ -540,3 +573,4 @@ async fn delegate_hold(
     }
     Ok(false)
 }
+*/
