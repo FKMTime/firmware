@@ -249,7 +249,7 @@ async fn process_lcd<C: CharsetWithFallback>(
                     .ok()?;
 
                 lcd_driver.display_on_lcd(lcd, delay).ok()?;
-                Timer::after_millis(5).await;
+                Timer::after_millis(1000 / 30).await;
             }
         }
         Scene::Timer => loop {
