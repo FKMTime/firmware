@@ -1,6 +1,6 @@
 use adv_shift_registers::wrappers::{ShifterPin, ShifterValue};
 use alloc::string::ToString;
-use embassy_time::{Delay, Duration, Instant, Timer, WithTimeout};
+use embassy_time::{Delay, Duration, Instant, Timer};
 use embedded_hal::digital::OutputPin;
 use hd44780_driver::{
     bus::{FourBitBus, FourBitBusPins},
@@ -346,25 +346,3 @@ async fn process_lcd_overwrite(
 
     return true;
 }
-
-/*
-fn num_to_digits(mut num: u128) -> ([u8; 40], usize) {
-    let mut tmp = [0xFF; 40];
-    let mut pos = 0;
-    while num > 0 {
-        let digit = (num % 10) as u8;
-        tmp[pos] = digit;
-
-        pos += 1;
-        num /= 10;
-    }
-
-    // reverse
-    for i in 0..(pos / 2) {
-        let end_i = pos - i - 1;
-        tmp.swap(i, end_i);
-    }
-
-    (tmp, pos)
-}
-*/

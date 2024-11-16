@@ -63,12 +63,11 @@ pub async fn ws_task(
         let mut rx_framer = WsRxFramer::new(&mut ws_rx_buf);
 
         let path = alloc::format!(
-            "{}?id={}&ver={}&chip={}&bt={}&firmware={}",
+            "{}?id={}&ver={}&chip={}&firmware={}",
             ws_url.path,
             esp_hal_wifimanager::get_efuse_u32(),
             "v3.0",
             "no-chip",
-            69420,
             "no-firmware"
         );
 

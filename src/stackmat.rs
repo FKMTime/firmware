@@ -1,9 +1,15 @@
 use crate::state::{GlobalState, Scene};
+use adv_shift_registers::wrappers::ShifterValueRange;
 use embassy_time::{Instant, Timer};
 use esp_hal::{gpio::AnyPin, peripherals::UART0, uart::UartRx};
 
 #[embassy_executor::task]
-pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, global_state: GlobalState) {
+pub async fn stackmat_task(
+    uart: UART0,
+    uart_pin: AnyPin,
+    display: ShifterValueRange,
+    global_state: GlobalState,
+) {
     let serial_config = esp_hal::uart::config::Config::default().baudrate(1200);
     let mut uart = UartRx::new_async_with_config(uart, serial_config, uart_pin).unwrap();
 
@@ -88,13 +94,20 @@ pub async fn stackmat_task(uart: UART0, uart_pin: AnyPin, global_state: GlobalSt
                         {
                             state.scene = Scene::WaitingForCompetitor;
                             state.solve_time = None;
+                            state.penalty = None;
                         }
+
+                        display.set_data(&[255; 6]);
                     }
 
                     last_stackmat_state = parsed.0;
                 }
 
                 global_state.timer_signal.signal(parsed.1);
+                if parsed.1 > 0 {
+                    let time_str = crate::utils::ms_to_time_str(parsed.1);
+                    display.set_data(&time_str_to_display(&time_str));
+                }
             }
         }
 
@@ -163,4 +176,26 @@ impl StackmatTimerState {
             Self::Stopped => b'S',
         }
     }
+}
+
+const DEC_DIGITS: [u8; 10] = [215, 132, 203, 206, 156, 94, 95, 196, 223, 222];
+const DOT_MOD: u8 = 32;
+
+fn time_str_to_display(time: &str) -> [u8; 6] {
+    let mut data = [255; 6];
+    let mut i = 0;
+
+    for c in time.chars().rev() {
+        if c < '0' || c > '9' {
+            continue;
+        }
+
+        let dot = if i == 5 || i == 3 { DOT_MOD } else { 0 };
+
+        let d = c as u8 - b'0';
+        data[i] = !DEC_DIGITS[d as usize] ^ dot;
+        i += 1;
+    }
+
+    data
 }

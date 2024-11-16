@@ -98,6 +98,7 @@ async fn main(spawner: Spawner) {
     _ = spawner.spawn(stackmat::stackmat_task(
         peripherals.UART0,
         stackmat_rx,
+        digits_shifters,
         global_state.clone(),
     ));
     _ = spawner.spawn(rfid::rfid_task(
