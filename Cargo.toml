@@ -19,21 +19,20 @@ embedded-storage = "0.3.1"
 static_cell = { version = "2.1.0", features = ["nightly"] }
 heapless = { version = "0.8.0", default-features = false }
 esp-alloc = "0.5.0"
-esp-hal-wifimanager = { path = "../../esp-hal-wifimanager", default-features = false, features = ["esp32c3", "ap", "ble"] } # TODO: CHANGE
+esp-hal-wifimanager = { git = "https://github.com/filipton/esp-hal-wifimanager", default-features = false, features = ["esp32c3", "ap", "ble"] } # TODO: CHANGE
 serde = { version = "1.0.215", features = ["alloc", "derive"], default-features = false }
 serde_json = { version = "1.0.132", default-features = false, features = ["alloc"] }
 adv-shift-registers = "0.2.4"
-#adv-shift-registers = { path = "../../adv-shift-registers" }
 embedded-hal = "1.0.0"
 esp-hal-mfrc522 = { version = "0.1.1", features = ["embassy-time"] }
-esp-hal-mdns = { git = "https://github.com/filipton/esp-hal-mdns.git" }
+esp-hal-mdns = "0.1.0"
 embedded-io-async = "0.6.1"
 macros = { path = "./macros" }
 nb = "1.1.0"
 embassy-futures = "0.1.1"
 hd44780-driver = { git = "https://github.com/JohnDoneth/hd44780-driver.git", features = ["async"] }
 embassy-sync = "0.6.0"
-ws-framer = { path = "../../ws-framer", features = ["alloc"] }
+ws-framer = { version = "0.1.0", features = ["alloc"] }
 embedded-hal-async = "1.0.0"
 portable-atomic = { version = "1.9.0", default-features = false }
 critical-section = "1.2.0"
