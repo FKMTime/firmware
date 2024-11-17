@@ -60,8 +60,7 @@ void WsLogger::loop(bool force) {
   }
 
   JsonDocument doc;
-  doc["logs"]["esp_id"] = espId();
-  doc["logs"]["logs"] = logsArrDoc;
+  doc["data"]["logs"]["logs"] = logsArrDoc;
 
   if (wsClient != NULL) {
     String json;

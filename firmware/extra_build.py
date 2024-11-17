@@ -3,7 +3,6 @@ import os, time, os
 
 def after_build(source, target, env):
     version = os.popen("cat src/version.h | grep \"FIRMWARE_VERSION\" | cut -d'\"' -f 2").read().strip()
-    buildTime = os.popen("cat src/version.h | grep \"BUILD_TIME\" | cut -d'\"' -f 2").read().strip()
     firmwareType = os.popen("cat src/version.h | grep \"FIRMWARE_TYPE\" | cut -d'\"' -f 2").read().strip()
     chip = env['BOARD_MCU']
 
@@ -18,7 +17,6 @@ def generate_version():
     chip = env['BOARD_MCU']
 
     print(f"Version: {version}")
-    print(f"Build Time: {buildTime}")
     print(f"Chip: {chip}")
 
     versionString = """
@@ -26,12 +24,11 @@ def generate_version():
 #define __VERSION_H__
 
 #define FIRMWARE_VERSION "{version}"
-#define BUILD_TIME "{buildTime}"
 #define FIRMWARE_TYPE "{firmwareType}"
 #define CHIP "{chip}"
 
 #endif
-""".format(version = version, buildTime = buildTime, chip = chip, firmwareType = "STATION" )
+""".format(version = version, chip = chip, firmwareType = "STATION" )
 
     with open(versionPath, "w") as file:
         file.write(versionString)

@@ -45,7 +45,6 @@ void setup() {
 
   Logger.printf("ESP ID: %lx\n", getEspId());
   Logger.printf("Current firmware version: %s\n", FIRMWARE_VERSION);
-  Logger.printf("Build time: %s\n", BUILD_TIME);
   Logger.printf("Battery: %f%% (%fv)\n", initialBat, currentBatteryVoltage);
 
   lcdPrintf(0, true, ALIGN_LEFT, "ID: %x", getEspId());
