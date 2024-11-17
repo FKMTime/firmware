@@ -31,9 +31,8 @@ void initWs() {
   ws_info_t wsInfo = parseWsUrl(wsURL.c_str());
 
   char finalPath[256];
-  snprintf(finalPath, 256, "%s?id=%lu&ver=%s&chip=%s&bt=%s&firmware=%s",
-           wsInfo.path, getEspId(), FIRMWARE_VERSION, CHIP, BUILD_TIME,
-           FIRMWARE_TYPE);
+  snprintf(finalPath, 256, "%s?id=%lu&ver=%s&chip=%s&firmware=%s", wsInfo.path,
+           getEspId(), FIRMWARE_VERSION, CHIP, FIRMWARE_TYPE);
 
   if (wsInfo.ssl) {
     webSocket.beginSSL(wsInfo.host, wsInfo.port, finalPath);
@@ -89,7 +88,6 @@ void parseCardInfoResponse(JsonObject doc) {
 
 void parseSolveConfirm(JsonObject doc) {
   if (doc["competitor_id"] != state.competitorCardId ||
-      doc["esp_id"] != getEspId() ||
       doc["session_id"] != state.solveSessionId) {
     Logger.println("Wrong solve confirm frame!");
     return;
@@ -99,11 +97,6 @@ void parseSolveConfirm(JsonObject doc) {
 }
 
 void parseDelegateResponse(JsonObject doc) {
-  if (doc["esp_id"] != getEspId()) {
-    Logger.println("Wrong solve confirm frame!");
-    return;
-  }
-
   if (doc.containsKey("solve_time")) {
     unsigned long solveTime = doc["solve_time"];
     state.solveTime = solveTime;
@@ -128,11 +121,6 @@ void parseDelegateResponse(JsonObject doc) {
 }
 
 void parseDeviceSettings(JsonObject doc) {
-  if (doc["esp_id"] != getEspId()) {
-    Logger.println("Wrong deivce settings frame!");
-    return;
-  }
-
   String secondaryText = doc["secondary_text"];
   strncpy(state.secondaryText, secondaryText.c_str(), 32);
   state.useInspection = doc["use_inspection"];
@@ -151,7 +139,7 @@ void parseStartUpdate(JsonObject doc) {
     ESP.restart();
   }
 
-  if (doc["esp_id"] != getEspId() || doc["version"] == FIRMWARE_VERSION) {
+  if (doc["version"] == FIRMWARE_VERSION) {
     Logger.println(
         "Cannot start update! (wrong esp id or same firmware version)");
     return;
@@ -177,11 +165,6 @@ void parseStartUpdate(JsonObject doc) {
 }
 
 void parseApiError(JsonObject doc) {
-  if (doc["esp_id"] != getEspId()) {
-    Logger.println("Wrong api error frame!");
-    return;
-  }
-
   String errorMessage = doc["error"];
   bool shouldResetTime = doc["should_reset_time"];
   Logger.printf("Api entry error: %s\n", errorMessage.c_str());
@@ -282,22 +265,23 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
     JsonDocument doc;
     deserializeJson(doc, payload);
 
-    if (doc.containsKey("card_info_response")) {
-      parseCardInfoResponse(doc["card_info_response"]);
-    } else if (doc.containsKey("solve_confirm")) {
-      parseSolveConfirm(doc["solve_confirm"]);
-    } else if (doc.containsKey("delegate_response")) {
-      parseDelegateResponse(doc["delegate_response"]);
-    } else if (doc.containsKey("device_settings")) {
-      parseDeviceSettings(doc["device_settings"]);
-    } else if (doc.containsKey("start_update")) {
-      parseStartUpdate(doc["start_update"]);
-    } else if (doc.containsKey("api_error")) {
-      parseApiError(doc["api_error"]);
-    } else if (doc.containsKey("test_packet")) {
-      parseTestPacket(doc["test_packet"]);
-    } else if (doc.containsKey("epoch_time")) {
-      parseEpochTime(doc["epoch_time"]);
+    JsonObject data = doc["data"];
+    if (data.containsKey("card_info_response")) {
+      parseCardInfoResponse(data["card_info_response"]);
+    } else if (data.containsKey("solve_confirm")) {
+      parseSolveConfirm(data["solve_confirm"]);
+    } else if (data.containsKey("delegate_response")) {
+      parseDelegateResponse(data["delegate_response"]);
+    } else if (data.containsKey("device_settings")) {
+      parseDeviceSettings(data["device_settings"]);
+    } else if (data.containsKey("start_update")) {
+      parseStartUpdate(data["start_update"]);
+    } else if (data.containsKey("api_error")) {
+      parseApiError(data["api_error"]);
+    } else if (data.containsKey("test_packet")) {
+      parseTestPacket(data["test_packet"]);
+    } else if (data.containsKey("epoch_time")) {
+      parseEpochTime(data["epoch_time"]);
     }
   } else if (type == WStype_BIN) {
     parseUpdateData(payload, length);

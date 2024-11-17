@@ -45,9 +45,8 @@ float readBatteryVoltage(int pin, int delayMs, bool offset) {
 
 void sendBatteryStats(float level, float voltage) {
   JsonDocument doc;
-  doc["battery"]["esp_id"] = getEspId();
-  doc["battery"]["level"] = level;
-  doc["battery"]["voltage"] = voltage;
+  doc["data"]["battery"]["level"] = level;
+  doc["data"]["battery"]["voltage"] = voltage;
 
   String json;
   serializeJson(doc, json);
@@ -56,8 +55,7 @@ void sendBatteryStats(float level, float voltage) {
 
 void sendAddDevice() {
   JsonDocument doc;
-  doc["add"]["esp_id"] = getEspId();
-  doc["add"]["firmware"] = ADD_DEVICE_FIRMWARE_TYPE;
+  doc["data"]["add"]["firmware"] = ADD_DEVICE_FIRMWARE_TYPE;
 
   String json;
   serializeJson(doc, json);

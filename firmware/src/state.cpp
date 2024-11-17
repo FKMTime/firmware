@@ -321,15 +321,14 @@ void sendSolve(bool delegate) {
   Logger.printf("Send solve time: %d\n", state.solveTime);
 
   JsonDocument doc;
-  doc["solve"]["solve_time"] = state.solveTime;
-  doc["solve"]["penalty"] = state.penalty;
-  doc["solve"]["competitor_id"] = state.competitorCardId;
-  doc["solve"]["judge_id"] = state.judgeCardId;
-  doc["solve"]["esp_id"] = getEspId();
-  doc["solve"]["timestamp"] = getEpoch();
-  doc["solve"]["session_id"] = state.solveSessionId;
-  doc["solve"]["delegate"] = delegate;
-  doc["solve"]["inspection_time"] =
+  doc["data"]["solve"]["solve_time"] = state.solveTime;
+  doc["data"]["solve"]["penalty"] = state.penalty;
+  doc["data"]["solve"]["competitor_id"] = state.competitorCardId;
+  doc["data"]["solve"]["judge_id"] = state.judgeCardId;
+  doc["data"]["solve"]["timestamp"] = getEpoch();
+  doc["data"]["solve"]["session_id"] = state.solveSessionId;
+  doc["data"]["solve"]["delegate"] = delegate;
+  doc["data"]["solve"]["inspection_time"] =
       state.inspectionEnded - state.inspectionStarted;
 
   String json;
@@ -350,8 +349,7 @@ void sendSolve(bool delegate) {
 
 void scanCard(unsigned long cardId) {
   JsonDocument doc;
-  doc["card_info_request"]["card_id"] = cardId;
-  doc["card_info_request"]["esp_id"] = getEspId();
+  doc["data"]["card_info_request"]["card_id"] = cardId;
 
   String json;
   serializeJson(doc, json);
@@ -373,23 +371,22 @@ void sendSnapshotData() {
   }
 
   JsonDocument doc;
-  doc["snapshot"]["esp_id"] = getEspId();
-  doc["snapshot"]["scene"] = state.currentScene;
-  doc["snapshot"]["solve_session_id"] = state.solveSessionId;
-  doc["snapshot"]["solve_time"] = state.solveTime;
-  doc["snapshot"]["last_solve_time"] = state.lastSolveTime;
-  doc["snapshot"]["penalty"] = state.penalty;
-  doc["snapshot"]["use_inspection"] = state.useInspection;
-  doc["snapshot"]["secondary_text"] = state.secondaryText;
-  doc["snapshot"]["inspection_started"] = state.inspectionStarted;
-  doc["snapshot"]["inspection_ended"] = state.inspectionEnded;
-  doc["snapshot"]["competitor_card_id"] = state.competitorCardId;
-  doc["snapshot"]["judge_card_id"] = state.judgeCardId;
-  doc["snapshot"]["competitor_display"] = state.competitorDisplay;
-  doc["snapshot"]["time_confirmed"] = state.timeConfirmed;
-  doc["snapshot"]["error_msg"] = state.errorMsg;
-  doc["snapshot"]["lcd_buffer"] = tmpLcdBuff.c_str();
-  doc["snapshot"]["free_heap_size"] = esp_get_free_heap_size();
+  doc["data"]["snapshot"]["scene"] = state.currentScene;
+  doc["data"]["snapshot"]["solve_session_id"] = state.solveSessionId;
+  doc["data"]["snapshot"]["solve_time"] = state.solveTime;
+  doc["data"]["snapshot"]["last_solve_time"] = state.lastSolveTime;
+  doc["data"]["snapshot"]["penalty"] = state.penalty;
+  doc["data"]["snapshot"]["use_inspection"] = state.useInspection;
+  doc["data"]["snapshot"]["secondary_text"] = state.secondaryText;
+  doc["data"]["snapshot"]["inspection_started"] = state.inspectionStarted;
+  doc["data"]["snapshot"]["inspection_ended"] = state.inspectionEnded;
+  doc["data"]["snapshot"]["competitor_card_id"] = state.competitorCardId;
+  doc["data"]["snapshot"]["judge_card_id"] = state.judgeCardId;
+  doc["data"]["snapshot"]["competitor_display"] = state.competitorDisplay;
+  doc["data"]["snapshot"]["time_confirmed"] = state.timeConfirmed;
+  doc["data"]["snapshot"]["error_msg"] = state.errorMsg;
+  doc["data"]["snapshot"]["lcd_buffer"] = tmpLcdBuff.c_str();
+  doc["data"]["snapshot"]["free_heap_size"] = esp_get_free_heap_size();
 
   String json;
   serializeJson(doc, json);
@@ -398,7 +395,7 @@ void sendSnapshotData() {
 
 void sendTestAck() {
   JsonDocument doc;
-  doc["test_ack"]["esp_id"] = getEspId();
+  doc["data"] = "test_ack";
 
   String json;
   serializeJson(doc, json);
