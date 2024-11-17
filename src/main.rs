@@ -2,7 +2,7 @@
 #![no_main]
 
 extern crate alloc;
-use arc::Arc;
+use alloc::rc::Rc;
 use core::str::FromStr;
 use embassy_executor::Spawner;
 use embassy_time::Timer;
@@ -86,7 +86,7 @@ async fn main(spawner: Spawner) {
 
     let timg1 = TimerGroup::new(peripherals.TIMG1);
     esp_hal_embassy::init(timg1.timer0);
-    let global_state = Arc::new(GlobalStateInner::new(&nvs));
+    let global_state = Rc::new(GlobalStateInner::new(&nvs));
 
     _ = spawner.spawn(lcd::lcd_task(lcd_shifter, global_state.clone()));
     _ = spawner.spawn(battery::batter_read_task(battery_input, peripherals.ADC1));

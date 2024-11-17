@@ -14,6 +14,7 @@ pub struct ArcInner<T> {
 unsafe impl<T: Send + Sync> Send for Arc<T> {}
 unsafe impl<T: Send + Sync> Sync for Arc<T> {}
 
+#[allow(dead_code)]
 impl<T> Arc<T> {
     pub fn new(data: T) -> Self {
         let ptr = Box::new(ArcInner {

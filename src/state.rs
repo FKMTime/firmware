@@ -1,5 +1,4 @@
-use crate::arc::Arc;
-use alloc::string::String;
+use alloc::{rc::Rc, string::String};
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex},
     mutex::{Mutex, MutexGuard},
@@ -145,7 +144,7 @@ impl<'a, M: RawMutex, T: Clone + PartialEq> core::ops::DerefMut for SignaledMute
 }
 
 //pub type GlobalState
-pub type GlobalState = Arc<GlobalStateInner>;
+pub type GlobalState = Rc<GlobalStateInner>;
 
 pub struct GlobalStateInner {
     pub state: SignaledMutex<CriticalSectionRawMutex, SignaledGlobalStateInner>,

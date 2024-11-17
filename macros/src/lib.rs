@@ -173,7 +173,7 @@ pub fn button_handler(_args: TokenStream, item: TokenStream) -> TokenStream {
 
         }
 
-        #vis fn #name() -> HandlersDerive {
+        #vis const fn #name() -> HandlersDerive {
             HandlersDerive::#handler_name(#handler_name)
         }
     }
