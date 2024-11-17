@@ -59,16 +59,16 @@ impl<const LINE_SIZE: usize, const X: usize, const Y: usize, const SCROLLER_WT: 
         (tmp, &mut self.old_display)
     }
 
-    pub fn scroll_step(&mut self) -> Result<(), LcdError> {
+    pub fn scroll_step(&mut self) -> Result<bool, LcdError> {
         let max_size = *self.sizes.iter().max().ok_or_else(|| LcdError::Other)?;
         let max_scroll = max_size.saturating_sub(X);
         if max_scroll == 0 {
-            return Ok(());
+            return Ok(false);
         }
 
         if self.scroll_wait_ticks > 0 {
             self.scroll_wait_ticks = self.scroll_wait_ticks.saturating_sub(1);
-            return Ok(());
+            return Ok(false);
         }
 
         self.current_scroll = self
@@ -88,7 +88,7 @@ impl<const LINE_SIZE: usize, const X: usize, const Y: usize, const SCROLLER_WT: 
             };
         }
 
-        Ok(())
+        Ok(true)
     }
 
     pub fn print(

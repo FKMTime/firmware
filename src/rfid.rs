@@ -1,4 +1,4 @@
-use crate::state::{get_current_epoch, GlobalState};
+use crate::state::{current_epoch, GlobalState};
 use crate::structs::{CardInfoResponsePacket, SolveConfirmPacket};
 use adv_shift_registers::wrappers::ShifterPin;
 use alloc::string::ToString;
@@ -114,7 +114,7 @@ pub async fn rfid_task(
                                                 penalty: state.penalty.unwrap_or(0) as i64,
                                                 competitor_id: state.current_competitor.unwrap(),
                                                 judge_id: state.current_judge.unwrap(),
-                                                timestamp: get_current_epoch(),
+                                                timestamp: current_epoch(),
                                                 session_id: state.session_id.clone().unwrap(),
                                                 delegate: false,
                                                 inspection_time,

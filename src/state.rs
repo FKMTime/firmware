@@ -8,8 +8,16 @@ use embassy_time::Instant;
 use esp_hal_wifimanager::Nvs;
 
 pub static mut EPOCH_BASE: u64 = 1431212400;
-pub fn get_current_epoch() -> u64 {
+pub static mut SLEEP_STATE: bool = false;
+
+#[inline(always)]
+pub fn current_epoch() -> u64 {
     unsafe { EPOCH_BASE + Instant::now().as_secs() }
+}
+
+#[inline(always)]
+pub fn sleep_state() -> bool {
+    unsafe { SLEEP_STATE }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -150,7 +158,7 @@ pub struct GlobalStateInner {
     pub state: SignaledMutex<CriticalSectionRawMutex, SignaledGlobalStateInner>,
     pub timer_signal: Signal<CriticalSectionRawMutex, u64>,
 
-    pub nvs: Nvs
+    pub nvs: Nvs,
 }
 
 impl GlobalStateInner {
@@ -159,7 +167,7 @@ impl GlobalStateInner {
             state: SignaledMutex::new(SignaledGlobalStateInner::new()),
             timer_signal: Signal::new(),
 
-            nvs: nvs.clone()
+            nvs: nvs.clone(),
         }
     }
 

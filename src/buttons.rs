@@ -1,5 +1,5 @@
 use crate::{
-    state::{get_current_epoch, GlobalState, Scene},
+    state::{current_epoch, GlobalState, Scene},
     structs::DelegateResponsePacket,
 };
 use adv_shift_registers::wrappers::ShifterValue;
@@ -513,7 +513,7 @@ async fn delegate_hold(
                 penalty: state_val.penalty.unwrap_or(0) as i64,
                 competitor_id: state_val.current_competitor.unwrap(),
                 judge_id: state_val.current_judge.unwrap_or(0),
-                timestamp: get_current_epoch(),
+                timestamp: current_epoch(),
                 session_id: state_val.session_id.clone().unwrap(),
                 delegate: true,
                 inspection_time,

@@ -12,7 +12,7 @@ use hd44780_driver::{
 
 use crate::{
     lcd_abstract::{LcdAbstract, PrintAlign},
-    state::{GlobalState, Scene, SignaledGlobalStateInner},
+    state::{sleep_state, GlobalState, Scene, SignaledGlobalStateInner},
 };
 
 #[embassy_executor::task]
@@ -82,9 +82,18 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
 
     // TODO: print to lcd if wifi setup active
     _ = lcd_driver.clear_all();
+
+    let mut last_update;
     loop {
         let current_state = global_state.state.value().await.clone();
         log::warn!("current_state: {:?}", current_state);
+        last_update = Instant::now();
+        if !sleep_state() {
+            _ = bl_pin.set_high();
+            unsafe {
+                crate::state::SLEEP_STATE = true;
+            }
+        }
 
         let fut = async {
             let _ = process_lcd(
@@ -100,8 +109,17 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
             let mut scroll_ticker = embassy_time::Ticker::every(Duration::from_millis(500));
             loop {
                 scroll_ticker.next().await;
-                lcd_driver.scroll_step().unwrap();
-                lcd_driver.display_on_lcd(&mut lcd, &mut delay).unwrap();
+                let changed = lcd_driver.scroll_step().unwrap();
+                if changed {
+                    lcd_driver.display_on_lcd(&mut lcd, &mut delay).unwrap();
+                }
+
+                if sleep_state() && (Instant::now() - last_update).as_secs() > 60 * 5 {
+                    _ = bl_pin.set_low();
+                    unsafe {
+                        crate::state::SLEEP_STATE = false;
+                    }
+                }
             }
         };
 
