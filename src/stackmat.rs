@@ -1,4 +1,9 @@
-use crate::state::{GlobalState, Scene};
+use crate::{
+    state::{GlobalState, Scene},
+    utils::stackmat::{
+        ms_to_time_str, parse_stackmat_data, time_str_to_display, StackmatTimerState,
+    },
+};
 use adv_shift_registers::wrappers::ShifterValueRange;
 use embassy_time::{Instant, Timer};
 use esp_hal::{gpio::AnyPin, peripherals::UART0, uart::UartRx};
@@ -106,7 +111,7 @@ pub async fn stackmat_task(
 
                 global_state.timer_signal.signal(parsed.1);
                 if parsed.1 > 0 {
-                    let time_str = crate::utils::ms_to_time_str(parsed.1);
+                    let time_str = ms_to_time_str(parsed.1);
                     display.set_data(&time_str_to_display(&time_str));
                 }
             }
@@ -114,89 +119,4 @@ pub async fn stackmat_task(
 
         last_read = esp_hal::time::now();
     }
-}
-
-fn parse_stackmat_data(data: &[u8; 8]) -> Result<(StackmatTimerState, u64), ()> {
-    let mut state = StackmatTimerState::from_u8(data[0]);
-
-    let minutes = parse_time_str(&data[1..2]).ok_or(())?;
-    let seconds = parse_time_str(&data[2..4]).ok_or(())?;
-    let ms = parse_time_str(&data[4..7]).ok_or(())?;
-
-    let sum = 64 + data[1..7].iter().fold(0u8, |acc, &x| acc + (x - b'0'));
-    if sum != data[7] {
-        // cheksum
-        return Err(());
-    }
-
-    let total_ms: u64 = minutes as u64 * 60000 + seconds as u64 * 1000 + ms as u64;
-    if total_ms > 0 && state == StackmatTimerState::Reset {
-        state = StackmatTimerState::Stopped;
-    }
-
-    Ok((state, total_ms))
-}
-
-fn parse_time_str(data: &[u8]) -> Option<u16> {
-    data.iter().try_fold(0u16, |acc, &x| {
-        let digit = x.checked_sub(b'0')?;
-        if digit > 9 {
-            return None;
-        }
-
-        acc.checked_mul(10)
-            .and_then(|acc| acc.checked_add(digit as u16))
-    })
-}
-
-#[allow(dead_code)]
-#[derive(PartialEq, Debug)]
-pub enum StackmatTimerState {
-    Unknown,
-    Reset,
-    Running,
-    Stopped,
-}
-
-#[allow(dead_code)]
-impl StackmatTimerState {
-    fn from_u8(val: u8) -> Self {
-        match val {
-            b'I' => Self::Reset,
-            b' ' => Self::Running,
-            b'S' => Self::Stopped,
-            _ => Self::Unknown,
-        }
-    }
-
-    fn to_u8(&self) -> u8 {
-        match self {
-            Self::Unknown => 0,
-            Self::Reset => b'I',
-            Self::Running => b' ',
-            Self::Stopped => b'S',
-        }
-    }
-}
-
-pub const DEC_DIGITS: [u8; 10] = [215, 132, 203, 206, 156, 94, 95, 196, 223, 222];
-pub const DOT_MOD: u8 = 32;
-
-fn time_str_to_display(time: &str) -> [u8; 6] {
-    let mut data = [255; 6];
-    let mut i = 0;
-
-    for c in time.chars().rev() {
-        if c < '0' || c > '9' {
-            continue;
-        }
-
-        let dot = if i == 5 || i == 3 { DOT_MOD } else { 0 };
-
-        let d = c as u8 - b'0';
-        data[i] = !DEC_DIGITS[d as usize] ^ dot;
-        i += 1;
-    }
-
-    data
 }

@@ -11,8 +11,11 @@ use hd44780_driver::{
 };
 
 use crate::{
-    lcd_abstract::{LcdAbstract, PrintAlign},
     state::{sleep_state, GlobalState, Scene, SignaledGlobalStateInner},
+    utils::{
+        lcd_abstract::{LcdAbstract, PrintAlign},
+        stackmat::ms_to_time_str,
+    },
 };
 
 #[embassy_executor::task]
@@ -217,7 +220,7 @@ async fn process_lcd<C: CharsetWithFallback>(
                 .ok()?;
 
             if let Some(solve_time) = current_state.solve_time {
-                let time_str = crate::utils::ms_to_time_str(solve_time);
+                let time_str = ms_to_time_str(solve_time);
                 lcd_driver
                     .print(
                         1,
@@ -260,7 +263,7 @@ async fn process_lcd<C: CharsetWithFallback>(
 
             loop {
                 let elapsed = (Instant::now() - inspection_start).as_millis();
-                let time_str = crate::utils::ms_to_time_str(elapsed);
+                let time_str = ms_to_time_str(elapsed);
 
                 lcd_driver
                     .print(0, &time_str, PrintAlign::Center, true)
@@ -272,7 +275,7 @@ async fn process_lcd<C: CharsetWithFallback>(
         }
         Scene::Timer => loop {
             let time = global_state.timer_signal.wait().await;
-            let time_str = crate::utils::ms_to_time_str(time);
+            let time_str = ms_to_time_str(time);
             lcd_driver
                 .print(0, &time_str, PrintAlign::Center, true)
                 .ok()?;
@@ -282,7 +285,7 @@ async fn process_lcd<C: CharsetWithFallback>(
         Scene::Finished => {
             let solve_time = current_state.solve_time.unwrap_or(0);
             let time_str = if solve_time > 0 {
-                crate::utils::ms_to_time_str(solve_time)
+                ms_to_time_str(solve_time)
             } else {
                 heapless::String::new()
             };

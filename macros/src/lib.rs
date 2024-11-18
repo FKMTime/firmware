@@ -67,7 +67,7 @@ pub fn generate_button_handler_enum(args: TokenStream) -> TokenStream {
     if let Err(_) = read {
         return quote! {
             #[doc(hidden)]
-            enum HandlersDerive {}
+            pub enum HandlersDerive {}
         }
         .into();
     }
@@ -129,12 +129,12 @@ pub fn generate_button_handler_enum(args: TokenStream) -> TokenStream {
     let output = output_ty.unwrap_or(quote! {()});
     quote! {
         #[doc(hidden)]
-        enum HandlersDerive {
+        pub enum HandlersDerive {
             #(#output_enum)*
         }
 
         impl HandlersDerive {
-            async fn execute(&self, #input) -> #output {
+            pub async fn execute(&self, #input) -> #output {
                 match self {
                     #(#output_enum_impl)*
                 }
