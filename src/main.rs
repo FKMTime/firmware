@@ -16,6 +16,7 @@ use esp_hal::{
 use esp_wifi::EspWifiInitFor;
 use state::{GlobalStateInner, Scene};
 use structs::ConnSettings;
+use utils::set_brownout_detection;
 
 mod battery;
 mod buttons;
@@ -55,6 +56,7 @@ async fn main(spawner: Spawner) {
     esp_alloc::heap_allocator!(120 * 1024);
     let nvs = esp_hal_wifimanager::Nvs::new(0x9000, 0x4000);
 
+    set_brownout_detection(false);
     let rng = esp_hal::rng::Rng::new(peripherals.RNG);
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
     let sck = io.pins.gpio4.degrade();
@@ -160,6 +162,7 @@ async fn main(spawner: Spawner) {
         global_state.clone(),
     ));
 
+    set_brownout_detection(true);
     global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
     loop {
         //log::info!("bump {}", esp_hal::time::now());
