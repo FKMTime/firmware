@@ -81,10 +81,6 @@ async fn submit_up(
     }
 
     // Device add
-    if state_val.should_skip_other_actions() {
-        return Ok(false);
-    }
-
     if !state_val.device_added.unwrap_or(false) {
         crate::ws::send_packet(crate::structs::TimerPacket {
             tag: None,
@@ -94,6 +90,10 @@ async fn submit_up(
         })
         .await;
 
+        return Ok(false);
+    }
+
+    if state_val.should_skip_other_actions() {
         return Ok(false);
     }
 
