@@ -28,13 +28,21 @@ pub async fn rfid_task(
     let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(2048);
     let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
     let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
+    let dma_chan = dma_chan.configure(false, esp_hal::dma::DmaPriority::Priority0);
 
-    let dma_chan = dma_chan.configure_for_async(false, esp_hal::dma::DmaPriority::Priority0);
-
-    //let cs = Output::new(cs, Level::High);
-    let spi = Spi::new(spi, 5.MHz(), SpiMode::Mode0);
+    let spi = Spi::new_with_config(
+        spi,
+        esp_hal::spi::master::Config {
+            frequency: 5.MHz(),
+            mode: SpiMode::Mode0,
+            ..Default::default()
+        },
+    );
     let spi = spi.with_sck(sck).with_miso(miso).with_mosi(mosi);
-    let spi = spi.with_dma(dma_chan).with_buffers(dma_rx_buf, dma_tx_buf);
+    let spi = spi
+        .with_dma(dma_chan)
+        .with_buffers(dma_rx_buf, dma_tx_buf)
+        .into_async();
 
     //esp_hal_mfrc522::MFRC522::new(spi, cs, || esp_hal::time::current_time().ticks());
     let mut mfrc522 = esp_hal_mfrc522::MFRC522::new(spi, cs_pin); // embassy-time feature is enabled,

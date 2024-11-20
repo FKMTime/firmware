@@ -9,11 +9,10 @@ use embassy_time::Timer;
 use embedded_hal::digital::OutputPin;
 use esp_backtrace as _;
 use esp_hal::{
-    gpio::{Input, Io, Output},
+    gpio::{Input, Output},
     prelude::*,
     timer::timg::TimerGroup,
 };
-use esp_wifi::EspWifiInitFor;
 use state::{GlobalStateInner, Scene};
 use structs::ConnSettings;
 use utils::set_brownout_detection;
@@ -58,16 +57,15 @@ async fn main(spawner: Spawner) {
 
     set_brownout_detection(false);
     let rng = esp_hal::rng::Rng::new(peripherals.RNG);
-    let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
-    let sck = io.pins.gpio4.degrade();
-    let miso = io.pins.gpio5.degrade();
-    let mosi = io.pins.gpio6.degrade();
-    let battery_input = io.pins.gpio2;
-    let stackmat_rx = io.pins.gpio20.degrade();
-    let button_input = Input::new(io.pins.gpio3, esp_hal::gpio::Pull::Down);
-    let shifter_data_pin = Output::new(io.pins.gpio10, esp_hal::gpio::Level::Low);
-    let shifter_clk_pin = Output::new(io.pins.gpio21, esp_hal::gpio::Level::Low);
-    let shifter_latch_pin = Output::new(io.pins.gpio1, esp_hal::gpio::Level::Low);
+    let sck = peripherals.GPIO4.degrade();
+    let miso = peripherals.GPIO5.degrade();
+    let mosi = peripherals.GPIO6.degrade();
+    let battery_input = peripherals.GPIO2;
+    let stackmat_rx = peripherals.GPIO20.degrade();
+    let button_input = Input::new(peripherals.GPIO3, esp_hal::gpio::Pull::Down);
+    let shifter_data_pin = Output::new(peripherals.GPIO10, esp_hal::gpio::Level::Low);
+    let shifter_clk_pin = Output::new(peripherals.GPIO21, esp_hal::gpio::Level::Low);
+    let shifter_latch_pin = Output::new(peripherals.GPIO1, esp_hal::gpio::Level::Low);
     let mut adv_shift_reg = adv_shift_registers::AdvancedShiftRegister::<8, _>::new(
         shifter_data_pin,
         shifter_clk_pin,
@@ -124,12 +122,11 @@ async fn main(spawner: Spawner) {
 
     let timg0 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0);
     let mut wifi_res = esp_hal_wifimanager::init_wm(
-        EspWifiInitFor::Wifi,
         wm_settings,
-        timg0.timer0,
         &spawner,
         &nvs,
         rng.clone(),
+        timg0.timer0,
         peripherals.RADIO_CLK,
         peripherals.WIFI,
         peripherals.BT,

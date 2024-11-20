@@ -15,8 +15,8 @@ pub async fn stackmat_task(
     display: ShifterValueRange,
     global_state: GlobalState,
 ) {
-    let serial_config = esp_hal::uart::config::Config::default().baudrate(1200);
-    let mut uart = UartRx::new_async_with_config(uart, serial_config, uart_pin).unwrap();
+    let serial_config = esp_hal::uart::Config::default().baudrate(1200);
+    let mut uart = UartRx::new_with_config(uart, serial_config, uart_pin).unwrap();
 
     let mut buf = [0; 8];
     let mut read_buf = [0; 8];
