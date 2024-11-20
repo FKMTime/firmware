@@ -5,6 +5,7 @@ extern crate alloc;
 use alloc::rc::Rc;
 use core::str::FromStr;
 use embassy_executor::Spawner;
+use embassy_sync::signal::Signal;
 use embassy_time::Timer;
 use embedded_hal::digital::OutputPin;
 use esp_backtrace as _;
@@ -86,8 +87,13 @@ async fn main(spawner: Spawner) {
     let timg1 = TimerGroup::new(peripherals.TIMG1);
     esp_hal_embassy::init(timg1.timer0);
     let global_state = Rc::new(GlobalStateInner::new(&nvs));
+    let wifi_setup_sig = Rc::new(Signal::new());
 
-    _ = spawner.spawn(lcd::lcd_task(lcd_shifter, global_state.clone()));
+    _ = spawner.spawn(lcd::lcd_task(
+        lcd_shifter,
+        global_state.clone(),
+        wifi_setup_sig.clone(),
+    ));
     _ = spawner.spawn(battery::batter_read_task(battery_input, peripherals.ADC1));
     _ = spawner.spawn(buttons::buttons_task(
         button_input,
@@ -130,6 +136,7 @@ async fn main(spawner: Spawner) {
         peripherals.RADIO_CLK,
         peripherals.WIFI,
         peripherals.BT,
+        Some(wifi_setup_sig),
     )
     .await
     .unwrap();

@@ -90,15 +90,6 @@ impl GlobalStateInner {
             nvs: nvs.clone(),
         }
     }
-
-    /*
-    pub async fn sig_or_update<M: RawMutex, T: Send>(&self, signal: &Signal<M, T>) -> Option<T> {
-        match embassy_futures::select::select(self.state.wait(), signal.wait()).await {
-            embassy_futures::select::Either::First(_) => None,
-            embassy_futures::select::Either::Second(val) => Some(val),
-        }
-    }
-    */
 }
 
 #[derive(Debug, Clone, PartialEq)]

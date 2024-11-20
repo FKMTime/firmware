@@ -1,5 +1,6 @@
 use adv_shift_registers::wrappers::{ShifterPin, ShifterValue};
-use alloc::string::ToString;
+use alloc::{rc::Rc, string::ToString};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Delay, Duration, Instant, Timer};
 use embedded_hal::digital::OutputPin;
 use hd44780_driver::{
@@ -19,7 +20,11 @@ use crate::{
 };
 
 #[embassy_executor::task]
-pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
+pub async fn lcd_task(
+    lcd_shifter: ShifterValue,
+    global_state: GlobalState,
+    wifi_setup_sig: Rc<Signal<NoopRawMutex, ()>>,
+) {
     let mut bl_pin = lcd_shifter.get_pin_mut(1, true);
     let reg_sel_pin = lcd_shifter.get_pin_mut(2, true);
     let e_pin = lcd_shifter.get_pin_mut(3, true);
@@ -83,9 +88,7 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
     _ = lcd_driver.display_on_lcd(&mut lcd, &mut delay);
     Timer::after_millis(2500).await;
 
-    // TODO: print to lcd if wifi setup active
     _ = lcd_driver.clear_all();
-
     let mut last_update;
     loop {
         let current_state = global_state.state.value().await.clone();
@@ -105,6 +108,7 @@ pub async fn lcd_task(lcd_shifter: ShifterValue, global_state: GlobalState) {
                 &mut lcd_driver,
                 &mut lcd,
                 &mut delay,
+                &wifi_setup_sig,
             )
             .await;
             lcd_driver.display_on_lcd(&mut lcd, &mut delay).unwrap();
@@ -148,6 +152,7 @@ async fn process_lcd<C: CharsetWithFallback>(
     lcd_driver: &mut LcdAbstract<80, 16, 2, 3>,
     lcd: &mut LcdType<C>,
     delay: &mut Delay,
+    wifi_setup_sig: &Signal<NoopRawMutex, ()>,
 ) -> Option<()> {
     if let Some(error_text) = current_state.error_text {
         lcd_driver
@@ -205,8 +210,20 @@ async fn process_lcd<C: CharsetWithFallback>(
             lcd_driver
                 .print(1, "WIFI connection", PrintAlign::Center, true)
                 .ok()?;
+
+            wifi_setup_sig.wait().await;
+            global_state.state.lock().await.scene = Scene::AutoSetupWait;
         }
-        Scene::AutoSetupWait => todo!(),
+        Scene::AutoSetupWait => {
+            let wifi_ssid = alloc::format!("FKM-{:X}", esp_hal_wifimanager::get_efuse_u32());
+            lcd_driver
+                .print(0, "Connect to:", PrintAlign::Center, true)
+                .ok()?;
+
+            lcd_driver
+                .print(1, &wifi_ssid, PrintAlign::Center, true)
+                .ok()?;
+        }
         Scene::MdnsWait => {
             lcd_driver
                 .print(0, "Waiting for", PrintAlign::Center, true)
