@@ -85,7 +85,7 @@ async fn submit_up(
         crate::ws::send_packet(crate::structs::TimerPacket {
             tag: None,
             data: crate::structs::TimerPacketInner::Add {
-                firmware: alloc::string::ToString::to_string(&"STATION"),
+                firmware: alloc::string::ToString::to_string(crate::version::FIRMWARE),
             },
         })
         .await;

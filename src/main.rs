@@ -27,6 +27,7 @@ mod stackmat;
 mod state;
 mod structs;
 mod utils;
+mod version;
 mod ws;
 
 pub fn custom_rng(buf: &mut [u8]) -> Result<(), getrandom::Error> {

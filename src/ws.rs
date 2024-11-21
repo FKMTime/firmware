@@ -66,9 +66,9 @@ pub async fn ws_task(
             "{}?id={}&ver={}&chip={}&firmware={}",
             ws_url.path,
             esp_hal_wifimanager::get_efuse_u32(),
-            "v3.0",
-            "no-chip",
-            "no-firmware"
+            crate::version::VERSION,
+            crate::version::CHIP,
+            crate::version::FIRMWARE,
         );
 
         socket
