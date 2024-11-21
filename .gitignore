@@ -6,3 +6,4 @@ debug/
 target/
 **/*.rs.bk
 *.pdb
+src/version.rs
