@@ -26,6 +26,7 @@ mod rfid;
 mod stackmat;
 mod state;
 mod structs;
+mod translations;
 mod utils;
 mod version;
 mod ws;

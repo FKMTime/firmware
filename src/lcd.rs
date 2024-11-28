@@ -13,6 +13,7 @@ use hd44780_driver::{
 
 use crate::{
     state::{sleep_state, GlobalState, Scene, SignaledGlobalStateInner},
+    translations::get_translation,
     utils::{
         lcd_abstract::{LcdAbstract, PrintAlign},
         stackmat::ms_to_time_str,
@@ -233,7 +234,12 @@ async fn process_lcd<C: CharsetWithFallback>(
         }
         Scene::WaitingForCompetitor => {
             lcd_driver
-                .print(0, "Scan the card", PrintAlign::Center, true)
+                .print(
+                    0,
+                    get_translation("SCAN_COMPETITOR_1")?,
+                    PrintAlign::Center,
+                    true,
+                )
                 .ok()?;
 
             if let Some(solve_time) = current_state.solve_time {
@@ -248,7 +254,12 @@ async fn process_lcd<C: CharsetWithFallback>(
                     .ok()?;
             } else {
                 lcd_driver
-                    .print(1, "of a competitor", PrintAlign::Center, true)
+                    .print(
+                        1,
+                        get_translation("SCAN_COMPETITOR_2")?,
+                        PrintAlign::Center,
+                        true,
+                    )
                     .ok()?;
             }
         }
