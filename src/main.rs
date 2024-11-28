@@ -16,6 +16,7 @@ use esp_hal::{
 };
 use state::{GlobalStateInner, Scene};
 use structs::ConnSettings;
+use translations::init_translations;
 use utils::set_brownout_detection;
 
 mod battery;
@@ -88,6 +89,7 @@ async fn main(spawner: Spawner) {
 
     let timg1 = TimerGroup::new(peripherals.TIMG1);
     esp_hal_embassy::init(timg1.timer0);
+    init_translations();
     let global_state = Rc::new(GlobalStateInner::new(&nvs));
     let wifi_setup_sig = Rc::new(Signal::new());
 

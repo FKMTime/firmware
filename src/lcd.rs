@@ -236,7 +236,7 @@ async fn process_lcd<C: CharsetWithFallback>(
             lcd_driver
                 .print(
                     0,
-                    get_translation("SCAN_COMPETITOR_1")?,
+                    &get_translation("SCAN_COMPETITOR_1")?,
                     PrintAlign::Center,
                     true,
                 )
@@ -256,7 +256,7 @@ async fn process_lcd<C: CharsetWithFallback>(
                 lcd_driver
                     .print(
                         1,
-                        get_translation("SCAN_COMPETITOR_2")?,
+                        &get_translation("SCAN_COMPETITOR_2")?,
                         PrintAlign::Center,
                         true,
                     )
