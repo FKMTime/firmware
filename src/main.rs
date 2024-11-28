@@ -169,6 +169,12 @@ async fn main(spawner: Spawner) {
 
     set_brownout_detection(true);
     global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
+
+    log::info!("Heap info:");
+    log::info!("Size: {}", esp_alloc::HEAP.used() + esp_alloc::HEAP.free());
+    log::info!("Used: {}", esp_alloc::HEAP.used());
+    log::info!("Free: {}", esp_alloc::HEAP.free());
+
     loop {
         //log::info!("bump {}", esp_hal::time::now());
         Timer::after_millis(15000).await;
