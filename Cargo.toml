@@ -34,7 +34,7 @@ hd44780-driver = { git = "https://github.com/JohnDoneth/hd44780-driver.git", fea
 embassy-sync = "0.6.1"
 ws-framer = { version = "0.1.0", features = ["alloc"] }
 embedded-hal-async = "1.0.0"
-portable-atomic = { version = "1.9.0", default-features = false }
+portable-atomic = { version = "1.10.0", default-features = false }
 critical-section = "1.2.0"
 getrandom = { version = "0.2.15", features = ["custom"] }
 uuid = { version = "1.11.0", default-features = false, features = ["v4"] }

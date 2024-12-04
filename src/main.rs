@@ -57,7 +57,7 @@ async fn main(spawner: Spawner) {
 
     esp_println::logger::init_logger_from_env();
     esp_alloc::heap_allocator!(120 * 1024);
-    let nvs = esp_hal_wifimanager::Nvs::new(0x9000, 0x4000);
+    let nvs = esp_hal_wifimanager::Nvs::new(0x9000, 0x4000).unwrap();
 
     set_brownout_detection(false);
     let rng = esp_hal::rng::Rng::new(peripherals.RNG);
