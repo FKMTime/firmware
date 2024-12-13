@@ -4,17 +4,14 @@ use embassy_net::{
 };
 use embassy_time::{Duration, Timer};
 use esp_hal_mdns::MdnsQuery;
-use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
 
-pub async fn mdns_query(
-    stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>,
-) -> Option<heapless::String<255>> {
+pub async fn mdns_query(stack: Stack<'static>) -> Option<heapless::String<255>> {
     let mut rx_buffer = [0; 1024];
     let mut tx_buffer = [0; 1024];
     let mut rx_meta = [PacketMetadata::EMPTY; 16];
     let mut tx_meta = [PacketMetadata::EMPTY; 16];
     let mut sock = UdpSocket::new(
-        &stack,
+        stack,
         &mut rx_meta,
         &mut rx_buffer,
         &mut tx_meta,
@@ -24,7 +21,7 @@ pub async fn mdns_query(
     let ip_addr = IpAddress::v4(224, 0, 0, 251);
     let ip_endpoint = IpEndpoint::new(ip_addr, 5353);
     _ = sock.bind(5353);
-    _ = stack.join_multicast_group(ip_addr).await;
+    _ = stack.join_multicast_group(ip_addr);
 
     let mut mdns = MdnsQuery::new("_stackmat._tcp.local", 2500, || {
         esp_hal::time::now().duration_since_epoch().to_millis()
@@ -51,7 +48,7 @@ pub async fn mdns_query(
 
         Timer::after(Duration::from_millis(50)).await;
     }
-    _ = stack.leave_multicast_group(ip_addr).await;
+    _ = stack.leave_multicast_group(ip_addr);
 
     tmp
 }

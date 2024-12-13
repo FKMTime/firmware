@@ -15,7 +15,6 @@ use embassy_time::{Instant, Timer};
 use embedded_io_async::Write;
 use esp_hal_ota::Ota;
 use esp_storage::FlashStorage;
-use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
 use ws_framer::{WsFrame, WsFrameOwned, WsRxFramer, WsTxFramer, WsUrl};
 
 static FRAME_CHANNEL: Channel<CriticalSectionRawMutex, WsFrameOwned, 10> = Channel::new();
@@ -24,7 +23,7 @@ static TAGGED_RETURN: PubSubChannel<CriticalSectionRawMutex, (u64, TimerPacket),
 
 #[embassy_executor::task]
 pub async fn ws_task(
-    stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>,
+    stack: Stack<'static>,
     ws_url: String,
     global_state: GlobalState,
 ) {
@@ -41,7 +40,7 @@ pub async fn ws_task(
             global_state.state.lock().await.server_connected = Some(false);
         }
 
-        let mut socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
+        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
         socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
         let remote_endpoint = (
