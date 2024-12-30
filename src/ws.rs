@@ -136,7 +136,7 @@ async fn ws_reader(
             match frame {
                 WsFrame::Text(text) => match serde_json::from_str::<TimerPacket>(text) {
                     Ok(timer_packet) => {
-                        log::info!("Timer packet recv: {timer_packet:?}");
+                        //log::info!("Timer packet recv: {timer_packet:?}");
                         if let Some(tag) = timer_packet.tag {
                             tagged_publisher.publish((tag, timer_packet.clone())).await;
                         }
