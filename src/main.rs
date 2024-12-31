@@ -51,7 +51,7 @@ getrandom::register_custom_getrandom!(custom_rng);
 async fn main(spawner: Spawner) {
     let peripherals = esp_hal::init({
         let mut config = esp_hal::Config::default();
-        config.cpu_clock = CpuClock::max();
+        config.cpu_clock = CpuClock::Clock80MHz;
         config
     });
 
@@ -68,7 +68,7 @@ async fn main(spawner: Spawner) {
     let stackmat_rx = peripherals.GPIO20.degrade();
     let button_input = Input::new(peripherals.GPIO3, esp_hal::gpio::Pull::Down);
     let shifter_data_pin = Output::new(peripherals.GPIO10, esp_hal::gpio::Level::Low);
-    let shifter_clk_pin = Output::new(peripherals.GPIO7, esp_hal::gpio::Level::Low);
+    let shifter_clk_pin = Output::new(peripherals.GPIO21, esp_hal::gpio::Level::Low);
     let shifter_latch_pin = Output::new(peripherals.GPIO1, esp_hal::gpio::Level::Low);
     let mut adv_shift_reg = adv_shift_registers::AdvancedShiftRegister::<8, _>::new(
         shifter_data_pin,
