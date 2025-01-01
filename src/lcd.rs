@@ -74,7 +74,7 @@ pub async fn lcd_task(
 
     _ = lcd_driver.print(
         0,
-        &alloc::format!("ID: {:X}", esp_hal_wifimanager::get_efuse_u32()),
+        &alloc::format!("ID: {:X}", crate::utils::get_efuse_u32()),
         PrintAlign::Left,
         true,
     );
@@ -216,7 +216,7 @@ async fn process_lcd<C: CharsetWithFallback>(
             global_state.state.lock().await.scene = Scene::AutoSetupWait;
         }
         Scene::AutoSetupWait => {
-            let wifi_ssid = alloc::format!("FKM-{:X}", esp_hal_wifimanager::get_efuse_u32());
+            let wifi_ssid = alloc::format!("FKM-{:X}", crate::utils::get_efuse_u32());
             lcd_driver
                 .print(0, "Connect to:", PrintAlign::Center, true)
                 .ok()?;

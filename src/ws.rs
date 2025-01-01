@@ -22,11 +22,7 @@ static TAGGED_RETURN: PubSubChannel<CriticalSectionRawMutex, (u64, TimerPacket),
     PubSubChannel::new();
 
 #[embassy_executor::task]
-pub async fn ws_task(
-    stack: Stack<'static>,
-    ws_url: String,
-    global_state: GlobalState,
-) {
+pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: GlobalState) {
     let ws_url = WsUrl::from_str(&ws_url).unwrap();
 
     let mut rx_buffer = [0; 8192];
@@ -64,7 +60,7 @@ pub async fn ws_task(
         let path = alloc::format!(
             "{}?id={}&ver={}&chip={}&firmware={}",
             ws_url.path,
-            esp_hal_wifimanager::get_efuse_u32(),
+            crate::utils::get_efuse_u32(),
             crate::version::VERSION,
             crate::version::CHIP,
             crate::version::FIRMWARE,

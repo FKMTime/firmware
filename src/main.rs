@@ -121,14 +121,11 @@ async fn main(spawner: Spawner) {
     ));
 
     let mut wm_settings = esp_hal_wifimanager::WmSettings::default();
-    wm_settings.ssid_generator = |_efuse| {
-        let mut generated_name = heapless::String::<32>::new();
-        _ = core::fmt::write(
-            &mut generated_name,
-            format_args!("FKM-{:X}", esp_hal_wifimanager::get_efuse_u32()),
-        );
-        generated_name
-    };
+    wm_settings.ssid.clear();
+    _ = core::fmt::write(
+        &mut wm_settings.ssid,
+        format_args!("FKM-{:X}", crate::utils::get_efuse_u32()),
+    );
 
     let timg0 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0);
     let mut wifi_res = esp_hal_wifimanager::init_wm(
