@@ -18,13 +18,19 @@ pub async fn rfid_task(
     miso: AnyPin,
     mosi: AnyPin,
     sck: AnyPin,
-    cs_pin: ShifterPin,
+    cs_pin: esp_hal::gpio::Output<'static>,
     spi: esp_hal::peripherals::SPI2,
     dma: DMA,
     global_state: GlobalState,
 ) {
     let dma = Dma::new(dma);
+
+    #[cfg(feature = "esp32c3")]
     let dma_chan = dma.channel0;
+
+    #[cfg(feature = "esp32")]
+    let dma_chan = dma.spi2channel;
+
     let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(2048);
     let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
     let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
@@ -33,7 +39,7 @@ pub async fn rfid_task(
     let spi = Spi::new_with_config(
         spi,
         esp_hal::spi::master::Config {
-            frequency: 5.MHz(),
+            frequency: 100.kHz(),
             mode: SpiMode::Mode0,
             ..Default::default()
         },

@@ -1,17 +1,26 @@
-[target.riscv32imc-unknown-none-elf]
-runner = "espflash flash --monitor -T ./partitions.csv --erase-parts otadata"
+[alias]
+esp32 = "run --features=esp32 --target=xtensa-esp32-none-elf"
+esp32c3 = "run --features=esp32c3 --target=riscv32imc-unknown-none-elf"
 
-[env]
-ESP_LOG="INFO"
+#[target.riscv32imc-unknown-none-elf]
+#runner = "espflash flash --monitor -T ./partitions.csv --erase-parts otadata"
 
-[build]
+target = "riscv32imc-unknown-none-elf"
+
+[target.'cfg(target_arch = "riscv32")']
+runner    = "espflash flash --monitor -T ./partitions.csv --erase-parts otadata"
 rustflags = [
-  # Required to obtain backtraces (e.g. when using the "esp-backtrace" crate.)
-  # NOTE: May negatively impact performance of produced code
   "-C", "force-frame-pointers",
 ]
 
-target = "riscv32imc-unknown-none-elf"
+[target.'cfg(target_arch = "xtensa")']
+runner    = "espflash flash --monitor -T ./partitions.csv --erase-parts otadata"
+rustflags = [
+  "-C", "link-arg=-nostartfiles",
+]
+
+[env]
+ESP_LOG="INFO"
 
 [unstable]
 build-std = ["alloc", "core"]
