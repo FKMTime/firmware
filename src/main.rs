@@ -129,9 +129,6 @@ async fn main(spawner: Spawner) {
     let global_state = Rc::new(GlobalStateInner::new(&nvs));
     let wifi_setup_sig = Rc::new(Signal::new());
 
-    log::info!("post transaltions ");
-    Timer::after_millis(100).await;
-
     /*
     _ = spawner.spawn(lcd::lcd_task(
         lcd_shifter,
@@ -140,8 +137,6 @@ async fn main(spawner: Spawner) {
     ));
     */
     _ = spawner.spawn(battery::batter_read_task(battery_input, peripherals.ADC1));
-    log::info!("1");
-    Timer::after_millis(100).await;
     /*
     _ = spawner.spawn(buttons::buttons_task(
         button_input,
@@ -149,14 +144,12 @@ async fn main(spawner: Spawner) {
         global_state.clone(),
     ));
     */
-    /*
     _ = spawner.spawn(stackmat::stackmat_task(
-        peripherals.UART0,
+        peripherals.UART1,
         stackmat_rx,
-        digits_shifters,
+        //digits_shifters,
         global_state.clone(),
     ));
-    */
     _ = spawner.spawn(rfid::rfid_task(
         miso,
         mosi,
@@ -166,8 +159,6 @@ async fn main(spawner: Spawner) {
         peripherals.DMA,
         global_state.clone(),
     ));
-    log::info!("2");
-    Timer::after_millis(100).await;
 
     let mut wm_settings = esp_hal_wifimanager::WmSettings::default();
     wm_settings.ssid.clear();
@@ -175,8 +166,6 @@ async fn main(spawner: Spawner) {
         &mut wm_settings.ssid,
         format_args!("FKM-{:X}", crate::utils::get_efuse_u32()),
     );
-    log::info!("3");
-    Timer::after_millis(100).await;
 
     let timg0 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0);
     let mut wifi_res = esp_hal_wifimanager::init_wm(
@@ -193,16 +182,10 @@ async fn main(spawner: Spawner) {
     .await
     .unwrap();
 
-    log::info!("4");
-    Timer::after_millis(100).await;
-
     let conn_settings: Option<ConnSettings> = wifi_res
         .data
         .take()
         .and_then(|d| serde_json::from_value(d).ok());
-
-    log::info!("5");
-    Timer::after_millis(100).await;
 
     let ws_url = if conn_settings.is_none()
         || conn_settings.as_ref().unwrap().mdns

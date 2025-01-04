@@ -6,13 +6,13 @@ use crate::{
 };
 use adv_shift_registers::wrappers::ShifterValueRange;
 use embassy_time::{Instant, Timer};
-use esp_hal::{gpio::AnyPin, peripherals::UART0, uart::UartRx};
+use esp_hal::{gpio::AnyPin, peripherals::UART1, uart::UartRx};
 
 #[embassy_executor::task]
 pub async fn stackmat_task(
-    uart: UART0,
+    uart: UART1,
     uart_pin: AnyPin,
-    display: ShifterValueRange,
+    //display: ShifterValueRange,
     global_state: GlobalState,
 ) {
     let serial_config = esp_hal::uart::Config::default().baudrate(1200);
@@ -28,7 +28,7 @@ pub async fn stackmat_task(
             if last_state != Some(false) {
                 global_state.state.lock().await.stackmat_connected = Some(false);
                 last_state = Some(false);
-                display.set_data(&[255; 6]);
+                //display.set_data(&[255; 6]);
             }
         }
 
@@ -103,7 +103,7 @@ pub async fn stackmat_task(
                             state.penalty = None;
                         }
 
-                        display.set_data(&[255; 6]);
+                        //display.set_data(&[255; 6]);
                     }
 
                     last_stackmat_state = parsed.0;
@@ -112,7 +112,8 @@ pub async fn stackmat_task(
                 global_state.timer_signal.signal(parsed.1);
                 if parsed.1 > 0 {
                     let time_str = ms_to_time_str(parsed.1);
-                    display.set_data(&time_str_to_display(&time_str));
+                    log::info!("{time_str}");
+                    //display.set_data(&time_str_to_display(&time_str));
                 }
             }
         }

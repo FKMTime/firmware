@@ -31,7 +31,7 @@ pub async fn rfid_task(
     #[cfg(feature = "esp32")]
     let dma_chan = dma.spi2channel;
 
-    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(2048);
+    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(512);
     let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
     let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
     let dma_chan = dma_chan.configure(false, esp_hal::dma::DmaPriority::Priority0);
