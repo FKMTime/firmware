@@ -122,6 +122,11 @@ async fn main(spawner: Spawner) {
     digits_shifters
         .set_data(&[!crate::utils::stackmat::DEC_DIGITS[8] ^ crate::utils::stackmat::DOT_MOD; 6]);
 
+    let button_1 = Input::new(peripherals.GPIO27, esp_hal::gpio::Pull::Up);
+    let button_2 = Input::new(peripherals.GPIO26, esp_hal::gpio::Pull::Up);
+    let button_3 = Input::new(peripherals.GPIO33, esp_hal::gpio::Pull::Up);
+    let button_4 = Input::new(peripherals.GPIO32, esp_hal::gpio::Pull::Up);
+
     // Input::new(peripherals.GPIO34, esp_hal::gpio::Pull::down);
     /*
     let button_input = Input::new(peripherals.GPIO3, esp_hal::gpio::Pull::Down);
@@ -165,13 +170,13 @@ async fn main(spawner: Spawner) {
     ));
 
     _ = spawner.spawn(battery::battery_read_task(battery_input, peripherals.ADC1));
-    /*
     _ = spawner.spawn(buttons::buttons_task(
-        button_input,
-        buttons_shifter,
         global_state.clone(),
+        [button_1, button_2, button_3, button_4], /*
+                                                  button_input,
+                                                  buttons_shifter,
+                                                  */
     ));
-    */
     _ = spawner.spawn(stackmat::stackmat_task(
         peripherals.UART1,
         stackmat_rx,

@@ -12,9 +12,13 @@ macros::generate_button_handler_enum!(triggered: &ButtonTrigger, hold_time: u64,
 
 #[embassy_executor::task]
 pub async fn buttons_task(
-    button_input: Input<'static>,
-    button_reg: ShifterValue,
     state: GlobalState,
+
+    #[cfg(feature = "esp32c3")] button_input: Input<'static>,
+
+    #[cfg(feature = "esp32c3")] button_reg: ShifterValue,
+
+    #[cfg(feature = "esp32")] buttons: [Input<'static>; 4],
 ) {
     let mut handler = ButtonsHandler::new();
     handler.add_handler(Button::Third, ButtonTrigger::Up, submit_up());
@@ -51,7 +55,15 @@ pub async fn buttons_task(
     );
     handler.add_handler(Button::Second, ButtonTrigger::Up, delegate_hold());
 
-    handler.run(&state, &button_input, &button_reg).await;
+    #[cfg(feature = "esp32c3")]
+    {
+        handler.run(&state, &button_input, &button_reg).await;
+    }
+
+    #[cfg(feature = "esp32")]
+    {
+        handler.run(&state, &buttons).await;
+    }
 }
 
 #[macros::button_handler]
