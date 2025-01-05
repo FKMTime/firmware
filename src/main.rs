@@ -19,7 +19,10 @@ use esp_hal::{
 use state::{GlobalStateInner, Scene};
 use structs::ConnSettings;
 use translations::init_translations;
-use utils::set_brownout_detection;
+use utils::{
+    logger::{init_global_logs_store, FkmLogger},
+    set_brownout_detection,
+};
 
 mod battery;
 mod buttons;
@@ -57,7 +60,7 @@ async fn main(spawner: Spawner) {
         config
     });
 
-    esp_println::logger::init_logger_from_env();
+    FkmLogger::set_logger();
     let timg1 = TimerGroup::new(peripherals.TIMG1);
     esp_hal_embassy::init(timg1.timer0);
 
@@ -91,6 +94,7 @@ async fn main(spawner: Spawner) {
         }
     }
 
+    init_global_logs_store();
     let nvs = esp_hal_wifimanager::Nvs::new(0x9000, 0x4000).unwrap();
 
     set_brownout_detection(false);
@@ -256,6 +260,22 @@ async fn main(spawner: Spawner) {
 
     loop {
         //log::info!("bump {}", esp_hal::time::now());
-        Timer::after_millis(15000).await;
+        Timer::after_millis(5000).await;
+
+        // TODO: move to own task
+        unsafe {
+            if let Some(logs_buf) = utils::logger::GLOBAL_LOGS.get_mut() {
+                let logs = logs_buf
+                    .drain(..logs_buf.len())
+                    .into_iter()
+                    .map(|msg| structs::LogData { millis: 0, msg })
+                    .collect();
+
+                ws::send_packet(structs::TimerPacket {
+                    tag: None,
+                    data: structs::TimerPacketInner::Logs { logs },
+                }).await;
+            }
+        }
     }
 }

@@ -3,6 +3,7 @@ pub mod buttons;
 pub mod lcd_abstract;
 pub mod signaled_mutex;
 pub mod stackmat;
+pub mod logger;
 
 pub fn set_brownout_detection(state: bool) {
     #[cfg(feature = "esp32c3")]

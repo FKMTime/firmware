@@ -1,4 +1,7 @@
-use alloc::string::{String, ToString};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug)]
@@ -12,6 +15,12 @@ pub struct TimerPacket {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tag: Option<u64>,
     pub data: TimerPacketInner,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct LogData {
+    pub millis: u64,
+    pub msg: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -51,7 +60,7 @@ pub enum TimerPacketInner {
         added: bool,
     },
     Logs {
-        //logs: Vec<LogData>,
+        logs: Vec<LogData>,
     },
     Battery {
         level: Option<f64>,
