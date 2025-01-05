@@ -12,7 +12,7 @@ use esp_hal::{gpio::AnyPin, peripherals::UART1, uart::UartRx};
 pub async fn stackmat_task(
     uart: UART1,
     uart_pin: AnyPin,
-    //display: ShifterValueRange,
+    display: ShifterValueRange,
     global_state: GlobalState,
 ) {
     let serial_config = esp_hal::uart::Config::default().baudrate(1200);
@@ -103,7 +103,7 @@ pub async fn stackmat_task(
                             state.penalty = None;
                         }
 
-                        //display.set_data(&[255; 6]);
+                        display.set_data(&[255; 6]);
                     }
 
                     last_stackmat_state = parsed.0;
@@ -112,8 +112,7 @@ pub async fn stackmat_task(
                 global_state.timer_signal.signal(parsed.1);
                 if parsed.1 > 0 {
                     let time_str = ms_to_time_str(parsed.1);
-                    log::info!("{time_str}");
-                    //display.set_data(&time_str_to_display(&time_str));
+                    display.set_data(&time_str_to_display(&time_str));
                 }
             }
         }

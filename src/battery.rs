@@ -15,7 +15,15 @@ const R2: f64 = 10000.0;
 */
 
 #[embassy_executor::task]
-pub async fn batter_read_task(adc_pin: GpioPin<34>, adc: esp_hal::peripherals::ADC1) {
+pub async fn battery_read_task(
+    #[cfg(feature = "esp32s3")]
+    adc_pin: GpioPin<2>, 
+
+    #[cfg(feature = "esp32")]
+    adc_pin: GpioPin<34>, 
+
+    adc: esp_hal::peripherals::ADC1
+) {
     let mut adc_config = AdcConfig::new();
 
     #[cfg(feature = "esp32c3")]

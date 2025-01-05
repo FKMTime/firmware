@@ -11,6 +11,7 @@ use embedded_hal::digital::OutputPin;
 use esp_backtrace as _;
 use esp_hal::{
     gpio::{Input, Output},
+    i2c::master::I2c,
     prelude::*,
     timer::timg::TimerGroup,
 };
@@ -97,46 +98,70 @@ async fn main(spawner: Spawner) {
     let battery_input = peripherals.GPIO34;
     let stackmat_rx = peripherals.GPIO4.degrade();
 
-    /*
-    let button_input = Input::new(peripherals.GPIO3, esp_hal::gpio::Pull::Down);
-    let shifter_data_pin = Output::new(peripherals.GPIO10, esp_hal::gpio::Level::Low);
-    let shifter_clk_pin = Output::new(peripherals.GPIO21, esp_hal::gpio::Level::Low);
-    let shifter_latch_pin = Output::new(peripherals.GPIO1, esp_hal::gpio::Level::Low);
+    let shifter_data_pin = Output::new(peripherals.GPIO16, esp_hal::gpio::Level::Low);
+    let shifter_clk_pin = Output::new(peripherals.GPIO12, esp_hal::gpio::Level::Low);
+    let shifter_latch_pin = Output::new(peripherals.GPIO17, esp_hal::gpio::Level::Low);
+
     let mut adv_shift_reg = adv_shift_registers::AdvancedShiftRegister::<8, _>::new(
         shifter_data_pin,
         shifter_clk_pin,
         shifter_latch_pin,
         0,
     );
-    */
 
-
-    /*
     // display digits
+    #[cfg(feature = "esp32c3")]
     let digits_shifters = adv_shift_reg.get_shifter_range_mut(2..8);
+
+    #[cfg(feature = "esp32")]
+    let digits_shifters = adv_shift_reg.get_shifter_range_mut(0..6);
+
     digits_shifters
         .set_data(&[!crate::utils::stackmat::DEC_DIGITS[8] ^ crate::utils::stackmat::DOT_MOD; 6]);
 
-    let buttons_shifter = adv_shift_reg.get_shifter_mut(0);
-    let lcd_shifter = adv_shift_reg.get_shifter_mut(1);
-    let mut cs_pin = adv_shift_reg.get_pin_mut(1, 0, true);
-    _ = cs_pin.set_high();
+    // Input::new(peripherals.GPIO34, esp_hal::gpio::Pull::down);
+    /*
+    let button_input = Input::new(peripherals.GPIO3, esp_hal::gpio::Pull::Down);
     */
 
+    /*
+    let digits_shifters = adv_shift_reg.get_shifter_range_mut(2..8);
+
+    let buttons_shifter = adv_shift_reg.get_shifter_mut(0);
+    let lcd_shifter = adv_shift_reg.get_shifter_mut(1);
+    */
+
+    #[cfg(feature = "esp32c3")]
+    let mut cs_pin = {
+        let mut cs_pin = adv_shift_reg.get_pin_mut(1, 0, true);
+        _ = cs_pin.set_high();
+        cs_ping
+    };
+
+    #[cfg(feature = "esp32")]
     let mut cs_pin = Output::new(peripherals.GPIO5, esp_hal::gpio::Level::High);
 
     init_translations();
     let global_state = Rc::new(GlobalStateInner::new(&nvs));
     let wifi_setup_sig = Rc::new(Signal::new());
 
-    /*
+    let mut i2c = I2c::new(
+        peripherals.I2C0,
+        esp_hal::i2c::master::Config {
+            frequency: 100.kHz(),
+            timeout: None,
+        },
+    )
+    .with_sda(peripherals.GPIO21)
+    .with_scl(peripherals.GPIO22);
+
     _ = spawner.spawn(lcd::lcd_task(
-        lcd_shifter,
+        i2c,
         global_state.clone(),
         wifi_setup_sig.clone(),
     ));
-    */
-    _ = spawner.spawn(battery::batter_read_task(battery_input, peripherals.ADC1));
+
+    _ = spawner.spawn(battery::battery_read_task(battery_input, peripherals.ADC1));
     /*
     _ = spawner.spawn(buttons::buttons_task(
         button_input,
@@ -147,7 +172,7 @@ async fn main(spawner: Spawner) {
     _ = spawner.spawn(stackmat::stackmat_task(
         peripherals.UART1,
         stackmat_rx,
-        //digits_shifters,
+        digits_shifters,
         global_state.clone(),
     ));
     _ = spawner.spawn(rfid::rfid_task(
