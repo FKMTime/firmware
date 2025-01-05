@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![feature(impl_trait_in_assoc_type)]
 
 extern crate alloc;
 use alloc::rc::Rc;
@@ -67,18 +68,20 @@ async fn main(spawner: Spawner) {
 
     #[cfg(feature = "esp32")]
     {
-        static mut HEAP: core::mem::MaybeUninit<[u8; 15 * 1024]> = core::mem::MaybeUninit::uninit();
+        //static mut HEAP: core::mem::MaybeUninit<[u8; 15 * 1024]> = core::mem::MaybeUninit::uninit();
 
         #[link_section = ".dram2_uninit"]
-        static mut HEAP2: core::mem::MaybeUninit<[u8; 64 * 1024]> =
+        static mut HEAP2: core::mem::MaybeUninit<[u8; 90 * 1024]> =
             core::mem::MaybeUninit::uninit();
 
         unsafe {
+            /*
             esp_alloc::HEAP.add_region(esp_alloc::HeapRegion::new(
                 HEAP.as_mut_ptr() as *mut u8,
                 core::mem::size_of_val(&*core::ptr::addr_of!(HEAP)),
                 esp_alloc::MemoryCapability::Internal.into(),
             ));
+            */
 
             esp_alloc::HEAP.add_region(esp_alloc::HeapRegion::new(
                 HEAP2.as_mut_ptr() as *mut u8,
@@ -191,6 +194,12 @@ async fn main(spawner: Spawner) {
         &mut wm_settings.ssid,
         format_args!("FKM-{:X}", crate::utils::get_efuse_u32()),
     );
+
+    // TODO: maybe add this to fix some issues?
+    #[cfg(feature = "esp32")]
+    {
+        //wm_settings.esp_restart_after_connection = true;
+    }
 
     let timg0 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0);
     let mut wifi_res = esp_hal_wifimanager::init_wm(
