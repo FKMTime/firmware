@@ -204,10 +204,9 @@ async fn main(spawner: Spawner) {
         format_args!("FKM-{:X}", crate::utils::get_efuse_u32()),
     );
 
-    // TODO: maybe add this to fix some issues?
     #[cfg(feature = "esp32")]
     {
-        //wm_settings.esp_restart_after_connection = true;
+        wm_settings.esp_restart_after_connection = true;
     }
 
     let timg0 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0);
@@ -258,8 +257,9 @@ async fn main(spawner: Spawner) {
     log::info!("Used: {}", esp_alloc::HEAP.used());
     log::info!("Free: {}", esp_alloc::HEAP.free());
 
+    let mut counter = 0;
     loop {
-        //log::info!("bump {}", esp_hal::time::now());
+        counter += 1;
         Timer::after_millis(5000).await;
 
         // TODO: move to own task
@@ -269,13 +269,24 @@ async fn main(spawner: Spawner) {
                     .drain(..logs_buf.len())
                     .into_iter()
                     .map(|msg| structs::LogData { millis: 0, msg })
+                    .rev()
                     .collect();
 
                 ws::send_packet(structs::TimerPacket {
                     tag: None,
                     data: structs::TimerPacketInner::Logs { logs },
-                }).await;
+                })
+                .await;
             }
+        }
+
+        if counter == 12 {
+            log::info!("Heap info:");
+            log::info!("Size: {}", esp_alloc::HEAP.used() + esp_alloc::HEAP.free());
+            log::info!("Used: {}", esp_alloc::HEAP.used());
+            log::info!("Free: {}", esp_alloc::HEAP.free());
+
+            counter = 0;
         }
     }
 }
