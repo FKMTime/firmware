@@ -3,7 +3,7 @@
 #![feature(impl_trait_in_assoc_type)]
 
 extern crate alloc;
-use alloc::rc::Rc;
+use alloc::{rc::Rc, vec::Vec};
 use core::str::FromStr;
 use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
@@ -121,9 +121,13 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "esp32c3")]
     let shifter_data_pin = Output::new(peripherals.GPIO10, esp_hal::gpio::Level::Low);
     #[cfg(feature = "esp32c3")]
-    let shifter_clk_pin = Output::new(peripherals.GPIO21, esp_hal::gpio::Level::Low);
-    #[cfg(feature = "esp32c3")]
     let shifter_latch_pin = Output::new(peripherals.GPIO1, esp_hal::gpio::Level::Low);
+    #[cfg(feature = "esp32c3")]
+    let shifter_clk_pin = if crate::utils::get_efuse_u32() == 1342310409 {
+        Output::new(peripherals.GPIO7, esp_hal::gpio::Level::Low)
+    } else {
+        Output::new(peripherals.GPIO21, esp_hal::gpio::Level::Low)
+    };
 
     let mut adv_shift_reg = adv_shift_registers::AdvancedShiftRegister::<8, _>::new(
         shifter_data_pin,
@@ -288,7 +292,7 @@ async fn main(spawner: Spawner) {
         // TODO: move to own task
         unsafe {
             if let Some(logs_buf) = utils::logger::GLOBAL_LOGS.get_mut() {
-                let logs = logs_buf
+                let logs: Vec<structs::LogData> = logs_buf
                     .drain(..logs_buf.len())
                     .into_iter()
                     .map(|msg| structs::LogData { millis: 0, msg })
