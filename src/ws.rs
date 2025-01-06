@@ -108,7 +108,6 @@ async fn ws_reader(
     framer: &mut WsRxFramer<'_>,
     global_state: GlobalState,
 ) -> Result<(), ()> {
-    let mut ota_update = false;
     let mut ota = Ota::new(FlashStorage::new()).map_err(|_| ())?;
     let tagged_publisher = TAGGED_RETURN.publisher().map_err(|_| ())?;
 
@@ -168,7 +167,9 @@ async fn ws_reader(
                             } => {
                                 log::info!("Begin update size: {size} crc: {crc}");
                                 ota.ota_begin(size, crc).map_err(|_| ())?;
-                                ota_update = true;
+                                unsafe {
+                                    crate::state::OTA_STATE = true;
+                                }
 
                                 FRAME_CHANNEL
                                     .send(WsFrameOwned::Binary(alloc::vec::Vec::new()))
@@ -183,7 +184,7 @@ async fn ws_reader(
                     }
                 },
                 WsFrame::Binary(data) => {
-                    if !ota_update {
+                    if !crate::state::get_ota_state() {
                         continue;
                     }
 
@@ -199,8 +200,6 @@ async fn ws_reader(
                     }
 
                     let progress = (ota.get_ota_progress() * 100.0) as u8;
-                    log::info!("Ota progress: {}%", progress);
-
                     let mut state = global_state.state.lock().await;
                     state.ota_update = Some(progress);
                     drop(state);

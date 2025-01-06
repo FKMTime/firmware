@@ -16,7 +16,7 @@ use esp_hal::{
     prelude::*,
     timer::timg::TimerGroup,
 };
-use state::{GlobalStateInner, Scene};
+use state::{get_ota_state, GlobalStateInner, Scene, OTA_STATE};
 use structs::ConnSettings;
 use translations::init_translations;
 use utils::{
@@ -299,6 +299,9 @@ async fn main(spawner: Spawner) {
                     .rev()
                     .collect();
 
+                if get_ota_state() {
+                    continue;
+                }
                 if logs.len() > 0 {
                     ws::send_packet(structs::TimerPacket {
                         tag: None,

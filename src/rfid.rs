@@ -40,7 +40,7 @@ pub async fn rfid_task(
     let spi = Spi::new_with_config(
         spi,
         esp_hal::spi::master::Config {
-            frequency: 100.kHz(),
+            frequency: 400.kHz(),
             mode: SpiMode::Mode0,
             ..Default::default()
         },
@@ -51,11 +51,7 @@ pub async fn rfid_task(
         .with_buffers(dma_rx_buf, dma_tx_buf)
         .into_async();
 
-    //esp_hal_mfrc522::MFRC522::new(spi, cs, || esp_hal::time::current_time().ticks());
-    let mut mfrc522 = esp_hal_mfrc522::MFRC522::new(spi, cs_pin); // embassy-time feature is enabled,
-                                                                  // so no need to pass current_time
-                                                                  // function
-
+    let mut mfrc522 = esp_hal_mfrc522::MFRC522::new(spi, cs_pin);
     _ = mfrc522.pcd_init().await;
     //_ = mfrc522.pcd_selftest().await;
     log::debug!("PCD ver: {:?}", mfrc522.pcd_get_version().await);

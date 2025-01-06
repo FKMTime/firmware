@@ -113,7 +113,7 @@ pub async fn lcd_task(
     let mut last_update;
     loop {
         let current_state = global_state.state.value().await.clone();
-        log::warn!("current_state: {:?}", current_state);
+        log::debug!("current_state: {:?}", current_state);
         last_update = Instant::now();
 
         #[cfg(feature = "esp32c3")]

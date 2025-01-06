@@ -1,12 +1,16 @@
 use alloc::{string::String, vec::Vec};
 use core::{borrow::BorrowMut, cell::OnceCell};
 
-pub const FILTER_MAX: log::LevelFilter = log::LevelFilter::Info;
+use crate::state::get_ota_state;
+
+pub const FILTER_MAX: log::LevelFilter = log::LevelFilter::Debug;
 pub static mut GLOBAL_LOGS: OnceCell<Vec<String>> = OnceCell::new();
 
 pub fn init_global_logs_store() {
     unsafe {
-        GLOBAL_LOGS.set(Vec::new()).expect("Failed to set GLOBAL_LOGS");
+        GLOBAL_LOGS
+            .set(Vec::new())
+            .expect("Failed to set GLOBAL_LOGS");
     }
 }
 
@@ -26,7 +30,7 @@ impl log::Log for FkmLogger {
         let level = metadata.level();
         //let target = metadata.target();
 
-        if level <= log::LevelFilter::Info {
+        if level <= FILTER_MAX {
             return true;
         }
         false
@@ -55,15 +59,17 @@ impl log::Log for FkmLogger {
 
         esp_println::println!("{}{} - {}{}", color, record.level(), record.args(), reset);
 
-        unsafe {
-            if let Some(logs_buf) = GLOBAL_LOGS.get_mut() {
-                logs_buf.push(alloc::format!(
-                    "{}{} - {}{}",
-                    color,
-                    record.level(),
-                    record.args(),
-                    reset
-                ));
+        if !get_ota_state() {
+            unsafe {
+                if let Some(logs_buf) = GLOBAL_LOGS.get_mut() {
+                    logs_buf.push(alloc::format!(
+                        "{}{} - {}{}",
+                        color,
+                        record.level(),
+                        record.args(),
+                        reset
+                    ));
+                }
             }
         }
     }

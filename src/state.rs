@@ -7,6 +7,7 @@ use crate::utils::signaled_mutex::SignaledMutex;
 
 pub static mut EPOCH_BASE: u64 = 1431212400;
 pub static mut SLEEP_STATE: bool = false;
+pub static mut OTA_STATE: bool = false;
 
 #[inline(always)]
 pub fn current_epoch() -> u64 {
@@ -16,6 +17,11 @@ pub fn current_epoch() -> u64 {
 #[inline(always)]
 pub fn sleep_state() -> bool {
     unsafe { SLEEP_STATE }
+}
+
+#[inline(always)]
+pub fn get_ota_state() -> bool {
+    unsafe { OTA_STATE }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -116,7 +122,7 @@ pub struct SignaledGlobalStateInner {
     pub competitor_display: Option<String>,
 
     pub delegate_hold: Option<u8>,
-    pub ota_update: Option<u8>
+    pub ota_update: Option<u8>,
 }
 
 impl SignaledGlobalStateInner {
@@ -144,7 +150,7 @@ impl SignaledGlobalStateInner {
             competitor_display: None,
 
             delegate_hold: None,
-            ota_update: None
+            ota_update: None,
         }
     }
 
