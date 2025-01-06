@@ -69,23 +69,14 @@ async fn main(spawner: Spawner) {
         esp_alloc::heap_allocator!(120 * 1024);
     }
 
+    // NOTE: on esp32 (generic) use only dram2 region as heap
     #[cfg(feature = "esp32")]
     {
-        //static mut HEAP: core::mem::MaybeUninit<[u8; 15 * 1024]> = core::mem::MaybeUninit::uninit();
-
         #[link_section = ".dram2_uninit"]
         static mut HEAP2: core::mem::MaybeUninit<[u8; 90 * 1024]> =
             core::mem::MaybeUninit::uninit();
 
         unsafe {
-            /*
-            esp_alloc::HEAP.add_region(esp_alloc::HeapRegion::new(
-                HEAP.as_mut_ptr() as *mut u8,
-                core::mem::size_of_val(&*core::ptr::addr_of!(HEAP)),
-                esp_alloc::MemoryCapability::Internal.into(),
-            ));
-            */
-
             esp_alloc::HEAP.add_region(esp_alloc::HeapRegion::new(
                 HEAP2.as_mut_ptr() as *mut u8,
                 core::mem::size_of_val(&*core::ptr::addr_of!(HEAP2)),
@@ -99,15 +90,40 @@ async fn main(spawner: Spawner) {
 
     set_brownout_detection(false);
     let rng = esp_hal::rng::Rng::new(peripherals.RNG);
-    let sck = peripherals.GPIO18.degrade();
-    let miso = peripherals.GPIO19.degrade();
-    let mosi = peripherals.GPIO23.degrade();
-    let battery_input = peripherals.GPIO34;
-    let stackmat_rx = peripherals.GPIO4.degrade();
 
+    #[cfg(feature = "esp32")]
+    let sck = peripherals.GPIO18.degrade();
+    #[cfg(feature = "esp32")]
+    let miso = peripherals.GPIO19.degrade();
+    #[cfg(feature = "esp32")]
+    let mosi = peripherals.GPIO23.degrade();
+    #[cfg(feature = "esp32")]
+    let battery_input = peripherals.GPIO34;
+    #[cfg(feature = "esp32")]
+    let stackmat_rx = peripherals.GPIO4.degrade();
+    #[cfg(feature = "esp32")]
     let shifter_data_pin = Output::new(peripherals.GPIO16, esp_hal::gpio::Level::Low);
+    #[cfg(feature = "esp32")]
     let shifter_clk_pin = Output::new(peripherals.GPIO12, esp_hal::gpio::Level::Low);
+    #[cfg(feature = "esp32")]
     let shifter_latch_pin = Output::new(peripherals.GPIO17, esp_hal::gpio::Level::Low);
+
+    #[cfg(feature = "esp32c3")]
+    let sck = peripherals.GPIO4.degrade();
+    #[cfg(feature = "esp32c3")]
+    let miso = peripherals.GPIO5.degrade();
+    #[cfg(feature = "esp32c3")]
+    let mosi = peripherals.GPIO6.degrade();
+    #[cfg(feature = "esp32c3")]
+    let battery_input = peripherals.GPIO2;
+    #[cfg(feature = "esp32c3")]
+    let stackmat_rx = peripherals.GPIO20.degrade();
+    #[cfg(feature = "esp32c3")]
+    let shifter_data_pin = Output::new(peripherals.GPIO10, esp_hal::gpio::Level::Low);
+    #[cfg(feature = "esp32c3")]
+    let shifter_clk_pin = Output::new(peripherals.GPIO21, esp_hal::gpio::Level::Low);
+    #[cfg(feature = "esp32c3")]
+    let shifter_latch_pin = Output::new(peripherals.GPIO1, esp_hal::gpio::Level::Low);
 
     let mut adv_shift_reg = adv_shift_registers::AdvancedShiftRegister::<8, _>::new(
         shifter_data_pin,
@@ -126,28 +142,29 @@ async fn main(spawner: Spawner) {
     digits_shifters
         .set_data(&[!crate::utils::stackmat::DEC_DIGITS[8] ^ crate::utils::stackmat::DOT_MOD; 6]);
 
+    #[cfg(feature = "esp32")]
     let button_1 = Input::new(peripherals.GPIO27, esp_hal::gpio::Pull::Up);
+    #[cfg(feature = "esp32")]
     let button_2 = Input::new(peripherals.GPIO26, esp_hal::gpio::Pull::Up);
+    #[cfg(feature = "esp32")]
     let button_3 = Input::new(peripherals.GPIO33, esp_hal::gpio::Pull::Up);
+    #[cfg(feature = "esp32")]
     let button_4 = Input::new(peripherals.GPIO32, esp_hal::gpio::Pull::Up);
 
-    // Input::new(peripherals.GPIO34, esp_hal::gpio::Pull::down);
-    /*
+    #[cfg(feature = "esp32c3")]
     let button_input = Input::new(peripherals.GPIO3, esp_hal::gpio::Pull::Down);
-    */
 
-    /*
-    let digits_shifters = adv_shift_reg.get_shifter_range_mut(2..8);
-
+    #[cfg(feature = "esp32c3")]
     let buttons_shifter = adv_shift_reg.get_shifter_mut(0);
+
+    #[cfg(feature = "esp32c3")]
     let lcd_shifter = adv_shift_reg.get_shifter_mut(1);
-    */
 
     #[cfg(feature = "esp32c3")]
     let mut cs_pin = {
         let mut cs_pin = adv_shift_reg.get_pin_mut(1, 0, true);
         _ = cs_pin.set_high();
-        cs_ping
+        cs_pin
     };
 
     #[cfg(feature = "esp32")]
@@ -157,6 +174,7 @@ async fn main(spawner: Spawner) {
     let global_state = Rc::new(GlobalStateInner::new(&nvs));
     let wifi_setup_sig = Rc::new(Signal::new());
 
+    #[cfg(feature = "esp32")]
     let mut i2c = I2c::new(
         peripherals.I2C0,
         esp_hal::i2c::master::Config {
@@ -168,6 +186,9 @@ async fn main(spawner: Spawner) {
     .with_scl(peripherals.GPIO22);
 
     _ = spawner.spawn(lcd::lcd_task(
+        #[cfg(feature = "esp32c3")]
+        lcd_shifter,
+        #[cfg(feature = "esp32")]
         i2c,
         global_state.clone(),
         wifi_setup_sig.clone(),
@@ -176,10 +197,12 @@ async fn main(spawner: Spawner) {
     _ = spawner.spawn(battery::battery_read_task(battery_input, peripherals.ADC1));
     _ = spawner.spawn(buttons::buttons_task(
         global_state.clone(),
-        [button_1, button_2, button_3, button_4], /*
-                                                  button_input,
-                                                  buttons_shifter,
-                                                  */
+        #[cfg(feature = "esp32")]
+        [button_1, button_2, button_3, button_4],
+        #[cfg(feature = "esp32c3")]
+        button_input,
+        #[cfg(feature = "esp32c3")]
+        buttons_shifter,
     ));
     _ = spawner.spawn(stackmat::stackmat_task(
         peripherals.UART1,

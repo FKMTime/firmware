@@ -16,7 +16,7 @@ const R2: f64 = 10000.0;
 
 #[embassy_executor::task]
 pub async fn battery_read_task(
-    #[cfg(feature = "esp32s3")]
+    #[cfg(feature = "esp32c3")]
     adc_pin: GpioPin<2>, 
 
     #[cfg(feature = "esp32")]

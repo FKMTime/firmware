@@ -25,14 +25,16 @@ use crate::{
 pub async fn lcd_task(
     #[cfg(feature = "esp32")] i2c: I2c<'static, Blocking>,
 
-    #[cfg(feature = "esp32c3")] lcd_shifter: LcdPins,
+    #[cfg(feature = "esp32c3")] lcd_shifter: ShifterValue,
 
     global_state: GlobalState,
     wifi_setup_sig: Rc<Signal<NoopRawMutex, ()>>,
 ) {
     #[cfg(feature = "esp32c3")]
+    let mut bl_pin = lcd_shifter.get_pin_mut(1, true);
+
+    #[cfg(feature = "esp32c3")]
     let mut options = {
-        let mut bl_pin = lcd_shifter.get_pin_mut(1, true);
         let reg_sel_pin = lcd_shifter.get_pin_mut(2, true);
         let e_pin = lcd_shifter.get_pin_mut(3, true);
         let d4_pin = lcd_shifter.get_pin_mut(7, false);
