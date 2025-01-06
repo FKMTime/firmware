@@ -23,7 +23,7 @@ pub async fn mdns_query(stack: Stack<'static>) -> Option<heapless::String<255>> 
     _ = sock.bind(5353);
     _ = stack.join_multicast_group(ip_addr);
 
-    let mut mdns = MdnsQuery::new("_stackmat._tcp.local", 2500, || {
+    let mut mdns = MdnsQuery::new("_stackmat._tcp.local", 500, || {
         esp_hal::time::now().duration_since_epoch().to_millis()
     });
     let mut data_buf = [0; 1024];

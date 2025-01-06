@@ -201,6 +201,10 @@ async fn ws_reader(
                     let progress = (ota.get_ota_progress() * 100.0) as u8;
                     log::info!("Ota progress: {}%", progress);
 
+                    let mut state = global_state.state.lock().await;
+                    state.ota_update = Some(progress);
+                    drop(state);
+
                     FRAME_CHANNEL
                         .send(WsFrameOwned::Binary(alloc::vec::Vec::new()))
                         .await;

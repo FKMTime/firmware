@@ -116,6 +116,7 @@ pub struct SignaledGlobalStateInner {
     pub competitor_display: Option<String>,
 
     pub delegate_hold: Option<u8>,
+    pub ota_update: Option<u8>
 }
 
 impl SignaledGlobalStateInner {
@@ -143,6 +144,7 @@ impl SignaledGlobalStateInner {
             competitor_display: None,
 
             delegate_hold: None,
+            ota_update: None
         }
     }
 

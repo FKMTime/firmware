@@ -101,7 +101,7 @@ pub async fn lcd_task(
     _ = lcd_driver.print(0, &alloc::format!("{}%", 69), PrintAlign::Right, false);
     _ = lcd_driver.print(
         1,
-        &alloc::format!("VER: {}", "v3.0"),
+        &alloc::format!("VER: {}", crate::version::VERSION),
         PrintAlign::Left,
         true,
     );
@@ -409,7 +409,10 @@ async fn process_lcd_overwrite(
         return false;
     }
 
-    if current_state.server_connected == Some(false) {
+    if let Some(prog) = current_state.ota_update {
+        _ = lcd_driver.print(0, "Updating...", PrintAlign::Center, true);
+        _ = lcd_driver.print(1, &alloc::format!("{prog}%"), PrintAlign::Center, true);
+    } else if current_state.server_connected == Some(false) {
         _ = lcd_driver.print(0, "Server", PrintAlign::Center, true);
         _ = lcd_driver.print(1, "Disconnected", PrintAlign::Center, true);
     } else if current_state.device_added == Some(false) {
