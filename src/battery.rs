@@ -4,7 +4,9 @@ use esp_hal::{
     gpio::GpioPin,
 };
 
+#[cfg(feature = "esp32c3")]
 type AdcCal = esp_hal::analog::adc::AdcCalBasic<esp_hal::peripherals::ADC1>;
+
 const BAT_MIN: f64 = 3300.0;
 const BAT_MAX: f64 = 4200.0;
 /*
@@ -13,10 +15,25 @@ const R2: f64 = 10000.0;
 */
 
 #[embassy_executor::task]
-pub async fn batter_read_task(adc_pin: GpioPin<2>, adc: esp_hal::peripherals::ADC1) {
+pub async fn battery_read_task(
+    #[cfg(feature = "esp32c3")]
+    adc_pin: GpioPin<2>, 
+
+    #[cfg(feature = "esp32")]
+    adc_pin: GpioPin<34>, 
+
+    adc: esp_hal::peripherals::ADC1
+) {
     let mut adc_config = AdcConfig::new();
+
+    #[cfg(feature = "esp32c3")]
     let mut adc_pin =
         adc_config.enable_pin_with_cal::<_, AdcCal>(adc_pin, Attenuation::Attenuation11dB);
+
+    #[cfg(feature = "esp32")]
+    let mut adc_pin =
+        adc_config.enable_pin(adc_pin, Attenuation::Attenuation11dB);
+
     let mut adc = Adc::new(adc, adc_config);
 
     let mut count = 0;

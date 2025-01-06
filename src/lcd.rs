@@ -3,11 +3,12 @@ use alloc::{rc::Rc, string::ToString};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Delay, Duration, Instant, Timer};
 use embedded_hal::digital::OutputPin;
+use esp_hal::{i2c::master::I2c, Async, Blocking};
 use hd44780_driver::{
-    bus::{FourBitBus, FourBitBusPins},
+    bus::{FourBitBus, FourBitBusPins, I2CBus},
     charset::{CharsetA02, CharsetWithFallback},
     memory_map::{MemoryMap1602, StandardMemoryMap},
-    setup::DisplayOptions4Bit,
+    setup::{DisplayOptions4Bit, DisplayOptionsI2C},
     DisplayMode, HD44780,
 };
 
@@ -22,28 +23,43 @@ use crate::{
 
 #[embassy_executor::task]
 pub async fn lcd_task(
-    lcd_shifter: ShifterValue,
+    #[cfg(feature = "esp32")] i2c: I2c<'static, Blocking>,
+
+    #[cfg(feature = "esp32c3")] lcd_shifter: ShifterValue,
+
     global_state: GlobalState,
     wifi_setup_sig: Rc<Signal<NoopRawMutex, ()>>,
 ) {
+    #[cfg(feature = "esp32c3")]
     let mut bl_pin = lcd_shifter.get_pin_mut(1, true);
-    let reg_sel_pin = lcd_shifter.get_pin_mut(2, true);
-    let e_pin = lcd_shifter.get_pin_mut(3, true);
-    let d4_pin = lcd_shifter.get_pin_mut(7, false);
-    let d5_pin = lcd_shifter.get_pin_mut(6, false);
-    let d6_pin = lcd_shifter.get_pin_mut(5, false);
-    let d7_pin = lcd_shifter.get_pin_mut(4, false);
 
-    let mut options = DisplayOptions4Bit::new(MemoryMap1602::new())
-        .with_pins(FourBitBusPins {
-            rs: reg_sel_pin,
-            en: e_pin,
-            d4: d4_pin,
-            d5: d5_pin,
-            d6: d6_pin,
-            d7: d7_pin,
-        })
-        .with_charset(CharsetA02::QUESTION_FALLBACK);
+    #[cfg(feature = "esp32c3")]
+    let mut options = {
+        let reg_sel_pin = lcd_shifter.get_pin_mut(2, true);
+        let e_pin = lcd_shifter.get_pin_mut(3, true);
+        let d4_pin = lcd_shifter.get_pin_mut(7, false);
+        let d5_pin = lcd_shifter.get_pin_mut(6, false);
+        let d6_pin = lcd_shifter.get_pin_mut(5, false);
+        let d7_pin = lcd_shifter.get_pin_mut(4, false);
+
+        DisplayOptions4Bit::new(MemoryMap1602::new())
+            .with_pins(FourBitBusPins {
+                rs: reg_sel_pin,
+                en: e_pin,
+                d4: d4_pin,
+                d5: d5_pin,
+                d6: d6_pin,
+                d7: d7_pin,
+            })
+            .with_charset(CharsetA02::QUESTION_FALLBACK)
+    };
+
+    #[cfg(feature = "esp32")]
+    let mut options = {
+        DisplayOptionsI2C::new(MemoryMap1602::new())
+            .with_i2c_bus(i2c, 0x27)
+            .with_charset(CharsetA02::QUESTION_FALLBACK)
+    };
 
     let mut delay = Delay;
 
@@ -57,7 +73,11 @@ pub async fn lcd_task(
             Ok(lcd) => break lcd,
         }
     };
-    _ = bl_pin.set_high();
+
+    #[cfg(feature = "esp32c3")]
+    {
+        _ = bl_pin.set_high();
+    }
 
     _ = lcd.clear(&mut delay);
     _ = lcd.reset(&mut delay);
@@ -95,6 +115,8 @@ pub async fn lcd_task(
         let current_state = global_state.state.value().await.clone();
         log::warn!("current_state: {:?}", current_state);
         last_update = Instant::now();
+
+        #[cfg(feature = "esp32c3")]
         if !sleep_state() {
             _ = bl_pin.set_high();
             unsafe {
@@ -123,7 +145,10 @@ pub async fn lcd_task(
                 }
 
                 if sleep_state() && (Instant::now() - last_update).as_secs() > 60 * 5 {
-                    _ = bl_pin.set_low();
+                    #[cfg(feature = "esp32c3")]
+                    {
+                        _ = bl_pin.set_low();
+                    }
                     unsafe {
                         crate::state::SLEEP_STATE = false;
                     }
@@ -141,6 +166,10 @@ pub async fn lcd_task(
     }
 }
 
+#[cfg(feature = "esp32")]
+type LcdType<C> = HD44780<I2CBus<I2c<'static, Blocking>>, StandardMemoryMap<16, 2>, C>;
+
+#[cfg(feature = "esp32c3")]
 type LcdType<C> = HD44780<
     FourBitBus<ShifterPin, ShifterPin, ShifterPin, ShifterPin, ShifterPin, ShifterPin>,
     StandardMemoryMap<16, 2>,

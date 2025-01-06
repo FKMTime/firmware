@@ -88,7 +88,7 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2",
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -176,7 +176,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "strsim",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -187,7 +187,7 @@ checksum = "d336a2a514f6ccccaa3e09b02d41d35330c07ddf03a62165fcec10bb561c7806"
 dependencies = [
  "darling_core",
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -204,7 +204,7 @@ checksum = "bc2323e10c92e1cf4d86e11538512e6dc03ceb586842970b6332af3d4046a046"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -239,12 +239,11 @@ checksum = "47fac87554ece38a037e0d53e750ee5129670b6f97e712bb0c411268181f3700"
 
 [[package]]
 name = "edge-dhcp"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40b68d2c31cfa4d4bb4a8647ccf9469912164b975c063fc9a25f8ef19c53b1b6"
+checksum = "d8b1761ef371a52e49015be37af0388ff0b2de1d87ddc3cf3ca57f7e15ad014a"
 dependencies = [
  "edge-raw",
- "embassy-time",
  "heapless",
  "log",
  "num_enum",
@@ -253,9 +252,9 @@ dependencies = [
 
 [[package]]
 name = "edge-raw"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cd56f6f142c3f9076b954b3f104e3c0e1145003a392e8f58285e14ecd937aa6"
+checksum = "47a19f7f3e0a90e4945f11d739f873a269d34dc819b6f0b6548478b037c17a75"
 dependencies = [
  "log",
 ]
@@ -305,7 +304,7 @@ dependencies = [
  "darling",
  "proc-macro2",
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -486,7 +485,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -507,7 +506,7 @@ dependencies = [
  "darling",
  "proc-macro2",
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -535,6 +534,7 @@ checksum = "cb7660d85e3e7b0e113aaeeffb1a155e64a09a5035d4104031875acdba4cb68e"
 dependencies = [
  "esp-build",
  "esp-println",
+ "semihosting",
 ]
 
 [[package]]
@@ -544,7 +544,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b94a4b8d74e7cc7baabcca5b2277b41877e039ad9cd49959d48ef94dac7eab4b"
 dependencies = [
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
  "termcolor",
 ]
 
@@ -588,6 +588,7 @@ dependencies = [
  "esp-hal-procmacros",
  "esp-metadata",
  "esp-riscv-rt",
+ "esp32",
  "esp32c3",
  "fugit",
  "nb 1.1.0",
@@ -599,14 +600,15 @@ dependencies = [
  "strum",
  "ufmt-write",
  "void",
+ "xtensa-lx",
  "xtensa-lx-rt",
 ]
 
 [[package]]
 name = "esp-hal-dhcp-server"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32e8f76d14343014eae62d6bfdd95f9f0131e4cc3dc68f76705e8bab6f7a15b5"
+checksum = "0ea282d562d59fe7bd76c31118e4f4097d8b1e35ede2c068383c85bf14b94071"
 dependencies = [
  "edge-dhcp",
  "embassy-futures",
@@ -662,11 +664,13 @@ dependencies = [
 
 [[package]]
 name = "esp-hal-ota"
-version = "0.1.4"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dad1ece4ee6e6db22e0457e7429bf104244ddc83216e083b4bf9eb983c137986"
+checksum = "14da9c8f6f31c052f3516f4c693f9fd8c4811ddf274c2e0dcd2826e4a9512ddb"
 dependencies = [
  "embedded-storage",
+ "esp32",
+ "esp32c3",
  "log",
 ]
 
@@ -683,13 +687,13 @@ dependencies = [
  "proc-macro-error2",
  "proc-macro2",
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
 name = "esp-hal-wifimanager"
 version = "0.1.0"
-source = "git+https://github.com/filipton/esp-hal-wifimanager#cca854f3552bd4febd9f2649fc64a93f73cb350d"
+source = "git+https://github.com/filipton/esp-hal-wifimanager#f9699b9274f802a4738644388ae6f72fb2064768"
 dependencies = [
  "bleps",
  "embassy-executor",
@@ -789,6 +793,7 @@ dependencies = [
  "portable-atomic",
  "portable_atomic_enum",
  "rand_core",
+ "xtensa-lx-rt",
 ]
 
 [[package]]
@@ -798,6 +803,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7730d6093853119088bbb793e3383801965ebe8fcf91e0817781d94628aaf718"
 dependencies = [
  "anyhow",
+]
+
+[[package]]
+name = "esp32"
+version = "0.34.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af7d3208ef4ffd96c3105b3fb6fd19e8512bc128b24cb866dc26a734b09f454c"
+dependencies = [
+ "critical-section",
+ "vcell",
 ]
 
 [[package]]
@@ -838,6 +853,7 @@ dependencies = [
  "esp-println",
  "esp-storage",
  "esp-wifi",
+ "esp32",
  "esp32c3",
  "getrandom",
  "hd44780-driver",
@@ -977,7 +993,6 @@ version = "0.4.0"
 source = "git+https://github.com/JohnDoneth/hd44780-driver.git#99152ccfe2263e70c480f7d1f417181b00423d37"
 dependencies = [
  "embedded-hal 1.0.0",
- "embedded-hal-async",
 ]
 
 [[package]]
@@ -1099,7 +1114,7 @@ version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -1152,7 +1167,7 @@ checksum = "ed3955f1a9c7c0c15e092f9c887db08b1fc683305fdf6eb6684f22555355e202"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -1181,7 +1196,7 @@ checksum = "af1844ef2428cc3e1cb900be36181049ef3d3193c63e43026cfe202983b27a56"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -1245,7 +1260,7 @@ checksum = "a33fa6ec7f2047f572d49317cca19c87195de99c6e5b6ee492da701cfe02b053"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -1300,7 +1315,7 @@ dependencies = [
  "proc-macro-error-attr2",
  "proc-macro2",
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -1354,7 +1369,7 @@ checksum = "f265be5d634272320a7de94cea15c22a3bfdd4eb42eb43edc528415f066a1f25"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -1371,7 +1386,7 @@ checksum = "30f19a85fe107b65031e0ba8ec60c34c2494069fe910d6c297f5e7cb5a6f76d0"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -1391,6 +1406,12 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+
+[[package]]
+name = "semihosting"
+version = "0.1.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1004ff204633065b824d4b952bf5ac84c185d3bd4d43f6b3ae2f049ee318944e"
 
 [[package]]
 name = "serde"
@@ -1420,7 +1441,7 @@ checksum = "5a9bf7cf98d04a2b28aead066b7496853d4779c9cc183c440dbac457641e19a0"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -1455,6 +1476,15 @@ dependencies = [
  "cfg-if",
  "heapless",
  "managed",
+]
+
+[[package]]
+name = "spin"
+version = "0.9.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
+dependencies = [
+ "lock_api",
 ]
 
 [[package]]
@@ -1497,7 +1527,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rustversion",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -1513,9 +1543,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.93"
+version = "2.0.95"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c786062daee0d6db1132800e623df74274a0a87322d8e183338e01b3d98d058"
+checksum = "46f71c0377baf4ef1cc3e3402ded576dccc315800fbc62dfc7fe04b009773b4a"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1700,9 +1730,9 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 
 [[package]]
 name = "winnow"
-version = "0.6.21"
+version = "0.6.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6f5bb5257f2407a5425c6e749bfd9692192a73e70a6060516ac04f889087d68"
+checksum = "39281189af81c07ec09db316b302a3e67bf9bd7cbf6c820b50e35fee9c2fa980"
 dependencies = [
  "memchr",
 ]
@@ -1728,7 +1758,7 @@ dependencies = [
  "itertools",
  "proc-macro2",
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -1739,6 +1769,7 @@ checksum = "e758f94e1a1f71758f94052a2766dcb12604998eb372b8b2e30576e3ab1ba1e6"
 dependencies = [
  "bare-metal",
  "mutex-trait",
+ "spin",
 ]
 
 [[package]]
@@ -1769,5 +1800,5 @@ dependencies = [
  "darling",
  "proc-macro2",
  "quote",
- "syn 2.0.93",
+ "syn 2.0.95",
 ]

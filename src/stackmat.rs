@@ -6,11 +6,11 @@ use crate::{
 };
 use adv_shift_registers::wrappers::ShifterValueRange;
 use embassy_time::{Instant, Timer};
-use esp_hal::{gpio::AnyPin, peripherals::UART0, uart::UartRx};
+use esp_hal::{gpio::AnyPin, peripherals::UART1, uart::UartRx};
 
 #[embassy_executor::task]
 pub async fn stackmat_task(
-    uart: UART0,
+    uart: UART1,
     uart_pin: AnyPin,
     display: ShifterValueRange,
     global_state: GlobalState,
@@ -28,7 +28,7 @@ pub async fn stackmat_task(
             if last_state != Some(false) {
                 global_state.state.lock().await.stackmat_connected = Some(false);
                 last_state = Some(false);
-                display.set_data(&[255; 6]);
+                //display.set_data(&[255; 6]);
             }
         }
 

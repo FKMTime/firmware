@@ -61,22 +61,42 @@ impl ButtonsHandler {
     pub async fn run(
         &mut self,
         state: &GlobalState,
+
+        #[cfg(feature = "esp32c3")]
         button_input: &Input<'static>,
+
+        #[cfg(feature = "esp32c3")]
         button_reg: &ShifterValue,
+
+        #[cfg(feature = "esp32")]
+        buttons: &[Input<'static>]
     ) {
         let mut debounce_time = esp_hal::time::now();
         let mut old_debounced = i32::MAX;
         let mut old_val = 0;
         loop {
-            let mut val = 0b10000000;
             let mut out_val = 0;
-            for i in 0..4 {
-                button_reg.set_value(val);
-                if button_input.is_high() {
-                    out_val |= 1 << i;
-                }
 
-                val >>= 1;
+            #[cfg(feature = "esp32c3")]
+            {
+                let mut val = 0b10000000;
+                for i in 0..4 {
+                    button_reg.set_value(val);
+                    if button_input.is_high() {
+                        out_val |= 1 << i;
+                    }
+
+                    val >>= 1;
+                }
+            }
+
+            #[cfg(feature = "esp32")]
+            {
+                for (i, button) in buttons.iter().enumerate() {
+                    if button.is_low() {
+                        out_val |= 1 << i;
+                    }
+                }
             }
 
             if old_val != out_val {

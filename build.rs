@@ -27,9 +27,17 @@ fn main() {
         format!("D{epoch}")
     };
 
+    let chip = if cfg!(feature = "esp32") {
+        "esp32"
+    } else if cfg!(feature = "esp32c3") {
+        "esp32c3"
+    } else {
+        "unknown"
+    };
+
     let gen = VERSION_TEMPLATE
         .replace("{version}", &version_str)
-        .replace("{chip}", "esp32c3")
+        .replace("{chip}", chip)
         .replace("{firmware}", "STATION");
 
     std::fs::write(Path::new("src").join("version.rs"), gen.trim()).unwrap();
