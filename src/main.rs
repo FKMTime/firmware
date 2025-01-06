@@ -295,11 +295,13 @@ async fn main(spawner: Spawner) {
                     .rev()
                     .collect();
 
-                ws::send_packet(structs::TimerPacket {
-                    tag: None,
-                    data: structs::TimerPacketInner::Logs { logs },
-                })
-                .await;
+                if logs.len() > 0 {
+                    ws::send_packet(structs::TimerPacket {
+                        tag: None,
+                        data: structs::TimerPacketInner::Logs { logs },
+                    })
+                    .await;
+                }
             }
         }
 

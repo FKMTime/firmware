@@ -28,7 +28,7 @@ pub async fn stackmat_task(
             if last_state != Some(false) {
                 global_state.state.lock().await.stackmat_connected = Some(false);
                 last_state = Some(false);
-                //display.set_data(&[255; 6]);
+                display.set_data(&[255; 6]);
             }
         }
 
