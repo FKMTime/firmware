@@ -20,11 +20,11 @@ jobs:
       matrix:
         action:
           - command: build
-            args: +nightly --no-default-features --features=esp32c3 --target=riscv32imc-unknown-none-elf --release
+            args: --no-default-features --features=esp32c3 --target=riscv32imc-unknown-none-elf --release
           - command: fmt
-            args: +nightly --all -- --check --color always
+            args: --all -- --check --color always
           - command: clippy
-            args: +nightly --no-default-features --features=esp32c3 --target=riscv32imc-unknown-none-elf --workspace -- -D warnings
+            args: --no-default-features --features=esp32c3 --target=riscv32imc-unknown-none-elf --workspace -- -D warnings
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
