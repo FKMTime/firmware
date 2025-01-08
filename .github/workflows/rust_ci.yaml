@@ -28,7 +28,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Setup Rust
+      - name: Setup Rust (xtensa)
+        uses: esp-rs/xtensa-toolchain@v1.5
+        with:
+          default: true
+          buildtargets: esp32
+          ldproxy: false
+      - name: Setup Rust (riscv)
         uses: dtolnay/rust-toolchain@v1
         with:
           target: riscv32imc-unknown-none-elf
