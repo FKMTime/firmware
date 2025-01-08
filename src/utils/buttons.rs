@@ -1,5 +1,4 @@
 use crate::{buttons::HandlersDerive, state::GlobalState};
-use adv_shift_registers::wrappers::ShifterValue;
 use alloc::vec::Vec;
 use embassy_time::{Instant, Timer};
 use esp_hal::gpio::Input;
@@ -62,14 +61,10 @@ impl ButtonsHandler {
         &mut self,
         state: &GlobalState,
 
-        #[cfg(feature = "esp32c3")]
-        button_input: &Input<'static>,
+        #[cfg(feature = "esp32c3")] button_input: &Input<'static>,
+        #[cfg(feature = "esp32c3")] button_reg: &adv_shift_registers::wrappers::ShifterValue,
 
-        #[cfg(feature = "esp32c3")]
-        button_reg: &ShifterValue,
-
-        #[cfg(feature = "esp32")]
-        buttons: &[Input<'static>]
+        #[cfg(feature = "esp32")] buttons: &[Input<'static>],
     ) {
         let mut debounce_time = esp_hal::time::now();
         let mut old_debounced = i32::MAX;

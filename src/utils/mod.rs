@@ -1,14 +1,20 @@
 pub mod arc;
 pub mod buttons;
 pub mod lcd_abstract;
+pub mod logger;
 pub mod signaled_mutex;
 pub mod stackmat;
-pub mod logger;
 
 pub fn set_brownout_detection(state: bool) {
     #[cfg(feature = "esp32c3")]
     unsafe {
         let rtc_cntl = &*esp32c3::RTC_CNTL::ptr();
+        rtc_cntl.int_ena().modify(|_, w| w.brown_out().bit(state));
+    }
+
+    #[cfg(feature = "esp32")]
+    unsafe {
+        let rtc_cntl = &*esp32::RTC_CNTL::ptr();
         rtc_cntl.int_ena().modify(|_, w| w.brown_out().bit(state));
     }
 }

@@ -1,14 +1,9 @@
-use adv_shift_registers::wrappers::{ShifterPin, ShifterValue};
 use alloc::{rc::Rc, string::ToString};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Delay, Duration, Instant, Timer};
-use embedded_hal::digital::OutputPin;
-use esp_hal::{i2c::master::I2c, Async, Blocking};
 use hd44780_driver::{
-    bus::{FourBitBus, FourBitBusPins, I2CBus},
     charset::{CharsetA02, CharsetWithFallback},
     memory_map::{MemoryMap1602, StandardMemoryMap},
-    setup::{DisplayOptions4Bit, DisplayOptionsI2C},
     DisplayMode, HD44780,
 };
 
@@ -21,11 +16,14 @@ use crate::{
     },
 };
 
+#[cfg(feature = "esp32c3")]
+use embedded_hal::digital::OutputPin;
+
 #[embassy_executor::task]
 pub async fn lcd_task(
-    #[cfg(feature = "esp32")] i2c: I2c<'static, Blocking>,
+    #[cfg(feature = "esp32")] i2c: esp_hal::i2c::master::I2c<'static, esp_hal::Blocking>,
 
-    #[cfg(feature = "esp32c3")] lcd_shifter: ShifterValue,
+    #[cfg(feature = "esp32c3")] lcd_shifter: adv_shift_registers::wrappers::ShifterValue,
 
     global_state: GlobalState,
     wifi_setup_sig: Rc<Signal<NoopRawMutex, ()>>,
@@ -42,8 +40,8 @@ pub async fn lcd_task(
         let d6_pin = lcd_shifter.get_pin_mut(5, false);
         let d7_pin = lcd_shifter.get_pin_mut(4, false);
 
-        DisplayOptions4Bit::new(MemoryMap1602::new())
-            .with_pins(FourBitBusPins {
+        hd44780_driver::setup::DisplayOptions4Bit::new(MemoryMap1602::new())
+            .with_pins(hd44780_driver::bus::FourBitBusPins {
                 rs: reg_sel_pin,
                 en: e_pin,
                 d4: d4_pin,
@@ -56,7 +54,7 @@ pub async fn lcd_task(
 
     #[cfg(feature = "esp32")]
     let mut options = {
-        DisplayOptionsI2C::new(MemoryMap1602::new())
+        hd44780_driver::setup::DisplayOptionsI2C::new(MemoryMap1602::new())
             .with_i2c_bus(i2c, 0x27)
             .with_charset(CharsetA02::QUESTION_FALLBACK)
     };
@@ -167,11 +165,22 @@ pub async fn lcd_task(
 }
 
 #[cfg(feature = "esp32")]
-type LcdType<C> = HD44780<I2CBus<I2c<'static, Blocking>>, StandardMemoryMap<16, 2>, C>;
+type LcdType<C> = HD44780<
+    hd44780_driver::bus::I2CBus<esp_hal::i2c::master::I2c<'static, esp_hal::Blocking>>,
+    StandardMemoryMap<16, 2>,
+    C,
+>;
 
 #[cfg(feature = "esp32c3")]
 type LcdType<C> = HD44780<
-    FourBitBus<ShifterPin, ShifterPin, ShifterPin, ShifterPin, ShifterPin, ShifterPin>,
+    hd44780_driver::bus::FourBitBus<
+        adv_shift_registers::wrappers::ShifterPin,
+        adv_shift_registers::wrappers::ShifterPin,
+        adv_shift_registers::wrappers::ShifterPin,
+        adv_shift_registers::wrappers::ShifterPin,
+        adv_shift_registers::wrappers::ShifterPin,
+        adv_shift_registers::wrappers::ShifterPin,
+    >,
     StandardMemoryMap<16, 2>,
     C,
 >;

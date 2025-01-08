@@ -3,7 +3,6 @@ use crate::{
     structs::DelegateResponsePacket,
     utils::buttons::{Button, ButtonTrigger, ButtonsHandler},
 };
-use adv_shift_registers::wrappers::ShifterValue;
 use alloc::string::ToString;
 use embassy_time::{Instant, Timer};
 use esp_hal::gpio::Input;
@@ -16,7 +15,7 @@ pub async fn buttons_task(
 
     #[cfg(feature = "esp32c3")] button_input: Input<'static>,
 
-    #[cfg(feature = "esp32c3")] button_reg: ShifterValue,
+    #[cfg(feature = "esp32c3")] button_reg: adv_shift_registers::wrappers::ShifterValue,
 
     #[cfg(feature = "esp32")] buttons: [Input<'static>; 4],
 ) {

@@ -1,7 +1,6 @@
-use alloc::{string::String, vec::Vec};
-use core::{borrow::BorrowMut, cell::OnceCell};
-
 use crate::state::get_ota_state;
+use alloc::{string::String, vec::Vec};
+use core::cell::OnceCell;
 
 pub const FILTER_MAX: log::LevelFilter = log::LevelFilter::Debug;
 pub static mut GLOBAL_LOGS: OnceCell<Vec<String>> = OnceCell::new();

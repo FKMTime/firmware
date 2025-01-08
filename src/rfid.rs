@@ -1,6 +1,5 @@
 use crate::state::{current_epoch, GlobalState};
 use crate::structs::{CardInfoResponsePacket, SolveConfirmPacket};
-use adv_shift_registers::wrappers::ShifterPin;
 use alloc::string::ToString;
 use embassy_time::{Duration, Timer};
 use esp_hal::prelude::*;
@@ -18,7 +17,7 @@ pub async fn rfid_task(
     miso: AnyPin,
     mosi: AnyPin,
     sck: AnyPin,
-    #[cfg(feature = "esp32c3")] cs_pin: ShifterPin,
+    #[cfg(feature = "esp32c3")] cs_pin: adv_shift_registers::wrappers::ShifterPin,
     #[cfg(feature = "esp32")] cs_pin: esp_hal::gpio::Output<'static>,
     spi: esp_hal::peripherals::SPI2,
     dma: DMA,

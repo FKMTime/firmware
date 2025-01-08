@@ -8,15 +8,13 @@ use core::str::FromStr;
 use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
 use embassy_time::Timer;
-use embedded_hal::digital::OutputPin;
 use esp_backtrace as _;
 use esp_hal::{
     gpio::{Input, Output},
-    i2c::master::I2c,
     prelude::*,
     timer::timg::TimerGroup,
 };
-use state::{get_ota_state, GlobalStateInner, Scene, OTA_STATE};
+use state::{get_ota_state, GlobalStateInner, Scene};
 use structs::ConnSettings;
 use translations::init_translations;
 use utils::{
@@ -165,21 +163,23 @@ async fn main(spawner: Spawner) {
     let lcd_shifter = adv_shift_reg.get_shifter_mut(1);
 
     #[cfg(feature = "esp32c3")]
-    let mut cs_pin = {
+    let cs_pin = {
+        use embedded_hal::digital::OutputPin;
+
         let mut cs_pin = adv_shift_reg.get_pin_mut(1, 0, true);
         _ = cs_pin.set_high();
         cs_pin
     };
 
     #[cfg(feature = "esp32")]
-    let mut cs_pin = Output::new(peripherals.GPIO5, esp_hal::gpio::Level::High);
+    let cs_pin = Output::new(peripherals.GPIO5, esp_hal::gpio::Level::High);
 
     init_translations();
     let global_state = Rc::new(GlobalStateInner::new(&nvs));
     let wifi_setup_sig = Rc::new(Signal::new());
 
     #[cfg(feature = "esp32")]
-    let mut i2c = I2c::new(
+    let i2c = esp_hal::i2c::master::I2c::new(
         peripherals.I2C0,
         esp_hal::i2c::master::Config {
             frequency: 100.kHz(),
