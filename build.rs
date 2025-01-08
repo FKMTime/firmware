@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const VERSION_TEMPLATE: &'static str = r#"
+const VERSION_TEMPLATE: &str = r#"
 pub const VERSION: &'static str = "{version}";
 pub const CHIP: &'static str = "{chip}";
 pub const FIRMWARE: &'static str = "{firmware}";
@@ -23,7 +23,7 @@ fn main() {
     crc_walkdir(PathBuf::from("src"), &mut hasher);
     let src_crc = hasher.finalize();
 
-    let mut version_str = if let Ok(rel) = std::env::var("RELEASE_BUILD") {
+    let version_str = if let Ok(rel) = std::env::var("RELEASE_BUILD") {
         rel
     } else {
         let epoch = std::time::SystemTime::now()
