@@ -4,6 +4,7 @@ use core::cell::OnceCell;
 
 pub const FILTER_MAX: log::LevelFilter = log::LevelFilter::Debug;
 pub static mut GLOBAL_LOGS: OnceCell<Vec<String>> = OnceCell::new();
+const MAX_LOGS_SIZE: usize = 100;
 
 pub fn init_global_logs_store() {
     unsafe {
@@ -68,6 +69,10 @@ impl log::Log for FkmLogger {
                         record.args(),
                         reset
                     ));
+
+                    if logs_buf.len() > MAX_LOGS_SIZE {
+                        logs_buf.remove(0);
+                    }
                 }
             }
         }
