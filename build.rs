@@ -4,9 +4,9 @@ use std::{
 };
 
 const VERSION_TEMPLATE: &str = r#"
-pub const VERSION: &'static str = "{version}";
-pub const CHIP: &'static str = "{chip}";
-pub const FIRMWARE: &'static str = "{firmware}";
+pub const VERSION: &str = "{version}";
+pub const CHIP: &str = "{chip}";
+pub const FIRMWARE: &str = "{firmware}";
 "#;
 
 fn main() {
@@ -18,6 +18,7 @@ fn main() {
     }
 
     println!("cargo:rustc-link-arg-bins=-Tlinkall.x");
+    println!("cargo:rustc-cfg=feature=\"gen_version\"");
 
     let mut hasher = crc32fast::Hasher::new();
     crc_walkdir(PathBuf::from("src"), &mut hasher);

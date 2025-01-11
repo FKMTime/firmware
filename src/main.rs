@@ -32,8 +32,11 @@ mod state;
 mod structs;
 mod translations;
 mod utils;
-mod version;
 mod ws;
+
+#[cfg_attr(not(feature = "gen_version"), path = "version_fallback.rs")]
+#[cfg_attr(feature = "gen_version", path = "version.rs")]
+mod version;
 
 pub fn custom_rng(buf: &mut [u8]) -> Result<(), getrandom::Error> {
     for chunk in buf.chunks_mut(4) {
