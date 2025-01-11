@@ -24,12 +24,10 @@ pub async fn stackmat_task(
     let mut last_state = None;
     let mut last_stackmat_state = StackmatTimerState::Unknown;
     loop {
-        if (esp_hal::time::now() - last_read).to_millis() > 500 {
-            if last_state != Some(false) {
-                global_state.state.lock().await.stackmat_connected = Some(false);
-                last_state = Some(false);
-                display.set_data(&[255; 6]);
-            }
+        if (esp_hal::time::now() - last_read).to_millis() > 500 && last_state != Some(false) {
+            global_state.state.lock().await.stackmat_connected = Some(false);
+            last_state = Some(false);
+            display.set_data(&[255; 6]);
         }
 
         Timer::after_millis(10).await;

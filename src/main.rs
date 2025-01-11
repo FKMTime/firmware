@@ -244,7 +244,7 @@ async fn main(spawner: Spawner) {
         wm_settings,
         &spawner,
         &nvs,
-        rng.clone(),
+        rng,
         timg0.timer0,
         peripherals.RADIO_CLK,
         peripherals.WIFI,
@@ -265,7 +265,7 @@ async fn main(spawner: Spawner) {
     {
         log::info!("Start mdns lookup...");
         global_state.state.lock().await.scene = Scene::MdnsWait;
-        let mdns_res = mdns::mdns_query(wifi_res.sta_stack.clone()).await;
+        let mdns_res = mdns::mdns_query(wifi_res.sta_stack).await;
         log::info!("Mdns result: {:?}", mdns_res);
 
         alloc::string::String::from_str(&mdns_res.expect("MDNS HOW?")).unwrap()
@@ -292,7 +292,6 @@ async fn main(spawner: Spawner) {
             if let Some(logs_buf) = utils::logger::GLOBAL_LOGS.get_mut() {
                 let logs: Vec<structs::LogData> = logs_buf
                     .drain(..logs_buf.len())
-                    .into_iter()
                     .map(|msg| structs::LogData { millis: 0, msg })
                     .rev()
                     .collect();
@@ -300,7 +299,8 @@ async fn main(spawner: Spawner) {
                 if get_ota_state() {
                     continue;
                 }
-                if logs.len() > 0 {
+
+                if !logs.is_empty() {
                     ws::send_packet(structs::TimerPacket {
                         tag: None,
                         data: structs::TimerPacketInner::Logs { logs },

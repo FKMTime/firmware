@@ -15,6 +15,9 @@ pub enum LcdError {
     Other,
 }
 
+pub type LcdDisplayData<'a, const X: usize, const Y: usize> =
+    ([(&'a [u8], bool); Y], &'a mut [[u8; X]; Y]);
+
 pub struct LcdAbstract<
     const LINE_SIZE: usize,
     const X: usize,
@@ -45,22 +48,22 @@ impl<const LINE_SIZE: usize, const X: usize, const Y: usize, const SCROLLER_WT: 
         }
     }
 
-    pub fn display_data<'a>(&'a mut self) -> ([(&'a [u8], bool); Y], &'a mut [[u8; X]; Y]) {
+    pub fn display_data(&mut self) -> LcdDisplayData<'_, X, Y> {
         let mut tmp: [(&[u8], bool); Y] = [(&[], false); Y];
 
-        for y in 0..Y {
+        for (y, tmp) in tmp.iter_mut().enumerate() {
             let scroll_max = self.sizes[y].saturating_sub(X);
             let scroll_offset = self.current_scroll.min(scroll_max);
             let scrolled_data = &self.lines[y][scroll_offset..X + scroll_offset];
 
-            tmp[y] = (scrolled_data, scrolled_data != &self.old_display[y]);
+            *tmp = (scrolled_data, scrolled_data != self.old_display[y]);
         }
 
         (tmp, &mut self.old_display)
     }
 
     pub fn scroll_step(&mut self) -> Result<bool, LcdError> {
-        let max_size = *self.sizes.iter().max().ok_or_else(|| LcdError::Other)?;
+        let max_size = *self.sizes.iter().max().ok_or(LcdError::Other)?;
         let max_scroll = max_size.saturating_sub(X);
         if max_scroll == 0 {
             return Ok(false);

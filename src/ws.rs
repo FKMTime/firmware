@@ -67,7 +67,7 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
         );
 
         socket
-            .write_all(&tx_framer.generate_http_upgrade(ws_url.host, &path, None))
+            .write_all(tx_framer.generate_http_upgrade(ws_url.host, &path, None))
             .await
             .unwrap();
 

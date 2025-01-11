@@ -16,13 +16,11 @@ const R2: f64 = 10000.0;
 
 #[embassy_executor::task]
 pub async fn battery_read_task(
-    #[cfg(feature = "esp32c3")]
-    adc_pin: GpioPin<2>, 
+    #[cfg(feature = "esp32c3")] adc_pin: GpioPin<2>,
 
-    #[cfg(feature = "esp32")]
-    adc_pin: GpioPin<34>, 
+    #[cfg(feature = "esp32")] adc_pin: GpioPin<34>,
 
-    adc: esp_hal::peripherals::ADC1
+    adc: esp_hal::peripherals::ADC1,
 ) {
     let mut adc_config = AdcConfig::new();
 
@@ -31,8 +29,7 @@ pub async fn battery_read_task(
         adc_config.enable_pin_with_cal::<_, AdcCal>(adc_pin, Attenuation::Attenuation11dB);
 
     #[cfg(feature = "esp32")]
-    let mut adc_pin =
-        adc_config.enable_pin(adc_pin, Attenuation::Attenuation11dB);
+    let mut adc_pin = adc_config.enable_pin(adc_pin, Attenuation::Attenuation11dB);
 
     let mut adc = Adc::new(adc, adc_config);
 
@@ -82,7 +79,7 @@ fn bat_perctentage(mv: f64) -> u8 {
         return 100;
     }
 
-    return (((mv - BAT_MIN) / (BAT_MAX - BAT_MIN)) * 100.0) as u8;
+    (((mv - BAT_MIN) / (BAT_MAX - BAT_MIN)) * 100.0) as u8
 }
 
 // TODO: measure cooficients on real pcb

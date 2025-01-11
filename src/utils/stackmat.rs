@@ -69,7 +69,7 @@ pub fn time_str_to_display(time: &str) -> [u8; 6] {
     let mut i = 0;
 
     for c in time.chars().rev() {
-        if c < '0' || c > '9' {
+        if !c.is_ascii_digit() {
             continue;
         }
 

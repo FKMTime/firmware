@@ -31,7 +31,7 @@ pub async fn mdns_query(stack: Stack<'static>) -> Option<heapless::String<255>> 
     let tmp;
     loop {
         if let Some(data) = mdns.should_send_mdns_packet() {
-            _ = sock.send_to(&data, ip_endpoint).await;
+            _ = sock.send_to(data, ip_endpoint).await;
         }
 
         if sock.may_recv() {

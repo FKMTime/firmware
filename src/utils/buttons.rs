@@ -97,25 +97,23 @@ impl ButtonsHandler {
             if old_val != out_val {
                 old_val = out_val;
                 debounce_time = esp_hal::time::now();
-            } else {
-                if old_debounced != out_val {
-                    let duration = esp_hal::time::now() - debounce_time;
-                    if duration.to_millis() > 50 {
-                        if old_debounced == 0 {
-                            self.button_down((out_val as u8).into(), &state).await;
-                        } else {
-                            self.button_up(&state).await;
-                        }
-
-                        old_debounced = out_val;
+            } else if old_debounced != out_val {
+                let duration = esp_hal::time::now() - debounce_time;
+                if duration.to_millis() > 50 {
+                    if old_debounced == 0 {
+                        self.button_down((out_val as u8).into(), state).await;
+                    } else {
+                        self.button_up(state).await;
                     }
-                } else {
-                    debounce_time = esp_hal::time::now();
+
+                    old_debounced = out_val;
                 }
+            } else {
+                debounce_time = esp_hal::time::now();
             }
 
             if old_debounced != 0 {
-                self.button_hold(&state).await;
+                self.button_hold(state).await;
             }
 
             Timer::after_millis(5).await;
@@ -148,7 +146,7 @@ impl ButtonsHandler {
                 handler.1 = false;
 
                 if handler.0 == ButtonTrigger::Down {
-                    let res = handler.2.execute(&handler.0, 0, &state).await;
+                    let res = handler.2.execute(&handler.0, 0, state).await;
                     if let Err(e) = res {
                         log::error!("buttons_handler:down_err: {e:?}");
                     }
@@ -181,7 +179,7 @@ impl ButtonsHandler {
                         continue;
                     }
 
-                    let res = handler.execute(&trigger, hold_time, &state).await;
+                    let res = handler.execute(trigger, hold_time, state).await;
                     if let Err(e) = res {
                         log::error!("buttons_handler:hold_timed_err: {e:?}");
                     }
@@ -193,7 +191,7 @@ impl ButtonsHandler {
                     }
                 }
                 ButtonTrigger::Hold => {
-                    let res = handler.execute(&trigger, hold_time, &state).await;
+                    let res = handler.execute(trigger, hold_time, state).await;
                     if let Err(e) = res {
                         log::error!("buttons_handler:hold_err: {e:?}");
                     }
@@ -207,7 +205,7 @@ impl ButtonsHandler {
                     if hold_time > *after && !*activated {
                         *activated = true;
 
-                        let res = handler.execute(&trigger, hold_time, &state).await;
+                        let res = handler.execute(trigger, hold_time, state).await;
                         if let Err(e) = res {
                             log::error!("buttons_handler:hold_once_err: {e:?}");
                         }
@@ -231,7 +229,7 @@ impl ButtonsHandler {
         let handlers = handler.handlers.iter().filter(|h| h.0 == ButtonTrigger::Up);
         for handler in handlers {
             let hold_time = (Instant::now() - self.press_time).as_millis();
-            let res = handler.2.execute(&handler.0, hold_time, &state).await;
+            let res = handler.2.execute(&handler.0, hold_time, state).await;
             if let Err(e) = res {
                 log::error!("buttons_handler:up_err: {e:?}");
             }

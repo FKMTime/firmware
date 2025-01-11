@@ -46,7 +46,7 @@ pub fn get_translation(key: &str) -> Option<String> {
         return t
             .iter()
             .find(|t| t.key == key)
-            .and_then(|t| Some(t.translation.clone()));
+            .map(|t| t.translation.clone());
     }
 
     None

@@ -358,7 +358,7 @@ async fn process_lcd<C: CharsetWithFallback>(
 
             let inspection_time = current_state
                 .inspection_start
-                .and_then(|x| Some((current_state.inspection_end.unwrap() - x).as_millis()));
+                .map(|x| (current_state.inspection_end.unwrap() - x).as_millis());
 
             if current_state.use_inspection && inspection_time.unwrap_or(0) > 15000 {
                 let inspections_seconds = inspection_time.unwrap_or(0) / 1000;
@@ -385,7 +385,7 @@ async fn process_lcd<C: CharsetWithFallback>(
             };
 
             lcd_driver
-                .print(0, &penalty_str, PrintAlign::Right, false)
+                .print(0, penalty_str, PrintAlign::Right, false)
                 .ok()?;
 
             if !current_state.time_confirmed {
@@ -434,5 +434,5 @@ async fn process_lcd_overwrite(
         return false;
     }
 
-    return true;
+    true
 }
