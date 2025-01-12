@@ -191,7 +191,7 @@ async fn ws_reader(
                     let res = ota.ota_write_chunk(data);
                     if res == Ok(true) {
                         log::info!("OTA complete! Veryfying..");
-                        if ota.ota_flush(true).is_ok() {
+                        if ota.ota_flush(true, true).is_ok() {
                             log::info!("OTA restart!");
                             esp_hal::reset::software_reset();
                         } else {

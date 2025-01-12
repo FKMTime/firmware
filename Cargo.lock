@@ -673,9 +673,9 @@ dependencies = [
 
 [[package]]
 name = "esp-hal-ota"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14da9c8f6f31c052f3516f4c693f9fd8c4811ddf274c2e0dcd2826e4a9512ddb"
+checksum = "0f4301f7147db682d78c028a3c7dfeb86c4fe4f2910bcdf62422435ce8b10553"
 dependencies = [
  "embedded-storage",
  "esp32",
@@ -702,7 +702,7 @@ dependencies = [
 [[package]]
 name = "esp-hal-wifimanager"
 version = "0.1.0"
-source = "git+https://github.com/filipton/esp-hal-wifimanager#1c3e3880d75c4fd572445cf4d25cf18692067ad1"
+source = "git+https://github.com/filipton/esp-hal-wifimanager#eae4ccd5a05c23a5e79f384724e0b2351edf78c9"
 dependencies = [
  "bleps",
  "embassy-executor",

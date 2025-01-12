@@ -14,6 +14,7 @@ use esp_hal::{
     prelude::*,
     timer::timg::TimerGroup,
 };
+use esp_storage::FlashStorage;
 use state::{get_ota_state, GlobalStateInner, SavedGlobalState, Scene};
 use structs::ConnSettings;
 use translations::init_translations;
@@ -237,6 +238,11 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "esp32")]
     {
         wm_settings.esp_restart_after_connection = true;
+    }
+
+    {
+        let mut ota = esp_hal_ota::Ota::new(FlashStorage::new()).unwrap();
+        ota.ota_mark_app_valid().unwrap();
     }
 
     let timg0 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0);
