@@ -1,9 +1,5 @@
 [alias]
 esp32 = "run --no-default-features --features=esp32 --target=xtensa-esp32-none-elf"
-esp32c3 = "run --no-default-features --features=esp32c3 --target=riscv32imc-unknown-none-elf"
-
-#[target.riscv32imc-unknown-none-elf]
-#runner = "espflash flash --monitor -T ./partitions.csv --erase-parts otadata"
 
 target = "riscv32imc-unknown-none-elf"
 
@@ -18,6 +14,9 @@ runner    = "espflash flash --monitor -T ./partitions.csv --erase-parts otadata"
 rustflags = [
   "-C", "link-arg=-nostartfiles",
 ]
+
+[build]
+target = "riscv32imc-unknown-none-elf"
 
 [env]
 ESP_LOG="INFO"
