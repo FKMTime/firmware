@@ -8,13 +8,13 @@ then
     exit
 fi
 
-if ! command -v pio &> /dev/null
+if ! command -v cargo &> /dev/null
 then
-    echo "'pio' could not be found"
+    echo "'cargo' could not be found"
     exit
 fi
 
-cd $SCRIPT_DIR/firmware
+cd $SCRIPT_DIR
 LAST_FIRMWARE_VERSION=$(gh release list | head -n 1 | cut -f 1)
 echo "Last firmware version: $LAST_FIRMWARE_VERSION"
 echo -n "Enter new firmware version: "
@@ -23,16 +23,22 @@ while [ -z "$RELEASE_VERSION" ]; do
     read RELEASE_VERSION
 done
 
-RELEASE_BUILD="$RELEASE_VERSION" pio run
+source ~/export-esp.sh
+RELEASE_BUILD="$RELEASE_VERSION" cargo esp32c3 -r
+RELEASE_BUILD="$RELEASE_VERSION" cargo esp32 -r
+
+espflash save-image --chip esp32 ./target/xtensa-esp32-none-elf/release/fkm-firmware "/tmp/fkm-build/esp32_STATION_$(cat ./src/version.rs | grep VERSION | cut -d'"' -f 2).bin"
+espflash save-image --chip esp32c3 ./target/riscv32imc-unknown-none-elf/release/fkm-firmware "/tmp/fkm-build/esp32c3_STATION_$(cat ./src/version.rs | grep VERSION | cut -d'"' -f 2).bin"
 
 cd $SCRIPT_DIR
-VERSION=$(cat ./firmware/src/version.h | grep 'FIRMWARE_VERSION' | cut -d'"' -f 2)
+VERSION=$(cat ./src/version.rs | grep 'VERSION' | cut -d'"' -f 2)
 echo "Version: $VERSION"
 
 if gh release list | grep -q "$VERSION" ; then
     echo "Release already exists"
     exit
 fi
+
 
 BUILD_FILES=$(ls /tmp/fkm-build/*_"$VERSION".bin)
 if [ -z "$BUILD_FILES" ]; then
