@@ -244,7 +244,7 @@ async fn submit_reset_competitor(
         return Ok(false);
     }
 
-    state.reset_solve_state();
+    state.reset_solve_state(None).await;
     Ok(false)
 }
 
@@ -339,7 +339,7 @@ async fn delegate_hold(
 
                 state_val.time_confirmed = true;
                 if !resp.should_scan_cards {
-                    state_val.reset_solve_state();
+                    state_val.reset_solve_state(Some(&state.nvs)).await;
                 }
             }
         }

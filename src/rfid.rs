@@ -134,7 +134,7 @@ pub async fn rfid_task(
 
                                         if resp.is_ok() {
                                             log::info!("solve_resp: {resp:?}");
-                                            state.reset_solve_state();
+                                            state.reset_solve_state(Some(&global_state.nvs)).await;
                                         }
                                     }
                                 }

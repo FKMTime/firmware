@@ -14,7 +14,7 @@ use esp_hal::{
     prelude::*,
     timer::timg::TimerGroup,
 };
-use state::{get_ota_state, GlobalStateInner, Scene};
+use state::{get_ota_state, GlobalStateInner, SavedGlobalState, Scene};
 use structs::ConnSettings;
 use translations::init_translations;
 use utils::{
@@ -281,6 +281,13 @@ async fn main(spawner: Spawner) {
 
     set_brownout_detection(true);
     global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
+    if let Some(saved_state) = SavedGlobalState::from_nvs(&nvs).await {
+        global_state
+            .state
+            .lock()
+            .await
+            .parse_saved_state(saved_state);
+    }
 
     let mut counter = 0;
     loop {

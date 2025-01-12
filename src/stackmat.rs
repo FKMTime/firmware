@@ -5,6 +5,7 @@ use crate::{
     },
 };
 use adv_shift_registers::wrappers::ShifterValueRange;
+use alloc::string::ToString;
 use embassy_time::{Instant, Timer};
 use esp_hal::{gpio::AnyPin, peripherals::UART1, uart::UartRx};
 
@@ -83,10 +84,18 @@ pub async fn stackmat_task(
                                 None
                             };
 
+                            if state.session_id.is_none() {
+                                state.session_id = Some(uuid::Uuid::new_v4().to_string());
+                            }
+
                             if state.current_competitor.is_some() {
                                 state.scene = Scene::Finished;
                             } else if state.scene >= Scene::WaitingForCompetitor {
                                 state.scene = Scene::WaitingForCompetitor;
+                            }
+
+                            if let Some(saved_state) = state.to_saved_global_state() {
+                                saved_state.to_nvs(&global_state.nvs).await;
                             }
                         }
                     } else if parsed.0 == StackmatTimerState::Reset {
