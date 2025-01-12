@@ -87,7 +87,7 @@ async fn main(spawner: Spawner) {
     }
 
     init_global_logs_store();
-    let nvs = esp_hal_wifimanager::Nvs::new(0x9000, 0x4000).unwrap();
+    let nvs = esp_hal_wifimanager::Nvs::new_from_part_table().unwrap();
 
     set_brownout_detection(false);
     let rng = esp_hal::rng::Rng::new(peripherals.RNG);
