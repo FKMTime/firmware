@@ -1,6 +1,6 @@
 use alloc::{rc::Rc, string::String};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
-use embassy_time::{Duration, Instant};
+use embassy_time::{Duration, Instant, Timer};
 use esp_hal_wifimanager::Nvs;
 use serde::{Deserialize, Serialize};
 
@@ -133,7 +133,7 @@ pub struct SavedGlobalState {
     pub penalty: i8,
     pub session_id: String,
     pub current_competitor: u64,
-    // pub solve_epoch: u64
+    pub solve_epoch: u64,
 }
 
 impl SignaledGlobalStateInner {
@@ -207,7 +207,7 @@ impl SignaledGlobalStateInner {
     }
 
     pub fn to_saved_global_state(&self) -> Option<SavedGlobalState> {
-        log::warn!("TO_SAVED_GLOBAL_STATE: {self:?}");
+        log::debug!("TO_SAVED_GLOBAL_STATE: {self:?}");
 
         Some(SavedGlobalState {
             session_id: self.session_id.clone()?,
@@ -217,6 +217,7 @@ impl SignaledGlobalStateInner {
             inspection_time: self
                 .inspection_end
                 .map(|e| (e - self.inspection_start.unwrap_or(Instant::now())).as_millis()),
+            solve_epoch: current_epoch(),
         })
     }
 
@@ -240,16 +241,28 @@ impl SignaledGlobalStateInner {
 
 impl SavedGlobalState {
     pub async fn from_nvs(nvs: &Nvs) -> Option<Self> {
+        while unsafe { EPOCH_BASE == 0 } {
+            Timer::after_millis(5).await;
+        }
+
         let mut buf = [0; 1024];
         nvs.get_key(b"SAVED_GLOBAL_STATE", &mut buf).await.ok()?;
         let end_pos = buf.iter().position(|&x| x == 0x00).unwrap_or(buf.len());
+        let res: SavedGlobalState = serde_json::from_slice(&buf[..end_pos]).ok()?;
 
-        serde_json::from_slice(&buf[..end_pos]).ok()
+        // 6hours
+        if current_epoch() - res.solve_epoch > 6 * 60 * 60 {
+            log::error!("REMOVE SOLVE: {:?} {:?}", current_epoch(), res.solve_epoch);
+            return None;
+        }
+
+        Some(res)
     }
 
     pub async fn to_nvs(&self, nvs: &Nvs) {
         let res = serde_json::to_vec(&self);
         if let Ok(vec) = res {
+            _ = nvs.invalidate_key(b"SAVED_GLOBAL_STATE").await;
             let res = nvs.append_key(b"SAVED_GLOBAL_STATE", &vec).await;
             if let Err(e) = res {
                 log::error!(

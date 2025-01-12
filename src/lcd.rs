@@ -414,7 +414,7 @@ async fn process_lcd_overwrite(
     _global_state: &GlobalState,
     lcd_driver: &mut LcdAbstract<80, 16, 2, 3>,
 ) -> bool {
-    if !current_state.scene.can_be_lcd_overwritten() {
+    if !current_state.scene.can_be_lcd_overwritten() && current_state.ota_update.is_none() {
         return false;
     }
 
