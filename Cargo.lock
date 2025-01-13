@@ -839,6 +839,7 @@ name = "fkm-firmware"
 version = "0.1.0"
 dependencies = [
  "adv-shift-registers",
+ "anyhow",
  "crc32fast",
  "critical-section",
  "dotenvy",
