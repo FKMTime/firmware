@@ -1,3 +1,4 @@
+use crate::consts::RFID_RETRY_INIT_MS;
 use crate::state::{current_epoch, GlobalState};
 use crate::structs::{CardInfoResponsePacket, SolveConfirmPacket};
 use alloc::string::ToString;
@@ -58,8 +59,8 @@ pub async fn rfid_task(
             break;
         }
 
-        log::error!("MFRC522 init failed! Try to power cycle to module! Retrying in 1s...");
-        Timer::after(Duration::from_millis(1000)).await;
+        log::error!("MFRC522 init failed! Try to power cycle to module! Retrying...");
+        Timer::after(Duration::from_millis(RFID_RETRY_INIT_MS)).await;
     }
 
     log::debug!("PCD ver: {:?}", mfrc522.pcd_get_version().await);

@@ -1,4 +1,5 @@
 use crate::{
+    consts::{INSPECTION_TIME_DNF, INSPECTION_TIME_PLUS2},
     state::{GlobalState, Scene},
     utils::stackmat::{
         ms_to_time_str, parse_stackmat_data, time_str_to_display, StackmatTimerState,
@@ -68,17 +69,14 @@ pub async fn stackmat_task(
                         if state.solve_time.is_none() && state.last_solve_time != Some(parsed.1) {
                             let inspection_time = state
                                 .inspection_end
-                                .and_then(|x| Some(x - state.inspection_start?));
-                            let inspection_time = if let Some(ins) = inspection_time {
-                                ins.as_millis()
-                            } else {
-                                0
-                            };
+                                .zip(state.inspection_start)
+                                .map(|(end, start)| (end - start).as_millis())
+                                .unwrap_or(0);
 
                             state.solve_time = Some(parsed.1);
-                            state.penalty = if inspection_time >= 17000 {
+                            state.penalty = if inspection_time >= INSPECTION_TIME_DNF {
                                 Some(-1)
-                            } else if inspection_time >= 15000 {
+                            } else if inspection_time >= INSPECTION_TIME_PLUS2 {
                                 Some(2)
                             } else {
                                 None

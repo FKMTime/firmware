@@ -1,4 +1,5 @@
 use crate::{
+    consts::WS_RETRY_MS,
     state::GlobalState,
     structs::{ApiError, FromPacket, TimerPacket, TimerPacketInner},
 };
@@ -46,7 +47,7 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
         let r = socket.connect(remote_endpoint).await;
         if let Err(e) = r {
             log::error!("connect error: {:?}", e);
-            Timer::after_millis(1000).await;
+            Timer::after_millis(WS_RETRY_MS).await;
             continue;
         }
 
@@ -96,7 +97,7 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
 
             if res.is_err() {
                 log::error!("ws: reader or writer err!");
-                Timer::after_millis(1000).await;
+                Timer::after_millis(WS_RETRY_MS).await;
                 break;
             }
         }

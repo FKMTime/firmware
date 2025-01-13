@@ -5,6 +5,8 @@ use embassy_net::{
 use embassy_time::{Duration, Timer};
 use esp_hal_mdns::MdnsQuery;
 
+use crate::consts::MDNS_RESEND_INTERVAL;
+
 pub async fn mdns_query(stack: Stack<'static>) -> Option<heapless::String<255>> {
     let mut rx_buffer = [0; 1024];
     let mut tx_buffer = [0; 1024];
@@ -23,7 +25,7 @@ pub async fn mdns_query(stack: Stack<'static>) -> Option<heapless::String<255>> 
     _ = sock.bind(5353);
     _ = stack.join_multicast_group(ip_addr);
 
-    let mut mdns = MdnsQuery::new("_stackmat._tcp.local", 500, || {
+    let mut mdns = MdnsQuery::new("_stackmat._tcp.local", MDNS_RESEND_INTERVAL, || {
         esp_hal::time::now().duration_since_epoch().to_millis()
     });
     let mut data_buf = [0; 1024];

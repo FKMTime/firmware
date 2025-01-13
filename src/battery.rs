@@ -1,4 +1,5 @@
-use embassy_time::Timer;
+use crate::consts::BATTERY_SEND_INTERVAL_MS;
+use embassy_time::{Instant, Timer};
 use esp_hal::{
     analog::adc::{Adc, AdcConfig, Attenuation},
     gpio::GpioPin,
@@ -33,7 +34,7 @@ pub async fn battery_read_task(
 
     let mut adc = Adc::new(adc, adc_config);
 
-    let mut count = 0;
+    let mut battery_start = Instant::now();
 
     let base_freq = 2.0;
     let sample_freq = 1000.0;
@@ -46,14 +47,11 @@ pub async fn battery_read_task(
             .unwrap_or(0);
         let read = smoother.tick(read as f32);
 
-        count += 1;
-
-        if count < 30 {
-            // 15s
+        if (Instant::now() - battery_start).as_millis() < BATTERY_SEND_INTERVAL_MS {
             continue;
         }
 
-        count = 0;
+        battery_start = Instant::now();
         let bat_calc_mv = calculate(read as f64);
         let bat_percentage = bat_perctentage(bat_calc_mv);
 

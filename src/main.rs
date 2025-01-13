@@ -4,10 +4,11 @@
 
 extern crate alloc;
 use alloc::{rc::Rc, vec::Vec};
+use consts::{LOG_SEND_INTERVAL_MS, PRINT_HEAP_INTERVAL_MS};
 use core::str::FromStr;
 use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
-use embassy_time::Timer;
+use embassy_time::{Instant, Timer};
 use esp_backtrace as _;
 use esp_hal::{
     gpio::{Input, Output},
@@ -25,6 +26,7 @@ use utils::{
 
 mod battery;
 mod buttons;
+mod consts;
 mod lcd;
 mod mdns;
 mod rfid;
@@ -126,6 +128,7 @@ async fn main(spawner: Spawner) {
     let shifter_latch_pin = Output::new(peripherals.GPIO1, esp_hal::gpio::Level::Low);
     #[cfg(feature = "esp32c3")]
     let shifter_clk_pin = if crate::utils::get_efuse_u32() == 1342310409 {
+        // TODO: remove this if
         Output::new(peripherals.GPIO7, esp_hal::gpio::Level::Low)
     } else {
         Output::new(peripherals.GPIO21, esp_hal::gpio::Level::Low)
@@ -295,10 +298,9 @@ async fn main(spawner: Spawner) {
             .parse_saved_state(saved_state);
     }
 
-    let mut counter = 0;
+    let mut heap_start = Instant::now();
     loop {
-        counter += 1;
-        Timer::after_millis(5000).await;
+        Timer::after_millis(LOG_SEND_INTERVAL_MS).await;
 
         // TODO: move to own task
         unsafe {
@@ -323,13 +325,13 @@ async fn main(spawner: Spawner) {
             }
         }
 
-        if counter == 12 {
+        if (Instant::now() - heap_start).as_millis() >= PRINT_HEAP_INTERVAL_MS {
             log::info!("Heap info:");
             log::info!("Size: {}", esp_alloc::HEAP.used() + esp_alloc::HEAP.free());
             log::info!("Used: {}", esp_alloc::HEAP.used());
             log::info!("Free: {}", esp_alloc::HEAP.free());
 
-            counter = 0;
+            heap_start = Instant::now();
         }
     }
 }

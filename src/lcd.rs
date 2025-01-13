@@ -8,6 +8,7 @@ use hd44780_driver::{
 };
 
 use crate::{
+    consts::{INSPECTION_TIME_PLUS2, LCD_INSPECTION_FRAME_TIME, SCROLL_TICKER_INVERVAL_MS},
     state::{sleep_state, GlobalState, Scene, SignaledGlobalStateInner},
     translations::get_translation,
     utils::{
@@ -134,7 +135,8 @@ pub async fn lcd_task(
             .await;
             lcd_driver.display_on_lcd(&mut lcd, &mut delay).unwrap();
 
-            let mut scroll_ticker = embassy_time::Ticker::every(Duration::from_millis(500));
+            let mut scroll_ticker =
+                embassy_time::Ticker::every(Duration::from_millis(SCROLL_TICKER_INVERVAL_MS));
             loop {
                 scroll_ticker.next().await;
                 let changed = lcd_driver.scroll_step().unwrap();
@@ -336,7 +338,7 @@ async fn process_lcd<C: CharsetWithFallback>(
                     .ok()?;
 
                 lcd_driver.display_on_lcd(lcd, delay).ok()?;
-                Timer::after_millis(1000 / 30).await;
+                Timer::after_millis(LCD_INSPECTION_FRAME_TIME).await;
             }
         }
         Scene::Timer => loop {
@@ -360,7 +362,8 @@ async fn process_lcd<C: CharsetWithFallback>(
                 .inspection_start
                 .map(|x| (current_state.inspection_end.unwrap() - x).as_millis());
 
-            if current_state.use_inspection && inspection_time.unwrap_or(0) > 15000 {
+            if current_state.use_inspection && inspection_time.unwrap_or(0) > INSPECTION_TIME_PLUS2
+            {
                 let inspections_seconds = inspection_time.unwrap_or(0) / 1000;
                 lcd_driver
                     .print(
