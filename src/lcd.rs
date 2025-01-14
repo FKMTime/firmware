@@ -10,7 +10,7 @@ use hd44780_driver::{
 use crate::{
     consts::{INSPECTION_TIME_PLUS2, LCD_INSPECTION_FRAME_TIME, SCROLL_TICKER_INVERVAL_MS},
     state::{sleep_state, GlobalState, Scene, SignaledGlobalStateInner},
-    translations::get_translation,
+    translations::{get_translation, get_translation_params},
     utils::{
         lcd_abstract::{LcdAbstract, PrintAlign},
         stackmat::ms_to_time_str,
@@ -232,7 +232,7 @@ async fn process_lcd<C: CharsetWithFallback>(
             lcd_driver
                 .print(
                     1,
-                    &alloc::format!("In: {delegate_remaining}"),
+                    &get_translation_params("DELEGATE_WAIT", &[delegate_remaining]),
                     PrintAlign::Center,
                     true,
                 )
@@ -276,7 +276,7 @@ async fn process_lcd<C: CharsetWithFallback>(
             lcd_driver
                 .print(
                     0,
-                    &get_translation("SCAN_COMPETITOR_1")?,
+                    &get_translation("SCAN_COMPETITOR_1"),
                     PrintAlign::Center,
                     true,
                 )
@@ -296,7 +296,7 @@ async fn process_lcd<C: CharsetWithFallback>(
                 lcd_driver
                     .print(
                         1,
-                        &get_translation("SCAN_COMPETITOR_2")?,
+                        &get_translation("SCAN_COMPETITOR_2"),
                         PrintAlign::Center,
                         true,
                     )

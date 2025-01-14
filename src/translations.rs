@@ -1,3 +1,5 @@
+use core::fmt::Display;
+
 use alloc::{
     string::{String, ToString},
     vec::Vec,
@@ -29,16 +31,38 @@ pub fn init_translations() {
             "SCAN_COMPETITOR_2",
             "of a competitor",
         ));
+
+        t.push(TranslationRecord::new("DELEGATE_WAIT", "In: {0}"));
     }
 }
 
-pub fn get_translation(key: &str) -> Option<String> {
+pub fn get_translation(key: &str) -> String {
     if let Ok(t) = TRANSLATIONS.try_lock() {
         return t
             .iter()
             .find(|t| t.key == key)
-            .map(|t| t.translation.clone());
+            .map(|t| t.translation.clone())
+            .unwrap_or("#####".to_string());
     }
 
-    None
+    "#####".to_string()
+}
+
+pub fn get_translation_params<T: Display>(key: &str, params: &[T]) -> String {
+    if let Ok(t) = TRANSLATIONS.try_lock() {
+        let mut translation = t
+            .iter()
+            .find(|t| t.key == key)
+            .map(|t| t.translation.clone())
+            .unwrap_or("#####".to_string());
+
+        for (i, arg) in params.iter().enumerate() {
+            let placeholder = alloc::format!("{{{}}}", i);
+            translation = translation.replace(&placeholder, &arg.to_string());
+        }
+
+        return translation;
+    }
+
+    "#####".to_string()
 }
