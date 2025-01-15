@@ -197,7 +197,12 @@ async fn process_lcd<C: CharsetWithFallback>(
 ) -> Option<()> {
     if let Some(error_text) = current_state.error_text {
         lcd_driver
-            .print(0, "Error", PrintAlign::Center, true)
+            .print(
+                0,
+                &get_translation("ERROR_HEADER"),
+                PrintAlign::Center,
+                true,
+            )
             .ok()?;
 
         lcd_driver
@@ -218,21 +223,36 @@ async fn process_lcd<C: CharsetWithFallback>(
 
         if delegate_remaining == 0 {
             lcd_driver
-                .print(0, "Waiting for", PrintAlign::Center, true)
-                .ok()?;
-
-            lcd_driver
-                .print(1, "delegate", PrintAlign::Center, true)
-                .ok()?;
-        } else {
-            lcd_driver
-                .print(0, "Delegate", PrintAlign::Center, true)
+                .print(
+                    0,
+                    &get_translation("DELEGATE_CALLED_1"),
+                    PrintAlign::Center,
+                    true,
+                )
                 .ok()?;
 
             lcd_driver
                 .print(
                     1,
-                    &get_translation_params("DELEGATE_WAIT", &[delegate_remaining]),
+                    &get_translation("DELEGATE_CALLED_2"),
+                    PrintAlign::Center,
+                    true,
+                )
+                .ok()?;
+        } else {
+            lcd_driver
+                .print(
+                    0,
+                    &get_translation("DELEGATE_WAIT_HEADER"),
+                    PrintAlign::Center,
+                    true,
+                )
+                .ok()?;
+
+            lcd_driver
+                .print(
+                    1,
+                    &get_translation_params("DELEGATE_WAIT_TIME", &[delegate_remaining]),
                     PrintAlign::Center,
                     true,
                 )
@@ -245,11 +265,11 @@ async fn process_lcd<C: CharsetWithFallback>(
     match current_state.scene {
         Scene::WifiConnect => {
             lcd_driver
-                .print(0, "Waiting for", PrintAlign::Center, true)
+                .print(0, &get_translation("WIFI_WAIT_1"), PrintAlign::Center, true)
                 .ok()?;
 
             lcd_driver
-                .print(1, "WIFI connection", PrintAlign::Center, true)
+                .print(1, &get_translation("WIFI_WAIT_2"), PrintAlign::Center, true)
                 .ok()?;
 
             wifi_setup_sig.wait().await;
@@ -258,7 +278,12 @@ async fn process_lcd<C: CharsetWithFallback>(
         Scene::AutoSetupWait => {
             let wifi_ssid = alloc::format!("FKM-{:X}", crate::utils::get_efuse_u32());
             lcd_driver
-                .print(0, "Connect to:", PrintAlign::Center, true)
+                .print(
+                    0,
+                    &get_translation("WIFI_SETUP_HEADER"),
+                    PrintAlign::Center,
+                    true,
+                )
                 .ok()?;
 
             lcd_driver
@@ -267,10 +292,12 @@ async fn process_lcd<C: CharsetWithFallback>(
         }
         Scene::MdnsWait => {
             lcd_driver
-                .print(0, "Waiting for", PrintAlign::Center, true)
+                .print(0, &get_translation("MDNS_WAIT_1"), PrintAlign::Center, true)
                 .ok()?;
 
-            lcd_driver.print(1, "MDNS", PrintAlign::Center, true).ok()?;
+            lcd_driver
+                .print(1, &get_translation("MDNS_WAIT_2"), PrintAlign::Center, true)
+                .ok()?;
         }
         Scene::WaitingForCompetitor => {
             lcd_driver
@@ -287,7 +314,7 @@ async fn process_lcd<C: CharsetWithFallback>(
                 lcd_driver
                     .print(
                         1,
-                        &alloc::format!("of a competitor ({time_str})"),
+                        &get_translation_params("SCAN_COMPETITOR_3", &[time_str]),
                         PrintAlign::Center,
                         true,
                     )
@@ -393,17 +420,27 @@ async fn process_lcd<C: CharsetWithFallback>(
 
             if !current_state.time_confirmed {
                 lcd_driver
-                    .print(1, "Confirm the time", PrintAlign::Right, true)
+                    .print(1, &get_translation("CONFIRM_TIME"), PrintAlign::Right, true)
                     .ok()?;
             } else if current_state.current_judge.is_none() {
                 lcd_driver
-                    .print(1, "Scan the judge's card", PrintAlign::Right, true)
+                    .print(
+                        1,
+                        &get_translation("SCAN_JUDGE_CARD"),
+                        PrintAlign::Right,
+                        true,
+                    )
                     .ok()?;
             } else if current_state.current_competitor.is_some()
                 && current_state.current_judge.is_some()
             {
                 lcd_driver
-                    .print(1, "Scan the competitor's card", PrintAlign::Right, true)
+                    .print(
+                        1,
+                        &get_translation("SCAN_COMPETITOR_CARD"),
+                        PrintAlign::Right,
+                        true,
+                    )
                     .ok()?;
             }
         }
@@ -426,13 +463,33 @@ async fn process_lcd_overwrite(
         _ = lcd_driver.print(1, &alloc::format!("{prog}%"), PrintAlign::Center, true);
     } else if current_state.server_connected == Some(false) {
         _ = lcd_driver.print(0, "Server", PrintAlign::Center, true);
-        _ = lcd_driver.print(1, "Disconnected", PrintAlign::Center, true);
+        _ = lcd_driver.print(
+            1,
+            &get_translation("DISCONNECTED_FOOTER"),
+            PrintAlign::Center,
+            true,
+        );
     } else if current_state.device_added == Some(false) {
-        _ = lcd_driver.print(0, "Device not added", PrintAlign::Center, true);
-        _ = lcd_driver.print(1, "Press submit to connect", PrintAlign::Center, true);
+        _ = lcd_driver.print(
+            0,
+            &get_translation("DEV_NOT_ADDED_HEADER"),
+            PrintAlign::Center,
+            true,
+        );
+        _ = lcd_driver.print(
+            1,
+            &get_translation("DEV_NOT_ADDED_FOOTER"),
+            PrintAlign::Center,
+            true,
+        );
     } else if current_state.stackmat_connected == Some(false) {
         _ = lcd_driver.print(0, "Stackmat", PrintAlign::Center, true);
-        _ = lcd_driver.print(1, "Disconnected", PrintAlign::Center, true);
+        _ = lcd_driver.print(
+            1,
+            &get_translation("DISCONNECTED_FOOTER"),
+            PrintAlign::Center,
+            true,
+        );
     } else {
         return false;
     }

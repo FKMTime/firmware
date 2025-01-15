@@ -31,8 +31,50 @@ pub fn init_translations() {
             "SCAN_COMPETITOR_2",
             "of a competitor",
         ));
+        t.push(TranslationRecord::new(
+            "SCAN_COMPETITOR_3",
+            "of a competitor ({0})",
+        ));
 
-        t.push(TranslationRecord::new("DELEGATE_WAIT", "In: {0}"));
+        t.push(TranslationRecord::new("CONFIRM_TIME", "Confirm the time"));
+        t.push(TranslationRecord::new(
+            "SCAN_JUDGE_CARD",
+            "Scan the judge's card",
+        ));
+        t.push(TranslationRecord::new(
+            "SCAN_COMPETITOR_CARD",
+            "Scan the competitor's card",
+        ));
+
+        t.push(TranslationRecord::new("WIFI_WAIT_1", "Waiting for"));
+        t.push(TranslationRecord::new("WIFI_WAIT_2", "WiFi connection"));
+
+        t.push(TranslationRecord::new("MDNS_WAIT_1", "Waiting for"));
+        t.push(TranslationRecord::new("MDNS_WAIT_2", "Server Discovery"));
+
+        t.push(TranslationRecord::new("WIFI_SETUP_HEADER", "Connect to:"));
+
+        t.push(TranslationRecord::new("DELEGATE_WAIT_HEADER", "Delegate"));
+        t.push(TranslationRecord::new("DELEGATE_WAIT_TIME", "In: {0}"));
+
+        t.push(TranslationRecord::new("DELEGATE_CALLED_1", "Waiting for"));
+        t.push(TranslationRecord::new("DELEGATE_CALLED_2", "delegate"));
+
+        t.push(TranslationRecord::new("ERROR_HEADER", "Error"));
+
+        t.push(TranslationRecord::new(
+            "DISCONNECTED_FOOTER",
+            "Disconnected",
+        ));
+
+        t.push(TranslationRecord::new(
+            "DEV_NOT_ADDED_HEADER",
+            "Device not added",
+        ));
+        t.push(TranslationRecord::new(
+            "DEV_NOT_ADDED_FOOTER",
+            "Press submit to connect",
+        ));
     }
 }
 
