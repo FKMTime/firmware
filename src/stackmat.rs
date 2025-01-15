@@ -106,6 +106,19 @@ pub async fn stackmat_task(
                             state.scene = Scene::WaitingForCompetitor;
                             state.solve_time = None;
                             state.penalty = None;
+                            state.inspection_start = None;
+                            state.inspection_end = None;
+                        } else if state.current_competitor.is_some() && state.scene == Scene::Timer
+                        {
+                            state.scene = Scene::Finished;
+                            state.solve_time = Some(0);
+                            state.penalty = Some(-1);
+
+                            if state.session_id.is_none() {
+                                state.session_id = Some(uuid::Uuid::new_v4().to_string());
+                            }
+
+                            state.time_confirmed = true;
                         }
 
                         display.set_data(&[255; 6]);
