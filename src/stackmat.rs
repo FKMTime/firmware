@@ -17,8 +17,8 @@ pub async fn stackmat_task(
     display: ShifterValueRange,
     global_state: GlobalState,
 ) {
-    let serial_config = esp_hal::uart::Config::default().baudrate(1200);
-    let mut uart = UartRx::new_with_config(uart, serial_config, uart_pin).unwrap();
+    let serial_config = esp_hal::uart::Config::default().with_baudrate(1200);
+    let mut uart = UartRx::new(uart, serial_config).unwrap().with_rx(uart_pin);
 
     let mut buf = [0; 8];
     let mut read_buf = [0; 8];
@@ -33,7 +33,12 @@ pub async fn stackmat_task(
         }
 
         Timer::after_millis(10).await;
-        let n = UartRx::drain_fifo(&mut uart, &mut read_buf);
+        let n = uart.read_buffered_bytes(&mut read_buf);
+        let Ok(n) = n else {
+            log::error!("uart: read_bytes err");
+            continue;
+        };
+
         if n == 0 {
             continue;
         }

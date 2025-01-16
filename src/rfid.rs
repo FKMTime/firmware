@@ -4,13 +4,12 @@ use crate::structs::{CardInfoResponsePacket, SolveConfirmPacket};
 use alloc::string::ToString;
 use anyhow::{anyhow, Result};
 use embassy_time::{Duration, Timer};
-use esp_hal::prelude::*;
 use esp_hal::{
-    dma::{Dma, DmaRxBuf, DmaTxBuf},
+    dma::{DmaRxBuf, DmaTxBuf},
     dma_buffers,
     gpio::AnyPin,
-    peripherals::DMA,
-    spi::{master::Spi, SpiMode},
+    spi::{master::Spi, Mode},
+    time::RateExtU32,
 };
 use esp_hal_mfrc522::consts::UidSize;
 
@@ -22,37 +21,32 @@ pub async fn rfid_task(
     #[cfg(feature = "esp32c3")] cs_pin: adv_shift_registers::wrappers::ShifterPin,
     #[cfg(feature = "esp32")] cs_pin: esp_hal::gpio::Output<'static>,
     spi: esp_hal::peripherals::SPI2,
-    dma: DMA,
+
+    #[cfg(feature = "esp32c3")] dma_chan: esp_hal::dma::DmaChannel0,
+    #[cfg(feature = "esp32")] dma_chan: esp_hal::dma::Spi2DmaChannel,
+
     global_state: GlobalState,
 ) {
-    let dma = Dma::new(dma);
-
-    #[cfg(feature = "esp32c3")]
-    let dma_chan = dma.channel0;
-
-    #[cfg(feature = "esp32")]
-    let dma_chan = dma.spi2channel;
-
     let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(512);
     let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
     let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
-    let dma_chan = dma_chan.configure(false, esp_hal::dma::DmaPriority::Priority0);
 
-    let spi = Spi::new_with_config(
+    let spi = Spi::new(
         spi,
-        esp_hal::spi::master::Config {
-            frequency: 400.kHz(),
-            mode: SpiMode::Mode0,
-            ..Default::default()
-        },
-    );
-    let spi = spi.with_sck(sck).with_miso(miso).with_mosi(mosi);
-    let spi = spi
-        .with_dma(dma_chan)
-        .with_buffers(dma_rx_buf, dma_tx_buf)
-        .into_async();
+        esp_hal::spi::master::Config::default()
+            .with_frequency(400.kHz())
+            .with_mode(Mode::_0),
+    )
+    .unwrap()
+    .with_sck(sck)
+    .with_miso(miso)
+    .with_mosi(mosi)
+    .with_dma(dma_chan)
+    .with_buffers(dma_rx_buf, dma_tx_buf)
+    .into_async();
 
-    let mut mfrc522 = esp_hal_mfrc522::MFRC522::new(spi, cs_pin);
+    let mut mfrc522 =
+        esp_hal_mfrc522::MFRC522::new(spi, cs_pin, || embassy_time::Instant::now().as_micros());
     loop {
         _ = mfrc522.pcd_init().await;
         if mfrc522.pcd_is_init().await {

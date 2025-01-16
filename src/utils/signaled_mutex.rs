@@ -61,7 +61,7 @@ pub struct SignaledMutexGuard<'a, M: RawMutex, T: Clone + PartialEq> {
     old_value: T,
 }
 
-impl<'a, M: RawMutex, T: Clone + PartialEq> Drop for SignaledMutexGuard<'a, M, T> {
+impl<M: RawMutex, T: Clone + PartialEq> Drop for SignaledMutexGuard<'_, M, T> {
     fn drop(&mut self) {
         if *self.inner_guard != self.old_value {
             self.update_sig.signal(()); // signal value change (if actually changed)
@@ -69,14 +69,14 @@ impl<'a, M: RawMutex, T: Clone + PartialEq> Drop for SignaledMutexGuard<'a, M, T
     }
 }
 
-impl<'a, M: RawMutex, T: Clone + PartialEq> core::ops::Deref for SignaledMutexGuard<'a, M, T> {
+impl<M: RawMutex, T: Clone + PartialEq> core::ops::Deref for SignaledMutexGuard<'_, M, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         self.inner_guard.deref()
     }
 }
 
-impl<'a, M: RawMutex, T: Clone + PartialEq> core::ops::DerefMut for SignaledMutexGuard<'a, M, T> {
+impl<M: RawMutex, T: Clone + PartialEq> core::ops::DerefMut for SignaledMutexGuard<'_, M, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.inner_guard.deref_mut()
     }

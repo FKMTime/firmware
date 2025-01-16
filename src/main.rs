@@ -10,9 +10,9 @@ use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
 use embassy_time::{Instant, Timer};
 use esp_backtrace as _;
+use esp_hal::gpio::Pin;
 use esp_hal::{
     gpio::{Input, Output},
-    prelude::*,
     timer::timg::TimerGroup,
 };
 use esp_storage::FlashStorage;
@@ -56,11 +56,11 @@ pub fn custom_rng(buf: &mut [u8]) -> Result<(), getrandom::Error> {
 }
 getrandom::register_custom_getrandom!(custom_rng);
 
-#[main]
+#[esp_hal_embassy::main]
 async fn main(spawner: Spawner) {
     let peripherals = esp_hal::init({
         let mut config = esp_hal::Config::default();
-        config.cpu_clock = CpuClock::max();
+        config.cpu_clock = esp_hal::clock::CpuClock::max();
         config
     });
 
@@ -227,7 +227,10 @@ async fn main(spawner: Spawner) {
         sck,
         cs_pin,
         peripherals.SPI2,
-        peripherals.DMA,
+        #[cfg(feature = "esp32c3")]
+        peripherals.DMA_CH0,
+        #[cfg(feature = "esp32")]
+        peripherals.DMA_SPI2,
         global_state.clone(),
     ));
 

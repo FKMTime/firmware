@@ -5,33 +5,33 @@ authors = ["filipton <filipton12@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-esp-backtrace = { version = "0.14.2", features = [ "exception-handler", "panic-handler", "println" ] }
-esp-hal = { version = "0.22.0", features = [  ] }
-esp-println = { version = "0.12.0", features = ["log"] }
-log = { version = "0.4.22" }
-esp-wifi = { version = "0.11.0", features = ["coex"] }
-esp-hal-embassy = { version = "0.5.0", features = ["integrated-timers"] }
-embassy-executor = { version = "0.6.3", features = ["arch-riscv32", "nightly"] }
-embassy-net = { version = "0.5.0", features = ["tcp", "udp", "multicast", "dhcpv4", "medium-ethernet", "proto-ipv4"] }
-embassy-time = { version = "0.3.2" }
+esp-backtrace = { version = "0.15.0", features = [ "exception-handler", "panic-handler", "println" ] }
+esp-hal = { version = "0.23.1", features = [  ] }
+esp-println = { version = "0.13.0", features = ["log"] }
+log = { version = "0.4.25" }
+esp-wifi = { version = "0.12.0", features = ["coex"] }
+esp-hal-embassy = { version = "0.6.0", features = [] }
+embassy-executor = { version = "0.7.0", features = ["arch-riscv32", "nightly"] }
+embassy-net = { version = "0.6.0", features = ["tcp", "udp", "multicast", "dhcpv4", "medium-ethernet", "proto-ipv4"] }
+embassy-time = { version = "0.4.0" }
 esp-storage = { version = "0.4.0", features = [] }
 embedded-storage = "0.3.1"
 static_cell = { version = "2.1.0", features = ["nightly"] }
 heapless = { version = "0.8.0", default-features = false }
-esp-alloc = "0.5.0"
+esp-alloc = "0.6.0"
 esp-hal-wifimanager = { git = "https://github.com/filipton/esp-hal-wifimanager", default-features = false, features = ["ap", "ble"] }
 serde = { version = "1.0.217", features = ["alloc", "derive"], default-features = false }
 serde_json = { version = "1.0.135", default-features = false, features = ["alloc"] }
 adv-shift-registers = "0.2.4"
 embedded-hal = "1.0.0"
-esp-hal-mfrc522 = { version = "0.1.1", features = ["embassy-time"] }
+esp-hal-mfrc522 = { version = "0.1.1", features = [] }
 esp-hal-mdns = "0.1.0"
 embedded-io-async = "0.6.1"
 macros = { path = "./macros" }
 nb = "1.1.0"
 embassy-futures = "0.1.1"
 hd44780-driver = { git = "https://github.com/JohnDoneth/hd44780-driver.git" }
-embassy-sync = "0.6.1"
+embassy-sync = "0.6.2"
 ws-framer = { version = "0.1.0", features = ["alloc"] }
 embedded-hal-async = "1.0.0"
 portable-atomic = { version = "1.10.0", default-features = false }
@@ -39,9 +39,9 @@ critical-section = "1.2.0"
 getrandom = { version = "0.2.15", features = ["custom"] }
 uuid = { version = "1.12.0", default-features = false, features = ["v4"] }
 dyn-smooth = "0.2.0"
-esp-hal-ota = { version = "0.3.0", features = [] }
-esp32c3 = { version = "0.26.0", optional = true }
-esp32 = { version = "0.34.0", optional = true }
+esp-hal-ota = { version = "0.3.2", features = [] }
+esp32c3 = { version = "0.27.0", optional = true }
+esp32 = { version = "0.35.0", optional = true }
 anyhow = { version = "1.0.95", default-features = false }
 
 [features]
