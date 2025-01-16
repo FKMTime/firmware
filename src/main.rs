@@ -316,6 +316,8 @@ async fn main(spawner: Spawner) {
         }
 
         if !tmp_logs.is_empty() {
+            tmp_logs.reverse();
+
             ws::send_packet(structs::TimerPacket {
                 tag: None,
                 data: structs::TimerPacketInner::Logs { logs: tmp_logs },
