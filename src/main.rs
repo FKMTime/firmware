@@ -19,10 +19,10 @@ use esp_storage::FlashStorage;
 use state::{get_ota_state, GlobalStateInner, SavedGlobalState, Scene};
 use structs::ConnSettings;
 use translations::init_translations;
-use utils::{
-    logger::{init_global_logs_store, FkmLogger},
-    set_brownout_detection,
-};
+use utils::{logger::FkmLogger, set_brownout_detection};
+
+#[cfg(feature = "esp32")]
+use esp_hal::time::RateExtU32;
 
 mod battery;
 mod buttons;
@@ -80,6 +80,7 @@ async fn main(spawner: Spawner) {
         static mut HEAP2: core::mem::MaybeUninit<[u8; 90 * 1024]> =
             core::mem::MaybeUninit::uninit();
 
+        #[allow(static_mut_refs)]
         unsafe {
             esp_alloc::HEAP.add_region(esp_alloc::HeapRegion::new(
                 HEAP2.as_mut_ptr() as *mut u8,
@@ -89,7 +90,6 @@ async fn main(spawner: Spawner) {
         }
     }
 
-    init_global_logs_store();
     let nvs = esp_hal_wifimanager::Nvs::new_from_part_table().unwrap();
 
     set_brownout_detection(false);
@@ -188,11 +188,11 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "esp32")]
     let i2c = esp_hal::i2c::master::I2c::new(
         peripherals.I2C0,
-        esp_hal::i2c::master::Config {
-            frequency: 100.kHz(),
-            timeout: None,
-        },
+        esp_hal::i2c::master::Config::default()
+            .with_frequency(100.kHz())
+            .with_timeout(esp_hal::i2c::master::BusTimeout::Maximum),
     )
+    .unwrap()
     .with_sda(peripherals.GPIO21)
     .with_scl(peripherals.GPIO22);
 
@@ -306,26 +306,21 @@ async fn main(spawner: Spawner) {
         Timer::after_millis(LOG_SEND_INTERVAL_MS).await;
 
         // TODO: move to own task
-        unsafe {
-            if let Some(logs_buf) = utils::logger::GLOBAL_LOGS.get_mut() {
-                let logs: Vec<structs::LogData> = logs_buf
-                    .drain(..logs_buf.len())
-                    .map(|msg| structs::LogData { millis: 0, msg })
-                    .rev()
-                    .collect();
+        let mut tmp_logs: Vec<structs::LogData> = Vec::new();
+        while let Ok(msg) = utils::logger::LOGS_CHANNEL.try_receive() {
+            tmp_logs.push(structs::LogData { millis: 0, msg });
+        }
 
-                if get_ota_state() {
-                    continue;
-                }
+        if get_ota_state() {
+            continue;
+        }
 
-                if !logs.is_empty() {
-                    ws::send_packet(structs::TimerPacket {
-                        tag: None,
-                        data: structs::TimerPacketInner::Logs { logs },
-                    })
-                    .await;
-                }
-            }
+        if !tmp_logs.is_empty() {
+            ws::send_packet(structs::TimerPacket {
+                tag: None,
+                data: structs::TimerPacketInner::Logs { logs: tmp_logs },
+            })
+            .await;
         }
 
         if (Instant::now() - heap_start).as_millis() >= PRINT_HEAP_INTERVAL_MS {

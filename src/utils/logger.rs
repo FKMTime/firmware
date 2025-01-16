@@ -1,18 +1,10 @@
 use crate::state::get_ota_state;
-use alloc::{string::String, vec::Vec};
-use core::cell::OnceCell;
+use alloc::string::String;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
 
-pub const FILTER_MAX: log::LevelFilter = log::LevelFilter::Debug;
-pub static mut GLOBAL_LOGS: OnceCell<Vec<String>> = OnceCell::new();
 const MAX_LOGS_SIZE: usize = 100;
-
-pub fn init_global_logs_store() {
-    unsafe {
-        GLOBAL_LOGS
-            .set(Vec::new())
-            .expect("Failed to set GLOBAL_LOGS");
-    }
-}
+pub const FILTER_MAX: log::LevelFilter = log::LevelFilter::Debug;
+pub static LOGS_CHANNEL: Channel<CriticalSectionRawMutex, String, MAX_LOGS_SIZE> = Channel::new();
 
 pub struct FkmLogger;
 
@@ -60,21 +52,14 @@ impl log::Log for FkmLogger {
         esp_println::println!("{}{} - {}{}", color, record.level(), record.args(), reset);
 
         if !get_ota_state() {
-            unsafe {
-                if let Some(logs_buf) = GLOBAL_LOGS.get_mut() {
-                    logs_buf.push(alloc::format!(
-                        "{}{} - {}{}",
-                        color,
-                        record.level(),
-                        record.args(),
-                        reset
-                    ));
-
-                    if logs_buf.len() > MAX_LOGS_SIZE {
-                        logs_buf.remove(0);
-                    }
-                }
+            if LOGS_CHANNEL.is_full() {
+                _ = LOGS_CHANNEL.try_receive();
             }
+
+            let msg = alloc::format!("{}{} - {}{}", color, record.level(), record.args(), reset);
+
+            // TODO: maybe add error handling?
+            _ = LOGS_CHANNEL.try_send(msg);
         }
     }
 

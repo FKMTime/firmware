@@ -29,7 +29,7 @@ pub async fn battery_read_task(
     let mut adc_pin = adc_config.enable_pin_with_cal::<_, AdcCal>(adc_pin, Attenuation::_11dB);
 
     #[cfg(feature = "esp32")]
-    let mut adc_pin = adc_config.enable_pin(adc_pin, Attenuation::Attenuation11dB);
+    let mut adc_pin = adc_config.enable_pin(adc_pin, Attenuation::_11dB);
 
     let mut adc = Adc::new(adc, adc_config);
 
