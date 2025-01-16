@@ -5,7 +5,7 @@ authors = ["filipton <filipton12@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-esp-backtrace = { version = "0.15.0", features = [ "exception-handler", "panic-handler", "println" ] }
+esp-backtrace = { version = "0.15.0", features = [ "exception-handler", "panic-handler", "println", "custom-pre-backtrace", "custom-halt" ] }
 esp-hal = { version = "0.23.1", features = [  ] }
 esp-println = { version = "0.13.0", features = ["log"] }
 log = { version = "0.4.25" }

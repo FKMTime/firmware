@@ -276,7 +276,7 @@ async fn delegate_hold(
         }
         ButtonTrigger::HoldTimed(_, _) => {
             let mut state_val = state.state.value().await;
-            if state_val.should_skip_other_actions() {
+            if state_val.should_skip_other_actions() || state_val.delegate_used {
                 return Ok(false);
             }
 
@@ -290,7 +290,7 @@ async fn delegate_hold(
         }
         ButtonTrigger::HoldOnce(_) => {
             let mut state_val = state.state.lock().await;
-            if state_val.should_skip_other_actions() {
+            if state_val.should_skip_other_actions() || state_val.delegate_used {
                 return Ok(false);
             }
 
@@ -338,6 +338,7 @@ async fn delegate_hold(
                 state_val.scene = Scene::Finished;
 
                 state_val.time_confirmed = true;
+                state_val.delegate_used = true;
                 if !resp.should_scan_cards {
                     state_val.reset_solve_state(Some(&state.nvs)).await;
                 }

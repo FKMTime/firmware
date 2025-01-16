@@ -122,6 +122,7 @@ pub struct SignaledGlobalStateInner {
     pub current_judge: Option<u64>,
     pub competitor_display: Option<String>,
 
+    pub delegate_used: bool,
     pub delegate_hold: Option<u8>,
     pub ota_update: Option<u8>,
 }
@@ -160,6 +161,7 @@ impl SignaledGlobalStateInner {
             current_judge: None,
             competitor_display: None,
 
+            delegate_used: false,
             delegate_hold: None,
             ota_update: None,
         }
@@ -200,6 +202,9 @@ impl SignaledGlobalStateInner {
         self.session_id = None;
         self.time_confirmed = false;
         self.scene = Scene::WaitingForCompetitor;
+        self.delegate_used = false;
+        self.inspection_start = None;
+        self.inspection_end = None;
 
         if let Some(nvs) = save_nvs {
             SavedGlobalState::clear_saved_global_state(nvs).await;
@@ -214,9 +219,10 @@ impl SignaledGlobalStateInner {
             current_competitor: self.current_competitor?,
             penalty: self.penalty.unwrap_or(0),
             solve_time: self.solve_time?,
-            inspection_time: self
-                .inspection_end
-                .map(|e| (e - self.inspection_start.unwrap_or(Instant::now())).as_millis()),
+            inspection_time: self.inspection_end.map(|e| {
+                (e.saturating_duration_since(self.inspection_start.unwrap_or(Instant::now())))
+                    .as_millis()
+            }),
             solve_epoch: current_epoch(),
         })
     }

@@ -71,13 +71,16 @@ pub async fn stackmat_task(
                         }
                     } else if parsed.0 == StackmatTimerState::Stopped {
                         let mut state = global_state.state.lock().await;
-                        if state.solve_time.is_none() && state.last_solve_time != Some(parsed.1) {
+                        let last_solve_diff = state.last_solve_time.unwrap_or(0).abs_diff(parsed.1);
+
+                        if state.solve_time.is_none() && last_solve_diff > 10 {
                             let inspection_time = state
                                 .inspection_end
                                 .zip(state.inspection_start)
                                 .map(|(end, start)| (end - start).as_millis())
                                 .unwrap_or(0);
 
+                            state.delegate_used = false;
                             state.solve_time = Some(parsed.1);
                             state.penalty = if inspection_time >= INSPECTION_TIME_DNF {
                                 Some(-1)
