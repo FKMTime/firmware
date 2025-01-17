@@ -1,4 +1,5 @@
 pub mod arc;
+pub mod backtrace_store;
 pub mod buttons;
 pub mod lcd_abstract;
 pub mod logger;
