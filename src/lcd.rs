@@ -106,6 +106,8 @@ pub async fn lcd_task(
     );
 
     _ = lcd_driver.display_on_lcd(&mut lcd, &mut delay);
+
+    #[cfg(not(feature = "bat_dev_lcd"))]
     Timer::after_millis(2500).await;
 
     _ = lcd_driver.clear_all();
@@ -195,6 +197,32 @@ async fn process_lcd<C: CharsetWithFallback>(
     delay: &mut Delay,
     wifi_setup_sig: &Signal<NoopRawMutex, ()>,
 ) -> Option<()> {
+    #[cfg(feature = "bat_dev_lcd")]
+    {
+        let battery_read = current_state.current_bat_read.unwrap_or(-1.0);
+        lcd_driver
+            .print(
+                0,
+                &alloc::format!("BAT: {battery_read}"),
+                PrintAlign::Left,
+                true,
+            )
+            .ok()?;
+
+        if let Some(avg) = current_state.avg_bat_read {
+            lcd_driver
+                .print(
+                    1,
+                    &alloc::format!("AVG: {avg}"),
+                    PrintAlign::Left,
+                    true,
+                )
+                .ok()?;
+        }
+
+        return Some(());
+    }
+
     if let Some(error_text) = current_state.error_text {
         lcd_driver
             .print(

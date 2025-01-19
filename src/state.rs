@@ -125,6 +125,12 @@ pub struct SignaledGlobalStateInner {
     pub delegate_used: bool,
     pub delegate_hold: Option<u8>,
     pub ota_update: Option<u8>,
+
+    #[cfg(feature = "bat_dev_lcd")]
+    pub current_bat_read: Option<f32>,
+
+    #[cfg(feature = "bat_dev_lcd")]
+    pub avg_bat_read: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,6 +170,12 @@ impl SignaledGlobalStateInner {
             delegate_used: false,
             delegate_hold: None,
             ota_update: None,
+
+            #[cfg(feature = "bat_dev_lcd")]
+            current_bat_read: None,
+
+            #[cfg(feature = "bat_dev_lcd")]
+            avg_bat_read: None,
         }
     }
 

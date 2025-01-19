@@ -51,6 +51,7 @@ impl log::Log for FkmLogger {
 
         esp_println::println!("{}{} - {}{}", color, record.level(), record.args(), reset);
 
+        #[cfg(not(feature = "bat_dev_lcd"))]
         if !get_ota_state() {
             if LOGS_CHANNEL.is_full() {
                 _ = LOGS_CHANNEL.try_receive();

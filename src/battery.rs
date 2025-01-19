@@ -22,6 +22,8 @@ pub async fn battery_read_task(
     #[cfg(feature = "esp32")] adc_pin: GpioPin<34>,
 
     adc: esp_hal::peripherals::ADC1,
+
+    #[cfg(feature = "bat_dev_lcd")] state: crate::state::GlobalState,
 ) {
     let mut adc_config = AdcConfig::new();
 
@@ -46,6 +48,12 @@ pub async fn battery_read_task(
             .unwrap_or(0);
         let read = smoother.tick(read as f32);
 
+        #[cfg(feature = "bat_dev_lcd")]
+        {
+            let mut state = state.state.lock().await;
+            state.current_bat_read = Some(read);
+        }
+
         if (Instant::now() - battery_start).as_millis() < BATTERY_SEND_INTERVAL_MS {
             continue;
         }
@@ -64,6 +72,11 @@ pub async fn battery_read_task(
         .await;
 
         log::info!("calc({read}): {bat_calc_mv}mV {bat_percentage}%");
+        #[cfg(feature = "bat_dev_lcd")]
+        {
+            let mut state = state.state.lock().await;
+            state.avg_bat_read = Some(read);
+        }
     }
 }
 
