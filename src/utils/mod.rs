@@ -3,6 +3,7 @@ pub mod backtrace_store;
 pub mod buttons;
 pub mod lcd_abstract;
 pub mod logger;
+pub mod rolling_average;
 pub mod signaled_mutex;
 pub mod stackmat;
 
