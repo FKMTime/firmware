@@ -135,6 +135,5 @@ fn calculate(x: f64) -> f64 {
 
 #[cfg(feature = "esp32c3")]
 fn calculate(x: f64) -> f64 {
-    _ = x;
-    0.0
+    1.18323 * x + 276.754
 }
