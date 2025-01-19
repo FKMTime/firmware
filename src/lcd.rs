@@ -97,14 +97,20 @@ pub async fn lcd_task(
         PrintAlign::Left,
         true,
     );
-    _ = lcd_driver.print(0, &alloc::format!("{}%", 69), PrintAlign::Right, false);
     _ = lcd_driver.print(
         1,
         &alloc::format!("VER: {}", crate::version::VERSION),
         PrintAlign::Left,
         true,
     );
+    _ = lcd_driver.display_on_lcd(&mut lcd, &mut delay);
 
+    _ = lcd_driver.print(
+        0,
+        &alloc::format!("{}%", global_state.show_battery.wait().await),
+        PrintAlign::Right,
+        false,
+    );
     _ = lcd_driver.display_on_lcd(&mut lcd, &mut delay);
 
     #[cfg(not(feature = "bat_dev_lcd"))]
@@ -211,12 +217,7 @@ async fn process_lcd<C: CharsetWithFallback>(
 
         if let Some(avg) = current_state.avg_bat_read {
             lcd_driver
-                .print(
-                    1,
-                    &alloc::format!("AVG: {avg}"),
-                    PrintAlign::Left,
-                    true,
-                )
+                .print(1, &alloc::format!("AVG: {avg}"), PrintAlign::Left, true)
                 .ok()?;
         }
 

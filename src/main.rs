@@ -209,7 +209,6 @@ async fn main(spawner: Spawner) {
     _ = spawner.spawn(battery::battery_read_task(
         battery_input,
         peripherals.ADC1,
-        #[cfg(feature = "bat_dev_lcd")]
         global_state.clone(),
     ));
     _ = spawner.spawn(buttons::buttons_task(

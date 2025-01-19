@@ -8,12 +8,21 @@ use esp_hal::{
 #[cfg(feature = "esp32c3")]
 type AdcCal = esp_hal::analog::adc::AdcCalBasic<esp_hal::peripherals::ADC1>;
 
-const BAT_MIN: f64 = 3300.0;
+const BAT_MIN: f64 = 3200.0;
 const BAT_MAX: f64 = 4200.0;
-/*
-const R1: f64 = 6900.0;
-const R2: f64 = 10000.0;
-*/
+const BATTERY_CURVE: [(f64, u8); 11] = [
+    (3200.0, 0),
+    (3250.0, 5),
+    (3300.0, 10),
+    (3350.0, 20),
+    (3400.0, 30),
+    (3500.0, 40),
+    (3600.0, 50),
+    (3700.0, 60),
+    (3800.0, 70),
+    (3900.0, 80),
+    (4200.0, 100),
+];
 
 #[embassy_executor::task]
 pub async fn battery_read_task(
@@ -22,8 +31,7 @@ pub async fn battery_read_task(
     #[cfg(feature = "esp32")] adc_pin: GpioPin<34>,
 
     adc: esp_hal::peripherals::ADC1,
-
-    #[cfg(feature = "bat_dev_lcd")] state: crate::state::GlobalState,
+    state: crate::state::GlobalState,
 ) {
     let mut adc_config = AdcConfig::new();
 
@@ -42,12 +50,22 @@ pub async fn battery_read_task(
     let sensitivity = 0.5;
     let mut smoother = dyn_smooth::DynamicSmootherEcoF32::new(base_freq, sample_freq, sensitivity);
     let mut avg = RollingAverage::<128>::new();
+    let mut lcd_sent = false;
 
     loop {
         Timer::after_millis(100).await;
         let read = macros::nb_to_fut!(adc.read_oneshot(&mut adc_pin))
             .await
             .unwrap_or(0);
+
+        if !lcd_sent {
+            state
+                .show_battery
+                .signal(bat_percentage(calculate(read as f64)));
+
+            lcd_sent = true;
+        }
+
         let read = smoother.tick(read as f32);
         avg.push(read);
 
@@ -63,7 +81,7 @@ pub async fn battery_read_task(
 
         battery_start = Instant::now();
         let bat_calc_mv = calculate(read as f64);
-        let bat_percentage = bat_perctentage(bat_calc_mv);
+        let bat_percentage = bat_percentage(bat_calc_mv);
 
         crate::ws::send_packet(crate::structs::TimerPacket {
             tag: None,
@@ -83,24 +101,39 @@ pub async fn battery_read_task(
     }
 }
 
-fn bat_perctentage(mv: f64) -> u8 {
+fn interpolate(v1: f64, p1: u8, v2: f64, p2: u8, voltage: f64) -> u8 {
+    let percentage = p1 as f64 + (voltage - v1) * (p2 as f64 - p1 as f64) / (v2 - v1);
+    percentage as u8
+}
+
+fn bat_percentage(mv: f64) -> u8 {
     if mv <= BAT_MIN {
         return 0;
     }
-
     if mv >= BAT_MAX {
         return 100;
     }
 
-    (((mv - BAT_MIN) / (BAT_MAX - BAT_MIN)) * 100.0) as u8
+    // Find the two closest voltage points in our curve
+    for window in BATTERY_CURVE.windows(2) {
+        let (v1, p1) = window[0];
+        let (v2, p2) = window[1];
+
+        if mv >= v1 && mv <= v2 {
+            return interpolate(v1, p1, v2, p2, mv);
+        }
+    }
+
+    // Fallback to linear interpolation if something goes wrong
+    ((mv - BAT_MIN) / (BAT_MAX - BAT_MIN) * 100.0) as u8
 }
 
-// TODO: measure cooficients on real pcb
-// https://www.dcode.fr/function-equation-finder
+#[cfg(feature = "esp32")]
 fn calculate(x: f64) -> f64 {
-    let coefficient_1 = -0.000447414;
-    let coefficient_2 = 4.56829;
-    let constant = -4999.37;
+    6827.85 - 1.56797 * x
+}
 
-    coefficient_1 * x * x + coefficient_2 * x + constant
+#[cfg(feature = "esp32c3")]
+fn calculate(x: f64) -> f64 {
+    0.0
 }
