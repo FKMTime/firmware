@@ -28,6 +28,8 @@ pub fn get_ota_state() -> bool {
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub enum Scene {
+    Update,
+
     /// Waiting for wifi connection
     WifiConnect,
 
@@ -47,6 +49,7 @@ pub enum Scene {
 impl Scene {
     pub fn can_be_lcd_overwritten(&self) -> bool {
         match self {
+            Scene::Update => false,
             Scene::WifiConnect => false,
             Scene::AutoSetupWait => false,
             Scene::MdnsWait => false,
@@ -60,14 +63,15 @@ impl Scene {
 
     pub fn to_index(&self) -> usize {
         match self {
-            Scene::WifiConnect => 0,
-            Scene::AutoSetupWait => 1,
-            Scene::MdnsWait => 2,
-            Scene::WaitingForCompetitor => 3,
-            Scene::CompetitorInfo => 4,
-            Scene::Inspection => 5,
-            Scene::Timer => 6,
-            Scene::Finished => 7,
+            Scene::Update => 0,
+            Scene::WifiConnect => 1,
+            Scene::AutoSetupWait => 2,
+            Scene::MdnsWait => 3,
+            Scene::WaitingForCompetitor => 4,
+            Scene::CompetitorInfo => 5,
+            Scene::Inspection => 6,
+            Scene::Timer => 7,
+            Scene::Finished => 8,
         }
     }
 }
@@ -85,6 +89,7 @@ pub struct GlobalStateInner {
     pub state: SignaledMutex<CriticalSectionRawMutex, SignaledGlobalStateInner>,
     pub timer_signal: Signal<CriticalSectionRawMutex, u64>,
     pub show_battery: Signal<CriticalSectionRawMutex, u8>,
+    pub update_progress: Signal<CriticalSectionRawMutex, u8>,
 
     pub nvs: Nvs,
 }
@@ -95,6 +100,7 @@ impl GlobalStateInner {
             state: SignaledMutex::new(SignaledGlobalStateInner::new()),
             timer_signal: Signal::new(),
             show_battery: Signal::new(),
+            update_progress: Signal::new(),
 
             nvs: nvs.clone(),
         }
@@ -126,7 +132,6 @@ pub struct SignaledGlobalStateInner {
 
     pub delegate_used: bool,
     pub delegate_hold: Option<u8>,
-    pub ota_update: Option<u8>,
 
     #[cfg(feature = "bat_dev_lcd")]
     pub current_bat_read: Option<f32>,
@@ -171,7 +176,6 @@ impl SignaledGlobalStateInner {
 
             delegate_used: false,
             delegate_hold: None,
-            ota_update: None,
 
             #[cfg(feature = "bat_dev_lcd")]
             current_bat_read: None,

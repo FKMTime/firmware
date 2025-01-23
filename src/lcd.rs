@@ -473,6 +473,15 @@ async fn process_lcd<C: CharsetWithFallback>(
                     .ok()?;
             }
         }
+        Scene::Update => {
+            _ = lcd_driver.print(0, "Updating...", PrintAlign::Center, true);
+            loop {
+                let progress = global_state.update_progress.wait().await;
+                _ = lcd_driver.print(1, &alloc::format!("{progress}%"), PrintAlign::Center, true);
+
+                lcd_driver.display_on_lcd(lcd, delay).ok()?;
+            }
+        }
     }
 
     Some(())
@@ -483,14 +492,11 @@ async fn process_lcd_overwrite(
     _global_state: &GlobalState,
     lcd_driver: &mut LcdAbstract<80, 16, 2, 3>,
 ) -> bool {
-    if !current_state.scene.can_be_lcd_overwritten() && current_state.ota_update.is_none() {
+    if !current_state.scene.can_be_lcd_overwritten() {
         return false;
     }
 
-    if let Some(prog) = current_state.ota_update {
-        _ = lcd_driver.print(0, "Updating...", PrintAlign::Center, true);
-        _ = lcd_driver.print(1, &alloc::format!("{prog}%"), PrintAlign::Center, true);
-    } else if current_state.server_connected == Some(false) {
+    if current_state.server_connected == Some(false) {
         _ = lcd_driver.print(0, "Server", PrintAlign::Center, true);
         _ = lcd_driver.print(
             1,

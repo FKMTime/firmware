@@ -1,6 +1,6 @@
 use crate::{
     consts::WS_RETRY_MS,
-    state::GlobalState,
+    state::{GlobalState, Scene},
     structs::{ApiError, FromPacket, TimerPacket, TimerPacketInner},
 };
 use alloc::string::String;
@@ -172,6 +172,10 @@ async fn ws_reader(
                                     crate::state::OTA_STATE = true;
                                 }
 
+                                let mut state = global_state.state.lock().await;
+                                state.scene = Scene::Update;
+                                drop(state);
+
                                 FRAME_CHANNEL
                                     .send(WsFrameOwned::Binary(alloc::vec::Vec::new()))
                                     .await;
@@ -201,9 +205,7 @@ async fn ws_reader(
                     }
 
                     let progress = (ota.get_ota_progress() * 100.0) as u8;
-                    let mut state = global_state.state.lock().await;
-                    state.ota_update = Some(progress);
-                    drop(state);
+                    global_state.update_progress.signal(progress);
 
                     FRAME_CHANNEL
                         .send(WsFrameOwned::Binary(alloc::vec::Vec::new()))
