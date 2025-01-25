@@ -11,7 +11,12 @@ use esp_hal::{
     spi::{master::Spi, Mode},
     time::RateExtU32,
 };
-use esp_hal_mfrc522::consts::UidSize;
+
+#[cfg(feature = "esp32")]
+use mfrc522_01::consts::UidSize;
+
+#[cfg(feature = "esp32c3")]
+use mfrc522_02::consts::UidSize;
 
 #[embassy_executor::task]
 pub async fn rfid_task(
@@ -45,8 +50,17 @@ pub async fn rfid_task(
     .with_buffers(dma_rx_buf, dma_tx_buf)
     .into_async();
 
+    #[cfg(feature = "esp32")]
     let mut mfrc522 =
-        esp_hal_mfrc522::MFRC522::new(spi, cs_pin, || embassy_time::Instant::now().as_micros());
+        mfrc522_01::MFRC522::new(spi, cs_pin, || embassy_time::Instant::now().as_micros());
+
+    #[cfg(feature = "esp32c3")]
+    let mut mfrc522 = {
+        let spi =
+            embedded_hal_bus::spi::ExclusiveDevice::new(spi, cs_pin, embassy_time::Delay).unwrap();
+        mfrc522_02::MFRC522::new(spi)
+    };
+
     loop {
         _ = mfrc522.pcd_init().await;
         if mfrc522.pcd_is_init().await {

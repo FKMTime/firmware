@@ -421,6 +421,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "embedded-hal-bus"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "513e0b3a8fb7d3013a8ae17a834283f170deaf7d0eeab0a7c1a36ad4dd356d22"
+dependencies = [
+ "critical-section",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+]
+
+[[package]]
 name = "embedded-hal-nb"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -681,6 +692,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "esp-hal-mfrc522"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1af6ff595b0798c601021e29b5addbb531bfebfd0beda827a76adcecac2059a"
+dependencies = [
+ "embassy-time",
+ "embedded-hal-async",
+ "heapless",
+ "log",
+]
+
+[[package]]
 name = "esp-hal-ota"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -860,6 +883,7 @@ dependencies = [
  "embassy-time",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
+ "embedded-hal-bus",
  "embedded-io-async",
  "embedded-storage",
  "esp-alloc",
@@ -867,7 +891,8 @@ dependencies = [
  "esp-hal",
  "esp-hal-embassy",
  "esp-hal-mdns",
- "esp-hal-mfrc522",
+ "esp-hal-mfrc522 0.1.1",
+ "esp-hal-mfrc522 0.2.1",
  "esp-hal-ota",
  "esp-hal-wifimanager",
  "esp-println",

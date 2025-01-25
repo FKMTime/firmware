@@ -24,7 +24,6 @@ serde = { version = "1.0.217", features = ["alloc", "derive"], default-features 
 serde_json = { version = "1.0.137", default-features = false, features = ["alloc"] }
 adv-shift-registers = "0.2.4"
 embedded-hal = "1.0.0"
-esp-hal-mfrc522 = { version = "0.1.1", features = [] }
 esp-hal-mdns = "0.1.0"
 embedded-io-async = "0.6.1"
 macros = { path = "./macros" }
@@ -43,11 +42,15 @@ esp-hal-ota = { version = "0.3.2", features = [] }
 esp32c3 = { version = "0.27.0", optional = true }
 esp32 = { version = "0.35.0", optional = true }
 anyhow = { version = "1.0.95", default-features = false }
+embedded-hal-bus = { version = "0.3.0", features = ["async"] }
+
+mfrc522-01 = { version = "0.1.1", package = "esp-hal-mfrc522", optional = true }
+mfrc522-02 = { version = "0.2.1", features = ["embassy-time"], package = "esp-hal-mfrc522", optional = true }
 
 [features]
 default = ["esp32c3"]
-esp32 = ["esp-backtrace/esp32", "esp-hal/esp32", "esp-println/esp32", "esp-wifi/esp32", "esp-hal-embassy/esp32", "esp-storage/esp32", "esp-hal-wifimanager/esp32", "esp-hal-ota/esp32", "dep:esp32"]
-esp32c3 = ["esp-backtrace/esp32c3", "esp-hal/esp32c3", "esp-println/esp32c3", "esp-wifi/esp32c3", "esp-hal-embassy/esp32c3", "esp-storage/esp32c3", "esp-hal-wifimanager/esp32c3", "esp-hal-ota/esp32c3", "dep:esp32c3"]
+esp32 = ["esp-backtrace/esp32", "esp-hal/esp32", "esp-println/esp32", "esp-wifi/esp32", "esp-hal-embassy/esp32", "esp-storage/esp32", "esp-hal-wifimanager/esp32", "esp-hal-ota/esp32", "dep:esp32", "dep:mfrc522-01"]
+esp32c3 = ["esp-backtrace/esp32c3", "esp-hal/esp32c3", "esp-println/esp32c3", "esp-wifi/esp32c3", "esp-hal-embassy/esp32c3", "esp-storage/esp32c3", "esp-hal-wifimanager/esp32c3", "esp-hal-ota/esp32c3", "dep:esp32c3", "dep:mfrc522-02"]
 gen_version = []
 bat_dev_lcd = []
 
