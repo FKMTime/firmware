@@ -40,7 +40,7 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
         let ip = if let Ok(addr) = embassy_net::Ipv4Address::from_str(ws_url.ip) {
             addr
         } else {
-            let dns_resolver = embassy_net::dns::DnsSocket::new(stack.clone());
+            let dns_resolver = embassy_net::dns::DnsSocket::new(stack);
             let res = dns_resolver
                 .query(ws_url.ip, embassy_net::dns::DnsQueryType::A)
                 .await;
@@ -59,7 +59,7 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
             }
 
             let IpAddress::Ipv4(addr) = first.unwrap();
-            addr.clone()
+            *addr
         };
 
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
@@ -103,6 +103,10 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
                 break;
             }
         }
+
+        FRAME_CHANNEL
+            .send(WsFrameOwned::Ping(alloc::vec::Vec::new()))
+            .await;
 
         let (mut reader, mut writer) = socket.split();
         loop {
@@ -258,6 +262,11 @@ pub async fn send_packet(packet: TimerPacket) {
     FRAME_CHANNEL
         .send(WsFrameOwned::Text(serde_json::to_string(&packet).unwrap()))
         .await;
+}
+
+#[allow(dead_code)]
+pub fn clear_frame_channel() {
+    FRAME_CHANNEL.clear();
 }
 
 pub async fn send_request<T>(packet: TimerPacketInner) -> Result<T, ApiError>

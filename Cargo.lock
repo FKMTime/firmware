@@ -242,9 +242,9 @@ checksum = "47fac87554ece38a037e0d53e750ee5129670b6f97e712bb0c411268181f3700"
 
 [[package]]
 name = "edge-dhcp"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8b1761ef371a52e49015be37af0388ff0b2de1d87ddc3cf3ca57f7e15ad014a"
+checksum = "b6c14e92b3e72e93428f87e64f14e2b868b8adcd2e38e0ebf72baa158fe0f930"
 dependencies = [
  "edge-raw",
  "heapless",
@@ -255,9 +255,9 @@ dependencies = [
 
 [[package]]
 name = "edge-raw"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47a19f7f3e0a90e4945f11d739f873a269d34dc819b6f0b6548478b037c17a75"
+checksum = "1d80a91a0c4abb68a9bc4c0df607135b5d9b6885b49acfe2d2c881e3f9623324"
 dependencies = [
  "log",
 ]
@@ -622,9 +622,9 @@ dependencies = [
 
 [[package]]
 name = "esp-hal-dhcp-server"
-version = "0.2.3"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "193d17ca50311ed956c16f0fb07e69f831e1400f3e6b00357097647a82e3ec91"
+checksum = "516b41f655e5c801169f4c74ed3ed7d44c4fba7e727728dbc1799bf3ad8d5a48"
 dependencies = [
  "edge-dhcp",
  "embassy-futures",
@@ -711,7 +711,7 @@ dependencies = [
 [[package]]
 name = "esp-hal-wifimanager"
 version = "0.1.0"
-source = "git+https://github.com/filipton/esp-hal-wifimanager#c87a50e8fb17b723f039620163b036942705edbd"
+source = "git+https://github.com/filipton/esp-hal-wifimanager#b0be7540ec8d3dfc2eb53499022f5614f431fe37"
 dependencies = [
  "bleps",
  "embassy-executor",
@@ -724,7 +724,6 @@ dependencies = [
  "esp-hal",
  "esp-hal-dhcp-server",
  "esp-hal-embassy",
- "esp-println",
  "esp-storage",
  "esp-wifi",
  "heapless",
@@ -1011,7 +1010,7 @@ checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
 [[package]]
 name = "hd44780-driver"
 version = "0.4.0"
-source = "git+https://github.com/JohnDoneth/hd44780-driver.git#99152ccfe2263e70c480f7d1f417181b00423d37"
+source = "git+https://github.com/JohnDoneth/hd44780-driver.git#9009f2c24771ba0a20f8f7534471c9869188f76c"
 dependencies = [
  "embedded-hal 1.0.0",
 ]
@@ -1048,9 +1047,9 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "indexmap"
-version = "2.7.0"
+version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62f822373a4fe84d4bb149bf54e584a7f4abec90e072ed49cda0edea5b95471f"
+checksum = "8c9c992b02b5b4c94ea26e32fe5bccb7aa7d9f390ab5c1221ff895bc7ea8b652"
 dependencies = [
  "equivalent",
  "hashbrown",
@@ -1479,9 +1478,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.135"
+version = "1.0.137"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b0d7ba2887406110130a978386c4e1befb98c674b4fba677954e4db976630d9"
+checksum = "930cfb6e6abf99298aaad7d29abbef7a9999a9a8806a40088f55f0dcec03146b"
 dependencies = [
  "itoa",
  "memchr",
@@ -1633,15 +1632,15 @@ checksum = "e87a2ed6b42ec5e28cc3b94c09982969e9227600b2e3dcbc1db927a84c06bd69"
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.14"
+version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adb9e6ca4f869e1180728b7950e35922a7fc6397f7b641499e8f3ef06e50dc83"
+checksum = "11cd88e12b17c6494200a9c1b683a04fcac9573ed74cd1b62aeb2727c5592243"
 
 [[package]]
 name = "uuid"
-version = "1.12.0"
+version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "744018581f9a3454a9e15beb8a33b017183f1e7c0cd170232a2d1453b23a51c4"
+checksum = "b3758f5e68192bb96cc8f9b7e2c2cfdabb435499a28499a42f8f984092adad4b"
 dependencies = [
  "getrandom",
 ]
