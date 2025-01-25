@@ -12,7 +12,7 @@ log = { version = "0.4.25" }
 esp-wifi = { version = "0.12.0", features = ["coex"] }
 esp-hal-embassy = { version = "0.6.0", features = [] }
 embassy-executor = { version = "0.7.0", features = ["arch-riscv32", "nightly"] }
-embassy-net = { version = "0.6.0", features = ["tcp", "udp", "multicast", "dhcpv4", "medium-ethernet", "proto-ipv4"] }
+embassy-net = { version = "0.6.0", features = ["tcp", "udp", "multicast", "dhcpv4", "medium-ethernet", "proto-ipv4", "dns"] }
 embassy-time = { version = "0.4.0" }
 esp-storage = { version = "0.4.0", features = [] }
 embedded-storage = "0.3.1"

@@ -7,7 +7,7 @@ use alloc::string::String;
 use core::str::FromStr;
 use embassy_net::{
     tcp::{TcpReader, TcpSocket, TcpWriter},
-    Stack,
+    IpAddress, Stack,
 };
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, pubsub::PubSubChannel,
@@ -37,13 +37,35 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
             global_state.state.lock().await.server_connected = Some(false);
         }
 
+        let ip = if let Ok(addr) = embassy_net::Ipv4Address::from_str(ws_url.ip) {
+            addr
+        } else {
+            let dns_resolver = embassy_net::dns::DnsSocket::new(stack.clone());
+            let res = dns_resolver
+                .query(ws_url.ip, embassy_net::dns::DnsQueryType::A)
+                .await;
+            if let Err(e) = res {
+                log::error!("[WS]Dns resolver error: {e:?}");
+                Timer::after_millis(1000).await;
+                continue;
+            }
+
+            let res = res.unwrap();
+            let first = res.first();
+            if first.is_none() {
+                log::error!("[WS]Dns resolver empty vec");
+                Timer::after_millis(1000).await;
+                continue;
+            }
+
+            let IpAddress::Ipv4(addr) = first.unwrap();
+            addr.clone()
+        };
+
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
         socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
-        let remote_endpoint = (
-            embassy_net::Ipv4Address::from_str(ws_url.ip).unwrap(),
-            ws_url.port,
-        );
+        let remote_endpoint = (ip, ws_url.port);
         let r = socket.connect(remote_endpoint).await;
         if let Err(e) = r {
             log::error!("connect error: {:?}", e);

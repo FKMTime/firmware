@@ -276,6 +276,8 @@ async fn main(spawner: Spawner) {
         .take()
         .and_then(|d| serde_json::from_value(d).ok());
 
+    let ws_url = alloc::string::ToString::to_string(&"ws://debica.fkmtime.com:80");
+    /*
     let ws_url = if conn_settings.is_none()
         || conn_settings.as_ref().unwrap().mdns
         || conn_settings.as_ref().unwrap().ws_url.is_none()
@@ -289,6 +291,7 @@ async fn main(spawner: Spawner) {
     } else {
         conn_settings.unwrap().ws_url.unwrap()
     };
+    */
 
     _ = spawner.spawn(ws::ws_task(
         wifi_res.sta_stack,
