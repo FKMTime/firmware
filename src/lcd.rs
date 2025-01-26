@@ -67,7 +67,7 @@ pub async fn lcd_task(
             Err((opt, e)) => {
                 log::error!("Error creating CLD driver: {e:?}");
                 options = opt;
-                Timer::after_millis(100).await;
+                Timer::after_millis(1000).await;
             }
             Ok(lcd) => break lcd,
         }

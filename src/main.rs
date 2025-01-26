@@ -4,6 +4,7 @@
 #![feature(asm_experimental_arch)]
 
 extern crate alloc;
+use alloc::string::String;
 use alloc::{rc::Rc, vec::Vec};
 use consts::{LOG_SEND_INTERVAL_MS, PRINT_HEAP_INTERVAL_MS};
 use core::str::FromStr;
@@ -294,8 +295,6 @@ async fn main(spawner: Spawner) {
         wifi_res.sta_stack,
         ws_url,
         global_state.clone(),
-        peripherals.SHA,
-        peripherals.RSA,
     ));
 
     set_brownout_detection(true);
@@ -315,9 +314,9 @@ async fn main(spawner: Spawner) {
         Timer::after_millis(LOG_SEND_INTERVAL_MS).await;
 
         // TODO: move to own task
-        let mut tmp_logs: Vec<structs::LogData> = Vec::new();
+        let mut tmp_logs: Vec<String> = Vec::new();
         while let Ok(msg) = utils::logger::LOGS_CHANNEL.try_receive() {
-            tmp_logs.push(structs::LogData { millis: 0, msg });
+            tmp_logs.push(msg);
         }
 
         if get_ota_state() {

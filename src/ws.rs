@@ -5,10 +5,7 @@ use crate::{
 };
 use alloc::string::String;
 use core::str::FromStr;
-use embassy_net::{
-    tcp::{TcpReader, TcpSocket, TcpWriter},
-    IpAddress, Stack,
-};
+use embassy_net::{tcp::TcpSocket, IpAddress, Stack};
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, pubsub::PubSubChannel,
 };
@@ -25,13 +22,7 @@ static TAGGED_RETURN: PubSubChannel<CriticalSectionRawMutex, (u64, TimerPacket),
     PubSubChannel::new();
 
 #[embassy_executor::task]
-pub async fn ws_task(
-    stack: Stack<'static>,
-    ws_url: String,
-    global_state: GlobalState,
-    sha: esp_hal::peripherals::SHA,
-    rsa: esp_hal::peripherals::RSA,
-) {
+pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: GlobalState) {
     let ws_url = WsUrl::from_str(&ws_url).unwrap();
 
     let mut rx_buffer = [0; 8192];
@@ -39,6 +30,16 @@ pub async fn ws_task(
 
     let mut ws_rx_buf = alloc::vec![0; 8192];
     let mut ws_tx_buf = alloc::vec![0; 8192];
+
+    // tls buffers
+    let mut read_record_buffer = alloc::vec::Vec::new();
+    let mut write_record_buffer = alloc::vec::Vec::new();
+
+    #[cfg(feature = "esp32c3")]
+    if ws_url.secure {
+        read_record_buffer.resize(16640, 0);
+        write_record_buffer.resize(16640, 0);
+    }
 
     loop {
         {
@@ -81,18 +82,24 @@ pub async fn ws_task(
             continue;
         }
 
-        let mut read_record_buffer = [0; 16640];
-        let mut write_record_buffer = [0; 16640];
-        let config: TlsConfig<'_, Aes128GcmSha256> = TlsConfig::new().with_server_name(ws_url.host);
-        let mut tls = TlsConnection::new(socket, &mut read_record_buffer, &mut write_record_buffer);
+        let mut socket = if ws_url.secure {
+            let mut tls =
+                TlsConnection::new(socket, &mut read_record_buffer, &mut write_record_buffer);
 
-        tls.open::<OsRng, NoVerify>(TlsContext::new(&config, &mut OsRng))
-            .await
-            .expect("error establishing TLS connection");
+            let config: TlsConfig<'_, Aes128GcmSha256> =
+                TlsConfig::new().with_server_name(ws_url.host);
+            tls.open::<OsRng, NoVerify>(TlsContext::new(&config, &mut OsRng))
+                .await
+                .expect("error establishing TLS connection");
+            WsSocket::Tls(tls)
+        } else {
+            WsSocket::Raw(socket)
+        };
 
         {
             global_state.state.lock().await.server_connected = Some(true);
         }
+
         log::info!("connected!");
         let mut tx_framer = WsTxFramer::new(true, &mut ws_tx_buf);
         let mut rx_framer = WsRxFramer::new(&mut ws_rx_buf);
@@ -106,13 +113,13 @@ pub async fn ws_task(
             crate::version::FIRMWARE,
         );
 
-        tls.write_all(tx_framer.generate_http_upgrade(ws_url.host, &path, None))
+        socket
+            .write_all(tx_framer.generate_http_upgrade(ws_url.host, &path, None))
             .await
             .unwrap();
-        tls.flush().await.unwrap();
 
         loop {
-            let n = tls.read(rx_framer.mut_buf()).await.unwrap();
+            let n = socket.read(rx_framer.mut_buf()).await.unwrap();
             let res = rx_framer.process_http_response(n);
 
             if let Some(code) = res {
@@ -130,7 +137,7 @@ pub async fn ws_task(
                 &mut rx_framer,
                 &mut tx_framer,
                 global_state.clone(),
-                &mut tls,
+                &mut socket,
             )
             .await;
 
@@ -140,10 +147,6 @@ pub async fn ws_task(
                 break;
             }
         }
-
-        loop {
-            Timer::after_millis(100).await;
-        }
     }
 }
 
@@ -151,7 +154,7 @@ async fn ws_rw(
     framer_rx: &mut WsRxFramer<'_>,
     framer_tx: &mut WsTxFramer<'_>,
     global_state: GlobalState,
-    tls: &mut TlsConnection<'_, TcpSocket<'_>, Aes128GcmSha256>,
+    tls: &mut WsSocket<'_, '_>,
 ) -> Result<(), ()> {
     let mut ota = Ota::new(FlashStorage::new()).map_err(|_| ())?;
     let tagged_publisher = TAGGED_RETURN.publisher().map_err(|_| ())?;
@@ -166,7 +169,6 @@ async fn ws_rw(
             embassy_futures::select::Either::Second(write_frame) => {
                 let data = framer_tx.frame(write_frame.into_ref());
                 tls.write_all(data).await.map_err(|_| ())?;
-                tls.flush().await.map_err(|_| ())?;
 
                 continue;
             }
@@ -281,15 +283,6 @@ async fn ws_rw(
     }
 }
 
-async fn ws_writer(writer: &mut TcpWriter<'_>, framer: &mut WsTxFramer<'_>) -> Result<(), ()> {
-    let recv = FRAME_CHANNEL.receiver();
-    loop {
-        let frame = recv.receive().await;
-        let data = framer.frame(frame.into_ref());
-        writer.write_all(data).await.map_err(|_| ())?;
-    }
-}
-
 pub async fn send_packet(packet: TimerPacket) {
     FRAME_CHANNEL
         .send(WsFrameOwned::Text(serde_json::to_string(&packet).unwrap()))
@@ -334,5 +327,33 @@ async fn wait_for_tagged_response(tag: u64) -> TimerPacket {
         if packet_tag == tag {
             return packet;
         }
+    }
+}
+
+enum WsSocket<'a, 'b> {
+    Tls(TlsConnection<'b, TcpSocket<'a>, Aes128GcmSha256>),
+    Raw(TcpSocket<'a>),
+}
+
+impl WsSocket<'_, '_> {
+    pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize, ()> {
+        match self {
+            WsSocket::Tls(tls_connection) => tls_connection.read(buf).await.map_err(|_| ()),
+            WsSocket::Raw(tcp_socket) => tcp_socket.read(buf).await.map_err(|_| ()),
+        }
+    }
+
+    pub async fn write_all(&mut self, buf: &[u8]) -> Result<(), ()> {
+        match self {
+            WsSocket::Tls(tls_connection) => {
+                tls_connection.write_all(buf).await.map_err(|_| ())?;
+                tls_connection.flush().await.map_err(|_| ())?;
+            }
+            WsSocket::Raw(tcp_socket) => {
+                tcp_socket.write_all(buf).await.map_err(|_| ())?;
+            }
+        }
+
+        Ok(())
     }
 }
