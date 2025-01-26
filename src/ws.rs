@@ -3,7 +3,7 @@ use crate::{
     state::{GlobalState, Scene},
     structs::{ApiError, FromPacket, TimerPacket, TimerPacketInner},
 };
-use alloc::{ffi::CString, string::String};
+use alloc::string::String;
 use core::str::FromStr;
 use embassy_net::{
     tcp::{TcpReader, TcpSocket, TcpWriter},
@@ -14,9 +14,10 @@ use embassy_sync::{
 };
 use embassy_time::{Instant, Timer};
 use embedded_io_async::Write;
+use embedded_tls::{Aes128GcmSha256, NoVerify, TlsConfig, TlsConnection, TlsContext};
 use esp_hal_ota::Ota;
-use esp_mbedtls::{asynch::Session, Certificates, Tls, X509};
 use esp_storage::FlashStorage;
+use rand_core::OsRng;
 use ws_framer::{WsFrame, WsFrameOwned, WsRxFramer, WsTxFramer, WsUrl};
 
 static FRAME_CHANNEL: Channel<CriticalSectionRawMutex, WsFrameOwned, 10> = Channel::new();
@@ -39,8 +40,6 @@ pub async fn ws_task(
     let mut ws_rx_buf = alloc::vec![0; 8192];
     let mut ws_tx_buf = alloc::vec![0; 8192];
 
-    let mut tls = Tls::new(sha).unwrap().with_hardware_rsa(rsa);
-    tls.set_debug(1);
     loop {
         {
             global_state.state.lock().await.server_connected = Some(false);
@@ -75,7 +74,6 @@ pub async fn ws_task(
         socket.set_timeout(Some(embassy_time::Duration::from_secs(15)));
 
         let remote_endpoint = (ip, ws_url.port);
-        log::info!("remote_endpoint: {remote_endpoint:?}");
         let r = socket.connect(remote_endpoint).await;
         if let Err(e) = r {
             log::error!("connect error: {:?}", e);
@@ -83,28 +81,18 @@ pub async fn ws_task(
             continue;
         }
 
-        let certificates = Certificates {
-            ca_chain: X509::pem(concat!(include_str!("../r10.pem"), "\0").as_bytes()).ok(),
-            ..Default::default()
-        };
-        let mut session = Session::new(
-            &mut socket,
-            esp_mbedtls::Mode::Client {
-                servername: &CString::new(ws_url.host).unwrap(),
-            },
-            esp_mbedtls::TlsVersion::Tls1_2,
-            certificates,
-            tls.reference(),
-        )
-        .unwrap();
+        let mut read_record_buffer = [0; 16640];
+        let mut write_record_buffer = [0; 16640];
+        let config: TlsConfig<'_, Aes128GcmSha256> = TlsConfig::new().with_server_name(ws_url.host);
+        let mut tls = TlsConnection::new(socket, &mut read_record_buffer, &mut write_record_buffer);
 
-        log::info!("Start tls connect");
-        session.connect().await.unwrap();
+        tls.open::<OsRng, NoVerify>(TlsContext::new(&config, &mut OsRng))
+            .await
+            .expect("error establishing TLS connection");
 
         {
             global_state.state.lock().await.server_connected = Some(true);
         }
-
         log::info!("connected!");
         let mut tx_framer = WsTxFramer::new(true, &mut ws_tx_buf);
         let mut rx_framer = WsRxFramer::new(&mut ws_rx_buf);
@@ -118,13 +106,13 @@ pub async fn ws_task(
             crate::version::FIRMWARE,
         );
 
-        session
-            .write_all(tx_framer.generate_http_upgrade(ws_url.host, &path, None))
+        tls.write_all(tx_framer.generate_http_upgrade(ws_url.host, &path, None))
             .await
             .unwrap();
+        tls.flush().await.unwrap();
 
         loop {
-            let n = session.read(rx_framer.mut_buf()).await.unwrap();
+            let n = tls.read(rx_framer.mut_buf()).await.unwrap();
             let res = rx_framer.process_http_response(n);
 
             if let Some(code) = res {
@@ -137,20 +125,14 @@ pub async fn ws_task(
             .send(WsFrameOwned::Ping(alloc::vec::Vec::new()))
             .await;
 
-        //session.
-        /*
-        let (mut reader, mut writer) = session.split();
         loop {
-            let res = embassy_futures::select::select(
-                ws_reader(&mut reader, &mut rx_framer, global_state.clone()),
-                ws_writer(&mut writer, &mut tx_framer),
+            let res = ws_rw(
+                &mut rx_framer,
+                &mut tx_framer,
+                global_state.clone(),
+                &mut tls,
             )
             .await;
-
-            let res = match res {
-                embassy_futures::select::Either::First(res) => res,
-                embassy_futures::select::Either::Second(res) => res,
-            };
 
             if res.is_err() {
                 log::error!("ws: reader or writer err!");
@@ -158,23 +140,38 @@ pub async fn ws_task(
                 break;
             }
         }
-        */
+
         loop {
             Timer::after_millis(100).await;
         }
     }
 }
 
-async fn ws_reader(
-    reader: &mut TcpReader<'_>,
-    framer: &mut WsRxFramer<'_>,
+async fn ws_rw(
+    framer_rx: &mut WsRxFramer<'_>,
+    framer_tx: &mut WsTxFramer<'_>,
     global_state: GlobalState,
+    tls: &mut TlsConnection<'_, TcpSocket<'_>, Aes128GcmSha256>,
 ) -> Result<(), ()> {
     let mut ota = Ota::new(FlashStorage::new()).map_err(|_| ())?;
     let tagged_publisher = TAGGED_RETURN.publisher().map_err(|_| ())?;
+    let recv = FRAME_CHANNEL.receiver();
 
     loop {
-        let res = reader.read(framer.mut_buf()).await;
+        let read_fut = tls.read(framer_rx.mut_buf());
+        let write_fut = recv.receive();
+
+        let res = match embassy_futures::select::select(read_fut, write_fut).await {
+            embassy_futures::select::Either::First(read_res) => read_res,
+            embassy_futures::select::Either::Second(write_frame) => {
+                let data = framer_tx.frame(write_frame.into_ref());
+                tls.write_all(data).await.map_err(|_| ())?;
+                tls.flush().await.map_err(|_| ())?;
+
+                continue;
+            }
+        };
+
         if let Err(e) = res {
             log::error!("ws_read: {e:?}");
             return Err(());
@@ -186,8 +183,8 @@ async fn ws_reader(
             return Err(());
         }
 
-        framer.revolve_write_offset(n);
-        while let Some(frame) = framer.process_data() {
+        framer_rx.revolve_write_offset(n);
+        while let Some(frame) = framer_rx.process_data() {
             //log::warn!("recv_frame: opcode:{}", frame.opcode());
 
             match frame {

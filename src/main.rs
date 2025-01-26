@@ -295,7 +295,7 @@ async fn main(spawner: Spawner) {
         ws_url,
         global_state.clone(),
         peripherals.SHA,
-        peripherals.RSA
+        peripherals.RSA,
     ));
 
     set_brownout_detection(true);
