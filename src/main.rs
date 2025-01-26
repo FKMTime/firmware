@@ -294,6 +294,8 @@ async fn main(spawner: Spawner) {
         wifi_res.sta_stack,
         ws_url,
         global_state.clone(),
+        peripherals.SHA,
+        peripherals.RSA
     ));
 
     set_brownout_detection(true);

@@ -3,7 +3,7 @@ use crate::{
     state::{GlobalState, Scene},
     structs::{ApiError, FromPacket, TimerPacket, TimerPacketInner},
 };
-use alloc::string::String;
+use alloc::{ffi::CString, string::String};
 use core::str::FromStr;
 use embassy_net::{
     tcp::{TcpReader, TcpSocket, TcpWriter},
@@ -15,6 +15,7 @@ use embassy_sync::{
 use embassy_time::{Instant, Timer};
 use embedded_io_async::Write;
 use esp_hal_ota::Ota;
+use esp_mbedtls::{asynch::Session, Certificates, Tls, X509};
 use esp_storage::FlashStorage;
 use ws_framer::{WsFrame, WsFrameOwned, WsRxFramer, WsTxFramer, WsUrl};
 
@@ -23,7 +24,13 @@ static TAGGED_RETURN: PubSubChannel<CriticalSectionRawMutex, (u64, TimerPacket),
     PubSubChannel::new();
 
 #[embassy_executor::task]
-pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: GlobalState) {
+pub async fn ws_task(
+    stack: Stack<'static>,
+    ws_url: String,
+    global_state: GlobalState,
+    sha: esp_hal::peripherals::SHA,
+    rsa: esp_hal::peripherals::RSA,
+) {
     let ws_url = WsUrl::from_str(&ws_url).unwrap();
 
     let mut rx_buffer = [0; 8192];
@@ -32,6 +39,8 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
     let mut ws_rx_buf = alloc::vec![0; 8192];
     let mut ws_tx_buf = alloc::vec![0; 8192];
 
+    let mut tls = Tls::new(sha).unwrap().with_hardware_rsa(rsa);
+    tls.set_debug(1);
     loop {
         {
             global_state.state.lock().await.server_connected = Some(false);
@@ -63,9 +72,10 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
         };
 
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-        socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
+        socket.set_timeout(Some(embassy_time::Duration::from_secs(15)));
 
         let remote_endpoint = (ip, ws_url.port);
+        log::info!("remote_endpoint: {remote_endpoint:?}");
         let r = socket.connect(remote_endpoint).await;
         if let Err(e) = r {
             log::error!("connect error: {:?}", e);
@@ -73,9 +83,28 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
             continue;
         }
 
+        let certificates = Certificates {
+            ca_chain: X509::pem(concat!(include_str!("../r10.pem"), "\0").as_bytes()).ok(),
+            ..Default::default()
+        };
+        let mut session = Session::new(
+            &mut socket,
+            esp_mbedtls::Mode::Client {
+                servername: &CString::new(ws_url.host).unwrap(),
+            },
+            esp_mbedtls::TlsVersion::Tls1_2,
+            certificates,
+            tls.reference(),
+        )
+        .unwrap();
+
+        log::info!("Start tls connect");
+        session.connect().await.unwrap();
+
         {
             global_state.state.lock().await.server_connected = Some(true);
         }
+
         log::info!("connected!");
         let mut tx_framer = WsTxFramer::new(true, &mut ws_tx_buf);
         let mut rx_framer = WsRxFramer::new(&mut ws_rx_buf);
@@ -89,13 +118,13 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
             crate::version::FIRMWARE,
         );
 
-        socket
+        session
             .write_all(tx_framer.generate_http_upgrade(ws_url.host, &path, None))
             .await
             .unwrap();
 
         loop {
-            let n = socket.read(rx_framer.mut_buf()).await.unwrap();
+            let n = session.read(rx_framer.mut_buf()).await.unwrap();
             let res = rx_framer.process_http_response(n);
 
             if let Some(code) = res {
@@ -108,7 +137,9 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
             .send(WsFrameOwned::Ping(alloc::vec::Vec::new()))
             .await;
 
-        let (mut reader, mut writer) = socket.split();
+        //session.
+        /*
+        let (mut reader, mut writer) = session.split();
         loop {
             let res = embassy_futures::select::select(
                 ws_reader(&mut reader, &mut rx_framer, global_state.clone()),
@@ -126,6 +157,10 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
                 Timer::after_millis(WS_RETRY_MS).await;
                 break;
             }
+        }
+        */
+        loop {
+            Timer::after_millis(100).await;
         }
     }
 }
