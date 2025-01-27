@@ -1,5 +1,5 @@
 use crate::{
-    state::{current_epoch, GlobalState, Scene},
+    state::{current_epoch, sleep_state, GlobalState, Scene},
     structs::DelegateResponsePacket,
     utils::buttons::{Button, ButtonTrigger, ButtonsHandler},
 };
@@ -19,7 +19,7 @@ pub async fn buttons_task(
 
     #[cfg(feature = "esp32")] buttons: [Input<'static>; 4],
 ) {
-    let mut handler = ButtonsHandler::new();
+    let mut handler = ButtonsHandler::new(Some(wakeup_button()));
     handler.add_handler(Button::Third, ButtonTrigger::Up, submit_up());
     handler.add_handler(
         Button::Third,
@@ -72,6 +72,19 @@ async fn button_test(
     _state: &GlobalState,
 ) -> Result<bool, ()> {
     log::info!("Triggered: {triggered:?} - {hold_time}");
+    Ok(false)
+}
+
+#[macros::button_handler]
+async fn wakeup_button(
+    _triggered: &ButtonTrigger,
+    _hold_time: u64,
+    state: &GlobalState,
+) -> Result<bool, ()> {
+    if sleep_state() {
+        let _drop = state.state.lock().await;
+    }
+
     Ok(false)
 }
 

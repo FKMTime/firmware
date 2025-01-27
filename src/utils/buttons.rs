@@ -41,6 +41,8 @@ pub struct ButtonHandler {
 }
 
 pub struct ButtonsHandler {
+    default_handler: Option<HandlersDerive>,
+
     handlers: Vec<ButtonHandler>,
     press_time: Instant,
     last_hold_execute: Instant,
@@ -48,8 +50,10 @@ pub struct ButtonsHandler {
 }
 
 impl ButtonsHandler {
-    pub fn new() -> Self {
+    pub fn new(default_handler: Option<HandlersDerive>) -> Self {
         Self {
+            default_handler,
+
             handlers: Vec::new(),
             press_time: Instant::now(),
             last_hold_execute: Instant::now(),
@@ -139,6 +143,12 @@ impl ButtonsHandler {
             .enumerate()
             .find(|(_, h)| h.button == button);
 
+        if let Some(ref default_handler) = self.default_handler {
+            _ = default_handler
+                .execute(&ButtonTrigger::Down, 0, state)
+                .await;
+        }
+
         if let Some((i, handler)) = &mut handler {
             self.current_handler_down = Some(*i);
 
@@ -225,10 +235,16 @@ impl ButtonsHandler {
             return;
         }
 
+        let hold_time = (Instant::now() - self.press_time).as_millis();
+        if let Some(ref default_handler) = self.default_handler {
+            _ = default_handler
+                .execute(&ButtonTrigger::Up, hold_time, state)
+                .await;
+        }
+
         let handler = &self.handlers[self.current_handler_down.expect("Cant fail")];
         let handlers = handler.handlers.iter().filter(|h| h.0 == ButtonTrigger::Up);
         for handler in handlers {
-            let hold_time = (Instant::now() - self.press_time).as_millis();
             let res = handler.2.execute(&handler.0, hold_time, state).await;
             if let Err(e) = res {
                 log::error!("buttons_handler:up_err: {e:?}");
