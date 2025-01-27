@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
     parse::{Parse, ParseStream},
-    Ident, Item, Meta, Token, Type,
+    Ident, Item, Meta, Token,
 };
 
 #[derive(Debug)]
@@ -180,45 +180,6 @@ pub fn button_handler(_args: TokenStream, item: TokenStream) -> TokenStream {
     .into()
 }
 
-#[proc_macro_attribute]
-pub fn button_handler_old(_args: TokenStream, item: TokenStream) -> TokenStream {
-    let f = syn::parse_macro_input!(item as syn::ItemFn);
-    if f.sig.asyncness.is_none() {
-        panic!("Function has to by async!");
-    }
-
-    let unnamed_inputs: Vec<Box<Type>> = f
-        .sig
-        .inputs
-        .iter()
-        .map(|i| match i {
-            syn::FnArg::Receiver(receiver) => receiver.ty.clone(),
-            syn::FnArg::Typed(pat_type) => pat_type.ty.clone(),
-        })
-        .collect();
-    let unnamed_inputs = quote! {
-        #(#unnamed_inputs),*
-    };
-
-    let inputs = f.sig.inputs;
-    let output = match f.sig.output {
-        syn::ReturnType::Default => quote! { () },
-        syn::ReturnType::Type(_, tp) => quote! { #tp },
-    };
-
-    let name = f.sig.ident;
-    let vis = f.vis;
-    let block = f.block;
-
-    quote! {
-        #vis fn #name() -> fn(#unnamed_inputs) -> core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = #output> + Send>> {
-            |#inputs| {
-                Box::pin(async move #block)
-            }
-        }
-    }.into()
-}
-
 #[proc_macro]
 pub fn nb_to_fut(item: TokenStream) -> TokenStream {
     let item = syn::parse_macro_input!(item as syn::Expr);
@@ -239,3 +200,79 @@ pub fn nb_to_fut(item: TokenStream) -> TokenStream {
     }
     .into()
 }
+
+// NOTE: maybe not useful, most variables in functions that can fail are owned :(
+/*
+struct MacroInput {
+    function_call: syn::Expr,
+    retry_count: syn::LitInt,
+    retry_interval: syn::LitInt,
+    print_error: syn::LitBool,
+    retrun_err: syn::LitBool,
+}
+
+impl Parse for MacroInput {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let function_call: syn::Expr = input.parse()?;
+        input.parse::<Token![,]>()?;
+        let retry_count: syn::LitInt = input.parse()?;
+        input.parse::<Token![,]>()?;
+        let retry_interval: syn::LitInt = input.parse()?;
+        input.parse::<Token![,]>()?;
+        let print_error: syn::LitBool = input.parse()?;
+        input.parse::<Token![,]>()?;
+        let retrun_err: syn::LitBool = input.parse()?;
+
+        Ok(MacroInput {
+            function_call,
+            retry_count,
+            retry_interval,
+            print_error,
+            retrun_err,
+        })
+    }
+}
+
+/// Macro to easily manage function calls that return Result and you want to retry them
+///
+/// Usage:
+/// retry_call!(function_call, retry_count(int), retry_interval(int ms), print_error(bool), return_err(bool))
+/// If return_err is false, this will panic on final error
+#[proc_macro]
+pub fn retry_call(item: TokenStream) -> TokenStream {
+    let MacroInput {
+        function_call,
+        retry_count,
+        retry_interval,
+        print_error,
+        retrun_err,
+    } = syn::parse_macro_input!(item as MacroInput);
+
+    let mut i = 0;
+    let dsa = loop {
+        if i % 2 == 0 {
+            break i;
+        }
+
+        i += 1;
+    };
+
+    quote! {
+        {
+            let mut i = 0;
+            loop {
+                let res = #function_call;
+                match res {
+                    Ok(o) => {},
+                    Err(e) => {
+                        break Some(i);
+                    }
+                }
+
+                i += 1;
+            };
+        }
+    }
+    .into()
+}
+*/
