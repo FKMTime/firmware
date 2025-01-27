@@ -334,10 +334,7 @@ async fn main(spawner: Spawner) {
         }
 
         if (Instant::now() - heap_start).as_millis() >= PRINT_HEAP_INTERVAL_MS {
-            log::info!("Heap info:");
-            log::info!("Size: {}", esp_alloc::HEAP.used() + esp_alloc::HEAP.free());
-            log::info!("Used: {}", esp_alloc::HEAP.used());
-            log::info!("Free: {}", esp_alloc::HEAP.free());
+            log::info!("{}", esp_alloc::HEAP.stats());
 
             heap_start = Instant::now();
         }

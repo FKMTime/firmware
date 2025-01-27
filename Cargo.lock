@@ -1306,7 +1306,7 @@ checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
 [[package]]
 name = "hd44780-driver"
 version = "0.4.0"
-source = "git+https://github.com/JohnDoneth/hd44780-driver.git#9009f2c24771ba0a20f8f7534471c9869188f76c"
+source = "git+https://github.com/filipton/hd44780-driver.git#a29bb1d8f39301bfb3a16f60a67ecbe4f6eccd24"
 dependencies = [
  "embedded-hal 1.0.0",
 ]

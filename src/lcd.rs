@@ -78,6 +78,11 @@ pub async fn lcd_task(
         _ = bl_pin.set_high();
     }
 
+    #[cfg(feature = "esp32")]
+    {
+        _ = lcd.set_backlight(true, &mut delay);
+    }
+
     _ = lcd.clear(&mut delay);
     _ = lcd.reset(&mut delay);
     _ = lcd.set_display_mode(
@@ -123,9 +128,16 @@ pub async fn lcd_task(
         log::debug!("current_state: {:?}", current_state);
         last_update = Instant::now();
 
-        #[cfg(feature = "esp32c3")]
         if !sleep_state() {
-            _ = bl_pin.set_high();
+            #[cfg(feature = "esp32c3")]
+            {
+                _ = bl_pin.set_high();
+            }
+            #[cfg(feature = "esp32")]
+            {
+                _ = lcd.set_backlight(true, &mut delay);
+            }
+
             unsafe {
                 crate::state::SLEEP_STATE = true;
             }
@@ -157,6 +169,11 @@ pub async fn lcd_task(
                     {
                         _ = bl_pin.set_low();
                     }
+                    #[cfg(feature = "esp32")]
+                    {
+                        _ = lcd.set_backlight(false, &mut delay);
+                    }
+
                     unsafe {
                         crate::state::SLEEP_STATE = false;
                     }
