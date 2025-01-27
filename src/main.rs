@@ -18,7 +18,7 @@ use esp_hal::{
     timer::timg::TimerGroup,
 };
 use esp_storage::FlashStorage;
-use state::{get_ota_state, GlobalStateInner, SavedGlobalState, Scene};
+use state::{ota_state, GlobalStateInner, SavedGlobalState, Scene};
 use structs::ConnSettings;
 use translations::init_translations;
 use utils::{logger::FkmLogger, set_brownout_detection};
@@ -319,7 +319,7 @@ async fn main(spawner: Spawner) {
             tmp_logs.push(msg);
         }
 
-        if get_ota_state() {
+        if ota_state() {
             continue;
         }
 

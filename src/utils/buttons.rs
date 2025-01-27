@@ -144,9 +144,13 @@ impl ButtonsHandler {
             .find(|(_, h)| h.button == button);
 
         if let Some(ref default_handler) = self.default_handler {
-            _ = default_handler
+            let res = default_handler
                 .execute(&ButtonTrigger::Down, 0, state)
                 .await;
+
+            if res == Ok(true) {
+                return;
+            }
         }
 
         if let Some((i, handler)) = &mut handler {
@@ -237,9 +241,14 @@ impl ButtonsHandler {
 
         let hold_time = (Instant::now() - self.press_time).as_millis();
         if let Some(ref default_handler) = self.default_handler {
-            _ = default_handler
+            let res = default_handler
                 .execute(&ButtonTrigger::Up, hold_time, state)
                 .await;
+
+            if res == Ok(true) {
+                self.current_handler_down = None;
+                return;
+            }
         }
 
         let handler = &self.handlers[self.current_handler_down.expect("Cant fail")];

@@ -82,7 +82,8 @@ async fn wakeup_button(
     state: &GlobalState,
 ) -> Result<bool, ()> {
     if sleep_state() {
-        let _drop = state.state.lock().await;
+        state.state.signal();
+        return Ok(true);
     }
 
     Ok(false)

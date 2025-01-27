@@ -128,7 +128,7 @@ pub async fn lcd_task(
         log::debug!("current_state: {:?}", current_state);
         last_update = Instant::now();
 
-        if !sleep_state() {
+        if sleep_state() {
             #[cfg(feature = "esp32c3")]
             {
                 _ = bl_pin.set_high();
@@ -139,7 +139,7 @@ pub async fn lcd_task(
             }
 
             unsafe {
-                crate::state::SLEEP_STATE = true;
+                crate::state::SLEEP_STATE = false;
             }
         }
 
@@ -164,7 +164,7 @@ pub async fn lcd_task(
                     lcd_driver.display_on_lcd(&mut lcd, &mut delay).unwrap();
                 }
 
-                if sleep_state() && (Instant::now() - last_update).as_secs() > 60 * 5 {
+                if !sleep_state() && (Instant::now() - last_update).as_secs() > 60 * 5 {
                     #[cfg(feature = "esp32c3")]
                     {
                         _ = bl_pin.set_low();
@@ -175,7 +175,7 @@ pub async fn lcd_task(
                     }
 
                     unsafe {
-                        crate::state::SLEEP_STATE = false;
+                        crate::state::SLEEP_STATE = true;
                     }
                 }
             }

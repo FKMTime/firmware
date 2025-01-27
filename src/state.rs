@@ -21,7 +21,7 @@ pub fn sleep_state() -> bool {
 }
 
 #[inline(always)]
-pub fn get_ota_state() -> bool {
+pub fn ota_state() -> bool {
     unsafe { OTA_STATE }
 }
 

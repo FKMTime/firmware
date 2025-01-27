@@ -249,7 +249,7 @@ async fn ws_rw(
                     }
                 },
                 WsFrame::Binary(data) => {
-                    if !crate::state::get_ota_state() {
+                    if !crate::state::ota_state() {
                         continue;
                     }
 
