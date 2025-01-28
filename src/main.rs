@@ -4,10 +4,9 @@
 #![feature(asm_experimental_arch)]
 
 extern crate alloc;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::{rc::Rc, vec::Vec};
 use consts::{LOG_SEND_INTERVAL_MS, PRINT_HEAP_INTERVAL_MS};
-use core::str::FromStr;
 use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
 use embassy_time::{Instant, Timer};
@@ -92,7 +91,8 @@ async fn main(spawner: Spawner) {
         }
     }
 
-    let nvs = esp_hal_wifimanager::Nvs::new_from_part_table().unwrap();
+    let nvs =
+        esp_hal_wifimanager::Nvs::new_from_part_table().expect("Wrong partition configuration!");
 
     set_brownout_detection(false);
     let rng = esp_hal::rng::Rng::new(peripherals.RNG);
@@ -194,7 +194,7 @@ async fn main(spawner: Spawner) {
             .with_frequency(100.kHz())
             .with_timeout(esp_hal::i2c::master::BusTimeout::Maximum),
     )
-    .unwrap()
+    .expect("I2C new failed")
     .with_sda(peripherals.GPIO21)
     .with_scl(peripherals.GPIO22);
 
@@ -252,13 +252,8 @@ async fn main(spawner: Spawner) {
         wm_settings.esp_restart_after_connection = true;
     }
 
-    {
-        let mut ota = esp_hal_ota::Ota::new(FlashStorage::new()).unwrap();
-        ota.ota_mark_app_valid().unwrap();
-    }
-
     let timg0 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0);
-    let mut wifi_res = esp_hal_wifimanager::init_wm(
+    let wifi_res = esp_hal_wifimanager::init_wm(
         wm_settings,
         &spawner,
         &nvs,
@@ -269,28 +264,33 @@ async fn main(spawner: Spawner) {
         peripherals.BT,
         Some(wifi_setup_sig),
     )
-    .await
-    .unwrap();
+    .await;
 
-    let conn_settings: Option<ConnSettings> = wifi_res
+    let Ok(mut wifi_res) = wifi_res else {
+        log::error!("WifiManager failed!!! Restarting in 1s!");
+        Timer::after_millis(1000).await;
+        esp_hal::reset::software_reset();
+        return;
+    };
+
+    let conn_settings: ConnSettings = wifi_res
         .data
         .take()
-        .and_then(|d| serde_json::from_value(d).ok());
+        .and_then(|d| serde_json::from_value(d).ok())
+        .unwrap_or_default();
 
-    let ws_url = if conn_settings.is_none()
-        || conn_settings.as_ref().unwrap().mdns
-        || conn_settings.as_ref().unwrap().ws_url.is_none()
-    {
+    let ws_url = if conn_settings.mdns || conn_settings.ws_url.is_none() {
         log::info!("Start mdns lookup...");
         global_state.state.lock().await.scene = Scene::MdnsWait;
         let mdns_res = mdns::mdns_query(wifi_res.sta_stack).await;
         log::info!("Mdns result: {:?}", mdns_res);
 
-        alloc::string::String::from_str(&mdns_res.expect("MDNS HOW?")).unwrap()
+        mdns_res.to_string()
     } else {
-        conn_settings.unwrap().ws_url.unwrap()
+        conn_settings.ws_url.expect("Cant fail")
     };
 
+    utils::backtrace_store::read_saved_backtrace().await;
     _ = spawner.spawn(ws::ws_task(
         wifi_res.sta_stack,
         ws_url,
@@ -307,7 +307,15 @@ async fn main(spawner: Spawner) {
             .parse_saved_state(saved_state);
     }
 
-    utils::backtrace_store::read_saved_backtrace().await;
+    // only mark ota valid after wifi connection!
+    {
+        if let Ok(mut ota) = esp_hal_ota::Ota::new(FlashStorage::new()) {
+            let res = ota.ota_mark_app_valid();
+            if let Err(e) = res {
+                log::error!("Ota mark app valid failed: {e:?}");
+            }
+        }
+    }
 
     let mut heap_start = Instant::now();
     loop {

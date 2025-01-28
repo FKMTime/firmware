@@ -10,6 +10,15 @@ pub struct ConnSettings {
     pub ws_url: Option<String>,
 }
 
+impl Default for ConnSettings {
+    fn default() -> Self {
+        Self {
+            mdns: true,
+            ws_url: None,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TimerPacket {
     #[serde(skip_serializing_if = "Option::is_none")]

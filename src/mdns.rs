@@ -7,7 +7,7 @@ use esp_hal_mdns::MdnsQuery;
 
 use crate::consts::MDNS_RESEND_INTERVAL;
 
-pub async fn mdns_query(stack: Stack<'static>) -> Option<heapless::String<255>> {
+pub async fn mdns_query(stack: Stack<'static>) -> heapless::String<255> {
     let mut rx_buffer = [0; 1024];
     let mut tx_buffer = [0; 1024];
     let mut rx_meta = [PacketMetadata::EMPTY; 16];
@@ -41,8 +41,8 @@ pub async fn mdns_query(stack: Stack<'static>) -> Option<heapless::String<255>> 
             if let Ok((n, _endpoint)) = res {
                 let resp = mdns.parse_mdns_query(&data_buf[..n], Some("ws"));
 
-                if resp.2.is_some() {
-                    tmp = resp.2;
+                if let Some(value) = resp.2 {
+                    tmp = value;
                     break;
                 }
             }

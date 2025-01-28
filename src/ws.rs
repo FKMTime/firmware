@@ -23,24 +23,58 @@ static TAGGED_RETURN: PubSubChannel<CriticalSectionRawMutex, (u64, TimerPacket),
 
 #[embassy_executor::task]
 pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: GlobalState) {
-    let ws_url = WsUrl::from_str(&ws_url).unwrap();
+    let ws_url = WsUrl::from_str(&ws_url).expect("Ws url parse error");
 
-    let mut rx_buffer = [0; 8192];
-    let mut tx_buffer = [0; 8192];
-
+    let mut rx_buf = [0; 8192];
+    let mut tx_buf = [0; 8192];
     let mut ws_rx_buf = alloc::vec![0; 8192];
     let mut ws_tx_buf = alloc::vec![0; 8192];
 
     // tls buffers
-    let mut read_record_buffer = alloc::vec::Vec::new();
-    let mut write_record_buffer = alloc::vec::Vec::new();
+    let mut ssl_rx_buf = alloc::vec::Vec::new();
+    let mut ssl_tx_buf = alloc::vec::Vec::new();
 
     #[cfg(feature = "esp32c3")]
     if ws_url.secure {
-        read_record_buffer.resize(16640, 0);
-        write_record_buffer.resize(16640, 0);
+        ssl_rx_buf.resize(16640, 0);
+        ssl_tx_buf.resize(16640, 0);
     }
 
+    loop {
+        let res = ws_loop(
+            &global_state,
+            &ws_url,
+            stack,
+            &mut rx_buf,
+            &mut tx_buf,
+            &mut ws_rx_buf,
+            &mut ws_tx_buf,
+            &mut ssl_rx_buf,
+            &mut ssl_tx_buf,
+        )
+        .await;
+
+        if let Err(e) = res {
+            log::error!("Ws_loop errored! {e:?}");
+        }
+
+        Timer::after_millis(500).await;
+    }
+}
+
+// TODO: maybe make less args?
+#[allow(clippy::too_many_arguments)]
+async fn ws_loop(
+    global_state: &GlobalState,
+    ws_url: &WsUrl<'_>,
+    stack: Stack<'static>,
+    rx_buf: &mut [u8],
+    tx_buf: &mut [u8],
+    ws_rx_buf: &mut [u8],
+    ws_tx_buf: &mut [u8],
+    ssl_rx_buf: &mut [u8],
+    ssl_tx_buf: &mut [u8],
+) -> Result<(), ()> {
     loop {
         {
             global_state.state.lock().await.server_connected = Some(false);
@@ -53,25 +87,25 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
             let res = dns_resolver
                 .query(ws_url.ip, embassy_net::dns::DnsQueryType::A)
                 .await;
-            if let Err(e) = res {
-                log::error!("[WS]Dns resolver error: {e:?}");
+
+            let Ok(res) = res else {
+                log::error!(
+                    "[WS]Dns resolver error: {:?}",
+                    res.expect_err("Shouldnt fail")
+                );
                 Timer::after_millis(1000).await;
                 continue;
-            }
+            };
 
-            let res = res.unwrap();
-            let first = res.first();
-            if first.is_none() {
+            let Some(IpAddress::Ipv4(addr)) = res.first() else {
                 log::error!("[WS]Dns resolver empty vec");
                 Timer::after_millis(1000).await;
                 continue;
-            }
-
-            let IpAddress::Ipv4(addr) = first.unwrap();
+            };
             *addr
         };
 
-        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+        let mut socket = TcpSocket::new(stack, rx_buf, tx_buf);
         socket.set_timeout(Some(embassy_time::Duration::from_secs(15)));
 
         let remote_endpoint = (ip, ws_url.port);
@@ -83,14 +117,14 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
         }
 
         let mut socket = if ws_url.secure {
-            let mut tls =
-                TlsConnection::new(socket, &mut read_record_buffer, &mut write_record_buffer);
+            let mut tls = TlsConnection::new(socket, ssl_rx_buf, ssl_tx_buf);
 
             let config: TlsConfig<'_, Aes128GcmSha256> =
                 TlsConfig::new().with_server_name(ws_url.host);
             tls.open::<OsRng, NoVerify>(TlsContext::new(&config, &mut OsRng))
                 .await
-                .expect("error establishing TLS connection");
+                .map_err(|_| ())?;
+
             WsSocket::Tls(tls)
         } else {
             WsSocket::Raw(socket)
@@ -101,8 +135,8 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
         }
 
         log::info!("connected!");
-        let mut tx_framer = WsTxFramer::new(true, &mut ws_tx_buf);
-        let mut rx_framer = WsRxFramer::new(&mut ws_rx_buf);
+        let mut tx_framer = WsTxFramer::new(true, ws_tx_buf);
+        let mut rx_framer = WsRxFramer::new(ws_rx_buf);
 
         let path = alloc::format!(
             "{}?id={}&ver={}&chip={}&firmware={}",
@@ -116,10 +150,10 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
         socket
             .write_all(tx_framer.generate_http_upgrade(ws_url.host, &path, None))
             .await
-            .unwrap();
+            .map_err(|_| ())?;
 
         loop {
-            let n = socket.read(rx_framer.mut_buf()).await.unwrap();
+            let n = socket.read(rx_framer.mut_buf()).await.map_err(|_| ())?;
             let res = rx_framer.process_http_response(n);
 
             if let Some(code) = res {
@@ -141,8 +175,8 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
             )
             .await;
 
-            if res.is_err() {
-                log::error!("ws: reader or writer err!");
+            if let Err(e) = res {
+                log::error!("ws_rw_error: {e:?}");
                 Timer::after_millis(WS_RETRY_MS).await;
                 break;
             }
@@ -164,7 +198,7 @@ async fn ws_rw(
         let read_fut = tls.read(framer_rx.mut_buf());
         let write_fut = recv.receive();
 
-        let res = match embassy_futures::select::select(read_fut, write_fut).await {
+        let n = match embassy_futures::select::select(read_fut, write_fut).await {
             embassy_futures::select::Either::First(read_res) => read_res,
             embassy_futures::select::Either::Second(write_frame) => {
                 let data = framer_tx.frame(write_frame.into_ref());
@@ -172,14 +206,8 @@ async fn ws_rw(
 
                 continue;
             }
-        };
+        }?;
 
-        if let Err(e) = res {
-            log::error!("ws_read: {e:?}");
-            return Err(());
-        }
-
-        let n = res.unwrap();
         if n == 0 {
             log::warn!("read_n: 0");
             return Err(());
