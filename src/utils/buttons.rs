@@ -1,7 +1,10 @@
-use crate::{buttons::HandlersDerive, state::GlobalState};
+use crate::{
+    buttons::HandlersDerive,
+    state::{sleep_state, GlobalState},
+};
 use alloc::vec::Vec;
 use embassy_time::{Instant, Timer};
-use esp_hal::gpio::Input;
+use esp_hal::{gpio::Input, rtc_cntl::sleep::TimerWakeupSource};
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Clone)]
@@ -74,6 +77,13 @@ impl ButtonsHandler {
         let mut old_debounced = i32::MAX;
         let mut old_val = 0;
         loop {
+            if sleep_state() {
+                let mut rtc = state.rtc.lock().await;
+
+                let timer = TimerWakeupSource::new(core::time::Duration::from_millis(25));
+                rtc.sleep_light(&[&timer]);
+            }
+
             let mut out_val = 0;
 
             #[cfg(feature = "esp32c3")]
@@ -103,7 +113,7 @@ impl ButtonsHandler {
                 debounce_time = esp_hal::time::now();
             } else if old_debounced != out_val {
                 let duration = esp_hal::time::now() - debounce_time;
-                if duration.to_millis() > 50 {
+                if duration.to_millis() > 50 || sleep_state() {
                     if old_debounced == 0 {
                         self.button_down((out_val as u8).into(), state).await;
                     } else {

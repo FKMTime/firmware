@@ -79,10 +79,10 @@ async fn button_test(
 async fn wakeup_button(
     _triggered: &ButtonTrigger,
     _hold_time: u64,
-    state: &GlobalState,
+    _state: &GlobalState,
 ) -> Result<bool, ()> {
     if sleep_state() {
-        state.state.signal();
+        esp_hal::reset::software_reset();
         return Ok(true);
     }
 

@@ -12,6 +12,7 @@ use embassy_sync::signal::Signal;
 use embassy_time::{Instant, Timer};
 use esp_backtrace as _;
 use esp_hal::gpio::Pin;
+use esp_hal::rtc_cntl::Rtc;
 use esp_hal::{
     gpio::{Input, Output},
     timer::timg::TimerGroup,
@@ -95,6 +96,7 @@ async fn main(spawner: Spawner) {
         esp_hal_wifimanager::Nvs::new_from_part_table().expect("Wrong partition configuration!");
 
     set_brownout_detection(false);
+    let rtc = Rtc::new(peripherals.LPWR);
     let rng = esp_hal::rng::Rng::new(peripherals.RNG);
 
     #[cfg(feature = "esp32")]
@@ -184,7 +186,7 @@ async fn main(spawner: Spawner) {
     let cs_pin = Output::new(peripherals.GPIO5, esp_hal::gpio::Level::High);
 
     init_translations();
-    let global_state = Rc::new(GlobalStateInner::new(&nvs));
+    let global_state = Rc::new(GlobalStateInner::new(&nvs, rtc));
     let wifi_setup_sig = Rc::new(Signal::new());
 
     #[cfg(feature = "esp32")]
