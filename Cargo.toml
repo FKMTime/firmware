@@ -48,6 +48,7 @@ rand_core = { version = "0.6.4", features = ["getrandom"] }
 
 mfrc522-01 = { version = "0.1.1", package = "esp-hal-mfrc522", optional = true }
 mfrc522-02 = { version = "0.2.1", features = ["embassy-time"], package = "esp-hal-mfrc522", optional = true }
+ag-lcd = "0.3.0"
 
 [features]
 default = ["esp32c3"]

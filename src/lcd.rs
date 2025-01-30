@@ -30,28 +30,24 @@ pub async fn lcd_task(
     wifi_setup_sig: Rc<Signal<NoopRawMutex, ()>>,
 ) {
     #[cfg(feature = "esp32c3")]
-    let mut bl_pin = lcd_shifter.get_pin_mut(1, true);
+    let bl_pin = lcd_shifter.get_pin_mut(1, true);
 
-    #[cfg(feature = "esp32c3")]
-    let mut options = {
-        let reg_sel_pin = lcd_shifter.get_pin_mut(2, true);
-        let e_pin = lcd_shifter.get_pin_mut(3, true);
-        let d4_pin = lcd_shifter.get_pin_mut(7, false);
-        let d5_pin = lcd_shifter.get_pin_mut(6, false);
-        let d6_pin = lcd_shifter.get_pin_mut(5, false);
-        let d7_pin = lcd_shifter.get_pin_mut(4, false);
-
-        hd44780_driver::setup::DisplayOptions4Bit::new(MemoryMap1602::new())
-            .with_pins(hd44780_driver::bus::FourBitBusPins {
-                rs: reg_sel_pin,
-                en: e_pin,
-                d4: d4_pin,
-                d5: d5_pin,
-                d6: d6_pin,
-                d7: d7_pin,
-            })
-            .with_charset(CharsetA02::QUESTION_FALLBACK)
-    };
+    let rs_pin = lcd_shifter.get_pin_mut(2, true);
+    let en_pin = lcd_shifter.get_pin_mut(3, true);
+    let d4_pin = lcd_shifter.get_pin_mut(7, false);
+    let d5_pin = lcd_shifter.get_pin_mut(6, false);
+    let d6_pin = lcd_shifter.get_pin_mut(5, false);
+    let d7_pin = lcd_shifter.get_pin_mut(4, false);
+    let mut lcd: ag_lcd::LcdDisplay<_, _> = ag_lcd::LcdDisplay::new(rs_pin, en_pin, Delay)
+        .with_half_bus(d4_pin, d5_pin, d6_pin, d7_pin)
+        .with_display(ag_lcd::Display::On)
+        .with_blink(ag_lcd::Blink::Off)
+        .with_cursor(ag_lcd::Cursor::Off)
+        .with_size(ag_lcd::Size::Dots5x8)
+        .with_backlight(bl_pin)
+        .with_cols(16)
+        .with_lines(ag_lcd::Lines::TwoLines)
+        .build();
 
     #[cfg(feature = "esp32")]
     let mut options = {
@@ -60,40 +56,86 @@ pub async fn lcd_task(
             .with_charset(CharsetA02::QUESTION_FALLBACK)
     };
 
-    let mut delay = Delay;
+    lcd.clear();
+    //lcd.backlight_on();
 
-    let mut lcd = loop {
-        match HD44780::new(options, &mut delay) {
-            Err((opt, e)) => {
-                log::error!("Error creating CLD driver: {e:?}");
-                options = opt;
-                Timer::after_millis(1000).await;
-            }
-            Ok(lcd) => break lcd,
-        }
-    };
-
-    #[cfg(feature = "esp32c3")]
-    {
-        _ = bl_pin.set_high();
-    }
-
-    #[cfg(feature = "esp32")]
-    {
-        _ = lcd.set_backlight(true, &mut delay);
-    }
-
-    _ = lcd.clear(&mut delay);
-    _ = lcd.reset(&mut delay);
-    _ = lcd.set_display_mode(
-        DisplayMode {
-            display: hd44780_driver::Display::On,
-            cursor_visibility: hd44780_driver::Cursor::Invisible,
-            cursor_blink: hd44780_driver::CursorBlink::Off,
-        },
-        &mut delay,
+    lcd.set_character(
+        2,
+        [
+            0b10010, 0b10000, 0b10010, 0b01000, 0b01111, 0b01000, 0b00001, 0b00011,
+        ],
     );
-    _ = lcd.clear(&mut delay);
+    lcd.set_character(
+        3,
+        [
+            0b11011, 0b11011, 0b11011, 0b11011, 0b11011, 0b00000, 0b00000, 0b00000,
+        ],
+    );
+    lcd.set_character(
+        1,
+        [
+            0b10101, 0b01010, 0b10101, 0b01010, 0b00100, 0b00111, 0b00111, 0b11100,
+        ],
+    );
+    lcd.set_character(
+        0,
+        [
+            0b00001, 0b00010, 0b00100, 0b01100, 0b10010, 0b11001, 0b00010, 0b00100,
+        ],
+    );
+
+    lcd.set_position(0, 0);
+    lcd.write(0);
+
+    lcd.set_position(0, 1);
+    lcd.write(1);
+
+    lcd.set_position(1, 0);
+    lcd.write(2);
+
+    lcd.set_position(1, 1);
+    lcd.write(3);
+
+    Timer::after_millis(1000).await;
+    lcd.clear();
+    lcd.set_character(
+        0,
+        [
+            0b00000, 0b00000, 0b01100, 0b01100, 0b01001, 0b00011, 0b00011, 0b00111,
+        ],
+    );
+    lcd.set_character(
+        1,
+        [
+            0b00000, 0b00000, 0b00110, 0b00110, 0b10010, 0b11000, 0b11000, 0b11100,
+        ],
+    );
+    lcd.set_character(
+        2,
+        [
+            0b00111, 0b00011, 0b00011, 0b01001, 0b01100, 0b01100, 0b00000, 0b00000,
+        ],
+    );
+    lcd.set_character(
+        3,
+        [
+            0b11100, 0b11000, 0b11000, 0b10010, 0b00110, 0b00110, 0b00000, 0b00000,
+        ],
+    );
+
+    lcd.set_position(0, 0);
+    lcd.write(0);
+
+    lcd.set_position(0, 1);
+    lcd.write(2);
+
+    lcd.set_position(1, 0);
+    lcd.write(1);
+
+    lcd.set_position(1, 1);
+    lcd.write(3);
+
+    /*
     let mut lcd_driver: LcdAbstract<80, 16, 2, 3> = LcdAbstract::new();
 
     _ = lcd_driver.print(
@@ -118,8 +160,49 @@ pub async fn lcd_task(
     );
     _ = lcd_driver.display_on_lcd(&mut lcd, &mut delay);
 
+    _ = lcd.clear(&mut delay);
+    _ = lcd.define_custom_character(
+        0,
+        &hd44780_driver::character::CharacterDefinition {
+            pattern: [
+                0b00001, 0b00010, 0b00000, 0b00100, 0b00100, 0b00100, 0b11111, 0b11111, 0, 0,
+            ],
+            cursor: 8,
+        },
+        &mut delay,
+    );
+    _ = lcd.set_cursor_xy((0, 0), &mut delay);
+    _ = lcd.write_byte(0, &mut delay);
+
+    _ = lcd.define_custom_character(
+        1,
+        &hd44780_driver::character::CharacterDefinition {
+            pattern: [
+                0b11111, 0b00001, 0b01001, 0b01001, 0b01001, 0b01000, 0b01110, 0b00000, 0, 0,
+            ],
+            cursor: 8,
+        },
+        &mut delay,
+    );
+    _ = lcd.set_cursor_xy((0, 1), &mut delay);
+    _ = lcd.write_byte(1, &mut delay);
+
+    _ = lcd.define_custom_character(
+        2,
+        &hd44780_driver::character::CharacterDefinition {
+            pattern: [
+                0b10010, 0b10000, 0b10010, 0b01000, 0b01111, 0b01000, 0b00001, 0b00011, 0, 0,
+            ],
+            cursor: 8,
+        },
+        &mut delay,
+    );
+    _ = lcd.set_cursor_xy((1, 1), &mut delay);
+    _ = lcd.write_byte(2, &mut delay);
+
     #[cfg(not(feature = "bat_dev_lcd"))]
-    Timer::after_millis(2500).await;
+    //Timer::after_millis(2500).await;
+    Timer::after_millis(25000).await;
 
     _ = lcd_driver.clear_all();
     let mut last_update;
@@ -174,6 +257,7 @@ pub async fn lcd_task(
             }
         }
     }
+    */
 }
 
 #[cfg(feature = "esp32")]

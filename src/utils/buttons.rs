@@ -80,7 +80,7 @@ impl ButtonsHandler {
             if sleep_state() {
                 let mut rtc = state.rtc.lock().await;
 
-                let timer = TimerWakeupSource::new(core::time::Duration::from_millis(25));
+                let timer = TimerWakeupSource::new(core::time::Duration::from_millis(100));
                 rtc.sleep_light(&[&timer]);
             }
 
