@@ -1,7 +1,5 @@
-use embedded_hal::delay::DelayNs;
-use hd44780_driver::{
-    bus::DataBus, charset::CharsetWithFallback, memory_map::DisplayMemoryMap, HD44780,
-};
+use ag_lcd::LcdDisplay;
+use embedded_hal::{delay::DelayNs, digital::OutputPin};
 
 pub enum PrintAlign {
     Left,
@@ -153,19 +151,15 @@ impl<const LINE_SIZE: usize, const X: usize, const Y: usize, const SCROLLER_WT: 
         Ok(())
     }
 
-    pub fn display_on_lcd<B: DataBus, M: DisplayMemoryMap, C: CharsetWithFallback, D: DelayNs>(
+    pub fn display_on_lcd<T: OutputPin, D: DelayNs>(
         &mut self,
-        lcd: &mut HD44780<B, M, C>,
-        delay: &mut D,
+        lcd: &mut LcdDisplay<T, D>,
     ) -> Result<(), LcdError> {
         let display_data = self.display_data();
         for (y, line) in display_data.0.iter().enumerate() {
             if line.1 {
-                lcd.set_cursor_xy((0, y as u8), delay)
-                    .map_err(|_| LcdError::Other)?;
-
-                lcd.write_bytes(line.0, delay)
-                    .map_err(|_| LcdError::Other)?;
+                lcd.set_position(0, y as u8);
+                lcd.print(unsafe { core::str::from_utf8_unchecked(line.0) });
 
                 display_data.1[y].copy_from_slice(line.0);
             }

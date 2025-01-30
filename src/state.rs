@@ -1,7 +1,6 @@
 use alloc::{rc::Rc, string::String};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Instant, Timer};
-use esp_hal::rtc_cntl::Rtc;
 use esp_hal_wifimanager::Nvs;
 use serde::{Deserialize, Serialize};
 
@@ -93,11 +92,10 @@ pub struct GlobalStateInner {
     pub update_progress: Signal<CriticalSectionRawMutex, u8>,
 
     pub nvs: Nvs,
-    pub rtc: embassy_sync::mutex::Mutex<CriticalSectionRawMutex, Rtc<'static>>,
 }
 
 impl GlobalStateInner {
-    pub fn new(nvs: &Nvs, rtc: Rtc<'static>) -> Self {
+    pub fn new(nvs: &Nvs) -> Self {
         Self {
             state: SignaledMutex::new(SignaledGlobalStateInner::new()),
             timer_signal: Signal::new(),
@@ -105,7 +103,6 @@ impl GlobalStateInner {
             update_progress: Signal::new(),
 
             nvs: nvs.clone(),
-            rtc: embassy_sync::mutex::Mutex::new(rtc),
         }
     }
 }

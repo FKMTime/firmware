@@ -54,6 +54,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d33be4690212133536fac4ad4eea4b313bf4df60b5d2a27f78e8303e36b93a7"
 dependencies = [
  "embedded-hal 1.0.0",
+ "port-expander",
  "shared-bus",
 ]
 
@@ -1123,11 +1124,11 @@ dependencies = [
  "esp32",
  "esp32c3",
  "getrandom",
- "hd44780-driver",
  "heapless 0.8.0",
  "log",
  "macros",
  "nb 1.1.0",
+ "port-expander",
  "portable-atomic",
  "rand_core",
  "serde",
@@ -1313,14 +1314,6 @@ name = "hashbrown"
 version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
-
-[[package]]
-name = "hd44780-driver"
-version = "0.4.0"
-source = "git+https://github.com/filipton/hd44780-driver.git#8a17870578b1a010f5fc9ec7321d1c7975b5ce58"
-dependencies = [
- "embedded-hal 1.0.0",
-]
 
 [[package]]
 name = "heapless"
@@ -1654,6 +1647,15 @@ dependencies = [
  "cpufeatures",
  "opaque-debug",
  "universal-hash",
+]
+
+[[package]]
+name = "port-expander"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1304098353217102c28f2fa9506b4b7bfd05cd5f1e9f1a8eddb2829da5f491d5"
+dependencies = [
+ "embedded-hal 1.0.0",
 ]
 
 [[package]]

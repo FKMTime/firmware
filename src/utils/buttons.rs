@@ -4,7 +4,7 @@ use crate::{
 };
 use alloc::vec::Vec;
 use embassy_time::{Instant, Timer};
-use esp_hal::{gpio::Input, rtc_cntl::sleep::TimerWakeupSource};
+use esp_hal::gpio::Input;
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Clone)]
@@ -77,13 +77,6 @@ impl ButtonsHandler {
         let mut old_debounced = i32::MAX;
         let mut old_val = 0;
         loop {
-            if sleep_state() {
-                let mut rtc = state.rtc.lock().await;
-
-                let timer = TimerWakeupSource::new(core::time::Duration::from_millis(100));
-                rtc.sleep_light(&[&timer]);
-            }
-
             let mut out_val = 0;
 
             #[cfg(feature = "esp32c3")]
