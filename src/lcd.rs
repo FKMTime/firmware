@@ -274,6 +274,29 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 .print(1, &get_translation("MDNS_WAIT_2"), PrintAlign::Center, true)
                 .ok()?;
         }
+        Scene::RoundSelect => {
+            if current_state.round_select > 0 {
+                lcd_driver.print(0, "<", PrintAlign::Left, false).ok()?;
+                lcd_driver.print(1, "<", PrintAlign::Left, false).ok()?;
+            }
+
+            if current_state.round_select < current_state.possible_rounds.len() - 1 {
+                lcd_driver.print(0, ">", PrintAlign::Right, false).ok()?;
+                lcd_driver.print(1, ">", PrintAlign::Right, false).ok()?;
+            }
+
+            lcd_driver
+                .print(0, "Select room", PrintAlign::Center, false)
+                .ok()?;
+            lcd_driver
+                .print(
+                    1,
+                    &current_state.possible_rounds[current_state.round_select].name,
+                    PrintAlign::Center,
+                    false,
+                )
+                .ok()?;
+        }
         Scene::WaitingForCompetitor => {
             lcd_driver
                 .print(
@@ -317,9 +340,9 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 )
                 .ok()?;
 
-            if let Some(secondary_text) = current_state.secondary_text {
+            if let Some(round) = current_state.solve_round {
                 lcd_driver
-                    .print(1, &secondary_text, PrintAlign::Center, true)
+                    .print(1, &round.name, PrintAlign::Center, true)
                     .ok()?;
             }
         }
@@ -364,7 +387,8 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 .inspection_start
                 .map(|x| (current_state.inspection_end.unwrap() - x).as_millis());
 
-            if current_state.use_inspection && inspection_time.unwrap_or(0) > INSPECTION_TIME_PLUS2
+            if current_state.use_inspection()
+                && inspection_time.unwrap_or(0) > INSPECTION_TIME_PLUS2
             {
                 let inspections_seconds = inspection_time.unwrap_or(0) / 1000;
                 lcd_driver

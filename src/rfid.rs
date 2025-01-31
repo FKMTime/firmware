@@ -130,10 +130,23 @@ async fn process_card_info_response(
                 state.competitor_display = Some(resp.display);
                 state.current_competitor = Some(resp.card_id);
 
-                if state.solve_time.is_some() {
-                    state.scene = crate::state::Scene::Finished;
-                } else {
-                    state.scene = crate::state::Scene::CompetitorInfo;
+                match resp.possible_rounds.len() {
+                    1 => {
+                        state.solve_round = Some(resp.possible_rounds[0].clone());
+
+                        if state.solve_time.is_some() {
+                            state.scene = crate::state::Scene::Finished;
+                        } else {
+                            state.scene = crate::state::Scene::CompetitorInfo;
+                        }
+                    }
+                    2.. => {
+                        state.possible_rounds = resp.possible_rounds;
+                        state.scene = crate::state::Scene::RoundSelect;
+                    }
+                    _ => {
+                        // TODO: show error?
+                    }
                 }
             }
         }
@@ -146,7 +159,7 @@ async fn process_card_info_response(
                 && state.time_confirmed
             {
                 let inspection_time = state
-                    .use_inspection
+                    .use_inspection()
                     .then_some((state.inspection_end, state.inspection_start))
                     .and_then(|(end, start)| end.zip(start))
                     .map(|(end, start)| (end - start).as_millis() as i64)
@@ -166,6 +179,12 @@ async fn process_card_info_response(
                         session_id: state.session_id.clone().unwrap(),
                         delegate: false,
                         inspection_time,
+                        round_id: state
+                            .solve_round
+                            .clone()
+                            .map(|r| r.id)
+                            .unwrap_or("NOT SELECTED ERROR".to_string()), // TODO: add to this
+                                                                          // error handling
                     },
                 )
                 .await;

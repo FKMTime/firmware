@@ -226,15 +226,9 @@ async fn ws_rw(
                         }
 
                         match timer_packet.data {
-                            TimerPacketInner::DeviceSettings {
-                                use_inspection,
-                                secondary_text,
-                                added,
-                            } => {
+                            TimerPacketInner::DeviceSettings { added } => {
                                 let mut state = global_state.state.lock().await;
-                                state.use_inspection = use_inspection;
                                 state.device_added = Some(added);
-                                state.secondary_text = Some(secondary_text);
                             }
                             TimerPacketInner::ApiError(e) => {
                                 // if should_reset_time reset time

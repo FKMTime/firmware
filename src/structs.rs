@@ -45,6 +45,7 @@ pub enum TimerPacketInner {
         session_id: String, // UUID
         delegate: bool,
         inspection_time: i64,
+        round_id: String,
     },
     SolveConfirm(SolveConfirmPacket),
     DelegateResponse(DelegateResponsePacket),
@@ -58,8 +59,6 @@ pub enum TimerPacketInner {
     CardInfoResponse(CardInfoResponsePacket),
     AttendanceMarked,
     DeviceSettings {
-        use_inspection: bool,
-        secondary_text: String,
         added: bool,
     },
     Logs {
@@ -87,6 +86,14 @@ pub struct CardInfoResponsePacket {
     pub display: String,
     pub country_iso2: String,
     pub can_compete: bool,
+    pub possible_rounds: Vec<PossibleRound>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct PossibleRound {
+    pub id: String,
+    pub name: String,
+    pub use_inspection: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

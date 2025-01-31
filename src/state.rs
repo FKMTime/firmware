@@ -1,10 +1,10 @@
-use alloc::{rc::Rc, string::String};
+use alloc::{rc::Rc, string::String, vec::Vec};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal_wifimanager::Nvs;
 use serde::{Deserialize, Serialize};
 
-use crate::utils::signaled_mutex::SignaledMutex;
+use crate::{structs::PossibleRound, utils::signaled_mutex::SignaledMutex};
 
 pub static mut EPOCH_BASE: u64 = 0;
 pub static mut SLEEP_STATE: bool = false;
@@ -40,6 +40,7 @@ pub enum Scene {
     MdnsWait,
 
     WaitingForCompetitor,
+    RoundSelect,
     CompetitorInfo,
     Inspection,
     Timer,
@@ -54,6 +55,7 @@ impl Scene {
             Scene::AutoSetupWait => false,
             Scene::MdnsWait => false,
             Scene::WaitingForCompetitor => true,
+            Scene::RoundSelect => true,
             Scene::CompetitorInfo => true,
             Scene::Inspection => false,
             Scene::Timer => false,
@@ -68,10 +70,11 @@ impl Scene {
             Scene::AutoSetupWait => 2,
             Scene::MdnsWait => 3,
             Scene::WaitingForCompetitor => 4,
-            Scene::CompetitorInfo => 5,
-            Scene::Inspection => 6,
-            Scene::Timer => 7,
-            Scene::Finished => 8,
+            Scene::RoundSelect => 5,
+            Scene::CompetitorInfo => 6,
+            Scene::Inspection => 7,
+            Scene::Timer => 8,
+            Scene::Finished => 9,
         }
     }
 }
@@ -118,10 +121,11 @@ pub struct SignaledGlobalStateInner {
     pub penalty: Option<i8>,
     pub session_id: Option<String>,
     pub time_confirmed: bool,
+    pub solve_round: Option<PossibleRound>, // TODO: add to saved global state
 
-    pub use_inspection: bool,
-    pub secondary_text: Option<String>,
     pub error_text: Option<String>,
+    pub possible_rounds: Vec<PossibleRound>,
+    pub round_select: usize,
 
     pub device_added: Option<bool>,
     pub server_connected: Option<bool>,
@@ -162,11 +166,12 @@ impl SignaledGlobalStateInner {
             penalty: None,
             session_id: None,
             time_confirmed: false,
-
-            use_inspection: true,
-            secondary_text: None,
+            solve_round: None,
 
             error_text: None,
+            possible_rounds: Vec::new(),
+            round_select: 0,
+
             device_added: None,
             server_connected: None,
             stackmat_connected: None,
@@ -223,6 +228,9 @@ impl SignaledGlobalStateInner {
         self.delegate_used = false;
         self.inspection_start = None;
         self.inspection_end = None;
+        self.solve_round = None;
+        self.possible_rounds.clear();
+        self.round_select = 0;
 
         if let Some(nvs) = save_nvs {
             SavedGlobalState::clear_saved_global_state(nvs).await;
@@ -259,6 +267,13 @@ impl SignaledGlobalStateInner {
 
         if saved.solve_time > 0 {
             self.scene = Scene::Finished;
+        }
+    }
+
+    pub fn use_inspection(&self) -> bool {
+        match self.solve_round.as_ref().map(|r| r.use_inspection) {
+            Some(true) | None => true,
+            Some(false) => false,
         }
     }
 }

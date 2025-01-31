@@ -63,7 +63,7 @@ pub async fn stackmat_task(
                     if parsed.0 == StackmatTimerState::Running {
                         let mut state = global_state.state.lock().await;
                         if state.scene <= Scene::Inspection && state.solve_time.is_none() {
-                            if state.use_inspection {
+                            if state.use_inspection() {
                                 state.inspection_end = Some(Instant::now());
                             }
 

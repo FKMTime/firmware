@@ -32,6 +32,7 @@ pub async fn buttons_task(
         submit_reset_wifi(),
     );
 
+    handler.add_handler(Button::First, ButtonTrigger::Down, room_left());
     handler.add_handler(Button::First, ButtonTrigger::Down, inspection_start());
     handler.add_handler(
         Button::First,
@@ -39,6 +40,7 @@ pub async fn buttons_task(
         inspection_hold_stop(),
     );
 
+    handler.add_handler(Button::Fourth, ButtonTrigger::Down, room_right());
     handler.add_handler(Button::Fourth, ButtonTrigger::HoldOnce(1000), dnf_button());
     handler.add_handler(Button::Fourth, ButtonTrigger::Up, penalty_button());
 
@@ -90,6 +92,36 @@ async fn wakeup_button(
 }
 
 #[macros::button_handler]
+async fn room_left(
+    _triggered: &ButtonTrigger,
+    _hold_time: u64,
+    state: &GlobalState,
+) -> Result<bool, ()> {
+    let mut state = state.state.lock().await;
+    if state.scene == Scene::RoundSelect {
+        state.round_select = state.round_select.saturating_sub(1);
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
+#[macros::button_handler]
+async fn room_right(
+    _triggered: &ButtonTrigger,
+    _hold_time: u64,
+    state: &GlobalState,
+) -> Result<bool, ()> {
+    let mut state = state.state.lock().await;
+    if state.scene == Scene::RoundSelect {
+        state.round_select = (state.round_select + 1).min(state.possible_rounds.len() - 1);
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
+#[macros::button_handler]
 async fn submit_up(
     _triggered: &ButtonTrigger,
     _hold_time: u64,
@@ -122,6 +154,19 @@ async fn submit_up(
         return Ok(false);
     }
 
+    if state_val.scene == Scene::RoundSelect {
+        state_val.solve_round = Some(state_val.possible_rounds[state_val.round_select].clone());
+        if state_val.solve_time.is_some() {
+            state_val.scene = crate::state::Scene::Finished;
+        } else {
+            state_val.scene = crate::state::Scene::CompetitorInfo;
+        }
+
+        state.state.signal();
+
+        return Ok(false);
+    }
+
     if state_val.scene == Scene::Finished && !state_val.time_confirmed {
         state_val.time_confirmed = true;
         state.state.signal();
@@ -139,7 +184,7 @@ async fn inspection_start(
     state: &GlobalState,
 ) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
-    if !state_val.use_inspection || state_val.should_skip_other_actions() {
+    if !state_val.use_inspection() || state_val.should_skip_other_actions() {
         return Ok(false);
     }
 
@@ -308,7 +353,7 @@ async fn delegate_hold(
                 return Ok(false);
             }
 
-            let inspection_time = if state_val.use_inspection
+            let inspection_time = if state_val.use_inspection()
                 && state_val.inspection_start.is_some()
                 && state_val.inspection_end.is_some()
             {
@@ -331,6 +376,11 @@ async fn delegate_hold(
                 session_id: state_val.session_id.clone().unwrap(),
                 delegate: true,
                 inspection_time,
+                round_id: state_val
+                    .solve_round
+                    .clone()
+                    .map(|r| r.id)
+                    .unwrap_or("ERR".to_string()), // TODO: add error check
             };
 
             state_val.delegate_hold = Some(3);

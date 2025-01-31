@@ -129,12 +129,7 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "esp32c3")]
     let shifter_latch_pin = Output::new(peripherals.GPIO1, esp_hal::gpio::Level::Low);
     #[cfg(feature = "esp32c3")]
-    let shifter_clk_pin = if crate::utils::get_efuse_u32() == 1342310409 {
-        // TODO: remove this if
-        Output::new(peripherals.GPIO7, esp_hal::gpio::Level::Low)
-    } else {
-        Output::new(peripherals.GPIO21, esp_hal::gpio::Level::Low)
-    };
+    let shifter_clk_pin = Output::new(peripherals.GPIO21, esp_hal::gpio::Level::Low);
 
     let mut adv_shift_reg = adv_shift_registers::AdvancedShiftRegister::<8, _>::new(
         shifter_data_pin,
