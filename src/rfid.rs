@@ -76,15 +76,16 @@ pub async fn rfid_task(
     let mut rfid_sleep = false;
     loop {
         Timer::after(Duration::from_millis(10)).await;
-        if sleep_state() && !rfid_sleep {
-            _ = mfrc522.pcd_soft_power_down().await;
-            rfid_sleep = true;
-        } else if !sleep_state() && rfid_sleep {
-            _ = mfrc522.pcd_soft_power_up().await;
-            rfid_sleep = false;
+        if sleep_state() != rfid_sleep {
+            rfid_sleep = sleep_state();
+
+            match rfid_sleep {
+                true => _ = mfrc522.pcd_soft_power_down().await,
+                false => _ = mfrc522.pcd_soft_power_up().await,
+            }
         }
 
-        if sleep_state() && rfid_sleep {
+        if rfid_sleep {
             Timer::after(Duration::from_millis(500)).await;
             continue;
         }

@@ -277,19 +277,20 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 .ok()?;
         }
         Scene::RoundSelect => {
-            if current_state.round_select > 0 {
-                lcd_driver.print(0, "<", PrintAlign::Left, false).ok()?;
-                lcd_driver.print(1, "<", PrintAlign::Left, false).ok()?;
-            }
-
-            if current_state.round_select < current_state.possible_rounds.len() - 1 {
-                lcd_driver.print(0, ">", PrintAlign::Right, false).ok()?;
-                lcd_driver.print(1, ">", PrintAlign::Right, false).ok()?;
-            }
+            lcd_driver.print(0, "<", PrintAlign::Left, false).ok()?;
+            lcd_driver.print(1, "<", PrintAlign::Left, false).ok()?;
+            lcd_driver.print(0, ">", PrintAlign::Right, false).ok()?;
+            lcd_driver.print(1, ">", PrintAlign::Right, false).ok()?;
 
             lcd_driver
-                .print(0, "Select room", PrintAlign::Center, false)
+                .print(
+                    0,
+                    &get_translation("SELECT_ROUND"),
+                    PrintAlign::Center,
+                    false,
+                )
                 .ok()?;
+
             lcd_driver
                 .print(
                     1,
