@@ -3,11 +3,12 @@ use crate::{
     state::{GlobalState, Scene},
     structs::{ApiError, FromPacket, TimerPacket, TimerPacketInner},
 };
-use alloc::string::String;
+use alloc::{rc::Rc, string::String};
 use core::str::FromStr;
 use embassy_net::{tcp::TcpSocket, IpAddress, Stack};
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, pubsub::PubSubChannel,
+    signal::Signal,
 };
 use embassy_time::{Instant, Timer};
 use embedded_io_async::Write;
@@ -22,7 +23,12 @@ static TAGGED_RETURN: PubSubChannel<CriticalSectionRawMutex, (u64, TimerPacket),
     PubSubChannel::new();
 
 #[embassy_executor::task]
-pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: GlobalState) {
+pub async fn ws_task(
+    stack: Stack<'static>,
+    ws_url: String,
+    global_state: GlobalState,
+    ws_sleep_sig: Rc<Signal<CriticalSectionRawMutex, bool>>,
+) {
     let ws_url = WsUrl::from_str(&ws_url).expect("Ws url parse error");
 
     let mut rx_buf = [0; 8192];
@@ -41,7 +47,7 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
     }
 
     loop {
-        let res = ws_loop(
+        let ws_fut = ws_loop(
             &global_state,
             &ws_url,
             stack,
@@ -51,11 +57,26 @@ pub async fn ws_task(stack: Stack<'static>, ws_url: String, global_state: Global
             &mut ws_tx_buf,
             &mut ssl_rx_buf,
             &mut ssl_tx_buf,
-        )
-        .await;
+        );
 
-        if let Err(e) = res {
-            log::error!("Ws_loop errored! {e:?}");
+        let res = embassy_futures::select::select(ws_fut, ws_sleep_sig.wait()).await;
+
+        match res {
+            embassy_futures::select::Either::First(res) => {
+                if let Err(e) = res {
+                    log::error!("Ws_loop errored! {e:?}");
+                }
+            }
+            embassy_futures::select::Either::Second(sleep) => {
+                if sleep {
+                    loop {
+                        let sleep = ws_sleep_sig.wait().await;
+                        if !sleep {
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
         Timer::after_millis(500).await;

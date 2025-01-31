@@ -1,5 +1,5 @@
 use crate::consts::RFID_RETRY_INIT_MS;
-use crate::state::{current_epoch, GlobalState};
+use crate::state::{current_epoch, sleep_state, GlobalState};
 use crate::structs::{CardInfoResponsePacket, SolveConfirmPacket};
 use alloc::string::ToString;
 use anyhow::{anyhow, Result};
@@ -73,8 +73,23 @@ pub async fn rfid_task(
 
     log::debug!("PCD ver: {:?}", mfrc522.pcd_get_version().await);
 
+    let mut rfid_sleep = false;
     loop {
         Timer::after(Duration::from_millis(10)).await;
+        if sleep_state() != rfid_sleep {
+            rfid_sleep = sleep_state();
+
+            match rfid_sleep {
+                true => _ = mfrc522.pcd_soft_power_down().await,
+                false => _ = mfrc522.pcd_soft_power_up().await,
+            }
+        }
+
+        if rfid_sleep {
+            Timer::after(Duration::from_millis(500)).await;
+            continue;
+        }
+
         if mfrc522.picc_is_new_card_present().await.is_err() {
             continue;
         }

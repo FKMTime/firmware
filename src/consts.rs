@@ -1,3 +1,5 @@
+pub const SLEEP_AFTER_MS: u64 = 60000 * 5;
+
 pub const LOG_SEND_INTERVAL_MS: u64 = 5000;
 pub const PRINT_HEAP_INTERVAL_MS: u64 = 30000;
 

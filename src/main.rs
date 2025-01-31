@@ -17,7 +17,7 @@ use esp_hal::{
     timer::timg::TimerGroup,
 };
 use esp_storage::FlashStorage;
-use state::{ota_state, GlobalStateInner, SavedGlobalState, Scene};
+use state::{ota_state, sleep_state, GlobalStateInner, SavedGlobalState, Scene};
 use structs::ConnSettings;
 use translations::init_translations;
 use utils::{logger::FkmLogger, set_brownout_detection};
@@ -286,11 +286,15 @@ async fn main(spawner: Spawner) {
     };
 
     utils::backtrace_store::read_saved_backtrace().await;
+
+    let ws_sleep_sig = Rc::new(Signal::new());
     _ = spawner.spawn(ws::ws_task(
         wifi_res.sta_stack,
         ws_url,
         global_state.clone(),
+        ws_sleep_sig.clone(),
     ));
+    _ = spawner.spawn(logger_task());
 
     set_brownout_detection(true);
     global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
@@ -312,17 +316,33 @@ async fn main(spawner: Spawner) {
         }
     }
 
+    let mut last_sleep = false;
+    loop {
+        Timer::after_millis(100).await;
+        if sleep_state() != last_sleep {
+            last_sleep = sleep_state();
+            ws_sleep_sig.signal(last_sleep);
+
+            match last_sleep {
+                true => wifi_res.stop_radio(),
+                false => wifi_res.restart_radio(),
+            }
+        }
+    }
+}
+
+#[embassy_executor::task]
+async fn logger_task() {
     let mut heap_start = Instant::now();
     loop {
         Timer::after_millis(LOG_SEND_INTERVAL_MS).await;
 
-        // TODO: move to own task
         let mut tmp_logs: Vec<String> = Vec::new();
         while let Ok(msg) = utils::logger::LOGS_CHANNEL.try_receive() {
             tmp_logs.push(msg);
         }
 
-        if ota_state() {
+        if ota_state() || sleep_state() {
             continue;
         }
 

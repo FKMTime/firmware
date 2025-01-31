@@ -1,4 +1,6 @@
-use crate::{consts::BATTERY_SEND_INTERVAL_MS, utils::rolling_average::RollingAverage};
+use crate::{
+    consts::BATTERY_SEND_INTERVAL_MS, state::sleep_state, utils::rolling_average::RollingAverage,
+};
 use embassy_time::{Instant, Timer};
 use esp_hal::{
     analog::adc::{Adc, AdcConfig, Attenuation},
@@ -54,6 +56,11 @@ pub async fn battery_read_task(
 
     loop {
         Timer::after_millis(100).await;
+        if sleep_state() {
+            Timer::after_millis(500).await;
+            continue;
+        }
+
         let read = macros::nb_to_fut!(adc.read_oneshot(&mut adc_pin))
             .await
             .unwrap_or(0);

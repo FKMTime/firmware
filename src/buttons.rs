@@ -99,7 +99,11 @@ async fn room_left(
 ) -> Result<bool, ()> {
     let mut state = state.state.lock().await;
     if state.scene == Scene::RoundSelect {
-        state.round_select = state.round_select.saturating_sub(1);
+        state.round_select = state
+            .round_select
+            .wrapping_sub(1)
+            .min(state.possible_rounds.len() - 1);
+
         return Ok(true);
     }
 
@@ -114,7 +118,11 @@ async fn room_right(
 ) -> Result<bool, ()> {
     let mut state = state.state.lock().await;
     if state.scene == Scene::RoundSelect {
-        state.round_select = (state.round_select + 1).min(state.possible_rounds.len() - 1);
+        state.round_select += 1;
+        if state.round_select == state.possible_rounds.len() {
+            state.round_select = 0;
+        }
+
         return Ok(true);
     }
 
