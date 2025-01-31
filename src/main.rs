@@ -17,7 +17,7 @@ use esp_hal::{
     timer::timg::TimerGroup,
 };
 use esp_storage::FlashStorage;
-use state::{ota_state, GlobalStateInner, SavedGlobalState, Scene};
+use state::{ota_state, sleep_state, GlobalStateInner, SavedGlobalState, Scene};
 use structs::ConnSettings;
 use translations::init_translations;
 use utils::{logger::FkmLogger, set_brownout_detection};
@@ -294,6 +294,7 @@ async fn main(spawner: Spawner) {
 
     set_brownout_detection(true);
     global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
+    /*
     if let Some(saved_state) = SavedGlobalState::from_nvs(&nvs).await {
         global_state
             .state
@@ -301,6 +302,7 @@ async fn main(spawner: Spawner) {
             .await
             .parse_saved_state(saved_state);
     }
+    */
 
     // only mark ota valid after wifi connection!
     {
@@ -312,7 +314,9 @@ async fn main(spawner: Spawner) {
         }
     }
 
+    log::info!("main loop enter");
     let mut heap_start = Instant::now();
+    let mut last_sleep = false;
     loop {
         Timer::after_millis(LOG_SEND_INTERVAL_MS).await;
 
@@ -322,7 +326,17 @@ async fn main(spawner: Spawner) {
             tmp_logs.push(msg);
         }
 
-        if ota_state() {
+        if sleep_state() && !last_sleep {
+            wifi_res.disc.signal(true);
+            last_sleep = true;
+        }
+
+        if !sleep_state() && last_sleep {
+            wifi_res.disc.signal(false);
+            last_sleep = false;
+        }
+
+        if ota_state() || sleep_state() {
             continue;
         }
 

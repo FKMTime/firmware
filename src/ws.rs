@@ -105,6 +105,8 @@ async fn ws_loop(
             *addr
         };
 
+        Timer::after_millis(10000000).await;
+        continue;
         let mut socket = TcpSocket::new(stack, rx_buf, tx_buf);
         socket.set_timeout(Some(embassy_time::Duration::from_secs(15)));
 

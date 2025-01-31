@@ -1,6 +1,6 @@
 use crate::{
     consts::{INSPECTION_TIME_DNF, INSPECTION_TIME_PLUS2},
-    state::{GlobalState, Scene},
+    state::{sleep_state, GlobalState, Scene},
     utils::stackmat::{
         ms_to_time_str, parse_stackmat_data, time_str_to_display, StackmatTimerState,
     },
@@ -26,6 +26,11 @@ pub async fn stackmat_task(
     let mut last_state = None;
     let mut last_stackmat_state = StackmatTimerState::Unknown;
     loop {
+        if sleep_state() {
+            Timer::after_millis(500).await;
+            continue;
+        }
+
         if (esp_hal::time::now() - last_read).to_millis() > 500 && last_state != Some(false) {
             global_state.state.lock().await.stackmat_connected = Some(false);
             last_state = Some(false);

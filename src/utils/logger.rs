@@ -1,4 +1,4 @@
-use crate::state::ota_state;
+use crate::state::{ota_state, sleep_state};
 use alloc::string::String;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
 
@@ -52,7 +52,7 @@ impl log::Log for FkmLogger {
         esp_println::println!("{}{} - {}{}", color, record.level(), record.args(), reset);
 
         #[cfg(not(feature = "bat_dev_lcd"))]
-        if !ota_state() {
+        if !ota_state() && !sleep_state() {
             if LOGS_CHANNEL.is_full() {
                 _ = LOGS_CHANNEL.try_receive();
             }

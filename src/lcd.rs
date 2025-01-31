@@ -5,7 +5,9 @@ use embassy_time::{Delay, Duration, Instant, Timer};
 use embedded_hal::{delay::DelayNs, digital::OutputPin};
 
 use crate::{
-    consts::{INSPECTION_TIME_PLUS2, LCD_INSPECTION_FRAME_TIME, SCROLL_TICKER_INVERVAL_MS},
+    consts::{
+        INSPECTION_TIME_PLUS2, LCD_INSPECTION_FRAME_TIME, SCROLL_TICKER_INVERVAL_MS, SLEEP_AFTER_MS,
+    },
     state::{sleep_state, GlobalState, Scene, SignaledGlobalStateInner},
     translations::{get_translation, get_translation_params},
     utils::{
@@ -122,7 +124,7 @@ pub async fn lcd_task(
                     lcd_driver.display_on_lcd(&mut lcd).unwrap();
                 }
 
-                if !sleep_state() && (Instant::now() - last_update).as_secs() > 60 * 5 {
+                if !sleep_state() && (Instant::now() - last_update).as_millis() > SLEEP_AFTER_MS {
                     lcd.backlight_off();
 
                     unsafe {
