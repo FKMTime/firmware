@@ -154,8 +154,12 @@ async fn ws_loop(
 
         loop {
             let n = socket.read(rx_framer.mut_buf()).await.map_err(|_| ())?;
-            let res = rx_framer.process_http_response(n);
+            if n == 0 {
+                log::error!("error while reading http response");
+                return Err(());
+            }
 
+            let res = rx_framer.process_http_response(n);
             if let Some(code) = res {
                 log::info!("http_resp_code: {code}");
                 break;
