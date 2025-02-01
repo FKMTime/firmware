@@ -25,6 +25,7 @@ fn main() {
     let src_crc = hasher.finalize();
 
     let version_str = if let Ok(rel) = std::env::var("RELEASE_BUILD") {
+        println!("cargo:rustc-cfg=feature=\"release_build\"");
         rel
     } else {
         let epoch = std::time::SystemTime::now()

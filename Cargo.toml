@@ -56,6 +56,7 @@ esp32 = ["esp-backtrace/esp32", "esp-hal/esp32", "esp-println/esp32", "esp-wifi/
 esp32c3 = ["esp-backtrace/esp32c3", "esp-hal/esp32c3", "esp-println/esp32c3", "esp-wifi/esp32c3", "esp-hal-embassy/esp32c3", "esp-storage/esp32c3", "esp-hal-wifimanager/esp32c3", "esp-hal-ota/esp32c3", "dep:esp32c3", "dep:mfrc522-02"]
 gen_version = []
 bat_dev_lcd = []
+release_build = []
 
 [profile.dev]
 # Rust debug is too slow.

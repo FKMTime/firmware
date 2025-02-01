@@ -3,8 +3,13 @@ use alloc::string::String;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
 
 const MAX_LOGS_SIZE: usize = 100;
-pub const FILTER_MAX: log::LevelFilter = log::LevelFilter::Debug;
 pub static LOGS_CHANNEL: Channel<CriticalSectionRawMutex, String, MAX_LOGS_SIZE> = Channel::new();
+
+#[cfg(feature = "release_build")]
+pub const FILTER_MAX: log::LevelFilter = log::LevelFilter::Info;
+
+#[cfg(not(feature = "release_build"))]
+pub const FILTER_MAX: log::LevelFilter = log::LevelFilter::Debug;
 
 pub struct FkmLogger;
 
