@@ -76,10 +76,29 @@ impl ButtonsHandler {
         let mut debounce_time = esp_hal::time::now();
         let mut old_debounced = i32::MAX;
         let mut old_val = 0;
+
+        #[cfg(feature = "e2e")]
+        let mut e2e_data = (esp_hal::time::now(), 0, 0);
+
         loop {
             let mut out_val = 0;
 
-            #[cfg(feature = "esp32c3")]
+            #[cfg(feature = "e2e")]
+            {
+                if state.e2e.buttons_sig.signaled() {
+                    let (btn_idx, press_ms) = state.e2e.buttons_sig.wait().await;
+                    out_val |= 1 << btn_idx;
+
+                    e2e_data.0 = esp_hal::time::now();
+                    e2e_data.1 = press_ms;
+                    e2e_data.2 = btn_idx;
+                    log::debug!("[E2E] Button pressed: {btn_idx} for {press_ms}ms");
+                } else if (esp_hal::time::now() - e2e_data.0).to_millis() <= e2e_data.1 {
+                    out_val |= 1 << e2e_data.2;
+                }
+            }
+
+            #[cfg(all(feature = "esp32c3", not(feature = "e2e")))]
             {
                 let mut val = 0b10000000;
                 for i in 0..4 {
@@ -92,7 +111,7 @@ impl ButtonsHandler {
                 }
             }
 
-            #[cfg(feature = "esp32")]
+            #[cfg(all(feature = "esp32", not(feature = "e2e")))]
             {
                 for (i, button) in buttons.iter().enumerate() {
                     if button.is_low() {

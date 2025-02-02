@@ -64,6 +64,26 @@ impl StackmatTimerState {
     }
 }
 
+#[cfg(feature = "e2e")]
+pub fn generate_stackmat_data(state: &StackmatTimerState, time_ms: u64) -> [u8; 8] {
+    let mut data = [0u8; 8];
+    data[0] = state.to_u8();
+
+    let minutes = (time_ms / 60000) as u8;
+    let seconds = ((time_ms % 60000) / 1000) as u8;
+    let ms = (time_ms % 1000) as u16;
+
+    data[1] = minutes + b'0';
+    data[2] = (seconds / 10) + b'0';
+    data[3] = (seconds % 10) + b'0';
+    data[4] = ((ms / 100) % 10) as u8 + b'0';
+    data[5] = ((ms / 10) % 10) as u8 + b'0';
+    data[6] = (ms % 10) as u8 + b'0';
+
+    data[7] = 64 + data[1..7].iter().fold(0u8, |acc, &x| acc + (x - b'0'));
+    data
+}
+
 pub fn time_str_to_display(time: &str) -> [u8; 6] {
     let mut data = [255; 6];
     let mut i = 0;

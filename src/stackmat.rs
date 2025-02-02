@@ -20,6 +20,9 @@ pub async fn stackmat_task(
     let serial_config = esp_hal::uart::Config::default().with_baudrate(1200);
     let mut uart = UartRx::new(uart, serial_config).unwrap().with_rx(uart_pin);
 
+    #[cfg(feature = "e2e")]
+    let mut e2e_data = (StackmatTimerState::Reset, 0, esp_hal::time::now());
+
     let mut buf = [0; 8];
     let mut read_buf = [0; 8];
     let mut last_read = esp_hal::time::now();
@@ -38,15 +41,53 @@ pub async fn stackmat_task(
         }
 
         Timer::after_millis(10).await;
-        let n = uart.read_buffered_bytes(&mut read_buf);
-        let Ok(n) = n else {
-            log::error!("uart: read_bytes err");
-            continue;
+
+        #[cfg(feature = "e2e")]
+        let n = {
+            if global_state.e2e.stackmat_sig.signaled() {
+                let data = global_state.e2e.stackmat_sig.wait().await;
+                e2e_data.0 = data.0;
+                e2e_data.1 = data.1;
+                e2e_data.2 = esp_hal::time::now();
+            }
+
+            let timer_ms = match e2e_data.0 {
+                StackmatTimerState::Unknown => 0,
+                StackmatTimerState::Reset => 0,
+                StackmatTimerState::Running => {
+                    let mut time = (esp_hal::time::now() - e2e_data.2).to_millis();
+                    if time >= e2e_data.1 {
+                        time = e2e_data.1;
+                        e2e_data.0 = StackmatTimerState::Stopped;
+                    }
+
+                    time
+                }
+                StackmatTimerState::Stopped => e2e_data.1,
+            };
+
+            read_buf.copy_from_slice(&crate::utils::stackmat::generate_stackmat_data(
+                &e2e_data.0,
+                timer_ms,
+            ));
+
+            8
         };
 
-        if n == 0 {
-            continue;
-        }
+        #[cfg(not(feature = "e2e"))]
+        let n = {
+            let n = uart.read_buffered_bytes(&mut read_buf);
+            let Ok(n) = n else {
+                log::error!("uart: read_bytes err");
+                continue;
+            };
+
+            if n == 0 {
+                continue;
+            }
+
+            n
+        };
 
         for &r in &read_buf[..n] {
             if n == 0 || r == 0 || r == b'\r' {

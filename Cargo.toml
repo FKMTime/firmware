@@ -57,6 +57,7 @@ esp32c3 = ["esp-backtrace/esp32c3", "esp-hal/esp32c3", "esp-println/esp32c3", "e
 gen_version = []
 bat_dev_lcd = []
 release_build = []
+e2e = []
 
 [profile.dev]
 # Rust debug is too slow.

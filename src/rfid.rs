@@ -90,18 +90,31 @@ pub async fn rfid_task(
             continue;
         }
 
+        #[cfg(feature = "e2e")]
+        if !global_state.e2e.card_scan_sig.signaled() {
+            continue;
+        }
+
+        #[cfg(feature = "e2e")]
+        let card_uid = global_state.e2e.card_scan_sig.wait().await;
+        #[cfg(feature = "e2e")]
+        log::debug!("[E2E] Card scan: {card_uid}");
+
+        #[cfg(not(feature = "e2e"))]
         if mfrc522.picc_is_new_card_present().await.is_err() {
             continue;
         }
 
-        let card = mfrc522.get_card(UidSize::Four).await;
-        let Ok(card) = card else {
+        #[cfg(not(feature = "e2e"))]
+        let Ok(card_uid) = mfrc522
+            .get_card(UidSize::Four)
+            .await
+            .map(|c| c.get_number())
+        else {
             continue;
         };
 
-        let card_uid = card.get_number();
         log::info!("Card UID: {card_uid}");
-
         let resp = crate::ws::send_request::<CardInfoResponsePacket>(
             crate::structs::TimerPacketInner::CardInfoRequest {
                 card_id: card_uid as u64,

@@ -85,9 +85,25 @@ impl PartialOrd for Scene {
     }
 }
 
-//pub type GlobalState
-pub type GlobalState = Rc<GlobalStateInner>;
+#[cfg(feature = "e2e")]
+#[derive(Default)]
+pub struct End2End {
+    pub buttons_sig: Signal<CriticalSectionRawMutex, (usize, u64)>,
+    pub card_scan_sig: Signal<CriticalSectionRawMutex, u128>,
+    pub stackmat_sig:
+        Signal<CriticalSectionRawMutex, (crate::utils::stackmat::StackmatTimerState, u64)>,
+}
 
+#[cfg(feature = "e2e")]
+impl End2End {
+    pub fn new() -> Self {
+        End2End {
+            ..Default::default()
+        }
+    }
+}
+
+pub type GlobalState = Rc<GlobalStateInner>;
 pub struct GlobalStateInner {
     pub state: SignaledMutex<CriticalSectionRawMutex, SignaledGlobalStateInner>,
     pub timer_signal: Signal<CriticalSectionRawMutex, u64>,
@@ -95,6 +111,9 @@ pub struct GlobalStateInner {
     pub update_progress: Signal<CriticalSectionRawMutex, u8>,
 
     pub nvs: Nvs,
+
+    #[cfg(feature = "e2e")]
+    pub e2e: End2End,
 }
 
 impl GlobalStateInner {
@@ -106,6 +125,9 @@ impl GlobalStateInner {
             update_progress: Signal::new(),
 
             nvs: nvs.clone(),
+
+            #[cfg(feature = "e2e")]
+            e2e: End2End::new(),
         }
     }
 }
@@ -278,6 +300,7 @@ impl SignaledGlobalStateInner {
     }
 }
 
+#[cfg(not(feature = "e2e"))]
 impl SavedGlobalState {
     pub async fn from_nvs(nvs: &Nvs) -> Option<Self> {
         while unsafe { EPOCH_BASE == 0 } {
@@ -318,4 +341,15 @@ impl SavedGlobalState {
             log::error!("{e:?} Faile to invalidate nvs key! (SAVED_GLOBAL_STATE)",);
         }
     }
+}
+
+#[cfg(feature = "e2e")]
+impl SavedGlobalState {
+    pub async fn from_nvs(_nvs: &Nvs) -> Option<Self> {
+        None
+    }
+
+    pub async fn to_nvs(&self, _nvs: &Nvs) {}
+
+    pub async fn clear_saved_global_state(_nvs: &Nvs) {}
 }
