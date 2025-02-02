@@ -200,6 +200,7 @@ async fn main(spawner: Spawner) {
         i2c,
         global_state.clone(),
         wifi_setup_sig.clone(),
+        digits_shifters.clone()
     ));
 
     _ = spawner.spawn(battery::battery_read_task(

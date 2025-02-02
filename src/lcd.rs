@@ -1,3 +1,4 @@
+use adv_shift_registers::wrappers::ShifterValueRange;
 use ag_lcd::LcdDisplay;
 use alloc::{rc::Rc, string::ToString};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -24,6 +25,7 @@ pub async fn lcd_task(
 
     global_state: GlobalState,
     wifi_setup_sig: Rc<Signal<NoopRawMutex, ()>>,
+    display: ShifterValueRange,
 ) {
     #[cfg(feature = "esp32")]
     let mut i2c_expander = port_expander::Pcf8574::new(i2c, true, true, true);
@@ -111,6 +113,7 @@ pub async fn lcd_task(
                 &mut lcd_driver,
                 &mut lcd,
                 &wifi_setup_sig,
+                &display,
             )
             .await;
             lcd_driver.display_on_lcd(&mut lcd).unwrap();
@@ -150,6 +153,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
     lcd_driver: &mut LcdAbstract<80, 16, 2, 3>,
     lcd: &mut LcdDisplay<T, D>,
     wifi_setup_sig: &Signal<NoopRawMutex, ()>,
+    display: &ShifterValueRange,
 ) -> Option<()> {
     #[cfg(feature = "bat_dev_lcd")]
     {
@@ -376,6 +380,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 .print(0, &time_str, PrintAlign::Center, true)
                 .ok()?;
 
+            display.set_data_raw(&crate::utils::stackmat::time_str_to_display(&time_str));
             lcd_driver.display_on_lcd(lcd).ok()?;
         },
         Scene::Finished => {

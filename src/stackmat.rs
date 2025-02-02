@@ -108,6 +108,9 @@ pub async fn stackmat_task(
                             if let Some(saved_state) = state.to_saved_global_state() {
                                 saved_state.to_nvs(&global_state.nvs).await;
                             }
+
+                            let time_str = ms_to_time_str(parsed.1);
+                            display.set_data(&time_str_to_display(&time_str));
                         }
                     } else if parsed.0 == StackmatTimerState::Reset {
                         let mut state = global_state.state.lock().await;
@@ -141,10 +144,6 @@ pub async fn stackmat_task(
                 }
 
                 global_state.timer_signal.signal(parsed.1);
-                if parsed.1 > 0 {
-                    let time_str = ms_to_time_str(parsed.1);
-                    display.set_data(&time_str_to_display(&time_str));
-                }
             }
         }
 

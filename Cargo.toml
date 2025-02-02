@@ -22,7 +22,7 @@ esp-alloc = "0.6.0"
 esp-hal-wifimanager = { git = "https://github.com/filipton/esp-hal-wifimanager", default-features = false, features = ["ap", "ble"] }
 serde = { version = "1.0.217", features = ["alloc", "derive"], default-features = false }
 serde_json = { version = "1.0.137", default-features = false, features = ["alloc"] }
-adv-shift-registers = "0.2.4"
+adv-shift-registers = "0.2.5"
 embedded-hal = "1.0.0"
 esp-hal-mdns = "0.1.0"
 embedded-io-async = "0.6.1"
