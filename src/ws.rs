@@ -287,7 +287,16 @@ async fn ws_rw(
                                     .send(WsFrameOwned::Binary(alloc::vec::Vec::new()))
                                     .await;
                             }
-                            //TimerPacket::SolveConfirm { esp_id, competitor_id, session_id } => todo!(),
+
+                            #[cfg(feature = "e2e")]
+                            TimerPacketInner::TestPacket(test_packet) => {
+                                parse_test_packet(test_packet, &global_state).await;
+                                send_packet(TimerPacket {
+                                    tag: None,
+                                    data: TimerPacketInner::TestAck,
+                                })
+                                .await;
+                            }
                             _ => {}
                         }
                     }
@@ -327,6 +336,48 @@ async fn ws_rw(
                 _ => {}
             }
         }
+    }
+}
+
+#[cfg(feature = "e2e")]
+async fn parse_test_packet(
+    test_packet: crate::structs::TestPacketData,
+    global_state: &GlobalState,
+) {
+    log::warn!("TEST PACKET: {test_packet:?}");
+
+    match test_packet {
+        crate::structs::TestPacketData::ResetState => {
+            global_state
+                .state
+                .lock()
+                .await
+                .reset_solve_state(None)
+                .await;
+
+            global_state
+                .e2e
+                .stackmat_sig
+                .signal((crate::utils::stackmat::StackmatTimerState::Reset, 0));
+        }
+        crate::structs::TestPacketData::ScanCard(uid) => {
+            global_state.e2e.card_scan_sig.signal(uid as u128)
+        }
+        crate::structs::TestPacketData::ButtonPress { pin, press_time } => global_state
+            .e2e
+            .buttons_sig
+            .signal((pin as usize, press_time)),
+        crate::structs::TestPacketData::StackmatTime(ms) => global_state
+            .e2e
+            .stackmat_sig
+            .signal((crate::utils::stackmat::StackmatTimerState::Running, ms)),
+        crate::structs::TestPacketData::StackmatReset => {
+            global_state
+                .e2e
+                .stackmat_sig
+                .signal((crate::utils::stackmat::StackmatTimerState::Reset, 0));
+        }
+        crate::structs::TestPacketData::Snapshot => todo!(),
     }
 }
 

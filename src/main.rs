@@ -317,38 +317,6 @@ async fn main(spawner: Spawner) {
         }
     }
 
-    #[cfg(feature = "e2e")]
-    {
-        Timer::after_millis(5000).await;
-
-        global_state.e2e.card_scan_sig.signal(1264825046);
-
-        Timer::after_millis(500).await;
-
-        global_state.e2e.buttons_sig.signal((2, 100));
-
-        Timer::after_millis(500).await;
-
-        global_state
-            .e2e
-            .stackmat_sig
-            .signal((utils::stackmat::StackmatTimerState::Running, 27310));
-
-        Timer::after_millis(27310 + 500).await;
-
-        global_state.e2e.buttons_sig.signal((3, 100));
-
-        Timer::after_millis(500).await;
-
-        global_state.e2e.buttons_sig.signal((3, 100));
-
-        Timer::after_millis(500).await;
-
-        global_state.e2e.buttons_sig.signal((2, 100));
-
-        Timer::after_millis(500).await;
-    }
-
     let mut last_sleep = false;
     loop {
         Timer::after_millis(100).await;

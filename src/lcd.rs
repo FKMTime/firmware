@@ -127,6 +127,7 @@ pub async fn lcd_task(
                     lcd_driver.display_on_lcd(&mut lcd).unwrap();
                 }
 
+                #[cfg(not(feature = "e2e"))]
                 if !sleep_state() && (Instant::now() - last_update).as_millis() > SLEEP_AFTER_MS {
                     lcd.backlight_off();
 

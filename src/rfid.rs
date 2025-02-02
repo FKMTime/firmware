@@ -61,6 +61,7 @@ pub async fn rfid_task(
         mfrc522_02::MFRC522::new(spi)
     };
 
+    #[cfg(not(feature = "e2e"))]
     loop {
         _ = mfrc522.pcd_init().await;
         if mfrc522.pcd_is_init().await {
@@ -71,6 +72,7 @@ pub async fn rfid_task(
         Timer::after(Duration::from_millis(RFID_RETRY_INIT_MS)).await;
     }
 
+    #[cfg(not(feature = "e2e"))]
     log::debug!("PCD ver: {:?}", mfrc522.pcd_get_version().await);
 
     let mut rfid_sleep = false;

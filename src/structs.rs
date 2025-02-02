@@ -75,9 +75,24 @@ pub enum TimerPacketInner {
         current_epoch: u64,
     },
     // packet for end to end testing
-    //TestPacket(TestPacketData),
     //Snapshot(SnapshotData),
-    //TestAck,
+    #[cfg(feature = "e2e")]
+    TestPacket(TestPacketData),
+
+    #[cfg(feature = "e2e")]
+    TestAck,
+}
+
+#[cfg(feature = "e2e")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
+pub enum TestPacketData {
+    ResetState,
+    ScanCard(u64),
+    ButtonPress { pin: u8, press_time: u64 },
+    StackmatTime(u64),
+    StackmatReset,
+    Snapshot,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
