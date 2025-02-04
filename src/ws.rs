@@ -160,11 +160,11 @@ async fn ws_loop(
         let mut rx_framer = WsRxFramer::new(ws_rx_buf);
 
         let path = alloc::format!(
-            "{}?id={}&ver={}&chip={}&firmware={}",
+            "{}?id={}&ver={}&hw={}&firmware={}",
             ws_url.path,
             crate::utils::get_efuse_u32(),
             crate::version::VERSION,
-            crate::version::CHIP,
+            crate::version::HW_VER,
             crate::version::FIRMWARE,
         );
 

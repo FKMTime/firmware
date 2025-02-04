@@ -248,6 +248,16 @@ async fn main(spawner: Spawner) {
         wm_settings.esp_restart_after_connection = true;
     }
 
+    // mark ota valid before wifi connection
+    {
+        if let Ok(mut ota) = esp_hal_ota::Ota::new(FlashStorage::new()) {
+            let res = ota.ota_mark_app_valid();
+            if let Err(e) = res {
+                log::error!("Ota mark app valid failed: {e:?}");
+            }
+        }
+    }
+
     let timg0 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0);
     let wifi_res = esp_hal_wifimanager::init_wm(
         wm_settings,
@@ -305,16 +315,6 @@ async fn main(spawner: Spawner) {
             .lock()
             .await
             .parse_saved_state(saved_state);
-    }
-
-    // only mark ota valid after wifi connection!
-    {
-        if let Ok(mut ota) = esp_hal_ota::Ota::new(FlashStorage::new()) {
-            let res = ota.ota_mark_app_valid();
-            if let Err(e) = res {
-                log::error!("Ota mark app valid failed: {e:?}");
-            }
-        }
     }
 
     let mut last_sleep = false;

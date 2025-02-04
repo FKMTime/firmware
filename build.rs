@@ -5,7 +5,7 @@ use std::{
 
 const VERSION_TEMPLATE: &str = r#"
 pub const VERSION: &str = "{version}";
-pub const CHIP: &str = "{chip}";
+pub const HW_VER: &str = "{hw}";
 pub const FIRMWARE: &str = "{firmware}";
 "#;
 
@@ -51,17 +51,17 @@ fn main() {
         }
     };
 
-    let chip = if cfg!(feature = "esp32") {
-        "esp32"
+    let hw = if cfg!(feature = "esp32") {
+        "v2"
     } else if cfg!(feature = "esp32c3") {
-        "esp32c3"
+        "v3"
     } else {
         "unknown"
     };
 
     let gen = VERSION_TEMPLATE
         .replace("{version}", &version_str)
-        .replace("{chip}", chip)
+        .replace("{hw}", hw)
         .replace("{firmware}", "STATION");
 
     std::fs::write(Path::new("src").join("version.rs"), gen.trim()).unwrap();

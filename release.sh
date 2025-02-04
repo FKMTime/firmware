@@ -27,8 +27,8 @@ source ~/export-esp.sh
 RELEASE_BUILD="$RELEASE_VERSION" cargo build -r
 RELEASE_BUILD="$RELEASE_VERSION" cargo esp32 -r
 
-espflash save-image --chip esp32 ./target/xtensa-esp32-none-elf/release/fkm-firmware "/tmp/fkm-build/esp32_STATION_$(cat ./src/version.rs | grep VERSION | cut -d'"' -f 2).bin"
-espflash save-image --chip esp32c3 ./target/riscv32imc-unknown-none-elf/release/fkm-firmware "/tmp/fkm-build/esp32c3_STATION_$(cat ./src/version.rs | grep VERSION | cut -d'"' -f 2).bin"
+espflash save-image --chip esp32 ./target/xtensa-esp32-none-elf/release/fkm-firmware "/tmp/fkm-build/v2_STATION_$(cat ./src/version.rs | grep VERSION | cut -d'"' -f 2).bin"
+espflash save-image --chip esp32c3 ./target/riscv32imc-unknown-none-elf/release/fkm-firmware "/tmp/fkm-build/v3_STATION_$(cat ./src/version.rs | grep VERSION | cut -d'"' -f 2).bin"
 
 cd $SCRIPT_DIR
 VERSION=$(cat ./src/version.rs | grep 'VERSION' | cut -d'"' -f 2)
