@@ -174,6 +174,7 @@ pub struct SavedGlobalState {
     pub session_id: String,
     pub current_competitor: u64,
     pub solve_epoch: u64,
+    pub solve_group: PossibleGroup,
 }
 
 impl SignaledGlobalStateInner {
@@ -272,6 +273,7 @@ impl SignaledGlobalStateInner {
                     .as_millis()
             }),
             solve_epoch: current_epoch(),
+            solve_group: self.solve_group.clone()?,
         })
     }
 
@@ -280,6 +282,7 @@ impl SignaledGlobalStateInner {
         self.penalty = Some(saved.penalty);
         self.solve_time = Some(saved.solve_time);
         self.current_competitor = Some(saved.current_competitor);
+        self.solve_group = Some(saved.solve_group);
 
         if let Some(inspection_time) = saved.inspection_time {
             let now = Instant::now();
