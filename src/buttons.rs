@@ -98,11 +98,11 @@ async fn room_left(
     state: &GlobalState,
 ) -> Result<bool, ()> {
     let mut state = state.state.lock().await;
-    if state.scene == Scene::RoundSelect {
-        state.round_select = state
-            .round_select
+    if state.scene == Scene::GroupSelect {
+        state.group_selected_idx = state
+            .group_selected_idx
             .wrapping_sub(1)
-            .min(state.possible_rounds.len() - 1);
+            .min(state.possible_groups.len() - 1);
 
         return Ok(true);
     }
@@ -117,10 +117,10 @@ async fn room_right(
     state: &GlobalState,
 ) -> Result<bool, ()> {
     let mut state = state.state.lock().await;
-    if state.scene == Scene::RoundSelect {
-        state.round_select += 1;
-        if state.round_select == state.possible_rounds.len() {
-            state.round_select = 0;
+    if state.scene == Scene::GroupSelect {
+        state.group_selected_idx += 1;
+        if state.group_selected_idx == state.possible_groups.len() {
+            state.group_selected_idx = 0;
         }
 
         return Ok(true);
@@ -162,8 +162,9 @@ async fn submit_up(
         return Ok(false);
     }
 
-    if state_val.scene == Scene::RoundSelect {
-        state_val.solve_round = Some(state_val.possible_rounds[state_val.round_select].clone());
+    if state_val.scene == Scene::GroupSelect {
+        state_val.solve_group =
+            Some(state_val.possible_groups[state_val.group_selected_idx].clone());
         if state_val.solve_time.is_some() {
             state_val.scene = crate::state::Scene::Finished;
         } else {
@@ -384,10 +385,10 @@ async fn delegate_hold(
                 session_id: state_val.session_id.clone().unwrap(),
                 delegate: true,
                 inspection_time,
-                round_id: state_val
-                    .solve_round
+                group_id: state_val
+                    .solve_group
                     .clone()
-                    .map(|r| r.id)
+                    .map(|r| r.group_id)
                     .unwrap_or("ERR".to_string()), // TODO: add error check
             };
 

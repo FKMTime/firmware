@@ -36,7 +36,7 @@ pub fn init_translations() {
             "of a competitor ({0})",
         ));
 
-        t.push(TranslationRecord::new("SELECT_ROUND", "Select round"));
+        t.push(TranslationRecord::new("SELECT_GROUP", "Select round"));
 
         t.push(TranslationRecord::new("CONFIRM_TIME", "Confirm the time"));
         t.push(TranslationRecord::new(

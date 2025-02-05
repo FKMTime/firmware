@@ -281,7 +281,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 .print(1, &get_translation("MDNS_WAIT_2"), PrintAlign::Center, true)
                 .ok()?;
         }
-        Scene::RoundSelect => {
+        Scene::GroupSelect => {
             lcd_driver.print(0, "<", PrintAlign::Left, false).ok()?;
             lcd_driver.print(1, "<", PrintAlign::Left, false).ok()?;
             lcd_driver.print(0, ">", PrintAlign::Right, false).ok()?;
@@ -290,7 +290,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
             lcd_driver
                 .print(
                     0,
-                    &get_translation("SELECT_ROUND"),
+                    &get_translation("SELECT_GROUP"),
                     PrintAlign::Center,
                     false,
                 )
@@ -299,7 +299,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
             lcd_driver
                 .print(
                     1,
-                    &current_state.possible_rounds[current_state.round_select].name,
+                    &current_state.possible_groups[current_state.group_selected_idx].secondary_text,
                     PrintAlign::Center,
                     false,
                 )
@@ -348,9 +348,9 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 )
                 .ok()?;
 
-            if let Some(round) = current_state.solve_round {
+            if let Some(group) = current_state.solve_group {
                 lcd_driver
-                    .print(1, &round.name, PrintAlign::Center, true)
+                    .print(1, &group.secondary_text, PrintAlign::Center, true)
                     .ok()?;
             }
         }

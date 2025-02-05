@@ -4,7 +4,7 @@ use embassy_time::{Duration, Instant, Timer};
 use esp_hal_wifimanager::Nvs;
 use serde::{Deserialize, Serialize};
 
-use crate::{structs::PossibleRound, utils::signaled_mutex::SignaledMutex};
+use crate::{structs::PossibleGroup, utils::signaled_mutex::SignaledMutex};
 
 pub static mut EPOCH_BASE: u64 = 0;
 pub static mut SLEEP_STATE: bool = false;
@@ -40,7 +40,7 @@ pub enum Scene {
     MdnsWait,
 
     WaitingForCompetitor,
-    RoundSelect,
+    GroupSelect,
     CompetitorInfo,
     Inspection,
     Timer,
@@ -55,7 +55,7 @@ impl Scene {
             Scene::AutoSetupWait => false,
             Scene::MdnsWait => false,
             Scene::WaitingForCompetitor => true,
-            Scene::RoundSelect => true,
+            Scene::GroupSelect => true,
             Scene::CompetitorInfo => true,
             Scene::Inspection => false,
             Scene::Timer => false,
@@ -70,7 +70,7 @@ impl Scene {
             Scene::AutoSetupWait => 2,
             Scene::MdnsWait => 3,
             Scene::WaitingForCompetitor => 4,
-            Scene::RoundSelect => 5,
+            Scene::GroupSelect => 5,
             Scene::CompetitorInfo => 6,
             Scene::Inspection => 7,
             Scene::Timer => 8,
@@ -143,11 +143,11 @@ pub struct SignaledGlobalStateInner {
     pub penalty: Option<i8>,
     pub session_id: Option<String>,
     pub time_confirmed: bool,
-    pub solve_round: Option<PossibleRound>, // TODO: add to saved global state
+    pub solve_group: Option<PossibleGroup>, // TODO: add to saved global state
 
     pub error_text: Option<String>,
-    pub possible_rounds: Vec<PossibleRound>,
-    pub round_select: usize,
+    pub possible_groups: Vec<PossibleGroup>,
+    pub group_selected_idx: usize,
 
     pub device_added: Option<bool>,
     pub server_connected: Option<bool>,
@@ -188,11 +188,11 @@ impl SignaledGlobalStateInner {
             penalty: None,
             session_id: None,
             time_confirmed: false,
-            solve_round: None,
+            solve_group: None,
 
             error_text: None,
-            possible_rounds: Vec::new(),
-            round_select: 0,
+            possible_groups: Vec::new(),
+            group_selected_idx: 0,
 
             device_added: None,
             server_connected: None,
@@ -250,9 +250,9 @@ impl SignaledGlobalStateInner {
         self.delegate_used = false;
         self.inspection_start = None;
         self.inspection_end = None;
-        self.solve_round = None;
-        self.possible_rounds.clear();
-        self.round_select = 0;
+        self.solve_group = None;
+        self.possible_groups.clear();
+        self.group_selected_idx = 0;
 
         if let Some(nvs) = save_nvs {
             SavedGlobalState::clear_saved_global_state(nvs).await;
@@ -293,7 +293,7 @@ impl SignaledGlobalStateInner {
     }
 
     pub fn use_inspection(&self) -> bool {
-        match self.solve_round.as_ref().map(|r| r.use_inspection) {
+        match self.solve_group.as_ref().map(|r| r.use_inspection) {
             Some(true) | None => true,
             Some(false) => false,
         }

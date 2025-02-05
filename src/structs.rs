@@ -45,7 +45,7 @@ pub enum TimerPacketInner {
         session_id: String, // UUID
         delegate: bool,
         inspection_time: i64,
-        round_id: String,
+        group_id: String,
     },
     SolveConfirm(SolveConfirmPacket),
     DelegateResponse(DelegateResponsePacket),
@@ -101,13 +101,13 @@ pub struct CardInfoResponsePacket {
     pub display: String,
     pub country_iso2: String,
     pub can_compete: bool,
-    pub possible_rounds: Vec<PossibleRound>,
+    pub possible_groups: Vec<PossibleGroup>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct PossibleRound {
-    pub id: String,
-    pub name: String,
+pub struct PossibleGroup {
+    pub group_id: String,
+    pub secondary_text: String,
     pub use_inspection: bool,
 }
 

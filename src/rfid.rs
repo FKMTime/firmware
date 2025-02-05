@@ -160,9 +160,9 @@ async fn process_card_info_response(
                 state.competitor_display = Some(resp.display);
                 state.current_competitor = Some(resp.card_id);
 
-                match resp.possible_rounds.len() {
+                match resp.possible_groups.len() {
                     1 => {
-                        state.solve_round = Some(resp.possible_rounds[0].clone());
+                        state.solve_group = Some(resp.possible_groups[0].clone());
 
                         if state.solve_time.is_some() {
                             state.scene = crate::state::Scene::Finished;
@@ -171,8 +171,8 @@ async fn process_card_info_response(
                         }
                     }
                     2.. => {
-                        state.possible_rounds = resp.possible_rounds;
-                        state.scene = crate::state::Scene::RoundSelect;
+                        state.possible_groups = resp.possible_groups;
+                        state.scene = crate::state::Scene::GroupSelect;
                     }
                     _ => {
                         // TODO: show error?
@@ -209,10 +209,10 @@ async fn process_card_info_response(
                         session_id: state.session_id.clone().unwrap(),
                         delegate: false,
                         inspection_time,
-                        round_id: state
-                            .solve_round
+                        group_id: state
+                            .solve_group
                             .clone()
-                            .map(|r| r.id)
+                            .map(|r| r.group_id)
                             .unwrap_or("NOT SELECTED ERROR".to_string()), // TODO: add to this
                                                                           // error handling
                     },
