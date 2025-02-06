@@ -202,7 +202,7 @@ impl ButtonsHandler {
             return;
         }
 
-        let handler = &mut self.handlers[self.current_handler_down.expect("Cant fail")];
+        let handler = &mut self.handlers[self.current_handler_down.expect("")];
         let hold_time = (Instant::now() - self.press_time).as_millis();
 
         for (trigger, activated, handler) in &mut handler.handlers {
@@ -274,7 +274,7 @@ impl ButtonsHandler {
             }
         }
 
-        let handler = &self.handlers[self.current_handler_down.expect("Cant fail")];
+        let handler = &self.handlers[self.current_handler_down.expect("")];
         let handlers = handler.handlers.iter().filter(|h| h.0 == ButtonTrigger::Up);
         for handler in handlers {
             let res = handler.2.execute(&handler.0, hold_time, state).await;

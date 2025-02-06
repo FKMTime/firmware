@@ -78,7 +78,7 @@ pub async fn lcd_task(
         PrintAlign::Left,
         true,
     );
-    _ = lcd_driver.display_on_lcd(&mut lcd);
+    lcd_driver.display_on_lcd(&mut lcd);
 
     _ = lcd_driver.print(
         0,
@@ -86,7 +86,7 @@ pub async fn lcd_task(
         PrintAlign::Right,
         false,
     );
-    _ = lcd_driver.display_on_lcd(&mut lcd);
+    lcd_driver.display_on_lcd(&mut lcd);
 
     #[cfg(not(feature = "bat_dev_lcd"))]
     Timer::after_millis(2500).await;
@@ -116,15 +116,15 @@ pub async fn lcd_task(
                 &display,
             )
             .await;
-            lcd_driver.display_on_lcd(&mut lcd).unwrap();
+            lcd_driver.display_on_lcd(&mut lcd);
 
             let mut scroll_ticker =
                 embassy_time::Ticker::every(Duration::from_millis(SCROLL_TICKER_INVERVAL_MS));
             loop {
                 scroll_ticker.next().await;
-                let changed = lcd_driver.scroll_step().unwrap();
-                if changed {
-                    lcd_driver.display_on_lcd(&mut lcd).unwrap();
+                let changed = lcd_driver.scroll_step();
+                if changed.is_ok_and(|c| c) {
+                    lcd_driver.display_on_lcd(&mut lcd);
                 }
 
                 #[cfg(not(feature = "e2e"))]
@@ -254,6 +254,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 .print(1, &get_translation("WIFI_WAIT_2"), PrintAlign::Center, true)
                 .ok()?;
 
+            lcd_driver.display_on_lcd(lcd);
             wifi_setup_sig.wait().await;
             global_state.state.lock().await.scene = Scene::AutoSetupWait;
         }
@@ -370,7 +371,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                     .print(0, &time_str, PrintAlign::Center, true)
                     .ok()?;
 
-                lcd_driver.display_on_lcd(lcd).ok()?;
+                lcd_driver.display_on_lcd(lcd);
                 Timer::after_millis(LCD_INSPECTION_FRAME_TIME).await;
             }
         }
@@ -382,7 +383,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 .ok()?;
 
             display.set_data_raw(&crate::utils::stackmat::time_str_to_display(&time_str));
-            lcd_driver.display_on_lcd(lcd).ok()?;
+            lcd_driver.display_on_lcd(lcd);
         },
         Scene::Finished => {
             let solve_time = current_state.solve_time.unwrap_or(0);
@@ -392,9 +393,13 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 heapless::String::new()
             };
 
-            let inspection_time = current_state
-                .inspection_start
-                .map(|x| (current_state.inspection_end.unwrap() - x).as_millis());
+            let inspection_time =
+                match (current_state.inspection_start, current_state.inspection_end) {
+                    (Some(start), Some(end)) => {
+                        Some(end.saturating_duration_since(start).as_millis())
+                    }
+                    _ => None,
+                };
 
             if current_state.use_inspection()
                 && inspection_time.unwrap_or(0) > INSPECTION_TIME_PLUS2
@@ -458,7 +463,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 let progress = global_state.update_progress.wait().await;
                 _ = lcd_driver.print(1, &alloc::format!("{progress}%"), PrintAlign::Center, true);
 
-                lcd_driver.display_on_lcd(lcd).ok()?;
+                lcd_driver.display_on_lcd(lcd);
             }
         }
     }

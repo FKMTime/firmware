@@ -151,10 +151,7 @@ impl<const LINE_SIZE: usize, const X: usize, const Y: usize, const SCROLLER_WT: 
         Ok(())
     }
 
-    pub fn display_on_lcd<T: OutputPin, D: DelayNs>(
-        &mut self,
-        lcd: &mut LcdDisplay<T, D>,
-    ) -> Result<(), LcdError> {
+    pub fn display_on_lcd<T: OutputPin, D: DelayNs>(&mut self, lcd: &mut LcdDisplay<T, D>) {
         let display_data = self.display_data();
         for (y, line) in display_data.0.iter().enumerate() {
             if line.1 {
@@ -164,7 +161,5 @@ impl<const LINE_SIZE: usize, const X: usize, const Y: usize, const SCROLLER_WT: 
                 display_data.1[y].copy_from_slice(line.0);
             }
         }
-
-        Ok(())
     }
 }

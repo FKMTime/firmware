@@ -362,11 +362,16 @@ async fn delegate_hold(
                 return Ok(false);
             }
 
+            if state_val.current_competitor.is_none() || state_val.session_id.is_none() {
+                log::error!("Delegate hold: competitor or session_id none");
+                return Ok(false);
+            }
+
             let inspection_time = if state_val.use_inspection()
                 && state_val.inspection_start.is_some()
                 && state_val.inspection_end.is_some()
             {
-                (state_val.inspection_end.unwrap() - state_val.inspection_start.unwrap())
+                (state_val.inspection_end.expect("") - state_val.inspection_start.expect(""))
                     .as_millis() as i64
             } else {
                 0
@@ -379,10 +384,10 @@ async fn delegate_hold(
             let packet = crate::structs::TimerPacketInner::Solve {
                 solve_time: state_val.solve_time.unwrap_or(0),
                 penalty: state_val.penalty.unwrap_or(0) as i64,
-                competitor_id: state_val.current_competitor.unwrap(),
+                competitor_id: state_val.current_competitor.expect(""),
                 judge_id: state_val.current_judge.unwrap_or(0),
                 timestamp: current_epoch(),
-                session_id: state_val.session_id.clone().unwrap(),
+                session_id: state_val.session_id.clone().expect(""),
                 delegate: true,
                 inspection_time,
                 group_id: state_val

@@ -3,10 +3,7 @@ use crate::{
     state::{GlobalState, Scene},
     structs::{ApiError, FromPacket, TimerPacket, TimerPacketInner},
 };
-use alloc::{
-    rc::Rc,
-    string::{String, ToString},
-};
+use alloc::{rc::Rc, string::ToString};
 use core::str::FromStr;
 use embassy_net::{tcp::TcpSocket, IpAddress, Stack};
 use embassy_sync::{
@@ -19,7 +16,7 @@ use embedded_tls::{Aes128GcmSha256, NoVerify, TlsConfig, TlsConnection, TlsConte
 use esp_hal_ota::Ota;
 use esp_storage::FlashStorage;
 use rand_core::OsRng;
-use ws_framer::{WsFrame, WsFrameOwned, WsRxFramer, WsTxFramer, WsUrl};
+use ws_framer::{WsFrame, WsFrameOwned, WsRxFramer, WsTxFramer, WsUrl, WsUrlOwned};
 
 static FRAME_CHANNEL: Channel<CriticalSectionRawMutex, WsFrameOwned, 10> = Channel::new();
 static TAGGED_RETURN: PubSubChannel<CriticalSectionRawMutex, (u64, TimerPacket), 20, 20, 4> =
@@ -28,11 +25,11 @@ static TAGGED_RETURN: PubSubChannel<CriticalSectionRawMutex, (u64, TimerPacket),
 #[embassy_executor::task]
 pub async fn ws_task(
     stack: Stack<'static>,
-    ws_url: String,
+    ws_url: WsUrlOwned,
     global_state: GlobalState,
     ws_sleep_sig: Rc<Signal<CriticalSectionRawMutex, bool>>,
 ) {
-    let ws_url = WsUrl::from_str(&ws_url).expect("Ws url parse error");
+    log::debug!("ws_url: {ws_url:?}");
 
     let mut rx_buf = [0; 8192];
     let mut tx_buf = [0; 8192];
@@ -52,7 +49,7 @@ pub async fn ws_task(
     loop {
         let ws_fut = ws_loop(
             &global_state,
-            &ws_url,
+            ws_url.as_ref(),
             stack,
             &mut rx_buf,
             &mut tx_buf,
@@ -90,7 +87,7 @@ pub async fn ws_task(
 #[allow(clippy::too_many_arguments)]
 async fn ws_loop(
     global_state: &GlobalState,
-    ws_url: &WsUrl<'_>,
+    ws_url: WsUrl<'_>,
     stack: Stack<'static>,
     rx_buf: &mut [u8],
     tx_buf: &mut [u8],
@@ -113,10 +110,7 @@ async fn ws_loop(
                 .await;
 
             let Ok(res) = res else {
-                log::error!(
-                    "[WS]Dns resolver error: {:?}",
-                    res.expect_err("Shouldnt fail")
-                );
+                log::error!("[WS]Dns resolver error: {:?}", res.expect_err(""));
                 Timer::after_millis(1000).await;
                 continue;
             };
@@ -385,9 +379,14 @@ async fn parse_test_packet(
 }
 
 pub async fn send_packet(packet: TimerPacket) {
-    FRAME_CHANNEL
-        .send(WsFrameOwned::Text(serde_json::to_string(&packet).unwrap()))
-        .await;
+    match serde_json::to_string(&packet) {
+        Ok(string) => {
+            FRAME_CHANNEL.send(WsFrameOwned::Text(string)).await;
+        }
+        Err(e) => {
+            log::error!("send_packet json to_string failed: {e:?}");
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -428,11 +427,18 @@ where
 }
 
 async fn wait_for_tagged_response(tag: u64) -> TimerPacket {
-    let mut subscriber = TAGGED_RETURN.subscriber().unwrap();
     loop {
-        let (packet_tag, packet) = subscriber.next_message_pure().await;
-        if packet_tag == tag {
-            return packet;
+        match TAGGED_RETURN.subscriber() {
+            Ok(mut subscriber) => loop {
+                let (packet_tag, packet) = subscriber.next_message_pure().await;
+                if packet_tag == tag {
+                    return packet;
+                }
+            },
+            Err(_) => {
+                log::error!("failed to get TAGGED_RETURN subscriber! Retry!");
+                Timer::after_millis(500).await;
+            }
         }
     }
 }

@@ -23,7 +23,7 @@ impl<T> Arc<T> {
         });
 
         Arc {
-            ptr: NonNull::new(Box::into_raw(ptr)).unwrap(),
+            ptr: NonNull::new(Box::into_raw(ptr)).expect("Box Pointer cant be null?"),
         }
     }
 

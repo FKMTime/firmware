@@ -16,6 +16,7 @@ use esp_hal::{
     gpio::{Input, Output},
     timer::timg::TimerGroup,
 };
+use esp_hal_wifimanager::WIFI_NVS_KEY;
 use esp_storage::FlashStorage;
 use state::{ota_state, sleep_state, GlobalStateInner, SavedGlobalState, Scene};
 use structs::ConnSettings;
@@ -24,6 +25,7 @@ use utils::{logger::FkmLogger, set_brownout_detection};
 
 #[cfg(feature = "esp32")]
 use esp_hal::time::RateExtU32;
+use ws_framer::{WsUrl, WsUrlOwned};
 
 mod battery;
 mod buttons;
@@ -285,15 +287,37 @@ async fn main(spawner: Spawner) {
         .and_then(|d| serde_json::from_value(d).ok())
         .unwrap_or_default();
 
-    let ws_url = if conn_settings.mdns || conn_settings.ws_url.is_none() {
-        log::info!("Start mdns lookup...");
-        global_state.state.lock().await.scene = Scene::MdnsWait;
-        let mdns_res = mdns::mdns_query(wifi_res.sta_stack).await;
-        log::info!("Mdns result: {:?}", mdns_res);
+    let mut parse_retry_count = 0;
+    let ws_url = loop {
+        let url = if conn_settings.mdns || conn_settings.ws_url.is_none() || parse_retry_count > 0 {
+            log::info!("Start mdns lookup...");
+            global_state.state.lock().await.scene = Scene::MdnsWait;
+            let mdns_res = mdns::mdns_query(wifi_res.sta_stack).await;
+            log::info!("Mdns result: {:?}", mdns_res);
 
-        mdns_res.to_string()
-    } else {
-        conn_settings.ws_url.expect("Cant fail")
+            mdns_res.to_string()
+        } else {
+            conn_settings.ws_url.clone().expect("")
+        };
+
+        let ws_url = WsUrl::from_str(&url);
+        match ws_url {
+            Some(ws_url) => break WsUrlOwned::new(&ws_url),
+            None => {
+                parse_retry_count += 1;
+                log::error!("Mdns parse failed! Retry ({parse_retry_count})..");
+                Timer::after_millis(1000).await;
+                if parse_retry_count > 3 {
+                    log::error!("Cannot parse wsurl! Reseting wifi configuration!");
+                    _ = nvs.invalidate_key(WIFI_NVS_KEY).await;
+                    Timer::after_millis(1000).await;
+
+                    esp_hal::reset::software_reset();
+                }
+
+                continue;
+            }
+        }
     };
 
     utils::backtrace_store::read_saved_backtrace().await;

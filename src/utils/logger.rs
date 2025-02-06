@@ -16,7 +16,7 @@ pub struct FkmLogger;
 impl FkmLogger {
     pub fn set_logger() {
         unsafe {
-            log::set_logger_racy(&FkmLogger).unwrap();
+            _ = log::set_logger_racy(&FkmLogger);
             log::set_max_level_racy(FILTER_MAX);
         }
     }

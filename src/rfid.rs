@@ -34,8 +34,8 @@ pub async fn rfid_task(
     global_state: GlobalState,
 ) {
     let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(512);
-    let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
-    let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
+    let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).expect("Dma tx buf failed");
+    let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).expect("Dma rx buf failed");
 
     let spi = Spi::new(
         spi,
@@ -43,7 +43,7 @@ pub async fn rfid_task(
             .with_frequency(400.kHz())
             .with_mode(Mode::_0),
     )
-    .unwrap()
+    .expect("Spi init failed")
     .with_sck(sck)
     .with_miso(miso)
     .with_mosi(mosi)
@@ -57,8 +57,9 @@ pub async fn rfid_task(
 
     #[cfg(feature = "esp32c3")]
     let mut mfrc522 = {
-        let spi =
-            embedded_hal_bus::spi::ExclusiveDevice::new(spi, cs_pin, embassy_time::Delay).unwrap();
+        let spi = embedded_hal_bus::spi::ExclusiveDevice::new(spi, cs_pin, embassy_time::Delay)
+            .expect("Spi bus init failed (cs set high failed)");
+
         mfrc522_02::MFRC522::new(spi)
     };
 
@@ -210,10 +211,10 @@ async fn process_card_info_response(
                     crate::structs::TimerPacketInner::Solve {
                         solve_time: state.solve_time.ok_or(anyhow!("Solve time is None"))?,
                         penalty: state.penalty.unwrap_or(0) as i64,
-                        competitor_id: state.current_competitor.unwrap(),
-                        judge_id: state.current_judge.unwrap(),
+                        competitor_id: state.current_competitor.expect(""),
+                        judge_id: state.current_judge.expect(""),
                         timestamp: current_epoch(),
-                        session_id: state.session_id.clone().unwrap(),
+                        session_id: state.session_id.clone().expect(""),
                         delegate: false,
                         inspection_time,
                         group_id: state

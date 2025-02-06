@@ -30,7 +30,7 @@ macros = { path = "./macros" }
 nb = "1.1.0"
 embassy-futures = "0.1.1"
 embassy-sync = "0.6.2"
-ws-framer = { version = "0.1.0", features = ["alloc"] }
+ws-framer = { version = "0.2.2", features = ["alloc"] }
 embedded-hal-async = "1.0.0"
 portable-atomic = { version = "1.10.0", default-features = false }
 critical-section = "1.2.0"
