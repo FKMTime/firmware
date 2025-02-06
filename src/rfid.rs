@@ -183,6 +183,7 @@ async fn process_card_info_response(
                         state.scene = crate::state::Scene::GroupSelect;
                     }
                     _ => {
+                        state.reset_solve_state(None).await;
                         state.error_text = Some(get_translation("NO_USER_GROUPS"));
                     }
                 }

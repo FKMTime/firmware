@@ -1,5 +1,5 @@
 [alias]
-esp32 = "run --no-default-features --features=esp32 --target=xtensa-esp32-none-elf"
+esp32 = "build --no-default-features --features=esp32 --target=xtensa-esp32-none-elf"
 
 target = "riscv32imc-unknown-none-elf"
 
