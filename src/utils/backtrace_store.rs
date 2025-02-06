@@ -190,7 +190,6 @@ fn is_valid_ram_address(address: u32) -> bool {
     true
 }
 
-// NOTE: Should only be on release builds (after 1s restart esp)
 #[no_mangle]
 pub extern "Rust" fn custom_pre_backtrace() {
     let backtrace = backtrace();

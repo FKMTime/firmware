@@ -201,7 +201,7 @@ pub fn nb_to_fut(item: TokenStream) -> TokenStream {
     .into()
 }
 
-// NOTE: maybe not useful, most variables in functions that can fail are owned :(
+// Maybe not useful, most variables in functions that can fail are owned :(
 /*
 struct MacroInput {
     function_call: syn::Expr,

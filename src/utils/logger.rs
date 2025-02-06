@@ -63,8 +63,6 @@ impl log::Log for FkmLogger {
             }
 
             let msg = alloc::format!("{}{} - {}{}", color, record.level(), record.args(), reset);
-
-            // TODO: maybe add error handling?
             _ = LOGS_CHANNEL.try_send(msg);
         }
     }

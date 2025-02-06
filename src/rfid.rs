@@ -207,6 +207,11 @@ async fn process_card_info_response(
                     state.session_id = Some(uuid::Uuid::new_v4().to_string());
                 }
 
+                if state.solve_group.is_none() {
+                    log::error!("Solve group is none! (How would that happen?)");
+                    return Ok(());
+                }
+
                 let resp = crate::ws::send_request::<SolveConfirmPacket>(
                     crate::structs::TimerPacketInner::Solve {
                         solve_time: state.solve_time.ok_or(anyhow!("Solve time is None"))?,
@@ -217,12 +222,7 @@ async fn process_card_info_response(
                         session_id: state.session_id.clone().expect(""),
                         delegate: false,
                         inspection_time,
-                        group_id: state
-                            .solve_group
-                            .clone()
-                            .map(|r| r.group_id)
-                            .unwrap_or("NOT SELECTED ERROR".to_string()), // TODO: add to this
-                                                                          // error handling
+                        group_id: state.solve_group.clone().map(|r| r.group_id).expect(""),
                     },
                 )
                 .await;

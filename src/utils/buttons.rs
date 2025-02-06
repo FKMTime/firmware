@@ -198,11 +198,11 @@ impl ButtonsHandler {
     }
 
     pub async fn button_hold(&mut self, state: &GlobalState) {
-        if self.current_handler_down.is_none() {
+        let Some(current_handler_down) = self.current_handler_down else {
             return;
-        }
+        };
 
-        let handler = &mut self.handlers[self.current_handler_down.expect("")];
+        let handler = &mut self.handlers[current_handler_down];
         let hold_time = (Instant::now() - self.press_time).as_millis();
 
         for (trigger, activated, handler) in &mut handler.handlers {
@@ -258,9 +258,9 @@ impl ButtonsHandler {
     }
 
     pub async fn button_up(&mut self, state: &GlobalState) {
-        if self.current_handler_down.is_none() {
+        let Some(current_handler_down) = self.current_handler_down else {
             return;
-        }
+        };
 
         let hold_time = (Instant::now() - self.press_time).as_millis();
         if let Some(ref default_handler) = self.default_handler {
@@ -274,7 +274,7 @@ impl ButtonsHandler {
             }
         }
 
-        let handler = &self.handlers[self.current_handler_down.expect("")];
+        let handler = &self.handlers[current_handler_down];
         let handlers = handler.handlers.iter().filter(|h| h.0 == ButtonTrigger::Up);
         for handler in handlers {
             let res = handler.2.execute(&handler.0, hold_time, state).await;

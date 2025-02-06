@@ -362,8 +362,11 @@ async fn delegate_hold(
                 return Ok(false);
             }
 
-            if state_val.current_competitor.is_none() || state_val.session_id.is_none() {
-                log::error!("Delegate hold: competitor or session_id none");
+            if state_val.current_competitor.is_none()
+                || state_val.session_id.is_none()
+                || state_val.solve_group.is_none()
+            {
+                log::error!("Delegate hold: competitor, session_id or solve_group none!");
                 return Ok(false);
             }
 
@@ -390,11 +393,7 @@ async fn delegate_hold(
                 session_id: state_val.session_id.clone().expect(""),
                 delegate: true,
                 inspection_time,
-                group_id: state_val
-                    .solve_group
-                    .clone()
-                    .map(|r| r.group_id)
-                    .unwrap_or("ERR".to_string()), // TODO: add error check
+                group_id: state_val.solve_group.clone().map(|r| r.group_id).expect(""),
             };
 
             state_val.delegate_hold = Some(3);

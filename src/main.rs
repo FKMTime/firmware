@@ -76,7 +76,6 @@ async fn main(spawner: Spawner) {
         esp_alloc::heap_allocator!(120 * 1024);
     }
 
-    // NOTE: on esp32 (generic) use only dram2 region as heap
     #[cfg(feature = "esp32")]
     {
         #[link_section = ".dram2_uninit"]
