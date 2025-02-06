@@ -105,6 +105,7 @@ pub struct CardInfoResponsePacket {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct PossibleGroup {
     pub group_id: String,
     pub secondary_text: String,

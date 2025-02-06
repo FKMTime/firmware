@@ -3,14 +3,17 @@ use crate::{
     state::{GlobalState, Scene},
     structs::{ApiError, FromPacket, TimerPacket, TimerPacketInner},
 };
-use alloc::{rc::Rc, string::String};
+use alloc::{
+    rc::Rc,
+    string::{String, ToString},
+};
 use core::str::FromStr;
 use embassy_net::{tcp::TcpSocket, IpAddress, Stack};
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, pubsub::PubSubChannel,
     signal::Signal,
 };
-use embassy_time::{Instant, Timer};
+use embassy_time::{Duration, Instant, Timer, WithTimeout};
 use embedded_io_async::Write;
 use embedded_tls::{Aes128GcmSha256, NoVerify, TlsConfig, TlsConnection, TlsContext};
 use esp_hal_ota::Ota;
@@ -413,8 +416,14 @@ where
     };
     send_packet(packet).await;
 
-    // TODO: timeout
-    let packet = wait_for_tagged_response(tag).await;
+    let packet = wait_for_tagged_response(tag)
+        .with_timeout(Duration::from_millis(5000))
+        .await
+        .map_err(|_| ApiError {
+            should_reset_time: false,
+            error: "Communication timeout!".to_string(),
+        })?;
+
     FromPacket::from_packet(packet)
 }
 

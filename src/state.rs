@@ -143,7 +143,7 @@ pub struct SignaledGlobalStateInner {
     pub penalty: Option<i8>,
     pub session_id: Option<String>,
     pub time_confirmed: bool,
-    pub solve_group: Option<PossibleGroup>, // TODO: add to saved global state
+    pub solve_group: Option<PossibleGroup>,
 
     pub error_text: Option<String>,
     pub possible_groups: Vec<PossibleGroup>,

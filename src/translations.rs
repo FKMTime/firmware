@@ -77,6 +77,11 @@ pub fn init_translations() {
             "DEV_NOT_ADDED_FOOTER",
             "Press submit to connect",
         ));
+
+        t.push(TranslationRecord::new(
+            "NO_USER_GROUPS",
+            "This user doesn't have any groups",
+        ));
     }
 }
 

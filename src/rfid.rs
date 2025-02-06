@@ -1,6 +1,7 @@
 use crate::consts::RFID_RETRY_INIT_MS;
 use crate::state::{current_epoch, sleep_state, GlobalState};
 use crate::structs::{CardInfoResponsePacket, SolveConfirmPacket};
+use crate::translations::get_translation;
 use alloc::string::ToString;
 use anyhow::{anyhow, Result};
 use embassy_time::{Duration, Timer};
@@ -138,6 +139,12 @@ pub async fn rfid_task(
                     e.should_reset_time,
                     e.error
                 );
+
+                let mut state = global_state.state.lock().await;
+                state.error_text = Some(e.error);
+                if e.should_reset_time {
+                    state.reset_solve_state(None).await;
+                }
             }
         }
 
@@ -175,7 +182,7 @@ async fn process_card_info_response(
                         state.scene = crate::state::Scene::GroupSelect;
                     }
                     _ => {
-                        // TODO: show error?
+                        state.error_text = Some(get_translation("NO_USER_GROUPS"));
                     }
                 }
             }
