@@ -1,5 +1,5 @@
 #!/bin/bash
-
+set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
 if ! command -v gh &> /dev/null
@@ -27,8 +27,14 @@ source ~/export-esp.sh
 RELEASE_BUILD="$RELEASE_VERSION" cargo build -r
 RELEASE_BUILD="$RELEASE_VERSION" cargo esp32 -r
 
-espflash save-image --chip esp32 ./target/xtensa-esp32-none-elf/release/fkm-firmware "/tmp/fkm-build/v2_STATION_$(cat ./src/version.rs | grep VERSION | cut -d'"' -f 2).bin"
-espflash save-image --chip esp32c3 ./target/riscv32imc-unknown-none-elf/release/fkm-firmware "/tmp/fkm-build/v3_STATION_$(cat ./src/version.rs | grep VERSION | cut -d'"' -f 2).bin"
+VERSION=$(cat ./src/version.rs | grep VERSION | cut -d'"' -f 2)
+EPOCH=$(date +%s)
+
+espflash save-image --chip esp32 ./target/xtensa-esp32-none-elf/release/fkm-firmware "/tmp/fkm-build/v2_STATION_${VERSION}.bin"
+espflash save-image --chip esp32c3 ./target/riscv32imc-unknown-none-elf/release/fkm-firmware "/tmp/fkm-build/v3_STATION_${VERSION}.bin"
+./append_metadata.sh "/tmp/fkm-build/v2_STATION_${VERSION}.bin" "$VERSION" "STATION" "v2" "$EPOCH"
+./append_metadata.sh "/tmp/fkm-build/v3_STATION_${VERSION}.bin" "$VERSION" "STATION" "v3" "$EPOCH"
+exit 1
 
 cd $SCRIPT_DIR
 VERSION=$(cat ./src/version.rs | grep 'VERSION' | cut -d'"' -f 2)
