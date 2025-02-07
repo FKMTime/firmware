@@ -264,12 +264,17 @@ async fn ws_rw(
                                 tagged_publisher.publish((69420, timer_packet)).await;
                             }
                             TimerPacketInner::StartUpdate {
-                                version: _,
+                                version,
                                 build_time: _,
                                 size,
                                 crc,
-                                firmware: _,
+                                firmware,
                             } => {
+                                if firmware != crate::version::FIRMWARE {
+                                    continue;
+                                }
+
+                                log::info!("Start update: {firmware}/{version}");
                                 log::info!("Begin update size: {size} crc: {crc}");
                                 ota.ota_begin(size, crc).map_err(|_| ())?;
                                 unsafe {
