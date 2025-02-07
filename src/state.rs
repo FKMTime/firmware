@@ -164,6 +164,8 @@ pub struct SignaledGlobalStateInner {
 
     #[cfg(feature = "bat_dev_lcd")]
     pub avg_bat_read: Option<f32>,
+
+    pub custom_message: Option<(String, String)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -210,6 +212,8 @@ impl SignaledGlobalStateInner {
 
             #[cfg(feature = "bat_dev_lcd")]
             avg_bat_read: None,
+
+            custom_message: None,
         }
     }
 

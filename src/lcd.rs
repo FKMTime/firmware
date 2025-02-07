@@ -476,6 +476,14 @@ async fn process_lcd_overwrite(
     _global_state: &GlobalState,
     lcd_driver: &mut LcdAbstract<80, 16, 2, 3>,
 ) -> bool {
+    // display custom message on top of everything!
+    if let Some((line1, line2)) = &current_state.custom_message {
+        _ = lcd_driver.print(0, line1, PrintAlign::Center, true);
+        _ = lcd_driver.print(1, line2, PrintAlign::Center, true);
+
+        return true;
+    }
+
     if !current_state.scene.can_be_lcd_overwritten() {
         return false;
     }

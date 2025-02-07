@@ -326,7 +326,13 @@ async fn submit_reset_wifi(
         .nvs
         .invalidate_key(esp_hal_wifimanager::WIFI_NVS_KEY)
         .await;
-    Timer::after_millis(500).await;
+
+    {
+        let mut state = state.state.lock().await;
+        state.custom_message = Some(("Resseting WIFI".to_string(), "Restart in 5s...".to_string()));
+    }
+
+    Timer::after_millis(5000).await;
     esp_hal::reset::software_reset();
 
     Ok(false)
