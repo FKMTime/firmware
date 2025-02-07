@@ -106,6 +106,7 @@ pub async fn lcd_task(
             }
         }
 
+        let current_scene = current_state.scene.clone();
         let fut = async {
             let _ = process_lcd(
                 current_state,
@@ -128,7 +129,10 @@ pub async fn lcd_task(
                 }
 
                 #[cfg(not(feature = "e2e"))]
-                if !sleep_state() && (Instant::now() - last_update).as_millis() > SLEEP_AFTER_MS {
+                if !sleep_state()
+                    && (Instant::now() - last_update).as_millis() > SLEEP_AFTER_MS
+                    && current_scene.can_sleep()
+                {
                     lcd.backlight_off();
 
                     unsafe {

@@ -77,6 +77,13 @@ impl Scene {
             Scene::Finished => 9,
         }
     }
+
+    pub fn can_sleep(&self) -> bool {
+        !matches!(
+            self,
+            Scene::Update | Scene::WifiConnect | Scene::AutoSetupWait
+        )
+    }
 }
 
 impl PartialOrd for Scene {
