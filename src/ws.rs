@@ -1,6 +1,6 @@
 use crate::{
     consts::WS_RETRY_MS,
-    state::{GlobalState, Scene},
+    state::{ota_state, GlobalState, Scene},
     structs::{ApiError, FromPacket, TimerPacket, TimerPacketInner},
 };
 use alloc::{rc::Rc, string::ToString};
@@ -198,6 +198,14 @@ async fn ws_loop(
             .await;
 
             if let Err(e) = res {
+                if ota_state() {
+                    global_state.state.lock().await.custom_message =
+                        Some(("Connection lost".to_string(), "during update".to_string()));
+
+                    Timer::after_millis(5000).await;
+                    esp_hal::reset::software_reset();
+                }
+
                 log::error!("ws_rw_error: {e:?}");
                 Timer::after_millis(WS_RETRY_MS).await;
                 break;

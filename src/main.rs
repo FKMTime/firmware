@@ -92,6 +92,9 @@ async fn main(spawner: Spawner) {
         }
     }
 
+    #[cfg(feature = "e2e")]
+    log::info!("This firmware is E2E! (HIL TESTING)");
+
     let nvs =
         esp_hal_wifimanager::Nvs::new_from_part_table().expect("Wrong partition configuration!");
 
