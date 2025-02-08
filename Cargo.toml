@@ -21,7 +21,7 @@ heapless = { version = "0.8.0", default-features = false }
 esp-alloc = "0.6.0"
 esp-hal-wifimanager = { git = "https://github.com/filipton/esp-hal-wifimanager", default-features = false, features = ["ap", "ble"] }
 serde = { version = "1.0.217", features = ["alloc", "derive"], default-features = false }
-serde_json = { version = "1.0.137", default-features = false, features = ["alloc"] }
+serde_json = { version = "1.0.138", default-features = false, features = ["alloc"] }
 adv-shift-registers = "0.2.5"
 embedded-hal = "1.0.0"
 esp-hal-mdns = "0.1.0"
@@ -45,7 +45,7 @@ embedded-hal-bus = { version = "0.3.0", features = ["async"] }
 embedded-tls = { version = "0.17.0", default-features = false, features = ["alloc", "embedded-io-adapters", "log"] }
 rand_core = { version = "0.6.4", features = ["getrandom"] }
 ag-lcd = { version = "0.3.0", features = [] }
-port-expander = { version = "0.6.3", optional = true }
+port-expander = { version = "0.6.4", optional = true }
 
 mfrc522-01 = { version = "0.1.1", package = "esp-hal-mfrc522", optional = true }
 mfrc522-02 = { version = "0.2.1", features = ["embassy-time"], package = "esp-hal-mfrc522", optional = true }

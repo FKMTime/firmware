@@ -63,7 +63,17 @@ getrandom::register_custom_getrandom!(custom_rng);
 async fn main(spawner: Spawner) {
     let peripherals = esp_hal::init({
         let mut config = esp_hal::Config::default();
-        config.cpu_clock = esp_hal::clock::CpuClock::max();
+
+        #[cfg(feature = "esp32")]
+        {
+            config.cpu_clock = esp_hal::clock::CpuClock::_80MHz;
+        }
+
+        #[cfg(feature = "esp32c3")]
+        {
+            config.cpu_clock = esp_hal::clock::CpuClock::_80MHz;
+        }
+
         config
     });
 

@@ -1651,9 +1651,9 @@ dependencies = [
 
 [[package]]
 name = "port-expander"
-version = "0.6.3"
+version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1304098353217102c28f2fa9506b4b7bfd05cd5f1e9f1a8eddb2829da5f491d5"
+checksum = "066fe49bef400405499260dfb433b5c849db985ecf17f77344cc5ece46470339"
 dependencies = [
  "embedded-hal 1.0.0",
 ]
