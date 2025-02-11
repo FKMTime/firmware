@@ -7,9 +7,10 @@ use embedded_hal::{delay::DelayNs, digital::OutputPin};
 
 use crate::{
     consts::{
-        INSPECTION_TIME_PLUS2, LCD_INSPECTION_FRAME_TIME, SCROLL_TICKER_INVERVAL_MS, SLEEP_AFTER_MS,
+        DEEPER_SLEEP_AFTER_MS, INSPECTION_TIME_PLUS2, LCD_INSPECTION_FRAME_TIME,
+        SCROLL_TICKER_INVERVAL_MS, SLEEP_AFTER_MS,
     },
-    state::{sleep_state, GlobalState, Scene, SignaledGlobalStateInner},
+    state::{deeper_sleep_state, sleep_state, GlobalState, Scene, SignaledGlobalStateInner},
     translations::{get_translation, get_translation_params},
     utils::{
         lcd_abstract::{LcdAbstract, PrintAlign},
@@ -138,6 +139,14 @@ pub async fn lcd_task(
                     unsafe {
                         crate::state::SLEEP_STATE = true;
                     }
+                }
+
+                #[cfg(not(feature = "e2e"))]
+                if sleep_state()
+                    && !deeper_sleep_state()
+                    && (Instant::now() - last_update).as_millis() > DEEPER_SLEEP_AFTER_MS
+                {
+                    crate::utils::deeper_sleep();
                 }
             }
         };

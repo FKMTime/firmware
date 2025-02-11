@@ -10,6 +10,9 @@ pub static mut EPOCH_BASE: u64 = 0;
 pub static mut SLEEP_STATE: bool = false;
 pub static mut OTA_STATE: bool = false;
 
+#[cfg(feature = "esp32c3")]
+pub static mut DEEPER_SLEEP: bool = false;
+
 #[inline(always)]
 pub fn current_epoch() -> u64 {
     unsafe { EPOCH_BASE + Instant::now().as_secs() }
@@ -18,6 +21,11 @@ pub fn current_epoch() -> u64 {
 #[inline(always)]
 pub fn sleep_state() -> bool {
     unsafe { SLEEP_STATE }
+}
+
+#[inline(always)]
+pub fn deeper_sleep_state() -> bool {
+    unsafe { DEEPER_SLEEP }
 }
 
 #[inline(always)]

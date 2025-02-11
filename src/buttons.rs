@@ -1,5 +1,5 @@
 use crate::{
-    state::{current_epoch, sleep_state, GlobalState, Scene},
+    state::{current_epoch, deeper_sleep_state, sleep_state, GlobalState, Scene},
     structs::DelegateResponsePacket,
     utils::buttons::{Button, ButtonTrigger, ButtonsHandler},
 };
@@ -85,6 +85,10 @@ async fn wakeup_button(
 ) -> Result<bool, ()> {
     if sleep_state() {
         state.state.signal();
+        if deeper_sleep_state() {
+            esp_hal::reset::software_reset();
+        }
+
         return Ok(true);
     }
 
@@ -332,7 +336,7 @@ async fn submit_reset_wifi(
         state.custom_message = Some(("Resseting WIFI".to_string(), "Restart in 5s...".to_string()));
     }
 
-    Timer::after_millis(5000).await;
+    Timer::after_millis(500).await;
     esp_hal::reset::software_reset();
 
     Ok(false)
