@@ -8,10 +8,8 @@ use crate::{structs::PossibleGroup, utils::signaled_mutex::SignaledMutex};
 
 pub static mut EPOCH_BASE: u64 = 0;
 pub static mut SLEEP_STATE: bool = false;
-pub static mut OTA_STATE: bool = false;
-
-#[cfg(feature = "esp32c3")]
 pub static mut DEEPER_SLEEP: bool = false;
+pub static mut OTA_STATE: bool = false;
 
 #[inline(always)]
 pub fn current_epoch() -> u64 {
