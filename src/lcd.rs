@@ -201,7 +201,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
             .ok()?;
 
         lcd_driver
-            .print(1, &error_text, PrintAlign::Left, true)
+            .print(1, &error_text, PrintAlign::Center, true)
             .ok()?;
 
         return Some(());

@@ -34,7 +34,6 @@ espflash save-image --chip esp32 ./target/xtensa-esp32-none-elf/release/fkm-firm
 espflash save-image --chip esp32c3 ./target/riscv32imc-unknown-none-elf/release/fkm-firmware "/tmp/fkm-build/v3_STATION_${VERSION}.bin"
 ./append_metadata.sh "/tmp/fkm-build/v2_STATION_${VERSION}.bin" "$VERSION" "STATION" "v2" "$EPOCH"
 ./append_metadata.sh "/tmp/fkm-build/v3_STATION_${VERSION}.bin" "$VERSION" "STATION" "v3" "$EPOCH"
-exit 1
 
 cd $SCRIPT_DIR
 VERSION=$(cat ./src/version.rs | grep 'VERSION' | cut -d'"' -f 2)
