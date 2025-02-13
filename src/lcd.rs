@@ -192,12 +192,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
 
     if let Some(error_text) = current_state.error_text {
         lcd_driver
-            .print(
-                0,
-                &get_translation("ERROR_HEADER"),
-                PrintAlign::Center,
-                true,
-            )
+            .print(0, &get_translation("errorHeader"), PrintAlign::Center, true)
             .ok()?;
 
         lcd_driver
@@ -220,7 +215,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
             lcd_driver
                 .print(
                     0,
-                    &get_translation("DELEGATE_CALLED_1"),
+                    &get_translation("waitingForDelegateHeader"),
                     PrintAlign::Center,
                     true,
                 )
@@ -229,7 +224,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
             lcd_driver
                 .print(
                     1,
-                    &get_translation("DELEGATE_CALLED_2"),
+                    &get_translation("waitingForDelegateFooter"),
                     PrintAlign::Center,
                     true,
                 )
@@ -238,7 +233,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
             lcd_driver
                 .print(
                     0,
-                    &get_translation("DELEGATE_WAIT_HEADER"),
+                    &get_translation("callingForDelegateHeader"),
                     PrintAlign::Center,
                     true,
                 )
@@ -247,7 +242,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
             lcd_driver
                 .print(
                     1,
-                    &get_translation_params("DELEGATE_WAIT_TIME", &[delegate_remaining]),
+                    &get_translation_params("callingForDelegateFooter", &[delegate_remaining]),
                     PrintAlign::Center,
                     true,
                 )
@@ -260,11 +255,21 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
     match current_state.scene {
         Scene::WifiConnect => {
             lcd_driver
-                .print(0, &get_translation("WIFI_WAIT_1"), PrintAlign::Center, true)
+                .print(
+                    0,
+                    &get_translation("waitingForWifiHeader"),
+                    PrintAlign::Center,
+                    true,
+                )
                 .ok()?;
 
             lcd_driver
-                .print(1, &get_translation("WIFI_WAIT_2"), PrintAlign::Center, true)
+                .print(
+                    1,
+                    &get_translation("waitingForWifiFooter"),
+                    PrintAlign::Center,
+                    true,
+                )
                 .ok()?;
 
             lcd_driver.display_on_lcd(lcd);
@@ -276,7 +281,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
             lcd_driver
                 .print(
                     0,
-                    &get_translation("WIFI_SETUP_HEADER"),
+                    &get_translation("wifiSetupHeader"),
                     PrintAlign::Center,
                     true,
                 )
@@ -288,11 +293,21 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
         }
         Scene::MdnsWait => {
             lcd_driver
-                .print(0, &get_translation("MDNS_WAIT_1"), PrintAlign::Center, true)
+                .print(
+                    0,
+                    &get_translation("waitingForMdnsHeader"),
+                    PrintAlign::Center,
+                    true,
+                )
                 .ok()?;
 
             lcd_driver
-                .print(1, &get_translation("MDNS_WAIT_2"), PrintAlign::Center, true)
+                .print(
+                    1,
+                    &get_translation("waitingForMdnsFooter"),
+                    PrintAlign::Center,
+                    true,
+                )
                 .ok()?;
         }
         Scene::GroupSelect => {
@@ -304,7 +319,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
             lcd_driver
                 .print(
                     0,
-                    &get_translation("SELECT_GROUP"),
+                    &get_translation("selectGroup"),
                     PrintAlign::Center,
                     false,
                 )
@@ -323,7 +338,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
             lcd_driver
                 .print(
                     0,
-                    &get_translation("SCAN_COMPETITOR_1"),
+                    &get_translation("scanCompetitorCardHeader"),
                     PrintAlign::Center,
                     true,
                 )
@@ -334,7 +349,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 lcd_driver
                     .print(
                         1,
-                        &get_translation_params("SCAN_COMPETITOR_3", &[time_str]),
+                        &get_translation_params("scanCompetitorCardWithTimeFooter", &[time_str]),
                         PrintAlign::Center,
                         true,
                     )
@@ -343,7 +358,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 lcd_driver
                     .print(
                         1,
-                        &get_translation("SCAN_COMPETITOR_2"),
+                        &get_translation("scanCompetitorCardFooter"),
                         PrintAlign::Center,
                         true,
                     )
@@ -356,7 +371,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                     0,
                     &current_state
                         .competitor_display
-                        .unwrap_or("Unknown competitor?".to_string()),
+                        .unwrap_or("??????".to_string()),
                     PrintAlign::Center,
                     true,
                 )
@@ -446,13 +461,13 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
 
             if !current_state.time_confirmed {
                 lcd_driver
-                    .print(1, &get_translation("CONFIRM_TIME"), PrintAlign::Right, true)
+                    .print(1, &get_translation("confirmTime"), PrintAlign::Right, true)
                     .ok()?;
             } else if current_state.current_judge.is_none() {
                 lcd_driver
                     .print(
                         1,
-                        &get_translation("SCAN_JUDGE_CARD"),
+                        &get_translation("scanJudgeCard"),
                         PrintAlign::Right,
                         true,
                     )
@@ -463,7 +478,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 lcd_driver
                     .print(
                         1,
-                        &get_translation("SCAN_COMPETITOR_CARD"),
+                        &get_translation("scanCompetitorCard"),
                         PrintAlign::Right,
                         true,
                     )
@@ -502,31 +517,41 @@ async fn process_lcd_overwrite(
     }
 
     if current_state.server_connected == Some(false) {
-        _ = lcd_driver.print(0, "Server", PrintAlign::Center, true);
+        _ = lcd_driver.print(
+            0,
+            &get_translation("serverDisconnectedHeader"),
+            PrintAlign::Center,
+            true,
+        );
         _ = lcd_driver.print(
             1,
-            &get_translation("DISCONNECTED_FOOTER"),
+            &get_translation("serverDisconnectedFooter"),
             PrintAlign::Center,
             true,
         );
     } else if current_state.device_added == Some(false) {
         _ = lcd_driver.print(
             0,
-            &get_translation("DEV_NOT_ADDED_HEADER"),
+            &get_translation("deviceNotAddedHeader"),
             PrintAlign::Center,
             true,
         );
         _ = lcd_driver.print(
             1,
-            &get_translation("DEV_NOT_ADDED_FOOTER"),
+            &get_translation("deviceNotAddedFooter"),
             PrintAlign::Center,
             true,
         );
     } else if current_state.stackmat_connected == Some(false) {
-        _ = lcd_driver.print(0, "Stackmat", PrintAlign::Center, true);
+        _ = lcd_driver.print(
+            0,
+            &get_translation("stackmatDisconnectedHeader"),
+            PrintAlign::Center,
+            true,
+        );
         _ = lcd_driver.print(
             1,
-            &get_translation("DISCONNECTED_FOOTER"),
+            &get_translation("stackmatDisconnectedFooter"),
             PrintAlign::Center,
             true,
         );

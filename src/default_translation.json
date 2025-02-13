@@ -1,0 +1,98 @@
+[
+      {
+        "key": "scanCompetitorCardHeader",
+        "translation": "Scan card"
+      },
+      {
+        "key": "scanCompetitorCardFooter",
+        "translation": "of the competitor"
+      },
+      {
+        "key": "scanCompetitorCardWithTimeFooter",
+        "translation": "of the competitor ({0})"
+      },
+      {
+        "key": "selectGroup",
+        "translation": "Select round"
+      },
+      {
+        "key": "confirmTime",
+        "translation": "Confirm the time"
+      },
+      {
+        "key": "scanJudgeCard",
+        "translation": "Scan the judge's card"
+      },
+      {
+        "key": "scanCompetitorCard",
+        "translation": "Scan the competitor's card"
+      },
+      {
+        "key": "waitingForWifiHeader",
+        "translation": "Waiting for"
+      },
+      {
+        "key": "waitingForWifiFooter",
+        "translation": "WiFi connection"
+      },
+      {
+        "key": "waitingForMdnsHeader",
+        "translation": "Waiting for"
+      },
+      {
+        "key": "waitingForMdnsFooter",
+        "translation": "Server Discovery"
+      },
+      {
+        "key": "wifiSetupHeader",
+        "translation": "Connect to:"
+      },
+      {
+        "key": "callingForDelegateHeader",
+        "translation": "Calling delegate"
+      },
+      {
+        "key": "callingForDelegateFooter",
+        "translation": "In: {0}"
+      },
+      {
+        "key": "waitingForDelegateHeader",
+        "translation": "Waiting for"
+      },
+      {
+        "key": "waitingForDelegateFooter",
+        "translation": "Delegate"
+      },
+      {
+        "key": "errorHeader",
+        "translation": "Error"
+      },
+      {
+        "key": "deviceNotAddedHeader",
+        "translation": "Device not added"
+      },
+      {
+        "key": "deviceNotAddedFooter",
+        "translation": "Press submit to connect"
+      },
+      {
+        "key": "emptyGroupsError",
+        "translation": "You don't have any groups to select"
+      },
+      {
+        "key": "serverDisconnectedHeader",
+        "translation": "Server"
+      },
+      {
+        "key": "stackmatDisconnectedHeader",
+        "translation": "Stackmat"
+      },
+      {
+        "key": "stackmatDisconnectedFooter",
+        "translation": "Disconnected"
+      },
+      {
+        "key": "serverDisconnectedFooter",
+        "translation": "Disconnected"
+      }
+]

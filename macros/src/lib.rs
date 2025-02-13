@@ -1,5 +1,7 @@
 #![feature(proc_macro_span)]
 
+mod translations;
+
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
@@ -199,6 +201,11 @@ pub fn nb_to_fut(item: TokenStream) -> TokenStream {
         }
     }
     .into()
+}
+
+#[proc_macro]
+pub fn load_translations(args: TokenStream) -> TokenStream {
+    translations::load_translations_macro(args)
 }
 
 // Maybe not useful, most variables in functions that can fail are owned :(

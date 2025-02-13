@@ -5,13 +5,30 @@ use alloc::{
     vec::Vec,
 };
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
+use serde::Deserialize;
+
+use crate::utils::normalize_polish_letters;
 
 #[derive(Debug)]
+#[allow(dead_code)]
+pub struct StaticTranslationRecord {
+    pub key: &'static str,
+    pub translation: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TranslationLocale {
+    pub locale: String,
+    pub translations: Vec<TranslationRecord>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct TranslationRecord {
     pub key: String,
     pub translation: String,
 }
 
+#[allow(dead_code)]
 impl TranslationRecord {
     pub fn new(key: &str, translation: &str) -> Self {
         TranslationRecord {
@@ -21,97 +38,60 @@ impl TranslationRecord {
     }
 }
 
-pub static TRANSLATIONS: Mutex<CriticalSectionRawMutex, Vec<TranslationRecord>> =
+macros::load_translations!(
+    "src/default_translation.json",
+    FALLBACK_TRANSLATIONS,
+    StaticTranslationRecord
+);
+
+pub static TRANSLATIONS: Mutex<CriticalSectionRawMutex, Vec<TranslationLocale>> =
     Mutex::new(Vec::new());
 
 pub fn init_translations() {
     if let Ok(mut t) = TRANSLATIONS.try_lock() {
-        t.push(TranslationRecord::new("SCAN_COMPETITOR_1", "Scan the card"));
-        t.push(TranslationRecord::new(
-            "SCAN_COMPETITOR_2",
-            "of a competitor",
-        ));
-        t.push(TranslationRecord::new(
-            "SCAN_COMPETITOR_3",
-            "of a competitor ({0})",
-        ));
-
-        t.push(TranslationRecord::new("SELECT_GROUP", "Select round"));
-
-        t.push(TranslationRecord::new("CONFIRM_TIME", "Confirm the time"));
-        t.push(TranslationRecord::new(
-            "SCAN_JUDGE_CARD",
-            "Scan the judge's card",
-        ));
-        t.push(TranslationRecord::new(
-            "SCAN_COMPETITOR_CARD",
-            "Scan the competitor's card",
-        ));
-
-        t.push(TranslationRecord::new("WIFI_WAIT_1", "Waiting for"));
-        t.push(TranslationRecord::new("WIFI_WAIT_2", "WiFi connection"));
-
-        t.push(TranslationRecord::new("MDNS_WAIT_1", "Waiting for"));
-        t.push(TranslationRecord::new("MDNS_WAIT_2", "Server Discovery"));
-
-        t.push(TranslationRecord::new("WIFI_SETUP_HEADER", "Connect to:"));
-
-        t.push(TranslationRecord::new("DELEGATE_WAIT_HEADER", "Delegate"));
-        t.push(TranslationRecord::new("DELEGATE_WAIT_TIME", "In: {0}"));
-
-        t.push(TranslationRecord::new("DELEGATE_CALLED_1", "Waiting for"));
-        t.push(TranslationRecord::new("DELEGATE_CALLED_2", "delegate"));
-
-        t.push(TranslationRecord::new("ERROR_HEADER", "Error"));
-
-        t.push(TranslationRecord::new(
-            "DISCONNECTED_FOOTER",
-            "Disconnected",
-        ));
-
-        t.push(TranslationRecord::new(
-            "DEV_NOT_ADDED_HEADER",
-            "Device not added",
-        ));
-        t.push(TranslationRecord::new(
-            "DEV_NOT_ADDED_FOOTER",
-            "Press submit to connect",
-        ));
-
-        t.push(TranslationRecord::new(
-            "NO_USER_GROUPS",
-            "This user doesn't have any groups",
-        ));
+        t.push(TranslationLocale {
+            locale: "pl".to_string(),
+            translations: serde_json::from_str::<Vec<TranslationRecord>>(include_str!(
+                "locale_pl_test.json"
+            ))
+            .unwrap()
+            .into_iter()
+            .map(|t| TranslationRecord {
+                key: t.key,
+                translation: normalize_polish_letters(t.translation),
+            })
+            .collect(),
+        });
     }
 }
 
 pub fn get_translation(key: &str) -> String {
     if let Ok(t) = TRANSLATIONS.try_lock() {
-        return t
-            .iter()
-            .find(|t| t.key == key)
-            .map(|t| t.translation.clone())
-            .unwrap_or("#####".to_string());
+        if let Some(locale) = t.iter().find(|l| l.locale == "pl") {
+            return locale
+                .translations
+                .iter()
+                .find(|t| t.key == key)
+                .map(|t| t.translation.clone())
+                .unwrap_or("#####".to_string());
+        } else {
+            return FALLBACK_TRANSLATIONS
+                .iter()
+                .find(|t| t.key == key)
+                .map(|t| t.translation.to_string())
+                .unwrap_or("#####".to_string());
+        }
     }
 
     "#####".to_string()
 }
 
 pub fn get_translation_params<T: Display>(key: &str, params: &[T]) -> String {
-    if let Ok(t) = TRANSLATIONS.try_lock() {
-        let mut translation = t
-            .iter()
-            .find(|t| t.key == key)
-            .map(|t| t.translation.clone())
-            .unwrap_or("#####".to_string());
-
-        for (i, arg) in params.iter().enumerate() {
-            let placeholder = alloc::format!("{{{}}}", i);
-            translation = translation.replace(&placeholder, &arg.to_string());
-        }
-
-        return translation;
+    let mut translation = get_translation(key);
+    for (i, arg) in params.iter().enumerate() {
+        let placeholder = alloc::format!("{{{}}}", i);
+        translation = translation.replace(&placeholder, &arg.to_string());
     }
 
-    "#####".to_string()
+    translation
 }
