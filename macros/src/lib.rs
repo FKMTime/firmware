@@ -204,7 +204,7 @@ pub fn nb_to_fut(item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn load_translations(args: TokenStream) -> TokenStream {
+pub fn load_default_translations(args: TokenStream) -> TokenStream {
     translations::load_translations_macro(args)
 }
 

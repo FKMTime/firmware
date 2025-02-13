@@ -38,11 +38,7 @@ impl TranslationRecord {
     }
 }
 
-macros::load_translations!(
-    "src/default_translation.json",
-    FALLBACK_TRANSLATIONS,
-    StaticTranslationRecord
-);
+macros::load_default_translations!("src/default_translation.json", FALLBACK_TRANSLATIONS);
 
 pub static TRANSLATIONS: Mutex<CriticalSectionRawMutex, Vec<TranslationLocale>> =
     Mutex::new(Vec::new());
@@ -75,11 +71,13 @@ pub fn get_translation(key: &str) -> String {
                 .map(|t| t.translation.clone())
                 .unwrap_or("#####".to_string());
         } else {
+            /*
             return FALLBACK_TRANSLATIONS
                 .iter()
                 .find(|t| t.key == key)
                 .map(|t| t.translation.to_string())
                 .unwrap_or("#####".to_string());
+            */
         }
     }
 
