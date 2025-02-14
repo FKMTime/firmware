@@ -13,10 +13,7 @@ pub struct LocalLocale {
     pub translations: Vec<Option<String>>,
 }
 
-// TODO: make selected locale as index to LOCALES
-static mut SELECTED_LOCALE: [char; 6] = ['\0'; 6];
-static mut LOCALE_LENGTH: usize = 0;
-
+static mut SELECTED_LOCALE: usize = usize::MAX;
 pub static LOCALES: Mutex<CriticalSectionRawMutex, Vec<LocalLocale>> = Mutex::new(Vec::new());
 macros::load_default_translations!("src/default_translation.json");
 
@@ -28,26 +25,24 @@ pub fn clear_locales() {
 }
 
 pub fn select_locale(locale: &str, global_state: &GlobalState) {
-    let selected_locale = unsafe { SELECTED_LOCALE[..LOCALE_LENGTH].iter().collect::<String>() };
-    if selected_locale == locale {
-        return;
-    }
+    if let Ok(t) = LOCALES.try_lock() {
+        let locale_idx = t
+            .iter()
+            .enumerate()
+            .find(|(_, l)| l.locale == locale)
+            .map(|(i, _)| i)
+            .unwrap_or(usize::MAX);
 
-    if locale.chars().count() > 6 {
-        log::error!("Locale too long!");
-        return;
-    }
+        unsafe {
+            if locale_idx == SELECTED_LOCALE {
+                return;
+            }
 
-    unsafe {
-        LOCALE_LENGTH = 0;
-        for (i, c) in locale.chars().enumerate() {
-            SELECTED_LOCALE[i] = c;
-            LOCALE_LENGTH = i + 1;
+            SELECTED_LOCALE = locale_idx;
+            global_state.state.signal(); // reload locale
+            log::info!("Selected locale: {locale}");
         }
     }
-
-    global_state.state.signal(); // reload locale
-    log::info!("Selected locale: {locale}");
 }
 
 pub fn process_locale(locale: String, records: Vec<TranslationRecord>) {
@@ -74,10 +69,8 @@ pub fn process_locale(locale: String, records: Vec<TranslationRecord>) {
 }
 
 pub fn get_translation(key: usize) -> String {
-    let selected_locale = unsafe { SELECTED_LOCALE[..LOCALE_LENGTH].iter().collect::<String>() };
-
     if let Ok(t) = LOCALES.try_lock() {
-        if let Some(locale) = t.iter().find(|l| l.locale == selected_locale) {
+        if let Some(locale) = t.get(unsafe { SELECTED_LOCALE }) {
             return locale
                 .translations
                 .get(key)
