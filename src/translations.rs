@@ -1,4 +1,4 @@
-use crate::{state::GlobalState, structs::TranslationRecord, utils::normalize_polish_letters};
+use crate::{state::GlobalState, structs::TranslationRecord};
 use alloc::{
     string::{String, ToString},
     vec::Vec,
@@ -62,7 +62,7 @@ pub fn process_locale(locale: String, records: Vec<TranslationRecord>) {
 
         for record in records {
             if let Some(key) = TranslationKey::from_key_str(&record.key) {
-                tmp_locale.translations[key] = Some(normalize_polish_letters(record.translation));
+                tmp_locale.translations[key] = Some(record.translation);
             }
         }
     }

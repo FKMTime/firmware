@@ -1,5 +1,3 @@
-use alloc::string::String;
-
 pub mod arc;
 pub mod backtrace_store;
 pub mod buttons;
@@ -95,41 +93,4 @@ fn esp32c3_rtc_apb_freq_update() {
     rtc_cntl
         .store5()
         .modify(|_, w| unsafe { w.scratch5().bits(value) });
-}
-
-pub fn normalize_polish_letters(input: String) -> String {
-    let replacements = [
-        ('ą', 'a'),
-        ('ć', 'c'),
-        ('ę', 'e'),
-        ('ł', 'l'),
-        ('ń', 'n'),
-        ('ó', 'o'),
-        ('ś', 's'),
-        ('ź', 'z'),
-        ('ż', 'z'),
-        ('Ą', 'A'),
-        ('Ć', 'C'),
-        ('Ę', 'E'),
-        ('Ł', 'L'),
-        ('Ń', 'N'),
-        ('Ó', 'O'),
-        ('Ś', 'S'),
-        ('Ź', 'Z'),
-        ('Ż', 'Z'),
-    ];
-
-    let mut result = String::with_capacity(input.len());
-
-    for c in input.chars() {
-        let replacement = replacements
-            .iter()
-            .find(|(polish, _)| *polish == c)
-            .map(|(_, normal)| *normal)
-            .unwrap_or(c);
-
-        result.push(replacement);
-    }
-
-    result
 }
