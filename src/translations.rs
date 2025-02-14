@@ -1,90 +1,100 @@
-use core::fmt::Display;
-
+use crate::{state::GlobalState, structs::TranslationRecord, utils::normalize_polish_letters};
 use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
+use core::fmt::Display;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use serde::Deserialize;
 
-use crate::utils::normalize_polish_letters;
-
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct StaticTranslationRecord {
-    pub key: &'static str,
-    pub translation: &'static str,
-}
-
 #[derive(Debug, Deserialize)]
-pub struct TranslationLocale {
+pub struct LocalLocale {
     pub locale: String,
-    pub translations: Vec<TranslationRecord>,
+    pub translations: Vec<Option<String>>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct TranslationRecord {
-    pub key: String,
-    pub translation: String,
-}
+// TODO: make selected locale as index to LOCALES
+static mut SELECTED_LOCALE: [char; 6] = ['\0'; 6];
+static mut LOCALE_LENGTH: usize = 0;
+
+pub static LOCALES: Mutex<CriticalSectionRawMutex, Vec<LocalLocale>> = Mutex::new(Vec::new());
+macros::load_default_translations!("src/default_translation.json");
 
 #[allow(dead_code)]
-impl TranslationRecord {
-    pub fn new(key: &str, translation: &str) -> Self {
-        TranslationRecord {
-            key: key.to_string(),
-            translation: translation.to_string(),
+pub fn clear_locales() {
+    if let Ok(mut t) = LOCALES.try_lock() {
+        t.clear();
+    }
+}
+
+pub fn select_locale(locale: &str, global_state: &GlobalState) {
+    let selected_locale = unsafe { SELECTED_LOCALE[..LOCALE_LENGTH].iter().collect::<String>() };
+    if selected_locale == locale {
+        return;
+    }
+
+    if locale.chars().count() > 6 {
+        log::error!("Locale too long!");
+        return;
+    }
+
+    unsafe {
+        LOCALE_LENGTH = 0;
+        for (i, c) in locale.chars().enumerate() {
+            SELECTED_LOCALE[i] = c;
+            LOCALE_LENGTH = i + 1;
+        }
+    }
+
+    global_state.state.signal(); // reload locale
+    log::info!("Selected locale: {locale}");
+}
+
+pub fn process_locale(locale: String, records: Vec<TranslationRecord>) {
+    if let Ok(mut t) = LOCALES.try_lock() {
+        let tmp_locale = match t.iter_mut().find(|l| l.locale == locale) {
+            Some(tmp_locale) => tmp_locale,
+            None => {
+                let idx = t.len();
+                t.push(LocalLocale {
+                    locale,
+                    translations: alloc::vec![None; TRANSLATIONS_COUNT],
+                });
+
+                t.get_mut(idx).expect("")
+            }
+        };
+
+        for record in records {
+            if let Some(key) = TranslationKey::from_key_str(&record.key) {
+                tmp_locale.translations[key] = Some(normalize_polish_letters(record.translation));
+            }
         }
     }
 }
 
-macros::load_default_translations!("src/default_translation.json", FALLBACK_TRANSLATIONS);
+pub fn get_translation(key: usize) -> String {
+    let selected_locale = unsafe { SELECTED_LOCALE[..LOCALE_LENGTH].iter().collect::<String>() };
 
-pub static TRANSLATIONS: Mutex<CriticalSectionRawMutex, Vec<TranslationLocale>> =
-    Mutex::new(Vec::new());
-
-pub fn init_translations() {
-    if let Ok(mut t) = TRANSLATIONS.try_lock() {
-        t.push(TranslationLocale {
-            locale: "pl".to_string(),
-            translations: serde_json::from_str::<Vec<TranslationRecord>>(include_str!(
-                "locale_pl_test.json"
-            ))
-            .unwrap()
-            .into_iter()
-            .map(|t| TranslationRecord {
-                key: t.key,
-                translation: normalize_polish_letters(t.translation),
-            })
-            .collect(),
-        });
-    }
-}
-
-pub fn get_translation(key: &str) -> String {
-    if let Ok(t) = TRANSLATIONS.try_lock() {
-        if let Some(locale) = t.iter().find(|l| l.locale == "pl") {
+    if let Ok(t) = LOCALES.try_lock() {
+        if let Some(locale) = t.iter().find(|l| l.locale == selected_locale) {
             return locale
                 .translations
-                .iter()
-                .find(|t| t.key == key)
-                .map(|t| t.translation.clone())
+                .get(key)
+                .map(|t| t.as_ref().unwrap_or(&"#####".to_string()).to_string())
                 .unwrap_or("#####".to_string());
         } else {
-            /*
             return FALLBACK_TRANSLATIONS
-                .iter()
-                .find(|t| t.key == key)
-                .map(|t| t.translation.to_string())
+                .get(key)
+                .map(|t| t.to_string())
                 .unwrap_or("#####".to_string());
-            */
         }
     }
 
     "#####".to_string()
 }
 
-pub fn get_translation_params<T: Display>(key: &str, params: &[T]) -> String {
+pub fn get_translation_params<T: Display>(key: usize, params: &[T]) -> String {
     let mut translation = get_translation(key);
     for (i, arg) in params.iter().enumerate() {
         let placeholder = alloc::format!("{{{}}}", i);

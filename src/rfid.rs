@@ -1,7 +1,7 @@
 use crate::consts::RFID_RETRY_INIT_MS;
 use crate::state::{current_epoch, sleep_state, GlobalState};
 use crate::structs::{CardInfoResponsePacket, SolveConfirmPacket};
-use crate::translations::get_translation;
+use crate::translations::{get_translation, TranslationKey};
 use alloc::string::ToString;
 use anyhow::{anyhow, Result};
 use embassy_time::{Duration, Timer};
@@ -184,7 +184,8 @@ async fn process_card_info_response(
                     }
                     _ => {
                         state.reset_solve_state(None).await;
-                        state.error_text = Some(get_translation("NO_USER_GROUPS"));
+                        state.error_text =
+                            Some(get_translation(TranslationKey::EMPTY_GROUPS_ERROR));
                     }
                 }
             }

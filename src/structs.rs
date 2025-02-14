@@ -60,6 +60,8 @@ pub enum TimerPacketInner {
     AttendanceMarked,
     DeviceSettings {
         added: bool,
+        locales: Vec<TranslationLocale>,
+        default_locale: String,
     },
     Logs {
         logs: Vec<String>,
@@ -93,6 +95,18 @@ pub enum TestPacketData {
     StackmatTime(u64),
     StackmatReset,
     Snapshot,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TranslationLocale {
+    pub locale: String,
+    pub translations: Vec<TranslationRecord>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TranslationRecord {
+    pub key: String,
+    pub translation: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

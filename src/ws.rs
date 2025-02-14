@@ -256,9 +256,23 @@ async fn ws_rw(
                         }
 
                         match timer_packet.data {
-                            TimerPacketInner::DeviceSettings { added } => {
+                            TimerPacketInner::DeviceSettings {
+                                added,
+                                locales,
+                                default_locale,
+                            } => {
                                 let mut state = global_state.state.lock().await;
                                 state.device_added = Some(added);
+                                crate::translations::clear_locales();
+
+                                for locale in locales {
+                                    crate::translations::process_locale(
+                                        locale.locale,
+                                        locale.translations,
+                                    );
+                                }
+
+                                crate::translations::select_locale(&default_locale, &global_state);
                             }
                             TimerPacketInner::ApiError(e) => {
                                 // if should_reset_time reset time

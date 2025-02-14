@@ -20,7 +20,6 @@ use esp_hal_wifimanager::WIFI_NVS_KEY;
 use esp_storage::FlashStorage;
 use state::{ota_state, sleep_state, GlobalStateInner, SavedGlobalState, Scene};
 use structs::ConnSettings;
-use translations::init_translations;
 use utils::{logger::FkmLogger, set_brownout_detection};
 
 #[cfg(feature = "esp32")]
@@ -192,7 +191,6 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "esp32")]
     let cs_pin = Output::new(peripherals.GPIO5, esp_hal::gpio::Level::High);
 
-    init_translations();
     let global_state = Rc::new(GlobalStateInner::new(&nvs));
     let wifi_setup_sig = Rc::new(Signal::new());
 
