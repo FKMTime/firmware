@@ -1,7 +1,4 @@
-use std::{
-    hash::Hasher,
-    path::{Path, PathBuf},
-};
+use std::{hash::Hasher, path::PathBuf};
 
 const VERSION_TEMPLATE: &str = r#"
 pub const VERSION: &str = "{version}";
@@ -18,7 +15,6 @@ fn main() {
     }
 
     println!("cargo:rustc-link-arg-bins=-Tlinkall.x");
-    println!("cargo:rustc-cfg=feature=\"gen_version\"");
 
     let mut hasher = crc32fast::Hasher::new();
     crc_walkdir(PathBuf::from("src"), &mut hasher);
@@ -33,22 +29,7 @@ fn main() {
             .unwrap()
             .as_secs();
 
-        if let Ok(crc_string) = std::fs::read_to_string(std::env::temp_dir().join("fkm-build-crc"))
-        {
-            let split = crc_string.split_once('|');
-            if let Some((crc_str, ver)) = split {
-                let crc: u32 = crc_str.parse().unwrap_or(0);
-                if crc == src_crc {
-                    ver.to_string()
-                } else {
-                    format!("D{epoch}")
-                }
-            } else {
-                format!("D{epoch}")
-            }
-        } else {
-            format!("D{epoch}")
-        }
+        format!("D{epoch}")
     };
 
     let hw = if cfg!(feature = "esp32") {
@@ -64,7 +45,8 @@ fn main() {
         .replace("{hw}", hw)
         .replace("{firmware}", "STATION");
 
-    std::fs::write(Path::new("src").join("version.rs"), gen.trim()).unwrap();
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    std::fs::write(out_dir.join("version.rs"), gen.trim()).unwrap();
     _ = std::fs::write(
         std::env::temp_dir().join("fkm-build-crc"),
         format!("{src_crc}|{version_str}"),

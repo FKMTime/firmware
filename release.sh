@@ -27,32 +27,30 @@ source ~/export-esp.sh
 RELEASE_BUILD="$RELEASE_VERSION" cargo build -r
 RELEASE_BUILD="$RELEASE_VERSION" cargo esp32 -r
 
-VERSION=$(cat ./src/version.rs | grep VERSION | cut -d'"' -f 2)
 EPOCH=$(date +%s)
 
-espflash save-image --chip esp32 ./target/xtensa-esp32-none-elf/release/fkm-firmware "/tmp/fkm-build/v2_STATION_${VERSION}.bin"
-espflash save-image --chip esp32c3 ./target/riscv32imc-unknown-none-elf/release/fkm-firmware "/tmp/fkm-build/v3_STATION_${VERSION}.bin"
-./append_metadata.sh "/tmp/fkm-build/v2_STATION_${VERSION}.bin" "$VERSION" "STATION" "v2" "$EPOCH"
-./append_metadata.sh "/tmp/fkm-build/v3_STATION_${VERSION}.bin" "$VERSION" "STATION" "v3" "$EPOCH"
+espflash save-image --chip esp32 ./target/xtensa-esp32-none-elf/release/fkm-firmware "/tmp/fkm-build/v2_STATION_${RELEASE_VERSION}.bin"
+espflash save-image --chip esp32c3 ./target/riscv32imc-unknown-none-elf/release/fkm-firmware "/tmp/fkm-build/v3_STATION_${RELEASE_VERSION}.bin"
+./append_metadata.sh "/tmp/fkm-build/v2_STATION_${RELEASE_VERSION}.bin" "$RELEASE_VERSION" "STATION" "v2" "$EPOCH"
+./append_metadata.sh "/tmp/fkm-build/v3_STATION_${RELEASE_VERSION}.bin" "$RELEASE_VERSION" "STATION" "v3" "$EPOCH"
 
 cd $SCRIPT_DIR
-VERSION=$(cat ./src/version.rs | grep 'VERSION' | cut -d'"' -f 2)
-echo "Version: $VERSION"
+echo "Version: $RELEASE_VERSION"
 
-if gh release view "$VERSION" ; then
+if gh release view "$RELEASE_VERSION" ; then
     echo "Release already exists"
     exit
 fi
 
 
-BUILD_FILES=$(ls /tmp/fkm-build/*_"$VERSION".bin)
+BUILD_FILES=$(ls /tmp/fkm-build/*_"$RELEASE_VERSION".bin)
 if [ -z "$BUILD_FILES" ]; then
     echo "No build files found"
     exit
 fi
 
-gh release create "$VERSION" -t "$VERSION" --generate-notes
+gh release create "$RELEASE_VERSION" -t "$RELEASE_VERSION" --generate-notes
 for file in $BUILD_FILES; do
     echo "Uploading $file"
-    gh release upload "$VERSION" "$file"
+    gh release upload "$RELEASE_VERSION" "$file"
 done
