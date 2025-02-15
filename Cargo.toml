@@ -74,5 +74,4 @@ opt-level = 3
 overflow-checks = false
 
 [build-dependencies]
-crc32fast = "1.4.2"
 dotenvy = "0.15.7"

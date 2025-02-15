@@ -1,4 +1,4 @@
-use std::{hash::Hasher, path::PathBuf};
+use std::path::PathBuf;
 
 const VERSION_TEMPLATE: &str = r#"
 pub const VERSION: &str = "{version}";
@@ -16,10 +16,6 @@ fn main() {
 
     println!("cargo:rustc-link-arg-bins=-Tlinkall.x");
     println!("cargo:rustc-cfg=feature=\"gen_version\"");
-
-    let mut hasher = crc32fast::Hasher::new();
-    crc_walkdir(PathBuf::from("src"), &mut hasher);
-    let src_crc = hasher.finalize();
 
     let version_str = if let Ok(rel) = std::env::var("RELEASE_BUILD") {
         println!("cargo:rustc-cfg=feature=\"release_build\"");
@@ -48,22 +44,4 @@ fn main() {
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     std::fs::write(out_dir.join("version.rs"), gen.trim()).unwrap();
-    _ = std::fs::write(
-        std::env::temp_dir().join("fkm-build-crc"),
-        format!("{src_crc}|{version_str}"),
-    );
-}
-
-fn crc_walkdir(path: PathBuf, hasher: &mut crc32fast::Hasher) {
-    if let Ok(mut dir) = path.read_dir() {
-        while let Some(Ok(entry)) = dir.next() {
-            let file_type = entry.file_type().unwrap();
-            if file_type.is_dir() {
-                crc_walkdir(entry.path(), hasher);
-            } else if file_type.is_file() && entry.file_name().to_string_lossy() != "version.rs" {
-                let string = std::fs::read_to_string(entry.path()).unwrap();
-                hasher.write(string.as_bytes());
-            }
-        }
-    }
 }
