@@ -273,6 +273,7 @@ async fn ws_rw(
                                 }
 
                                 crate::translations::select_locale(&default_locale, &global_state);
+                                crate::translations::set_default_locale();
                             }
                             TimerPacketInner::ApiError(e) => {
                                 // if should_reset_time reset time

@@ -14,6 +14,7 @@ pub struct LocalLocale {
 }
 
 static mut SELECTED_LOCALE: usize = usize::MAX;
+static mut DEFAULT_LOCALE: usize = usize::MAX;
 pub static LOCALES: Mutex<CriticalSectionRawMutex, Vec<LocalLocale>> = Mutex::new(Vec::new());
 macros::load_default_translations!("src/default_translation.json");
 
@@ -25,27 +26,58 @@ pub fn clear_locales() {
 }
 
 pub fn select_locale(locale: &str, global_state: &GlobalState) {
-    if let Ok(t) = LOCALES.try_lock() {
-        let locale_idx = t
-            .iter()
-            .enumerate()
-            .find(|(_, l)| l.locale == locale)
-            .map(|(i, _)| i)
-            .unwrap_or(usize::MAX);
+    let locale = locale.to_lowercase();
+    let locale_idx = get_locale_index(&locale);
+    select_locale_idx(locale_idx, global_state);
 
-        unsafe {
-            if locale_idx == SELECTED_LOCALE {
-                return;
-            }
+    log::info!("Selected locale: {locale}");
+}
 
-            SELECTED_LOCALE = locale_idx;
-            global_state.state.signal(); // reload locale
-            log::info!("Selected locale: {locale}");
+pub fn select_locale_idx(mut locale_idx: usize, global_state: &GlobalState) {
+    unsafe {
+        if locale_idx == SELECTED_LOCALE {
+            return;
         }
+
+        if locale_idx == usize::MAX {
+            locale_idx = DEFAULT_LOCALE;
+        }
+
+        SELECTED_LOCALE = locale_idx;
+        global_state.state.signal(); // reload locale
     }
 }
 
+pub fn set_default_locale() {
+    unsafe {
+        DEFAULT_LOCALE = SELECTED_LOCALE;
+    }
+}
+
+pub fn restore_default_locale() {
+    unsafe {
+        SELECTED_LOCALE = DEFAULT_LOCALE;
+    }
+}
+
+pub fn get_locale_index(locale: &str) -> usize {
+    if let Ok(t) = LOCALES.try_lock() {
+        t.iter()
+            .enumerate()
+            .find(|(_, l)| l.locale == locale)
+            .map(|(i, _)| i)
+            .unwrap_or(usize::MAX)
+    } else {
+        usize::MAX
+    }
+}
+
+pub fn current_locale_index() -> usize {
+    unsafe { SELECTED_LOCALE }
+}
+
 pub fn process_locale(locale: String, records: Vec<TranslationRecord>) {
+    let locale = locale.to_lowercase();
     if let Ok(mut t) = LOCALES.try_lock() {
         let tmp_locale = match t.iter_mut().find(|l| l.locale == locale) {
             Some(tmp_locale) => tmp_locale,

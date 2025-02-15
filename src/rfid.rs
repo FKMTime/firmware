@@ -168,6 +168,12 @@ async fn process_card_info_response(
                 state.competitor_display = Some(resp.display);
                 state.current_competitor = Some(resp.card_id);
 
+                let competitor_locale =
+                    crate::translations::get_locale_index(&resp.country_iso2.to_lowercase());
+                if competitor_locale != crate::translations::current_locale_index() {
+                    crate::translations::select_locale_idx(competitor_locale, global_state);
+                }
+
                 match resp.possible_groups.len() {
                     1 => {
                         state.solve_group = Some(resp.possible_groups[0].clone());

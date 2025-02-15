@@ -275,6 +275,8 @@ impl SignaledGlobalStateInner {
         if let Some(nvs) = save_nvs {
             SavedGlobalState::clear_saved_global_state(nvs).await;
         }
+
+        crate::translations::restore_default_locale();
     }
 
     pub fn to_saved_global_state(&self) -> Option<SavedGlobalState> {
