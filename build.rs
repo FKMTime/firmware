@@ -15,6 +15,7 @@ fn main() {
     }
 
     println!("cargo:rustc-link-arg-bins=-Tlinkall.x");
+    println!("cargo:rustc-cfg=feature=\"gen_version\"");
 
     let mut hasher = crc32fast::Hasher::new();
     crc_walkdir(PathBuf::from("src"), &mut hasher);
