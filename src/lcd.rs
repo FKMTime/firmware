@@ -134,6 +134,9 @@ pub async fn lcd_task(
                     && (Instant::now() - last_update).as_millis() > SLEEP_AFTER_MS
                     && current_scene.can_sleep()
                 {
+                    _ = lcd_driver.print(0, "Sleep", PrintAlign::Center, true);
+                    _ = lcd_driver.print(1, "Press any key", PrintAlign::Center, true);
+                    lcd_driver.display_on_lcd(&mut lcd);
                     lcd.backlight_off();
 
                     unsafe {
