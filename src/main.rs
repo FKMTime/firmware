@@ -21,10 +21,10 @@ use esp_storage::FlashStorage;
 use state::{ota_state, sleep_state, GlobalStateInner, SavedGlobalState, Scene};
 use structs::ConnSettings;
 use utils::{logger::FkmLogger, set_brownout_detection};
+use ws_framer::{WsUrl, WsUrlOwned};
 
 #[cfg(feature = "esp32")]
 use esp_hal::time::RateExtU32;
-use ws_framer::{WsUrl, WsUrlOwned};
 
 mod battery;
 mod buttons;
@@ -82,10 +82,15 @@ async fn main(spawner: Spawner) {
         esp_alloc::heap_allocator!(120 * 1024);
     }
 
-    #[cfg(feature = "esp32")]
     {
+        #[cfg(feature = "esp32")]
+        const HEAP_SIZE: usize = 90 * 1024;
+
+        #[cfg(not(feature = "esp32"))]
+        const HEAP_SIZE: usize = 60 * 1024;
+
         #[link_section = ".dram2_uninit"]
-        static mut HEAP2: core::mem::MaybeUninit<[u8; 90 * 1024]> =
+        static mut HEAP2: core::mem::MaybeUninit<[u8; HEAP_SIZE]> =
             core::mem::MaybeUninit::uninit();
 
         #[allow(static_mut_refs)]
