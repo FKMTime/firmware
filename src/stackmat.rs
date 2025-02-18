@@ -45,14 +45,15 @@ pub async fn stackmat_task(
         Timer::after_millis(10).await;
 
         #[cfg(feature = "e2e")]
+        let mut send_ack = false;
+
+        #[cfg(feature = "e2e")]
         let n = {
             if global_state.e2e.stackmat_sig.signaled() {
                 let data = global_state.e2e.stackmat_sig.wait().await;
                 e2e_data.0 = data.0;
                 e2e_data.1 = data.1;
                 e2e_data.2 = esp_hal::time::now();
-
-                crate::ws::send_test_ack().await;
             }
 
             let timer_ms = match e2e_data.0 {
@@ -63,6 +64,7 @@ pub async fn stackmat_task(
                     if time >= e2e_data.1 {
                         time = e2e_data.1;
                         e2e_data.0 = StackmatTimerState::Stopped;
+                        send_ack = true;
                     }
 
                     time
@@ -186,6 +188,11 @@ pub async fn stackmat_task(
                     }
 
                     last_stackmat_state = parsed.0;
+                }
+
+                #[cfg(feature = "e2e")]
+                if send_ack {
+                    crate::ws::send_test_ack().await;
                 }
 
                 global_state.timer_signal.signal(parsed.1);

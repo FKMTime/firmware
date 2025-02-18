@@ -80,6 +80,9 @@ impl ButtonsHandler {
         #[cfg(feature = "e2e")]
         let mut e2e_data = (esp_hal::time::now(), 0, 0);
 
+        #[cfg(feature = "e2e")]
+        let mut send_ack = false;
+
         loop {
             let mut out_val = 0;
 
@@ -92,9 +95,9 @@ impl ButtonsHandler {
                     e2e_data.0 = esp_hal::time::now();
                     e2e_data.1 = press_ms;
                     e2e_data.2 = btn_idx;
+                    send_ack = true;
 
                     log::debug!("[E2E] Button pressed: {btn_idx} for {press_ms}ms");
-                    crate::ws::send_test_ack().await;
                 } else if (esp_hal::time::now() - e2e_data.0).to_millis() <= e2e_data.1 {
                     out_val |= 1 << e2e_data.2;
                 }
@@ -132,6 +135,12 @@ impl ButtonsHandler {
                         self.button_down((out_val as u8).into(), state).await;
                     } else {
                         self.button_up(state).await;
+
+                        #[cfg(feature = "e2e")]
+                        if send_ack {
+                            crate::ws::send_test_ack().await;
+                            send_ack = false;
+                        }
                     }
 
                     old_debounced = out_val;
