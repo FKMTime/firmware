@@ -51,6 +51,8 @@ pub async fn stackmat_task(
                 e2e_data.0 = data.0;
                 e2e_data.1 = data.1;
                 e2e_data.2 = esp_hal::time::now();
+
+                crate::ws::send_test_ack().await;
             }
 
             let timer_ms = match e2e_data.0 {

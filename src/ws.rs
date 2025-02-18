@@ -316,11 +316,6 @@ async fn ws_rw(
                             #[cfg(feature = "e2e")]
                             TimerPacketInner::TestPacket(test_packet) => {
                                 parse_test_packet(test_packet, &global_state).await;
-                                send_packet(TimerPacket {
-                                    tag: None,
-                                    data: TimerPacketInner::TestAck,
-                                })
-                                .await;
                             }
                             _ => {}
                         }
@@ -384,6 +379,8 @@ async fn parse_test_packet(
                 .e2e
                 .stackmat_sig
                 .signal((crate::utils::stackmat::StackmatTimerState::Reset, 0));
+
+            send_test_ack().await;
         }
         crate::structs::TestPacketData::ScanCard(uid) => {
             global_state.e2e.card_scan_sig.signal(uid as u128)
@@ -404,6 +401,15 @@ async fn parse_test_packet(
         }
         crate::structs::TestPacketData::Snapshot => todo!(),
     }
+}
+
+#[cfg(feature = "e2e")]
+pub async fn send_test_ack() {
+    send_packet(TimerPacket {
+        tag: None,
+        data: TimerPacketInner::TestAck,
+    })
+    .await;
 }
 
 pub async fn send_packet(packet: TimerPacket) {

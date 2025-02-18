@@ -94,6 +94,7 @@ impl ButtonsHandler {
                     e2e_data.2 = btn_idx;
 
                     log::debug!("[E2E] Button pressed: {btn_idx} for {press_ms}ms");
+                    crate::ws::send_test_ack().await;
                 } else if (esp_hal::time::now() - e2e_data.0).to_millis() <= e2e_data.1 {
                     out_val |= 1 << e2e_data.2;
                 }

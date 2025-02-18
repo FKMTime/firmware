@@ -149,7 +149,13 @@ pub async fn rfid_task(
             }
         }
 
-        _ = mfrc522.picc_halta().await;
+        #[cfg(feature = "e2e")]
+        crate::ws::send_test_ack().await;
+
+        #[cfg(not(feature = "e2e"))]
+        {
+            _ = mfrc522.picc_halta().await;
+        }
     }
 }
 
