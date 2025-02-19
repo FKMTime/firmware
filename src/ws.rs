@@ -382,6 +382,9 @@ async fn parse_test_packet(
 
             send_test_ack().await;
         }
+        crate::structs::TestPacketData::HardStateReset => {
+            global_state.state.lock().await.hard_state_reset().await;
+        }
         crate::structs::TestPacketData::ScanCard(uid) => {
             global_state.e2e.card_scan_sig.signal(uid as u128)
         }

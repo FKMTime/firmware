@@ -279,6 +279,28 @@ impl SignaledGlobalStateInner {
         crate::translations::restore_default_locale();
     }
 
+    #[allow(dead_code)]
+    pub async fn hard_state_reset(&mut self) {
+        self.scene = Scene::WaitingForCompetitor;
+        self.inspection_start = None;
+        self.inspection_end = None;
+        self.solve_time = None;
+        self.last_solve_time = None;
+        self.penalty = None;
+        self.session_id = None;
+        self.time_confirmed = false;
+        self.solve_group = None;
+        self.error_text = None;
+        self.possible_groups.clear();
+        self.group_selected_idx = usize::MAX;
+        self.current_competitor = None;
+        self.current_judge = None;
+        self.competitor_display = None;
+        self.delegate_used = false;
+        self.delegate_hold = None;
+        self.custom_message = None;
+    }
+
     pub fn to_saved_global_state(&self) -> Option<SavedGlobalState> {
         log::debug!("TO_SAVED_GLOBAL_STATE: {self:?}");
 
