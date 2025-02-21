@@ -280,6 +280,10 @@ async fn ws_rw(
                                 let mut state = global_state.state.lock().await;
                                 state.error_text = Some(e.error);
                             }
+                            TimerPacketInner::CustomMessage { line1, line2 } => {
+                                let mut state = global_state.state.lock().await;
+                                state.custom_message = Some((line1, line2));
+                            }
                             TimerPacketInner::EpochTime { current_epoch } => unsafe {
                                 crate::state::EPOCH_BASE = current_epoch - Instant::now().as_secs();
                             },

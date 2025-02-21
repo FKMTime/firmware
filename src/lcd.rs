@@ -556,10 +556,7 @@ async fn process_lcd_overwrite(
         );
 
         #[cfg(feature = "e2e")]
-        let lines = (
-            "Press submit",
-            "To start HIL"
-        );
+        let lines = ("Press submit", "To start HIL");
 
         _ = lcd_driver.print(0, lines.0, PrintAlign::Center, true);
         _ = lcd_driver.print(1, lines.1, PrintAlign::Center, true);

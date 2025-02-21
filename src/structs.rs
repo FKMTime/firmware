@@ -50,6 +50,11 @@ pub enum TimerPacketInner {
     SolveConfirm(SolveConfirmPacket),
     DelegateResponse(DelegateResponsePacket),
     ApiError(ApiError),
+    CustomMessage {
+        line1: String,
+        line2: String,
+    },
+
     CardInfoRequest {
         card_id: u64,
 
