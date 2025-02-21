@@ -549,18 +549,20 @@ async fn process_lcd_overwrite(
             true,
         );
     } else if current_state.device_added == Some(false) {
-        _ = lcd_driver.print(
-            0,
+        #[cfg(not(feature = "e2e"))]
+        let lines = (
             &get_translation(TranslationKey::DEVICE_NOT_ADDED_HEADER),
-            PrintAlign::Center,
-            true,
-        );
-        _ = lcd_driver.print(
-            1,
             &get_translation(TranslationKey::DEVICE_NOT_ADDED_FOOTER),
-            PrintAlign::Center,
-            true,
         );
+
+        #[cfg(feature = "e2e")]
+        let lines = (
+            "Press submit",
+            "To start HIL"
+        );
+
+        _ = lcd_driver.print(0, lines.0, PrintAlign::Center, true);
+        _ = lcd_driver.print(1, lines.1, PrintAlign::Center, true);
     } else if current_state.stackmat_connected == Some(false) {
         _ = lcd_driver.print(
             0,
