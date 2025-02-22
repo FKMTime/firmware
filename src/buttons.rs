@@ -372,11 +372,12 @@ async fn delegate_hold(
                 return Ok(false);
             }
 
-            if state_val.current_competitor.is_none()
-                || state_val.session_id.is_none()
-                || state_val.solve_group.is_none()
-            {
-                log::error!("Delegate hold: competitor, session_id or solve_group none!");
+            if state_val.session_id.is_none() {
+                state_val.session_id = Some(uuid::Uuid::new_v4().to_string());
+            }
+
+            if state_val.current_competitor.is_none() || state_val.solve_group.is_none() {
+                log::error!("Delegate hold: competitor or solve_group none!");
                 return Ok(false);
             }
 

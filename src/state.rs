@@ -292,7 +292,7 @@ impl SignaledGlobalStateInner {
         self.solve_group = None;
         self.error_text = None;
         self.possible_groups.clear();
-        self.group_selected_idx = usize::MAX;
+        self.group_selected_idx = 0;
         self.current_competitor = None;
         self.current_judge = None;
         self.competitor_display = None;
