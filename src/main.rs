@@ -18,7 +18,7 @@ use esp_hal::{
 };
 use esp_hal_wifimanager::WIFI_NVS_KEY;
 use esp_storage::FlashStorage;
-use state::{ota_state, sleep_state, GlobalStateInner, SavedGlobalState, Scene};
+use state::{ota_state, sleep_state, GlobalState, GlobalStateInner, SavedGlobalState, Scene};
 use structs::ConnSettings;
 use utils::{logger::FkmLogger, set_brownout_detection};
 use ws_framer::{WsUrl, WsUrlOwned};
@@ -341,7 +341,7 @@ async fn main(spawner: Spawner) {
         global_state.clone(),
         ws_sleep_sig.clone(),
     ));
-    _ = spawner.spawn(logger_task());
+    _ = spawner.spawn(logger_task(global_state.clone()));
 
     set_brownout_detection(true);
     global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
@@ -369,7 +369,7 @@ async fn main(spawner: Spawner) {
 }
 
 #[embassy_executor::task]
-async fn logger_task() {
+async fn logger_task(global_state: GlobalState) {
     let mut heap_start = Instant::now();
     loop {
         Timer::after_millis(LOG_SEND_INTERVAL_MS).await;
@@ -394,7 +394,9 @@ async fn logger_task() {
         }
 
         if (Instant::now() - heap_start).as_millis() >= PRINT_HEAP_INTERVAL_MS {
-            log::info!("{}", esp_alloc::HEAP.stats());
+            if global_state.state.lock().await.server_connected == Some(true) {
+                log::info!("{}", esp_alloc::HEAP.stats());
+            }
 
             heap_start = Instant::now();
         }
