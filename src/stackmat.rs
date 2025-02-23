@@ -204,7 +204,7 @@ pub async fn stackmat_task(
 
                 #[cfg(feature = "e2e")]
                 if send_ack {
-                    crate::ws::send_test_ack().await;
+                    crate::ws::send_test_ack(&global_state).await;
                 }
 
                 global_state.timer_signal.signal(parsed.1);

@@ -150,7 +150,7 @@ pub async fn rfid_task(
         }
 
         #[cfg(feature = "e2e")]
-        crate::ws::send_test_ack().await;
+        crate::ws::send_test_ack(&global_state).await;
 
         #[cfg(not(feature = "e2e"))]
         {

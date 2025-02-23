@@ -82,12 +82,11 @@ pub enum TimerPacketInner {
         current_epoch: u64,
     },
     // packet for end to end testing
-    //Snapshot(SnapshotData),
     #[cfg(feature = "e2e")]
     TestPacket(TestPacketData),
 
     #[cfg(feature = "e2e")]
-    TestAck,
+    TestAck(SnapshotData),
 }
 
 #[cfg(feature = "e2e")]
@@ -100,7 +99,20 @@ pub enum TestPacketData {
     ButtonPress { pin: u8, press_time: u64 },
     StackmatTime(u64),
     StackmatReset,
-    Snapshot,
+}
+
+#[cfg(feature = "e2e")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SnapshotData {
+    pub scene: usize,
+    pub inspection_time: Option<u64>,
+    pub solve_time: Option<u64>,
+    pub penalty: Option<i8>,
+    pub time_confirmed: bool,
+    pub possible_groups: usize,
+    pub group_selected_idx: usize,
+    pub current_competitor: Option<u64>,
+    pub current_judge: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

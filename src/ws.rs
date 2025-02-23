@@ -384,7 +384,7 @@ async fn parse_test_packet(
                 .stackmat_sig
                 .signal((crate::utils::stackmat::StackmatTimerState::Reset, 0));
 
-            send_test_ack().await;
+            send_test_ack(&global_state).await;
         }
         crate::structs::TestPacketData::HardStateReset => {
             global_state.state.lock().await.hard_state_reset().await;
@@ -406,15 +406,14 @@ async fn parse_test_packet(
                 .stackmat_sig
                 .signal((crate::utils::stackmat::StackmatTimerState::Reset, 0));
         }
-        crate::structs::TestPacketData::Snapshot => todo!(),
     }
 }
 
 #[cfg(feature = "e2e")]
-pub async fn send_test_ack() {
+pub async fn send_test_ack(global_state: &GlobalState) {
     send_packet(TimerPacket {
         tag: None,
-        data: TimerPacketInner::TestAck,
+        data: TimerPacketInner::TestAck(global_state.state.value().await.snapshot_data()),
     })
     .await;
 }

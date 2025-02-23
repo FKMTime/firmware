@@ -138,7 +138,7 @@ impl ButtonsHandler {
 
                         #[cfg(feature = "e2e")]
                         if send_ack {
-                            crate::ws::send_test_ack().await;
+                            crate::ws::send_test_ack(&state).await;
                             send_ack = false;
                         }
                     }

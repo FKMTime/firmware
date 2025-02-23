@@ -1,10 +1,9 @@
+use crate::{structs::PossibleGroup, utils::signaled_mutex::SignaledMutex};
 use alloc::{rc::Rc, string::String, vec::Vec};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal_wifimanager::Nvs;
 use serde::{Deserialize, Serialize};
-
-use crate::{structs::PossibleGroup, utils::signaled_mutex::SignaledMutex};
 
 pub static mut EPOCH_BASE: u64 = 0;
 pub static mut SLEEP_STATE: bool = false;
@@ -340,6 +339,26 @@ impl SignaledGlobalStateInner {
         match self.solve_group.as_ref().map(|r| r.use_inspection) {
             Some(true) | None => true,
             Some(false) => false,
+        }
+    }
+
+    #[cfg(feature = "e2e")]
+    pub fn snapshot_data(&self) -> crate::structs::SnapshotData {
+        let inspection_time = self
+            .inspection_end
+            .zip(self.inspection_start)
+            .map(|(end, start)| (end - start).as_millis());
+
+        crate::structs::SnapshotData {
+            scene: self.scene.to_index(),
+            inspection_time,
+            penalty: self.penalty,
+            solve_time: self.solve_time,
+            current_judge: self.current_judge,
+            current_competitor: self.current_competitor,
+            group_selected_idx: self.group_selected_idx,
+            time_confirmed: self.time_confirmed,
+            possible_groups: self.possible_groups.len(),
         }
     }
 }
