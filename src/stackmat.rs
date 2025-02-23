@@ -151,7 +151,11 @@ pub async fn stackmat_task(
                             }
 
                             if state.current_competitor.is_some() {
-                                state.scene = Scene::Finished;
+                                if state.possible_groups.len() > 1 && state.solve_group.is_none() {
+                                    state.scene = Scene::GroupSelect;
+                                } else {
+                                    state.scene = Scene::Finished;
+                                }
                             } else if state.scene >= Scene::WaitingForCompetitor {
                                 state.scene = Scene::WaitingForCompetitor;
                             }
