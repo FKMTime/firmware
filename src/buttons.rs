@@ -358,7 +358,7 @@ async fn delegate_hold(
                 return Ok(false);
             }
 
-            if state_val.current_competitor.is_some() {
+            if state_val.current_competitor.is_some() && state_val.solve_group.is_some() {
                 let hold_secs = hold_time / 1000;
                 let hold_secs = if hold_secs > 3 { 3 } else { hold_secs as u8 };
 
