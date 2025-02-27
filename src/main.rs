@@ -187,22 +187,22 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "esp32")]
     let button_1 = Input::new(
         peripherals.GPIO27,
-        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Down),
+        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
     );
     #[cfg(feature = "esp32")]
     let button_2 = Input::new(
         peripherals.GPIO26,
-        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Down),
+        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
     );
     #[cfg(feature = "esp32")]
     let button_3 = Input::new(
         peripherals.GPIO33,
-        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Down),
+        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
     );
     #[cfg(feature = "esp32")]
     let button_4 = Input::new(
         peripherals.GPIO32,
-        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Down),
+        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
     );
 
     #[cfg(feature = "esp32c3")]
