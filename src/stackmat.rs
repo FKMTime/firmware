@@ -23,11 +23,11 @@ pub async fn stackmat_task(
         .with_rx(uart_pin);
 
     #[cfg(feature = "e2e")]
-    let mut e2e_data = (StackmatTimerState::Reset, 0, esp_hal::time::now());
+    let mut e2e_data = (StackmatTimerState::Reset, 0, esp_hal::time::Instant::now());
 
     let mut buf = [0; 8];
     let mut read_buf = [0; 8];
-    let mut last_read = esp_hal::time::now();
+    let mut last_read = esp_hal::time::Instant::now();
     let mut last_state = None;
     let mut last_stackmat_state = StackmatTimerState::Unknown;
     loop {
@@ -36,7 +36,9 @@ pub async fn stackmat_task(
             continue;
         }
 
-        if (esp_hal::time::now() - last_read).to_millis() > 500 && last_state != Some(false) {
+        if (esp_hal::time::Instant::now() - last_read).as_millis() > 500
+            && last_state != Some(false)
+        {
             global_state.state.lock().await.stackmat_connected = Some(false);
             last_state = Some(false);
             display.set_data(&[255; 6]);
@@ -53,14 +55,14 @@ pub async fn stackmat_task(
                 let data = global_state.e2e.stackmat_sig.wait().await;
                 e2e_data.0 = data.0;
                 e2e_data.1 = data.1;
-                e2e_data.2 = esp_hal::time::now();
+                e2e_data.2 = esp_hal::time::Instant::now();
             }
 
             let timer_ms = match e2e_data.0 {
                 StackmatTimerState::Unknown => 0,
                 StackmatTimerState::Reset => 0,
                 StackmatTimerState::Running => {
-                    let mut time = (esp_hal::time::now() - e2e_data.2).to_millis();
+                    let mut time = (esp_hal::time::Instant::now() - e2e_data.2).as_millis();
                     if time >= e2e_data.1 {
                         time = e2e_data.1;
                         e2e_data.0 = StackmatTimerState::Stopped;
@@ -82,7 +84,7 @@ pub async fn stackmat_task(
 
         #[cfg(not(feature = "e2e"))]
         let n = {
-            let n = uart.read_buffered_bytes(&mut read_buf);
+            let n = uart.read_buffered(&mut read_buf);
             let Ok(n) = n else {
                 log::error!("uart: read_bytes err");
                 continue;
@@ -211,6 +213,6 @@ pub async fn stackmat_task(
             }
         }
 
-        last_read = esp_hal::time::now();
+        last_read = esp_hal::time::Instant::now();
     }
 }

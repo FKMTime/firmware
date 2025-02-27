@@ -224,5 +224,5 @@ pub extern "Rust" fn custom_pre_backtrace() {
 
 #[no_mangle]
 pub extern "Rust" fn custom_halt() {
-    esp_hal::reset::software_reset();
+    esp_hal::system::software_reset();
 }

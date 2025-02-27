@@ -86,7 +86,7 @@ async fn wakeup_button(
     if sleep_state() {
         state.state.signal();
         if deeper_sleep_state() {
-            esp_hal::reset::software_reset();
+            esp_hal::system::software_reset();
         }
 
         return Ok(true);
@@ -337,9 +337,7 @@ async fn submit_reset_wifi(
     }
 
     Timer::after_millis(500).await;
-    esp_hal::reset::software_reset();
-
-    Ok(false)
+    esp_hal::system::software_reset();
 }
 
 #[macros::button_handler]

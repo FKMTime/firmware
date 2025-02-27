@@ -73,12 +73,12 @@ impl ButtonsHandler {
 
         #[cfg(feature = "esp32")] buttons: &[Input<'static>],
     ) {
-        let mut debounce_time = esp_hal::time::now();
+        let mut debounce_time = esp_hal::time::Instant::now();
         let mut old_debounced = i32::MAX;
         let mut old_val = 0;
 
         #[cfg(feature = "e2e")]
-        let mut e2e_data = (esp_hal::time::now(), 0, 0);
+        let mut e2e_data = (esp_hal::time::Instant::now(), 0, 0);
 
         #[cfg(feature = "e2e")]
         let mut send_ack = false;
@@ -92,13 +92,13 @@ impl ButtonsHandler {
                     let (btn_idx, press_ms) = state.e2e.buttons_sig.wait().await;
                     out_val |= 1 << btn_idx;
 
-                    e2e_data.0 = esp_hal::time::now();
+                    e2e_data.0 = esp_hal::time::Instant::now();
                     e2e_data.1 = press_ms;
                     e2e_data.2 = btn_idx;
                     send_ack = true;
 
                     log::debug!("[E2E] Button pressed: {btn_idx} for {press_ms}ms");
-                } else if (esp_hal::time::now() - e2e_data.0).to_millis() <= e2e_data.1 {
+                } else if (esp_hal::time::Instant::now() - e2e_data.0).as_millis() <= e2e_data.1 {
                     out_val |= 1 << e2e_data.2;
                 }
             }
@@ -127,10 +127,10 @@ impl ButtonsHandler {
 
             if old_val != out_val {
                 old_val = out_val;
-                debounce_time = esp_hal::time::now();
+                debounce_time = esp_hal::time::Instant::now();
             } else if old_debounced != out_val {
-                let duration = esp_hal::time::now() - debounce_time;
-                if duration.to_millis() > 50 || sleep_state() {
+                let duration = esp_hal::time::Instant::now() - debounce_time;
+                if duration.as_millis() > 50 || sleep_state() {
                     if old_debounced == 0 {
                         self.button_down((out_val as u8).into(), state).await;
                     } else {
@@ -146,7 +146,7 @@ impl ButtonsHandler {
                     old_debounced = out_val;
                 }
             } else {
-                debounce_time = esp_hal::time::now();
+                debounce_time = esp_hal::time::Instant::now();
             }
 
             if old_debounced != 0 {

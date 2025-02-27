@@ -5,12 +5,12 @@ use crate::translations::{get_translation, TranslationKey};
 use alloc::string::ToString;
 use anyhow::{anyhow, Result};
 use embassy_time::{Duration, Timer};
+use esp_hal::time::Rate;
 use esp_hal::{
     dma::{DmaRxBuf, DmaTxBuf},
     dma_buffers,
     gpio::AnyPin,
     spi::{master::Spi, Mode},
-    time::RateExtU32,
 };
 
 #[cfg(feature = "esp32")]
@@ -40,7 +40,7 @@ pub async fn rfid_task(
     let spi = Spi::new(
         spi,
         esp_hal::spi::master::Config::default()
-            .with_frequency(400.kHz())
+            .with_frequency(Rate::from_khz(400))
             .with_mode(Mode::_0),
     )
     .expect("Spi init failed")

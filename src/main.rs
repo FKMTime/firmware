@@ -23,9 +23,6 @@ use structs::ConnSettings;
 use utils::{logger::FkmLogger, set_brownout_detection};
 use ws_framer::{WsUrl, WsUrlOwned};
 
-#[cfg(feature = "esp32")]
-use esp_hal::time::RateExtU32;
-
 mod battery;
 mod buttons;
 mod consts;
@@ -62,12 +59,12 @@ async fn main(spawner: Spawner) {
 
         #[cfg(feature = "esp32")]
         {
-            config.cpu_clock = esp_hal::clock::CpuClock::_80MHz;
+            config = config.with_cpu_clock(esp_hal::clock::CpuClock::_80MHz);
         }
 
         #[cfg(feature = "esp32c3")]
         {
-            config.cpu_clock = esp_hal::clock::CpuClock::_80MHz;
+            config = config.with_cpu_clock(esp_hal::clock::CpuClock::_80MHz);
         }
 
         config
@@ -79,7 +76,7 @@ async fn main(spawner: Spawner) {
 
     #[cfg(not(feature = "esp32"))]
     {
-        esp_alloc::heap_allocator!(120 * 1024);
+        esp_alloc::heap_allocator!(size: 120 * 1024);
     }
 
     {
@@ -123,11 +120,23 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "esp32")]
     let stackmat_rx = peripherals.GPIO4.degrade();
     #[cfg(feature = "esp32")]
-    let shifter_data_pin = Output::new(peripherals.GPIO16, esp_hal::gpio::Level::Low);
+    let shifter_data_pin = Output::new(
+        peripherals.GPIO16,
+        esp_hal::gpio::Level::Low,
+        Default::default(),
+    );
     #[cfg(feature = "esp32")]
-    let shifter_clk_pin = Output::new(peripherals.GPIO12, esp_hal::gpio::Level::Low);
+    let shifter_clk_pin = Output::new(
+        peripherals.GPIO12,
+        esp_hal::gpio::Level::Low,
+        Default::default(),
+    );
     #[cfg(feature = "esp32")]
-    let shifter_latch_pin = Output::new(peripherals.GPIO17, esp_hal::gpio::Level::Low);
+    let shifter_latch_pin = Output::new(
+        peripherals.GPIO17,
+        esp_hal::gpio::Level::Low,
+        Default::default(),
+    );
 
     #[cfg(feature = "esp32c3")]
     let sck = peripherals.GPIO4.degrade();
@@ -140,11 +149,23 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "esp32c3")]
     let stackmat_rx = peripherals.GPIO20.degrade();
     #[cfg(feature = "esp32c3")]
-    let shifter_data_pin = Output::new(peripherals.GPIO10, esp_hal::gpio::Level::Low);
+    let shifter_data_pin = Output::new(
+        peripherals.GPIO10,
+        esp_hal::gpio::Level::Low,
+        Default::default(),
+    );
     #[cfg(feature = "esp32c3")]
-    let shifter_latch_pin = Output::new(peripherals.GPIO1, esp_hal::gpio::Level::Low);
+    let shifter_latch_pin = Output::new(
+        peripherals.GPIO1,
+        esp_hal::gpio::Level::Low,
+        Default::default(),
+    );
     #[cfg(feature = "esp32c3")]
-    let shifter_clk_pin = Output::new(peripherals.GPIO21, esp_hal::gpio::Level::Low);
+    let shifter_clk_pin = Output::new(
+        peripherals.GPIO21,
+        esp_hal::gpio::Level::Low,
+        Default::default(),
+    );
 
     let mut adv_shift_reg = adv_shift_registers::AdvancedShiftRegister::<8, _>::new(
         shifter_data_pin,
@@ -164,16 +185,31 @@ async fn main(spawner: Spawner) {
         .set_data(&[!crate::utils::stackmat::DEC_DIGITS[8] ^ crate::utils::stackmat::DOT_MOD; 6]);
 
     #[cfg(feature = "esp32")]
-    let button_1 = Input::new(peripherals.GPIO27, esp_hal::gpio::Pull::Up);
+    let button_1 = Input::new(
+        peripherals.GPIO27,
+        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Down),
+    );
     #[cfg(feature = "esp32")]
-    let button_2 = Input::new(peripherals.GPIO26, esp_hal::gpio::Pull::Up);
+    let button_2 = Input::new(
+        peripherals.GPIO26,
+        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Down),
+    );
     #[cfg(feature = "esp32")]
-    let button_3 = Input::new(peripherals.GPIO33, esp_hal::gpio::Pull::Up);
+    let button_3 = Input::new(
+        peripherals.GPIO33,
+        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Down),
+    );
     #[cfg(feature = "esp32")]
-    let button_4 = Input::new(peripherals.GPIO32, esp_hal::gpio::Pull::Up);
+    let button_4 = Input::new(
+        peripherals.GPIO32,
+        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Down),
+    );
 
     #[cfg(feature = "esp32c3")]
-    let button_input = Input::new(peripherals.GPIO3, esp_hal::gpio::Pull::Down);
+    let button_input = Input::new(
+        peripherals.GPIO3,
+        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Down),
+    );
 
     #[cfg(feature = "esp32c3")]
     let buttons_shifter = adv_shift_reg.get_shifter_mut(0);
@@ -191,7 +227,11 @@ async fn main(spawner: Spawner) {
     };
 
     #[cfg(feature = "esp32")]
-    let cs_pin = Output::new(peripherals.GPIO5, esp_hal::gpio::Level::High);
+    let cs_pin = Output::new(
+        peripherals.GPIO5,
+        esp_hal::gpio::Level::High,
+        Default::default(),
+    );
 
     let global_state = Rc::new(GlobalStateInner::new(&nvs));
     let wifi_setup_sig = Rc::new(Signal::new());
@@ -200,7 +240,7 @@ async fn main(spawner: Spawner) {
     let i2c = esp_hal::i2c::master::I2c::new(
         peripherals.I2C0,
         esp_hal::i2c::master::Config::default()
-            .with_frequency(100.kHz())
+            .with_frequency(esp_hal::time::Rate::from_khz(100))
             .with_timeout(esp_hal::i2c::master::BusTimeout::Maximum),
     )
     .expect("I2C new failed")
@@ -289,8 +329,7 @@ async fn main(spawner: Spawner) {
     let Ok(mut wifi_res) = wifi_res else {
         log::error!("WifiManager failed!!! Restarting in 1s!");
         Timer::after_millis(1000).await;
-        esp_hal::reset::software_reset();
-        return;
+        esp_hal::system::software_reset();
     };
 
     let conn_settings: ConnSettings = wifi_res
@@ -324,7 +363,7 @@ async fn main(spawner: Spawner) {
                     _ = nvs.invalidate_key(WIFI_NVS_KEY).await;
                     Timer::after_millis(1000).await;
 
-                    esp_hal::reset::software_reset();
+                    esp_hal::system::software_reset();
                 }
 
                 continue;

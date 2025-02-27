@@ -203,7 +203,7 @@ async fn ws_loop(
                         Some(("Connection lost".to_string(), "during update".to_string()));
 
                     Timer::after_millis(5000).await;
-                    esp_hal::reset::software_reset();
+                    esp_hal::system::software_reset();
                 }
 
                 log::error!("ws_rw_error: {e:?}");
@@ -338,7 +338,7 @@ async fn ws_rw(
                         log::info!("OTA complete! Veryfying..");
                         if ota.ota_flush(true, true).is_ok() {
                             log::info!("OTA restart!");
-                            esp_hal::reset::software_reset();
+                            esp_hal::system::software_reset();
                         } else {
                             log::error!("OTA flash verify failed!");
                         }
