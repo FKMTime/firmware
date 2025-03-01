@@ -34,7 +34,7 @@ ws-framer = { version = "=0.2.2", features = ["alloc"] }
 embedded-hal-async = "1.0.0"
 portable-atomic = { version = "1.11.0", default-features = false }
 critical-section = "1.2.0"
-getrandom = { version = "0.2.15", features = ["custom"] }
+getrandom = { version = "=0.2.15", features = ["custom"] }
 uuid = { version = "=1.12.1", default-features = false, features = ["v4"] }
 dyn-smooth = "0.2.0"
 esp-hal-ota = { version = "0.4.0", features = [] }

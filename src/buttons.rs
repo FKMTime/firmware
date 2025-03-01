@@ -336,7 +336,7 @@ async fn submit_reset_wifi(
         state.custom_message = Some(("Resseting WIFI".to_string(), "Restart in 5s...".to_string()));
     }
 
-    Timer::after_millis(500).await;
+    Timer::after_millis(5000).await;
     esp_hal::system::software_reset();
 }
 
