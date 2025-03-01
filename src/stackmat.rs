@@ -39,9 +39,20 @@ pub async fn stackmat_task(
         if (esp_hal::time::Instant::now() - last_read).as_millis() > 500
             && last_state != Some(false)
         {
-            global_state.state.lock().await.stackmat_connected = Some(false);
             last_state = Some(false);
             display.set_data(&[255; 6]);
+
+            let mut state = global_state.state.lock().await;
+            state.stackmat_connected = Some(false);
+
+            // TODO: re-think this and maybe reset whole state?
+            if state.scene == Scene::Timer {
+                if state.current_competitor.is_some() {
+                    state.scene = Scene::CompetitorInfo;
+                } else {
+                    state.scene = Scene::WaitingForCompetitor;
+                }
+            }
         }
 
         Timer::after_millis(10).await;
@@ -86,7 +97,11 @@ pub async fn stackmat_task(
         let n = {
             let n = uart.read_buffered(&mut read_buf);
             let Ok(n) = n else {
-                log::error!("uart: read_bytes err");
+                #[cfg(not(feature = "release_build"))]
+                {
+                    log::error!("uart: read_bytes err {:?}", n.expect_err(""));
+                }
+
                 continue;
             };
 
