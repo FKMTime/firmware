@@ -442,10 +442,14 @@ where
     _ = getrandom::getrandom(&mut tag_bytes);
     let tag = u64::from_be_bytes(tag_bytes);
 
-    send_tagged_request(tag, packet).await
+    send_tagged_request(tag, packet, true).await
 }
 
-pub async fn send_tagged_request<T>(tag: u64, packet: TimerPacketInner) -> Result<T, ApiError>
+pub async fn send_tagged_request<T>(
+    tag: u64,
+    packet: TimerPacketInner,
+    timeout: bool,
+) -> Result<T, ApiError>
 where
     T: FromPacket,
 {
@@ -455,13 +459,17 @@ where
     };
     send_packet(packet).await;
 
-    let packet = wait_for_tagged_response(tag)
-        .with_timeout(Duration::from_millis(5000))
-        .await
-        .map_err(|_| ApiError {
-            should_reset_time: false,
-            error: "Communication timeout!".to_string(),
-        })?;
+    let packet = if timeout {
+        wait_for_tagged_response(tag)
+            .with_timeout(Duration::from_millis(5000))
+            .await
+            .map_err(|_| ApiError {
+                should_reset_time: false,
+                error: "Communication timeout!".to_string(),
+            })?
+    } else {
+        wait_for_tagged_response(tag).await
+    };
 
     FromPacket::from_packet(packet)
 }

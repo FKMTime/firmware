@@ -409,7 +409,8 @@ async fn delegate_hold(
             drop(state_val);
 
             let resp =
-                crate::ws::send_tagged_request::<DelegateResponsePacket>(69420, packet).await;
+                crate::ws::send_tagged_request::<DelegateResponsePacket>(69420, packet, false)
+                    .await;
             log::info!("{:?}", resp);
 
             if let Ok(resp) = resp {

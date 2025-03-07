@@ -46,10 +46,10 @@ pub async fn lcd_task(
         let bl_pin = lcd_shifter.get_pin_mut(1, true);
         let rs_pin = lcd_shifter.get_pin_mut(2, true);
         let en_pin = lcd_shifter.get_pin_mut(3, true);
-        let d4_pin = lcd_shifter.get_pin_mut(7, false);
-        let d5_pin = lcd_shifter.get_pin_mut(6, false);
-        let d6_pin = lcd_shifter.get_pin_mut(5, false);
-        let d7_pin = lcd_shifter.get_pin_mut(4, false);
+        let d4_pin = lcd_shifter.get_pin_mut(4, false);
+        let d5_pin = lcd_shifter.get_pin_mut(5, false);
+        let d6_pin = lcd_shifter.get_pin_mut(6, false);
+        let d7_pin = lcd_shifter.get_pin_mut(7, false);
         ag_lcd::LcdDisplay::new(rs_pin, en_pin, Delay)
             .with_display(ag_lcd::Display::On)
             .with_blink(ag_lcd::Blink::Off)
