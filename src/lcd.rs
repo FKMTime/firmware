@@ -149,6 +149,9 @@ pub async fn lcd_task(
                     && !deeper_sleep_state()
                     && (Instant::now() - last_update).as_millis() > DEEPER_SLEEP_AFTER_MS
                 {
+                    _ = lcd_driver.print(0, "Deep Sleep", PrintAlign::Center, true);
+                    _ = lcd_driver.print(1, "Press any key", PrintAlign::Center, true);
+                    lcd_driver.display_on_lcd(&mut lcd);
                     crate::utils::deeper_sleep();
                 }
             }
