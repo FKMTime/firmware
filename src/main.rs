@@ -10,6 +10,7 @@ use consts::{LOG_SEND_INTERVAL_MS, PRINT_HEAP_INTERVAL_MS};
 use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
 use embassy_time::{Instant, Timer};
+use embedded_hal::digital::OutputPin;
 use esp_backtrace as _;
 use esp_hal::gpio::Pin;
 use esp_hal::{
@@ -173,6 +174,12 @@ async fn main(spawner: Spawner) {
         shifter_latch_pin,
         0,
     );
+
+    #[cfg(feature = "esp32c3")]
+    {
+        let mut bl_pin = adv_shift_reg.get_pin_mut(1, 1, false);
+        _ = bl_pin.set_high();
+    }
 
     // display digits
     #[cfg(feature = "esp32c3")]
