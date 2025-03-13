@@ -6,17 +6,13 @@
 extern crate alloc;
 use alloc::string::{String, ToString};
 use alloc::{rc::Rc, vec::Vec};
+use board::Board;
 use consts::{LOG_SEND_INTERVAL_MS, PRINT_HEAP_INTERVAL_MS};
 use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
 use embassy_time::{Instant, Timer};
 use esp_backtrace as _;
-use esp_hal::gpio::Pin;
-use esp_hal::{
-    gpio::{Input, Output},
-    timer::timg::TimerGroup,
-};
-use esp_hal_wifimanager::WIFI_NVS_KEY;
+use esp_hal_wifimanager::{Nvs, WIFI_NVS_KEY};
 use esp_storage::FlashStorage;
 use state::{ota_state, sleep_state, GlobalState, GlobalStateInner, SavedGlobalState, Scene};
 use structs::ConnSettings;
@@ -24,6 +20,7 @@ use utils::{logger::FkmLogger, set_brownout_detection};
 use ws_framer::{WsUrl, WsUrlOwned};
 
 mod battery;
+mod board;
 mod buttons;
 mod consts;
 mod lcd;
@@ -70,15 +67,18 @@ async fn main(spawner: Spawner) {
         config
     });
 
-    FkmLogger::set_logger();
-    let timg1 = TimerGroup::new(peripherals.TIMG1);
-    esp_hal_embassy::init(timg1.timer0);
-
-    #[cfg(not(feature = "esp32"))]
+    set_brownout_detection(false);
+    let board = Board::init(peripherals).expect("Board init error");
     {
-        esp_alloc::heap_allocator!(size: 120 * 1024);
+        if let Ok(mut ota) = esp_hal_ota::Ota::new(FlashStorage::new()) {
+            let res = ota.ota_mark_app_valid();
+            if let Err(e) = res {
+                log::error!("Ota mark app valid failed: {e:?}");
+            }
+        }
     }
 
+    // second heap init
     {
         #[cfg(feature = "esp32")]
         const HEAP_SIZE: usize = 90 * 1024;
@@ -100,201 +100,47 @@ async fn main(spawner: Spawner) {
         }
     }
 
+    FkmLogger::set_logger();
+    esp_hal_embassy::init(board.timg1.timer0);
+
     #[cfg(feature = "e2e")]
     log::info!("This firmware is E2E! (HIL TESTING)");
 
-    let nvs =
-        esp_hal_wifimanager::Nvs::new_from_part_table().expect("Wrong partition configuration!");
-
-    set_brownout_detection(false);
-    let rng = esp_hal::rng::Rng::new(peripherals.RNG);
-
-    #[cfg(feature = "esp32")]
-    let sck = peripherals.GPIO18.degrade();
-    #[cfg(feature = "esp32")]
-    let miso = peripherals.GPIO19.degrade();
-    #[cfg(feature = "esp32")]
-    let mosi = peripherals.GPIO23.degrade();
-    #[cfg(feature = "esp32")]
-    let battery_input = peripherals.GPIO34;
-    #[cfg(feature = "esp32")]
-    let stackmat_rx = peripherals.GPIO4.degrade();
-    #[cfg(feature = "esp32")]
-    let shifter_data_pin = Output::new(
-        peripherals.GPIO16,
-        esp_hal::gpio::Level::Low,
-        Default::default(),
-    );
-    #[cfg(feature = "esp32")]
-    let shifter_clk_pin = Output::new(
-        peripherals.GPIO12,
-        esp_hal::gpio::Level::Low,
-        Default::default(),
-    );
-    #[cfg(feature = "esp32")]
-    let shifter_latch_pin = Output::new(
-        peripherals.GPIO17,
-        esp_hal::gpio::Level::Low,
-        Default::default(),
-    );
-
-    #[cfg(feature = "esp32c3")]
-    let sck = peripherals.GPIO4.degrade();
-    #[cfg(feature = "esp32c3")]
-    let miso = peripherals.GPIO5.degrade();
-    #[cfg(feature = "esp32c3")]
-    let mosi = peripherals.GPIO6.degrade();
-    #[cfg(feature = "esp32c3")]
-    let battery_input = peripherals.GPIO2;
-    #[cfg(feature = "esp32c3")]
-    let stackmat_rx = peripherals.GPIO20.degrade();
-    #[cfg(feature = "esp32c3")]
-    let shifter_data_pin = Output::new(
-        peripherals.GPIO10,
-        esp_hal::gpio::Level::Low,
-        Default::default(),
-    );
-    #[cfg(feature = "esp32c3")]
-    let shifter_latch_pin = Output::new(
-        peripherals.GPIO1,
-        esp_hal::gpio::Level::Low,
-        Default::default(),
-    );
-    #[cfg(feature = "esp32c3")]
-    let shifter_clk_pin = Output::new(
-        peripherals.GPIO21,
-        esp_hal::gpio::Level::Low,
-        Default::default(),
-    );
-
-    let mut adv_shift_reg = adv_shift_registers::AdvancedShiftRegister::<8, _>::new(
-        shifter_data_pin,
-        shifter_clk_pin,
-        shifter_latch_pin,
-        0,
-    );
-
-    #[cfg(feature = "esp32c3")]
-    {
-        use embedded_hal::digital::OutputPin;
-
-        let mut bl_pin = adv_shift_reg.get_pin_mut(1, 1, false);
-        _ = bl_pin.set_high();
-    }
-
-    // display digits
-    #[cfg(feature = "esp32c3")]
-    let digits_shifters = adv_shift_reg.get_shifter_range_mut(2..8);
-
-    #[cfg(feature = "esp32")]
-    let digits_shifters = adv_shift_reg.get_shifter_range_mut(0..6);
-
-    digits_shifters
-        .set_data(&[!crate::utils::stackmat::DEC_DIGITS[8] ^ crate::utils::stackmat::DOT_MOD; 6]);
-
-    #[cfg(feature = "esp32")]
-    let button_1 = Input::new(
-        peripherals.GPIO27,
-        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
-    );
-    #[cfg(feature = "esp32")]
-    let button_2 = Input::new(
-        peripherals.GPIO26,
-        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
-    );
-    #[cfg(feature = "esp32")]
-    let button_3 = Input::new(
-        peripherals.GPIO33,
-        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
-    );
-    #[cfg(feature = "esp32")]
-    let button_4 = Input::new(
-        peripherals.GPIO32,
-        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
-    );
-
-    #[cfg(feature = "esp32c3")]
-    let button_input = Input::new(
-        peripherals.GPIO3,
-        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Down),
-    );
-
-    #[cfg(feature = "esp32c3")]
-    let buttons_shifter = adv_shift_reg.get_shifter_mut(0);
-
-    #[cfg(feature = "esp32c3")]
-    let lcd_shifter = adv_shift_reg.get_shifter_mut(1);
-
-    #[cfg(feature = "esp32c3")]
-    let cs_pin = {
-        use embedded_hal::digital::OutputPin;
-
-        let mut cs_pin = adv_shift_reg.get_pin_mut(1, 0, true);
-        _ = cs_pin.set_high();
-        cs_pin
-    };
-
-    #[cfg(feature = "esp32")]
-    let cs_pin = Output::new(
-        peripherals.GPIO5,
-        esp_hal::gpio::Level::High,
-        Default::default(),
-    );
-
+    let nvs = Nvs::new_from_part_table().expect("Wrong partition configuration!");
     let global_state = Rc::new(GlobalStateInner::new(&nvs));
     let wifi_setup_sig = Rc::new(Signal::new());
 
-    #[cfg(feature = "esp32")]
-    let i2c = esp_hal::i2c::master::I2c::new(
-        peripherals.I2C0,
-        esp_hal::i2c::master::Config::default()
-            .with_frequency(esp_hal::time::Rate::from_khz(100))
-            .with_timeout(esp_hal::i2c::master::BusTimeout::Maximum),
-    )
-    .expect("I2C new failed")
-    .with_sda(peripherals.GPIO21)
-    .with_scl(peripherals.GPIO22);
-
     _ = spawner.spawn(lcd::lcd_task(
-        #[cfg(feature = "esp32c3")]
-        lcd_shifter,
-        #[cfg(feature = "esp32")]
-        i2c,
+        board.lcd,
         global_state.clone(),
         wifi_setup_sig.clone(),
-        digits_shifters.clone(),
+        board.digits_shifters.clone(),
     ));
 
     _ = spawner.spawn(battery::battery_read_task(
-        battery_input,
-        peripherals.ADC1,
+        board.battery,
+        board.adc1,
         global_state.clone(),
     ));
     _ = spawner.spawn(buttons::buttons_task(
         global_state.clone(),
-        #[cfg(feature = "esp32")]
-        [button_1, button_2, button_3, button_4],
+        board.button_input,
         #[cfg(feature = "esp32c3")]
-        button_input,
-        #[cfg(feature = "esp32c3")]
-        buttons_shifter,
+        board.buttons_shifter,
     ));
     _ = spawner.spawn(stackmat::stackmat_task(
-        peripherals.UART1,
-        stackmat_rx,
-        digits_shifters,
+        board.uart1,
+        board.stackmat_rx,
+        board.digits_shifters,
         global_state.clone(),
     ));
     _ = spawner.spawn(rfid::rfid_task(
-        miso,
-        mosi,
-        sck,
-        cs_pin,
-        peripherals.SPI2,
-        #[cfg(feature = "esp32c3")]
-        peripherals.DMA_CH0,
-        #[cfg(feature = "esp32")]
-        peripherals.DMA_SPI2,
+        board.miso,
+        board.mosi,
+        board.sck,
+        board.cs,
+        board.spi2,
+        board.spi_dma,
         global_state.clone(),
     ));
 
@@ -310,26 +156,15 @@ async fn main(spawner: Spawner) {
         wm_settings.esp_restart_after_connection = true;
     }
 
-    // mark ota valid before wifi connection
-    {
-        if let Ok(mut ota) = esp_hal_ota::Ota::new(FlashStorage::new()) {
-            let res = ota.ota_mark_app_valid();
-            if let Err(e) = res {
-                log::error!("Ota mark app valid failed: {e:?}");
-            }
-        }
-    }
-
-    let timg0 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0);
     let wifi_res = esp_hal_wifimanager::init_wm(
         wm_settings,
         &spawner,
         &nvs,
-        rng,
-        timg0.timer0,
-        peripherals.RADIO_CLK,
-        peripherals.WIFI,
-        peripherals.BT,
+        board.rng,
+        board.timg0.timer0,
+        board.radio_clk,
+        board.wifi,
+        board.bt,
         Some(wifi_setup_sig),
     )
     .await;
