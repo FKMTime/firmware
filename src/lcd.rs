@@ -129,7 +129,7 @@ pub async fn lcd_task(
                     lcd_driver.display_on_lcd(&mut lcd);
                 }
 
-                #[cfg(not(feature = "e2e"))]
+                #[cfg(not(any(feature = "e2e", feature = "qa")))]
                 if !sleep_state()
                     && (Instant::now() - last_update).as_millis() > SLEEP_AFTER_MS
                     && current_scene.can_sleep()
@@ -144,7 +144,7 @@ pub async fn lcd_task(
                     }
                 }
 
-                #[cfg(not(feature = "e2e"))]
+                #[cfg(not(any(feature = "e2e", feature = "qa")))]
                 if sleep_state()
                     && !deeper_sleep_state()
                     && (Instant::now() - last_update).as_millis() > DEEPER_SLEEP_AFTER_MS

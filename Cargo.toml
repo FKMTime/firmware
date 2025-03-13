@@ -58,6 +58,7 @@ gen_version = []
 bat_dev_lcd = []
 release_build = []
 e2e = []
+qa = []
 
 [profile.dev]
 # Rust debug is too slow.

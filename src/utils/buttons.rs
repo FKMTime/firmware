@@ -83,6 +83,9 @@ impl ButtonsHandler {
         #[cfg(feature = "e2e")]
         let mut send_ack = false;
 
+        #[cfg(feature = "qa")]
+        let mut last_button_down = None;
+
         loop {
             let mut out_val = 0;
 
@@ -132,9 +135,25 @@ impl ButtonsHandler {
                 let duration = esp_hal::time::Instant::now() - debounce_time;
                 if duration.as_millis() > 50 || sleep_state() {
                     if old_debounced == 0 {
+                        #[cfg(not(feature = "qa"))]
                         self.button_down((out_val as u8).into(), state).await;
+
+                        #[cfg(feature = "qa")]
+                        {
+                            crate::qa::send_qa_resp(crate::qa::QaSignal::ButtonDown(out_val as u8));
+                            last_button_down = Some(out_val as u8);
+                        }
                     } else {
+                        #[cfg(not(feature = "qa"))]
                         self.button_up(state).await;
+
+                        #[cfg(feature = "qa")]
+                        {
+                            if let Some(button) = last_button_down {
+                                crate::qa::send_qa_resp(crate::qa::QaSignal::ButtonUp(button));
+                                last_button_down = None;
+                            }
+                        }
 
                         #[cfg(feature = "e2e")]
                         if send_ack {
@@ -150,6 +169,7 @@ impl ButtonsHandler {
             }
 
             if old_debounced != 0 {
+                #[cfg(not(feature = "qa"))]
                 self.button_hold(state).await;
             }
 

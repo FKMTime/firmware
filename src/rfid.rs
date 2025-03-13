@@ -117,8 +117,16 @@ pub async fn rfid_task(
         else {
             continue;
         };
-
         log::info!("Card UID: {card_uid}");
+
+        #[cfg(feature = "qa")]
+        {
+            crate::qa::send_qa_resp(crate::qa::QaSignal::Rfid(card_uid));
+
+            _ = mfrc522.picc_halta().await;
+            continue;
+        }
+
         let resp = crate::ws::send_request::<CardInfoResponsePacket>(
             crate::structs::TimerPacketInner::CardInfoRequest {
                 card_id: card_uid as u64,

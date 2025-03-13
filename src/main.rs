@@ -34,6 +34,9 @@ mod utils;
 mod version;
 mod ws;
 
+#[cfg(feature = "qa")]
+mod qa;
+
 pub fn custom_rng(buf: &mut [u8]) -> Result<(), getrandom::Error> {
     for chunk in buf.chunks_mut(4) {
         let random_u32 = unsafe { &*esp_hal::peripherals::RNG::PTR }
@@ -138,6 +141,9 @@ async fn main(spawner: Spawner) {
         global_state.clone(),
     ));
 
+    #[cfg(feature = "qa")]
+    spawner.must_spawn(qa::qa_processor(global_state.clone()));
+
     let mut wm_settings = esp_hal_wifimanager::WmSettings::default();
     wm_settings.ssid.clear();
     _ = core::fmt::write(
@@ -221,13 +227,13 @@ async fn main(spawner: Spawner) {
     utils::backtrace_store::read_saved_backtrace().await;
 
     let ws_sleep_sig = Rc::new(Signal::new());
-    _ = spawner.spawn(ws::ws_task(
+    spawner.must_spawn(ws::ws_task(
         wifi_res.sta_stack,
         ws_url,
         global_state.clone(),
         ws_sleep_sig.clone(),
     ));
-    _ = spawner.spawn(logger_task(global_state.clone()));
+    spawner.must_spawn(logger_task(global_state.clone()));
 
     set_brownout_detection(true);
     global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
