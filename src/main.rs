@@ -104,41 +104,31 @@ async fn main(spawner: Spawner) {
     let global_state = Rc::new(GlobalStateInner::new(&nvs));
     let wifi_setup_sig = Rc::new(Signal::new());
 
-    // mark ota as valid
-    {
-        if let Ok(mut ota) = esp_hal_ota::Ota::new(FlashStorage::new()) {
-            let res = ota.ota_mark_app_valid();
-            if let Err(e) = res {
-                log::error!("Ota mark app valid failed: {e:?}");
-            }
-        }
-    }
-
-    _ = spawner.spawn(lcd::lcd_task(
+    spawner.must_spawn(lcd::lcd_task(
         board.lcd,
         global_state.clone(),
         wifi_setup_sig.clone(),
         board.digits_shifters.clone(),
     ));
 
-    _ = spawner.spawn(battery::battery_read_task(
+    spawner.must_spawn(battery::battery_read_task(
         board.battery,
         board.adc1,
         global_state.clone(),
     ));
-    _ = spawner.spawn(buttons::buttons_task(
+    spawner.must_spawn(buttons::buttons_task(
         global_state.clone(),
         board.button_input,
         #[cfg(feature = "esp32c3")]
         board.buttons_shifter,
     ));
-    _ = spawner.spawn(stackmat::stackmat_task(
+    spawner.must_spawn(stackmat::stackmat_task(
         board.uart1,
         board.stackmat_rx,
         board.digits_shifters,
         global_state.clone(),
     ));
-    _ = spawner.spawn(rfid::rfid_task(
+    spawner.must_spawn(rfid::rfid_task(
         board.miso,
         board.mosi,
         board.sck,
@@ -158,6 +148,16 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "esp32")]
     {
         wm_settings.esp_restart_after_connection = true;
+    }
+
+    // mark ota as valid
+    {
+        if let Ok(mut ota) = esp_hal_ota::Ota::new(FlashStorage::new()) {
+            let res = ota.ota_mark_app_valid();
+            if let Err(e) = res {
+                log::error!("Ota mark app valid failed: {e:?}");
+            }
+        }
     }
 
     let wifi_res = esp_hal_wifimanager::init_wm(
