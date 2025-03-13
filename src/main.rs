@@ -67,18 +67,9 @@ async fn main(spawner: Spawner) {
         config
     });
 
-    set_brownout_detection(false);
-    let board = Board::init(peripherals).expect("Board init error");
-    {
-        if let Ok(mut ota) = esp_hal_ota::Ota::new(FlashStorage::new()) {
-            let res = ota.ota_mark_app_valid();
-            if let Err(e) = res {
-                log::error!("Ota mark app valid failed: {e:?}");
-            }
-        }
-    }
+    #[cfg(not(feature = "esp32"))]
+    esp_alloc::heap_allocator!(size: 120 * 1024);
 
-    // second heap init
     {
         #[cfg(feature = "esp32")]
         const HEAP_SIZE: usize = 90 * 1024;
@@ -100,6 +91,9 @@ async fn main(spawner: Spawner) {
         }
     }
 
+    set_brownout_detection(false);
+    let board = Board::init(peripherals).expect("Board init error");
+
     FkmLogger::set_logger();
     esp_hal_embassy::init(board.timg1.timer0);
 
@@ -109,6 +103,16 @@ async fn main(spawner: Spawner) {
     let nvs = Nvs::new_from_part_table().expect("Wrong partition configuration!");
     let global_state = Rc::new(GlobalStateInner::new(&nvs));
     let wifi_setup_sig = Rc::new(Signal::new());
+
+    // mark ota as valid
+    {
+        if let Ok(mut ota) = esp_hal_ota::Ota::new(FlashStorage::new()) {
+            let res = ota.ota_mark_app_valid();
+            if let Err(e) = res {
+                log::error!("Ota mark app valid failed: {e:?}");
+            }
+        }
+    }
 
     _ = spawner.spawn(lcd::lcd_task(
         board.lcd,

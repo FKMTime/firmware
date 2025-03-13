@@ -60,8 +60,6 @@ impl Board {
     pub fn init(peripherals: Peripherals) -> Result<Board> {
         use embedded_hal::digital::OutputPin;
 
-        esp_alloc::heap_allocator!(size: 120 * 1024);
-
         let timg0 = TimerGroup::new(peripherals.TIMG0);
         let timg1 = TimerGroup::new(peripherals.TIMG1);
         let rng = Rng::new(peripherals.RNG);
