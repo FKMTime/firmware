@@ -142,7 +142,10 @@ async fn main(spawner: Spawner) {
     ));
 
     #[cfg(feature = "qa")]
-    spawner.must_spawn(qa::qa_processor(global_state.clone()));
+    {
+        _ = nvs.invalidate_key(WIFI_NVS_KEY).await;
+        spawner.must_spawn(qa::qa_processor(global_state.clone()));
+    }
 
     let mut wm_settings = esp_hal_wifimanager::WmSettings::default();
     wm_settings.ssid.clear();
@@ -184,6 +187,12 @@ async fn main(spawner: Spawner) {
         Timer::after_millis(1000).await;
         esp_hal::system::software_reset();
     };
+
+    #[cfg(feature = "qa")]
+    {
+        _ = nvs.invalidate_key(WIFI_NVS_KEY).await;
+        crate::qa::send_qa_resp(crate::qa::QaSignal::WifiSetup);
+    }
 
     let conn_settings: ConnSettings = wifi_res
         .data

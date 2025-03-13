@@ -11,6 +11,7 @@ pub enum QaSignal {
     Rfid(u128),
     StackmatConnected,
     Stackmat(u64),
+    WifiSetup,
 }
 
 #[embassy_executor::task]
@@ -113,6 +114,19 @@ async fn qa_inner(global_state: &GlobalState) -> bool {
             if time > 1000 {
                 break;
             }
+        }
+
+        return false;
+    }
+
+    global_state.state.lock().await.custom_message = Some((
+        format!("Setup WIFI"),
+        format!("FKM-{:X}", crate::utils::get_efuse_u32()),
+    ));
+    loop {
+        let val = BACK_SIGNAL.wait().await;
+        if let QaSignal::WifiSetup = val {
+            break;
         }
 
         return false;
