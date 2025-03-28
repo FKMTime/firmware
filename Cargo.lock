@@ -353,9 +353,9 @@ checksum = "575f75dfd25738df5b91b8e43e14d44bda14637a58fae779fd2b064f8bf3e010"
 
 [[package]]
 name = "delegate"
-version = "0.13.2"
+version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "297806318ef30ad066b15792a8372858020ae3ca2e414ee6c2133b1eb9e9e945"
+checksum = "b9b6483c2bbed26f97861cf57651d4f2b731964a28cd2257f934a4b452480d21"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -836,9 +836,9 @@ dependencies = [
 
 [[package]]
 name = "esp-hal-dhcp-server"
-version = "0.2.4"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "516b41f655e5c801169f4c74ed3ed7d44c4fba7e727728dbc1799bf3ad8d5a48"
+checksum = "1d33cd384b2a6517cff630d8361bf2fdad29db90eee46178f49a68a8ac339a63"
 dependencies = [
  "edge-dhcp",
  "embassy-futures",
@@ -937,7 +937,7 @@ dependencies = [
 [[package]]
 name = "esp-hal-wifimanager"
 version = "0.1.0"
-source = "git+https://github.com/filipton/esp-hal-wifimanager#a20b684d0c740e3631241b2ab103e95579199b2c"
+source = "git+https://github.com/filipton/esp-hal-wifimanager#d2f77485f84d927e5711386ad604722dc5f4d9cb"
 dependencies = [
  "bleps",
  "embassy-executor",
@@ -1473,9 +1473,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.26"
+version = "0.4.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30bde2b3dc3671ae49d8e2e9f044c7c005836e7a023ee57cffa25ab82764bb9e"
+checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
 
 [[package]]
 name = "macros"
@@ -1589,9 +1589,9 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "picoserve"
-version = "0.15.0"
+version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5acaced7869019df97208433a808847a0e6f0c3f720e29530ed330d192eabb49"
+checksum = "b9c688d17cd9540021f26ed8fbcefda3f5658d1d67d8de6222225e146fcfdf7d"
 dependencies = [
  "const-sha1",
  "data-encoding",
@@ -1610,9 +1610,9 @@ dependencies = [
 
 [[package]]
 name = "picoserve_derive"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62ba0d83906d0357fedd23de7c5e3a5235342c248cc1d954d43d5e7b455c375c"
+checksum = "98c8a93a1a36b12830f3b6795dcf67033b725e802044736f2cd9f2b945348d86"
 dependencies = [
  "proc-macro2",
  "quote",
