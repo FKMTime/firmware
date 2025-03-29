@@ -96,9 +96,12 @@ async fn main(spawner: Spawner) {
 
     set_brownout_detection(false);
     let board = Board::init(peripherals).expect("Board init error");
-
-    FkmLogger::set_logger();
     esp_hal_embassy::init(board.timg1.timer0);
+    FkmLogger::set_logger();
+
+    log::info!("Version: {}", version::VERSION);
+    log::info!("Hardware Rev: {}", version::HW_VER);
+    log::info!("Firmware: {}", version::FIRMWARE);
 
     #[cfg(feature = "e2e")]
     log::info!("This firmware is E2E! (HIL TESTING)");
