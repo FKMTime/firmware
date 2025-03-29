@@ -147,7 +147,11 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "qa")]
     spawner.must_spawn(qa::qa_processor(global_state.clone()));
 
-    let mut wm_settings = esp_hal_wifimanager::WmSettings::default();
+    let mut wm_settings = esp_hal_wifimanager::WmSettings {
+        wifi_panel: include_str!("panel.html"),
+        ..Default::default()
+    };
+
     wm_settings.ssid.clear();
     _ = core::fmt::write(
         &mut wm_settings.ssid,
