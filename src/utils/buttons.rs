@@ -142,6 +142,7 @@ impl ButtonsHandler {
                         {
                             crate::qa::send_qa_resp(crate::qa::QaSignal::ButtonDown(out_val as u8));
                             last_button_down = Some(out_val as u8);
+                            log::warn!("Button pressed down: {out_val}");
                         }
                     } else {
                         #[cfg(not(feature = "qa"))]
@@ -152,6 +153,7 @@ impl ButtonsHandler {
                             if let Some(button) = last_button_down {
                                 crate::qa::send_qa_resp(crate::qa::QaSignal::ButtonUp(button));
                                 last_button_down = None;
+                                log::warn!("Button pressed up: {button}");
                             }
                         }
 
