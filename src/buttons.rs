@@ -1,4 +1,5 @@
 use crate::{
+    stackmat::CURRENT_TIME,
     state::{current_epoch, deeper_sleep_state, sleep_state, GlobalState, Scene},
     structs::DelegateResponsePacket,
     utils::buttons::{Button, ButtonTrigger, ButtonsHandler},
@@ -198,6 +199,10 @@ async fn inspection_start(
 ) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
     if !state_val.use_inspection() || state_val.should_skip_other_actions() {
+        return Ok(false);
+    }
+
+    if unsafe { CURRENT_TIME } != 0 {
         return Ok(false);
     }
 

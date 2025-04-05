@@ -4,7 +4,7 @@ use crate::structs::{CardInfoResponsePacket, SolveConfirmPacket};
 use crate::translations::{get_translation, TranslationKey};
 use alloc::string::ToString;
 use anyhow::{anyhow, Result};
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use esp_hal::time::Rate;
 use esp_hal::{
     dma::{DmaRxBuf, DmaTxBuf},
@@ -78,6 +78,7 @@ pub async fn rfid_task(
     log::debug!("PCD ver: {:?}", mfrc522.pcd_get_version().await);
 
     let mut rfid_sleep = false;
+    let mut last_card = (0, Instant::now());
     loop {
         Timer::after(Duration::from_millis(10)).await;
         if sleep_state() != rfid_sleep {
@@ -118,6 +119,11 @@ pub async fn rfid_task(
             continue;
         };
         log::info!("Card UID: {card_uid}");
+
+        if last_card.0 == card_uid && (Instant::now() - last_card.1).as_millis() < 500 {
+            continue;
+        }
+        last_card = (card_uid, Instant::now());
 
         #[cfg(feature = "qa")]
         {

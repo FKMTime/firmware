@@ -10,6 +10,8 @@ use alloc::string::ToString;
 use embassy_time::{Instant, Timer};
 use esp_hal::{gpio::AnyPin, peripherals::UART1, uart::UartRx};
 
+pub static mut CURRENT_TIME: u64 = 0;
+
 #[embassy_executor::task]
 pub async fn stackmat_task(
     uart: UART1,
@@ -129,6 +131,10 @@ pub async fn stackmat_task(
 
                     #[cfg(feature = "qa")]
                     crate::qa::send_qa_resp(crate::qa::QaSignal::StackmatConnected);
+                }
+
+                unsafe {
+                    CURRENT_TIME = parsed.1;
                 }
 
                 if parsed.0 != last_stackmat_state {
