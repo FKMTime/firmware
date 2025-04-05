@@ -59,12 +59,12 @@ async fn main(spawner: Spawner) {
 
         #[cfg(feature = "esp32")]
         {
-            config = config.with_cpu_clock(esp_hal::clock::CpuClock::_80MHz);
+            config = config.with_cpu_clock(esp_hal::clock::CpuClock::max());
         }
 
         #[cfg(feature = "esp32c3")]
         {
-            config = config.with_cpu_clock(esp_hal::clock::CpuClock::_80MHz);
+            config = config.with_cpu_clock(esp_hal::clock::CpuClock::max());
         }
 
         config
@@ -104,7 +104,10 @@ async fn main(spawner: Spawner) {
     log::info!("Firmware: {}", version::FIRMWARE);
 
     #[cfg(feature = "e2e")]
-    log::info!("This firmware is E2E! (HIL TESTING)");
+    log::info!("This firmware is in E2E mode!");
+
+    #[cfg(feature = "qa")]
+    log::info!("This firmware is in QA mode!");
 
     let nvs = Nvs::new_from_part_table().expect("Wrong partition configuration!");
     let global_state = Rc::new(GlobalStateInner::new(&nvs));
@@ -207,7 +210,7 @@ async fn main(spawner: Spawner) {
     let mut parse_retry_count = 0;
     let ws_url = loop {
         let url = if conn_settings.mdns || conn_settings.ws_url.is_none() || parse_retry_count > 0 {
-            log::info!("Start mdns lookup...");
+            log::info!("Starting mdns lookup...");
             global_state.state.lock().await.scene = Scene::MdnsWait;
             let mdns_res = mdns::mdns_query(wifi_res.sta_stack).await;
             log::info!("Mdns result: {:?}", mdns_res);

@@ -314,7 +314,7 @@
                 <div class="checkbox-container">
                     <label class="custom-checkbox">
                         Auto Server Discovery (MDNS)
-                        <input type="checkbox" id="mdnsCheckbox">
+                        <input type="checkbox" id="mdnsCheckbox" checked>
                         <span class="checkmark"></span>
                     </label>
                 </div>
@@ -351,9 +351,9 @@
         // Toggle WebSocket URL input based on MDNS checkbox
         mdnsCheckbox.addEventListener("change", () => {
             if (mdnsCheckbox.checked) {
-                wsUrlContainer.classList.remove("hidden");
-            } else {
                 wsUrlContainer.classList.add("hidden");
+            } else {
+                wsUrlContainer.classList.remove("hidden");
             }
         });
         
@@ -393,8 +393,8 @@
                 }
             };
             
-            // Only add ws_url if mdns is true
-            if (mdns) {
+            // Only add ws_url if mdns is false
+            if (!mdns) {
                 const wsUrl = document.querySelector("#wsUrl").value;
                 requestData.data.ws_url = wsUrl;
             }
