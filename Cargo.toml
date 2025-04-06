@@ -44,7 +44,7 @@ anyhow = { version = "1.0.97", default-features = false }
 embedded-hal-bus = { version = "0.3.0", features = ["async"] }
 embedded-tls = { version = "0.17.0", default-features = false, features = ["alloc", "embedded-io-adapters", "log"] }
 rand_core = { version = "0.6.4", features = ["getrandom"] }
-ag-lcd = { version = "0.3.0", features = [] }
+ag-lcd-async = { git = "https://github.com/filipton/ag-lcd-async", features = [] }
 port-expander = { version = "0.6.4", optional = true }
 
 mfrc522-01 = { version = "0.1.1", package = "esp-hal-mfrc522", optional = true }
@@ -52,7 +52,7 @@ mfrc522-02 = { version = "0.2.1", features = ["embassy-time"], package = "esp-ha
 
 [features]
 default = ["esp32c3", "sleep"]
-esp32 = ["esp-backtrace/esp32", "esp-hal/esp32", "esp-println/esp32", "esp-wifi/esp32", "esp-hal-embassy/esp32", "esp-storage/esp32", "esp-hal-wifimanager/esp32", "esp-hal-ota/esp32", "dep:esp32", "dep:mfrc522-01", "dep:port-expander", "ag-lcd/i2c"]
+esp32 = ["esp-backtrace/esp32", "esp-hal/esp32", "esp-println/esp32", "esp-wifi/esp32", "esp-hal-embassy/esp32", "esp-storage/esp32", "esp-hal-wifimanager/esp32", "esp-hal-ota/esp32", "dep:esp32", "dep:mfrc522-01", "dep:port-expander", "ag-lcd-async/i2c"]
 esp32c3 = ["esp-backtrace/esp32c3", "esp-hal/esp32c3", "esp-println/esp32c3", "esp-wifi/esp32c3", "esp-hal-embassy/esp32c3", "esp-storage/esp32c3", "esp-hal-wifimanager/esp32c3", "esp-hal-ota/esp32c3", "dep:esp32c3", "dep:mfrc522-02"]
 gen_version = []
 bat_dev_lcd = []

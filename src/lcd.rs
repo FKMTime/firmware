@@ -1,9 +1,10 @@
 use adv_shift_registers::wrappers::ShifterValueRange;
-use ag_lcd::LcdDisplay;
+use ag_lcd_async::LcdDisplay;
 use alloc::{rc::Rc, string::ToString};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Delay, Duration, Instant, Timer};
-use embedded_hal::{delay::DelayNs, digital::OutputPin};
+use embedded_hal::digital::OutputPin;
+use embedded_hal_async::delay::DelayNs;
 
 use crate::{
     consts::{
@@ -33,13 +34,14 @@ pub async fn lcd_task(
 
     #[cfg(feature = "esp32")]
     let mut lcd = LcdDisplay::new_pcf8574(&mut i2c_expander, Delay)
-        .with_display(ag_lcd::Display::On)
-        .with_blink(ag_lcd::Blink::Off)
-        .with_cursor(ag_lcd::Cursor::Off)
-        .with_size(ag_lcd::Size::Dots5x8)
+        .with_display(ag_lcd_async::Display::On)
+        .with_blink(ag_lcd_async::Blink::Off)
+        .with_cursor(ag_lcd_async::Cursor::Off)
+        .with_size(ag_lcd_async::Size::Dots5x8)
         .with_cols(16)
-        .with_lines(ag_lcd::Lines::TwoLines)
-        .build();
+        .with_lines(ag_lcd_async::Lines::TwoLines)
+        .build()
+        .await;
 
     #[cfg(feature = "esp32c3")]
     let mut lcd = {
@@ -50,19 +52,20 @@ pub async fn lcd_task(
         let d5_pin = lcd_shifter.get_pin_mut(5, false);
         let d6_pin = lcd_shifter.get_pin_mut(6, false);
         let d7_pin = lcd_shifter.get_pin_mut(7, false);
-        ag_lcd::LcdDisplay::new(rs_pin, en_pin, Delay)
-            .with_display(ag_lcd::Display::On)
-            .with_blink(ag_lcd::Blink::Off)
-            .with_cursor(ag_lcd::Cursor::Off)
-            .with_size(ag_lcd::Size::Dots5x8)
+        LcdDisplay::new(rs_pin, en_pin, Delay)
+            .with_display(ag_lcd_async::Display::On)
+            .with_blink(ag_lcd_async::Blink::Off)
+            .with_cursor(ag_lcd_async::Cursor::Off)
+            .with_size(ag_lcd_async::Size::Dots5x8)
             .with_cols(16)
-            .with_lines(ag_lcd::Lines::TwoLines)
+            .with_lines(ag_lcd_async::Lines::TwoLines)
             .with_half_bus(d4_pin, d5_pin, d6_pin, d7_pin)
             .with_backlight(bl_pin)
             .build()
+            .await
     };
 
-    lcd.clear();
+    lcd.clear().await;
     lcd.backlight_on();
 
     let mut lcd_driver: LcdAbstract<80, 16, 2, 3> = LcdAbstract::new();
@@ -79,7 +82,7 @@ pub async fn lcd_task(
         PrintAlign::Left,
         true,
     );
-    lcd_driver.display_on_lcd(&mut lcd);
+    lcd_driver.display_on_lcd(&mut lcd).await;
 
     _ = lcd_driver.print(
         0,
@@ -87,7 +90,7 @@ pub async fn lcd_task(
         PrintAlign::Right,
         false,
     );
-    lcd_driver.display_on_lcd(&mut lcd);
+    lcd_driver.display_on_lcd(&mut lcd).await;
 
     #[cfg(not(feature = "bat_dev_lcd"))]
     Timer::after_millis(2500).await;
@@ -118,7 +121,7 @@ pub async fn lcd_task(
                 &display,
             )
             .await;
-            lcd_driver.display_on_lcd(&mut lcd);
+            lcd_driver.display_on_lcd(&mut lcd).await;
 
             let mut scroll_ticker =
                 embassy_time::Ticker::every(Duration::from_millis(SCROLL_TICKER_INVERVAL_MS));
@@ -126,7 +129,7 @@ pub async fn lcd_task(
                 scroll_ticker.next().await;
                 let changed = lcd_driver.scroll_step();
                 if changed.is_ok_and(|c| c) {
-                    lcd_driver.display_on_lcd(&mut lcd);
+                    lcd_driver.display_on_lcd(&mut lcd).await;
                 }
 
                 #[cfg(not(any(feature = "e2e", feature = "qa")))]
@@ -136,7 +139,7 @@ pub async fn lcd_task(
                 {
                     _ = lcd_driver.print(0, "Sleep", PrintAlign::Center, true);
                     _ = lcd_driver.print(1, "Press any key", PrintAlign::Center, true);
-                    lcd_driver.display_on_lcd(&mut lcd);
+                    lcd_driver.display_on_lcd(&mut lcd).await;
                     lcd.backlight_off();
 
                     unsafe {
@@ -151,7 +154,7 @@ pub async fn lcd_task(
                 {
                     _ = lcd_driver.print(0, "Deep Sleep", PrintAlign::Center, true);
                     _ = lcd_driver.print(1, "Press any key", PrintAlign::Center, true);
-                    lcd_driver.display_on_lcd(&mut lcd);
+                    lcd_driver.display_on_lcd(&mut lcd).await;
                     crate::utils::deeper_sleep();
                 }
             }
@@ -286,7 +289,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 )
                 .ok()?;
 
-            lcd_driver.display_on_lcd(lcd);
+            lcd_driver.display_on_lcd(lcd).await;
             wifi_setup_sig.wait().await;
             global_state.state.lock().await.scene = Scene::AutoSetupWait;
         }
@@ -408,6 +411,10 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 .inspection_start
                 .unwrap_or(Instant::now());
 
+            lcd_driver
+                .print(1, "Inspection", PrintAlign::Center, true)
+                .ok()?;
+
             loop {
                 let elapsed = (Instant::now() - inspection_start).as_millis();
                 let time_str = ms_to_time_str(elapsed);
@@ -416,7 +423,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                     .print(0, &time_str, PrintAlign::Center, true)
                     .ok()?;
 
-                lcd_driver.display_on_lcd(lcd);
+                lcd_driver.display_on_lcd(lcd).await;
                 Timer::after_millis(LCD_INSPECTION_FRAME_TIME).await;
             }
         }
@@ -428,7 +435,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 .ok()?;
 
             display.set_data_raw(&crate::utils::stackmat::time_str_to_display(&time_str));
-            lcd_driver.display_on_lcd(lcd);
+            lcd_driver.display_on_lcd(lcd).await;
         },
         Scene::Finished => {
             let solve_time = current_state.solve_time.unwrap_or(0);
@@ -513,7 +520,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 let progress = global_state.update_progress.wait().await;
                 _ = lcd_driver.print(1, &alloc::format!("{progress}%"), PrintAlign::Center, true);
 
-                lcd_driver.display_on_lcd(lcd);
+                lcd_driver.display_on_lcd(lcd).await;
             }
         }
     }

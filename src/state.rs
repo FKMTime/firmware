@@ -1,6 +1,9 @@
 use crate::{structs::PossibleGroup, utils::signaled_mutex::SignaledMutex};
 use alloc::{rc::Rc, string::String, vec::Vec};
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
+use embassy_sync::{
+    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
+    signal::Signal,
+};
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal_wifimanager::Nvs;
 use serde::{Deserialize, Serialize};
@@ -118,7 +121,7 @@ impl End2End {
 pub type GlobalState = Rc<GlobalStateInner>;
 pub struct GlobalStateInner {
     pub state: SignaledMutex<CriticalSectionRawMutex, SignaledGlobalStateInner>,
-    pub timer_signal: Signal<CriticalSectionRawMutex, u64>,
+    pub timer_signal: Signal<NoopRawMutex, u64>,
     pub show_battery: Signal<CriticalSectionRawMutex, u8>,
     pub update_progress: Signal<CriticalSectionRawMutex, u8>,
 

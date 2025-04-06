@@ -59,12 +59,12 @@ async fn main(spawner: Spawner) {
 
         #[cfg(feature = "esp32")]
         {
-            config = config.with_cpu_clock(esp_hal::clock::CpuClock::max());
+            config = config.with_cpu_clock(esp_hal::clock::CpuClock::_80MHz);
         }
 
         #[cfg(feature = "esp32c3")]
         {
-            config = config.with_cpu_clock(esp_hal::clock::CpuClock::max());
+            config = config.with_cpu_clock(esp_hal::clock::CpuClock::_80MHz);
         }
 
         config

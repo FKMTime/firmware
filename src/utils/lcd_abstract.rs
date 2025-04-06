@@ -1,5 +1,6 @@
-use ag_lcd::LcdDisplay;
-use embedded_hal::{delay::DelayNs, digital::OutputPin};
+use ag_lcd_async::LcdDisplay;
+use embedded_hal::digital::OutputPin;
+use embedded_hal_async::delay::DelayNs;
 
 pub enum PrintAlign {
     Left,
@@ -151,12 +152,13 @@ impl<const LINE_SIZE: usize, const X: usize, const Y: usize, const SCROLLER_WT: 
         Ok(())
     }
 
-    pub fn display_on_lcd<T: OutputPin, D: DelayNs>(&mut self, lcd: &mut LcdDisplay<T, D>) {
+    pub async fn display_on_lcd<T: OutputPin, D: DelayNs>(&mut self, lcd: &mut LcdDisplay<T, D>) {
         let display_data = self.display_data();
         for (y, line) in display_data.0.iter().enumerate() {
             if line.1 {
-                lcd.set_position(0, y as u8);
-                lcd.print(unsafe { core::str::from_utf8_unchecked(line.0) });
+                lcd.set_position(0, y as u8).await;
+                lcd.print(unsafe { core::str::from_utf8_unchecked(line.0) })
+                    .await;
 
                 display_data.1[y].copy_from_slice(line.0);
             }

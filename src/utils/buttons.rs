@@ -1,5 +1,6 @@
 use crate::{
     buttons::HandlersDerive,
+    consts::BUTTON_DEBOUNCE_TIME,
     state::{sleep_state, GlobalState},
 };
 use alloc::vec::Vec;
@@ -133,7 +134,7 @@ impl ButtonsHandler {
                 debounce_time = esp_hal::time::Instant::now();
             } else if old_debounced != out_val {
                 let duration = esp_hal::time::Instant::now() - debounce_time;
-                if duration.as_millis() > 50 || sleep_state() {
+                if duration.as_millis() > BUTTON_DEBOUNCE_TIME || sleep_state() {
                     if old_debounced == 0 {
                         #[cfg(not(feature = "qa"))]
                         self.button_down((out_val as u8).into(), state).await;
