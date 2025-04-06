@@ -25,7 +25,7 @@ done
 
 source ~/export-esp.sh
 RELEASE_BUILD="$RELEASE_VERSION" cargo build -r
-RELEASE_BUILD="$RELEASE_VERSION" cargo esp32 -r
+RELEASE_BUILD="$RELEASE_VERSION" cargo build --no-default-features --features=esp32 --target=xtensa-esp32-none-elf -r
 
 EPOCH=$(date +%s)
 
