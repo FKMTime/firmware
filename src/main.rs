@@ -278,7 +278,9 @@ async fn main(spawner: Spawner) {
 
 #[embassy_executor::task]
 async fn logger_task(global_state: GlobalState) {
+    #[cfg(not(feature = "release_build"))]
     let mut heap_start = Instant::now();
+
     loop {
         Timer::after_millis(LOG_SEND_INTERVAL_MS).await;
 
@@ -301,6 +303,7 @@ async fn logger_task(global_state: GlobalState) {
             .await;
         }
 
+        #[cfg(not(feature = "release_build"))]
         if (Instant::now() - heap_start).as_millis() >= PRINT_HEAP_INTERVAL_MS {
             if global_state.state.lock().await.server_connected == Some(true) {
                 log::info!("{}", esp_alloc::HEAP.stats());

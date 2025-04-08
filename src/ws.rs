@@ -22,6 +22,9 @@ static FRAME_CHANNEL: Channel<CriticalSectionRawMutex, WsFrameOwned, 10> = Chann
 static TAGGED_RETURN: PubSubChannel<CriticalSectionRawMutex, (u64, TimerPacket), 20, 20, 4> =
     PubSubChannel::new();
 
+const WS_BUF_SIZE: usize = 8192;
+const TLS_BUF_SIZE: usize = 16640;
+
 #[embassy_executor::task]
 pub async fn ws_task(
     stack: Stack<'static>,
@@ -31,10 +34,10 @@ pub async fn ws_task(
 ) {
     log::debug!("ws_url: {ws_url:?}");
 
-    let mut rx_buf = [0; 8192];
-    let mut tx_buf = [0; 8192];
-    let mut ws_rx_buf = alloc::vec![0; 8192];
-    let mut ws_tx_buf = alloc::vec![0; 8192];
+    let mut rx_buf = [0; WS_BUF_SIZE];
+    let mut tx_buf = [0; WS_BUF_SIZE];
+    let mut ws_rx_buf = alloc::vec![0; WS_BUF_SIZE];
+    let mut ws_tx_buf = alloc::vec![0; WS_BUF_SIZE];
 
     // tls buffers
     let mut ssl_rx_buf = alloc::vec::Vec::new();
@@ -42,8 +45,8 @@ pub async fn ws_task(
 
     #[cfg(feature = "esp32c3")]
     if ws_url.secure {
-        ssl_rx_buf.resize(16640, 0);
-        ssl_tx_buf.resize(16640, 0);
+        ssl_rx_buf.resize(TLS_BUF_SIZE, 0);
+        ssl_tx_buf.resize(TLS_BUF_SIZE, 0);
     }
 
     loop {
@@ -218,21 +221,26 @@ async fn ws_rw(
     framer_rx: &mut WsRxFramer<'_>,
     framer_tx: &mut WsTxFramer<'_>,
     global_state: GlobalState,
-    tls: &mut WsSocket<'_, '_>,
+    socket: &mut WsSocket<'_, '_>,
 ) -> Result<(), ()> {
     let mut ota = Ota::new(FlashStorage::new()).map_err(|_| ())?;
     let tagged_publisher = TAGGED_RETURN.publisher().map_err(|_| ())?;
     let recv = FRAME_CHANNEL.receiver();
 
     loop {
-        let read_fut = tls.read(framer_rx.mut_buf());
+        let read_fut = socket.read(framer_rx.mut_buf());
         let write_fut = recv.receive();
 
         let n = match embassy_futures::select::select(read_fut, write_fut).await {
             embassy_futures::select::Either::First(read_res) => read_res,
             embassy_futures::select::Either::Second(write_frame) => {
+                if write_frame.into_ref().data().len() > WS_BUF_SIZE {
+                    log::error!("Skipping writing frame! Frame is too big! (Maybe split it?)");
+                    continue;
+                }
+
                 let data = framer_tx.frame(write_frame.into_ref());
-                tls.write_all(data).await.map_err(|_| ())?;
+                socket.write_all(data).await.map_err(|_| ())?;
 
                 continue;
             }
