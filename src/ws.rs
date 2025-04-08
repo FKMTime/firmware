@@ -234,13 +234,18 @@ async fn ws_rw(
         let n = match embassy_futures::select::select(read_fut, write_fut).await {
             embassy_futures::select::Either::First(read_res) => read_res,
             embassy_futures::select::Either::Second(write_frame) => {
-                if write_frame.into_ref().data().len() > WS_BUF_SIZE {
-                    log::error!("Skipping writing frame! Frame is too big! (Maybe split it?)");
-                    continue;
-                }
+                let mut offset = 0;
+                let frame_ref = write_frame.into_ref();
 
-                let data = framer_tx.frame(write_frame.into_ref());
-                socket.write_all(data).await.map_err(|_| ())?;
+                loop {
+                    let (data, finish) = framer_tx.partial_frame(&frame_ref, &mut offset);
+                    socket.write_all(data).await.map_err(|_| ())?;
+                    if !finish {
+                        break;
+                    }
+
+                    log::warn!("Frame splitted!");
+                }
 
                 continue;
             }

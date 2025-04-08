@@ -2251,9 +2251,9 @@ dependencies = [
 
 [[package]]
 name = "ws-framer"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "454b27938e61501247857c367e0f10667527a2fe6b42585c4a15abe7ffa544aa"
+checksum = "a9095ee7c776dd30113e13ebb92ad733f99daeaab0bc2fef30754ea68e5ddb13"
 dependencies = [
  "getrandom",
  "httparse",
