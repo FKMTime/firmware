@@ -120,7 +120,12 @@ pub async fn rfid_task(
         };
         log::info!("Card UID: {card_uid}");
 
-        if last_card.0 == card_uid && (Instant::now() - last_card.1).as_millis() < 500 {
+        let last_scan_time = (Instant::now().saturating_duration_since(last_card.1)).as_millis();
+        if last_card.0 == card_uid && last_scan_time < 500 {
+            log::warn!(
+                "Skipping card scan: {last_scan_time:?} {card_uid} {}",
+                last_card.0
+            );
             continue;
         }
         last_card = (card_uid, Instant::now());
