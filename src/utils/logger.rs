@@ -3,6 +3,7 @@ use alloc::string::String;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
 
 const MAX_LOGS_SIZE: usize = 100;
+const MIN_HEAP_REMEANING: usize = 10240;
 pub static LOGS_CHANNEL: Channel<CriticalSectionRawMutex, String, MAX_LOGS_SIZE> = Channel::new();
 
 #[cfg(feature = "release_build")]
@@ -63,7 +64,15 @@ impl log::Log for FkmLogger {
             }
 
             let msg = alloc::format!("{}{} - {}{}", color, record.level(), record.args(), reset);
-            _ = LOGS_CHANNEL.try_send(msg);
+
+            // Do not send log msg to channel if heap space is too low!
+            // maybe not performent but thats ok
+            if esp_alloc::HEAP.free() > MIN_HEAP_REMEANING {
+                _ = LOGS_CHANNEL.try_send(msg);
+            } else {
+                // clear logs channel if heap space is too low
+                LOGS_CHANNEL.clear();
+            }
         }
     }
 
