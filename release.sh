@@ -29,6 +29,7 @@ RELEASE_BUILD="$RELEASE_VERSION" cargo build --no-default-features --features=es
 
 EPOCH=$(date +%s)
 
+mkdir -p /tmp/fkm-build &> /dev/null
 espflash save-image --chip esp32 ./target/xtensa-esp32-none-elf/release/fkm-firmware "/tmp/fkm-build/v2_STATION_${RELEASE_VERSION}.bin"
 espflash save-image --chip esp32c3 ./target/riscv32imc-unknown-none-elf/release/fkm-firmware "/tmp/fkm-build/v3_STATION_${RELEASE_VERSION}.bin"
 ./append_metadata.sh "/tmp/fkm-build/v2_STATION_${RELEASE_VERSION}.bin" "$RELEASE_VERSION" "STATION" "v2" "$EPOCH"
