@@ -7,7 +7,7 @@ extern crate alloc;
 use alloc::string::{String, ToString};
 use alloc::{rc::Rc, vec::Vec};
 use board::Board;
-use consts::{LOG_SEND_INTERVAL_MS, PRINT_HEAP_INTERVAL_MS};
+use consts::LOG_SEND_INTERVAL_MS;
 use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
 use embassy_time::{Instant, Timer};
@@ -360,7 +360,7 @@ async fn logger_task(global_state: GlobalState) {
         }
 
         #[cfg(not(feature = "release_build"))]
-        if (Instant::now() - heap_start).as_millis() >= PRINT_HEAP_INTERVAL_MS {
+        if (Instant::now() - heap_start).as_millis() >= consts::PRINT_HEAP_INTERVAL_MS {
             if global_state.state.lock().await.server_connected == Some(true) {
                 log::info!("{}", esp_alloc::HEAP.stats());
             }
