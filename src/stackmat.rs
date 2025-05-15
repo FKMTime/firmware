@@ -34,6 +34,13 @@ pub async fn stackmat_task(
     let mut last_stackmat_state = StackmatTimerState::Unknown;
     loop {
         if sleep_state() {
+            loop {
+                let n = uart.read_buffered(&mut read_buf);
+                if n.is_err() || n == Ok(0) {
+                    break;
+                }
+            }
+
             Timer::after_millis(500).await;
             continue;
         }
