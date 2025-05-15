@@ -14,11 +14,13 @@ use embassy_time::{Instant, Timer};
 use esp_backtrace as _;
 use esp_hal_wifimanager::{Nvs, WIFI_NVS_KEY};
 use esp_storage::FlashStorage;
-use esp_wifi::esp_now::{EspNowManager, EspNowSender};
 use state::{ota_state, sleep_state, GlobalState, GlobalStateInner, SavedGlobalState, Scene};
 use structs::ConnSettings;
 use utils::{logger::FkmLogger, set_brownout_detection};
 use ws_framer::{WsUrl, WsUrlOwned};
+
+#[cfg(feature = "esp_now")]
+use esp_wifi::esp_now::{EspNowManager, EspNowSender};
 
 mod battery;
 mod board;
@@ -53,7 +55,9 @@ pub fn custom_rng(buf: &mut [u8]) -> Result<(), getrandom::Error> {
 }
 getrandom::register_custom_getrandom!(custom_rng);
 
+#[cfg(feature = "esp_now")]
 const ESP_NOW_DST: &[u8; 6] = &[156, 158, 110, 52, 70, 200];
+#[cfg(feature = "esp_now")]
 macro_rules! mk_static {
     ($t:ty,$val:expr) => {{
         static STATIC_CELL: static_cell::StaticCell<$t> = static_cell::StaticCell::new();
