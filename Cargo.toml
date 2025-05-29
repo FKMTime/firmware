@@ -12,7 +12,7 @@ log = { version = "0.4.27" }
 esp-wifi = { version = "0.13.0", features = ["coex"] }
 esp-hal-embassy = { version = "0.7.0", features = [] }
 embassy-executor = { version = "0.7.0", features = ["arch-riscv32", "nightly"] }
-embassy-net = { version = "0.6.0", features = ["tcp", "udp", "multicast", "dhcpv4", "medium-ethernet", "proto-ipv4", "dns"] }
+embassy-net = { version = "0.7.0", features = ["tcp", "udp", "multicast", "dhcpv4", "medium-ethernet", "proto-ipv4", "dns"] }
 embassy-time = { version = "0.4.0" }
 esp-storage = { version = "0.5.0", features = [] }
 embedded-storage = "0.3.1"
@@ -29,7 +29,7 @@ embedded-io-async = "0.6.1"
 macros = { path = "./macros" }
 nb = "1.1.0"
 embassy-futures = "0.1.1"
-embassy-sync = "0.6.2"
+embassy-sync = "0.7.0"
 ws-framer = { version = "0.3.0", default-features = false, features = ["alloc", "http", "getrandom02"] }
 embedded-hal-async = "1.0.0"
 portable-atomic = { version = "1.11.0", default-features = false }
