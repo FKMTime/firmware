@@ -37,11 +37,11 @@ fn main() {
         "unknown"
     };
 
-    let gen = VERSION_TEMPLATE
+    let generated = VERSION_TEMPLATE
         .replace("{version}", &version_str)
         .replace("{hw}", hw)
         .replace("{firmware}", "STATION");
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
-    std::fs::write(out_dir.join("version.rs"), gen.trim()).unwrap();
+    std::fs::write(out_dir.join("version.rs"), generated.trim()).unwrap();
 }

@@ -190,7 +190,7 @@ fn is_valid_ram_address(address: u32) -> bool {
     true
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "Rust" fn custom_pre_backtrace() {
     let backtrace = backtrace();
 
@@ -222,7 +222,7 @@ pub extern "Rust" fn custom_pre_backtrace() {
     delay.delay_millis(100);
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "Rust" fn custom_halt() {
     esp_hal::system::software_reset();
 }

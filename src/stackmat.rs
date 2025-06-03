@@ -1,8 +1,8 @@
 use crate::{
     consts::{INSPECTION_TIME_DNF, INSPECTION_TIME_PLUS2},
-    state::{sleep_state, GlobalState, Scene},
+    state::{GlobalState, Scene, sleep_state},
     utils::stackmat::{
-        ms_to_time_str, parse_stackmat_data, time_str_to_display, StackmatTimerState,
+        StackmatTimerState, ms_to_time_str, parse_stackmat_data, time_str_to_display,
     },
 };
 use adv_shift_registers::wrappers::ShifterValueRange;
@@ -14,8 +14,8 @@ pub static mut CURRENT_TIME: u64 = 0;
 
 #[embassy_executor::task]
 pub async fn stackmat_task(
-    uart: UART1,
-    uart_pin: AnyPin,
+    uart: UART1<'static>,
+    uart_pin: AnyPin<'static>,
     display: ShifterValueRange,
     global_state: GlobalState,
 ) {

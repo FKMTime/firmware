@@ -2,13 +2,10 @@ use crate::{
     consts::BATTERY_SEND_INTERVAL_MS, state::sleep_state, utils::rolling_average::RollingAverage,
 };
 use embassy_time::{Instant, Timer};
-use esp_hal::{
-    analog::adc::{Adc, AdcConfig, Attenuation},
-    gpio::GpioPin,
-};
+use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 
 #[cfg(feature = "esp32c3")]
-type AdcCal = esp_hal::analog::adc::AdcCalBasic<esp_hal::peripherals::ADC1>;
+type AdcCal = esp_hal::analog::adc::AdcCalBasic<esp_hal::peripherals::ADC1<'static>>;
 
 const BAT_MIN: f64 = 3200.0;
 const BAT_MAX: f64 = 4200.0;
@@ -28,11 +25,11 @@ const BATTERY_CURVE: [(f64, u8); 11] = [
 
 #[embassy_executor::task]
 pub async fn battery_read_task(
-    #[cfg(feature = "esp32c3")] adc_pin: GpioPin<2>,
+    #[cfg(feature = "esp32c3")] adc_pin: esp_hal::peripherals::GPIO2<'static>,
 
-    #[cfg(feature = "esp32")] adc_pin: GpioPin<34>,
+    #[cfg(feature = "esp32")] adc_pin: esp_hal::peripherals::GPIO34<'static>,
 
-    adc: esp_hal::peripherals::ADC1,
+    adc: esp_hal::peripherals::ADC1<'static>,
     state: crate::state::GlobalState,
 ) {
     let mut adc_config = AdcConfig::new();

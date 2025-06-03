@@ -52,7 +52,7 @@ pub fn deeper_sleep() {
 #[allow(unused)]
 #[inline(always)]
 fn ets_update_cpu_frequency_rom(ticks_per_us: u32) {
-    extern "C" {
+    unsafe extern "C" {
         fn ets_update_cpu_frequency(ticks_per_us: u32);
     }
 

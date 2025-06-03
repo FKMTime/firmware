@@ -2,43 +2,43 @@ use crate::utils::stackmat::{DEC_DIGITS, DOT_MOD};
 use adv_shift_registers::wrappers::ShifterValueRange;
 use anyhow::Result;
 use esp_hal::{
-    gpio::{AnyPin, GpioPin, Input, InputConfig, Level, Output, Pin, Pull},
-    peripherals::{Peripherals, ADC1, BT, RADIO_CLK, SPI2, TIMG0, TIMG1, UART1, WIFI},
+    gpio::{AnyPin, Input, InputConfig, Level, Output, Pin, Pull},
+    peripherals::{ADC1, BT, Peripherals, RADIO_CLK, SPI2, TIMG0, TIMG1, UART1, WIFI},
     rng::Rng,
     timer::timg::TimerGroup,
 };
 
 pub struct Board {
     // peripherals
-    pub timg0: TimerGroup<TIMG0>,
-    pub timg1: TimerGroup<TIMG1>,
+    pub timg0: TimerGroup<'static, TIMG0<'static>>,
+    pub timg1: TimerGroup<'static, TIMG1<'static>>,
     pub rng: Rng,
-    pub uart1: UART1,
-    pub spi2: SPI2,
-    pub adc1: ADC1,
-    pub radio_clk: RADIO_CLK,
-    pub wifi: WIFI,
-    pub bt: BT,
+    pub uart1: UART1<'static>,
+    pub spi2: SPI2<'static>,
+    pub adc1: ADC1<'static>,
+    pub radio_clk: RADIO_CLK<'static>,
+    pub wifi: WIFI<'static>,
+    pub bt: BT<'static>,
     #[cfg(feature = "esp32c3")]
-    pub spi_dma: esp_hal::dma::DmaChannel0,
+    pub spi_dma: esp_hal::peripherals::DMA_CH0<'static>,
     #[cfg(feature = "esp32")]
-    pub spi_dma: esp_hal::dma::Spi2DmaChannel,
+    pub spi_dma: esp_hal::peripherals::DMA_SPI2<'static>,
 
     // spi
-    pub miso: AnyPin,
-    pub mosi: AnyPin,
-    pub sck: AnyPin,
+    pub miso: AnyPin<'static>,
+    pub mosi: AnyPin<'static>,
+    pub sck: AnyPin<'static>,
     #[cfg(feature = "esp32c3")]
     pub cs: adv_shift_registers::wrappers::ShifterPin,
     #[cfg(feature = "esp32")]
     pub cs: Output<'static>,
 
-    pub stackmat_rx: AnyPin,
+    pub stackmat_rx: AnyPin<'static>,
 
     #[cfg(feature = "esp32c3")]
-    pub battery: GpioPin<2>,
+    pub battery: esp_hal::peripherals::GPIO2<'static>,
     #[cfg(feature = "esp32")]
-    pub battery: GpioPin<34>,
+    pub battery: esp_hal::peripherals::GPIO34<'static>,
 
     #[cfg(feature = "esp32c3")]
     pub button_input: Input<'static>,

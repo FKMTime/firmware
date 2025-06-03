@@ -14,7 +14,7 @@ use embassy_time::{Instant, Timer};
 use esp_backtrace as _;
 use esp_hal_wifimanager::{Nvs, WIFI_NVS_KEY};
 use esp_storage::FlashStorage;
-use state::{ota_state, sleep_state, GlobalState, GlobalStateInner, SavedGlobalState, Scene};
+use state::{GlobalState, GlobalStateInner, SavedGlobalState, Scene, ota_state, sleep_state};
 use structs::ConnSettings;
 use utils::{logger::FkmLogger, set_brownout_detection};
 use ws_framer::{WsUrl, WsUrlOwned};
@@ -95,7 +95,7 @@ async fn main(spawner: Spawner) {
         #[cfg(not(feature = "esp32"))]
         const HEAP_SIZE: usize = 60 * 1024;
 
-        #[link_section = ".dram2_uninit"]
+        #[unsafe(link_section = ".dram2_uninit")]
         static mut HEAP2: core::mem::MaybeUninit<[u8; HEAP_SIZE]> =
             core::mem::MaybeUninit::uninit();
 

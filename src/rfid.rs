@@ -1,16 +1,16 @@
 use crate::consts::RFID_RETRY_INIT_MS;
-use crate::state::{current_epoch, sleep_state, GlobalState};
+use crate::state::{GlobalState, current_epoch, sleep_state};
 use crate::structs::{CardInfoResponsePacket, SolveConfirmPacket};
-use crate::translations::{get_translation, TranslationKey};
+use crate::translations::{TranslationKey, get_translation};
 use alloc::string::ToString;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal::time::Rate;
 use esp_hal::{
     dma::{DmaRxBuf, DmaTxBuf},
     dma_buffers,
     gpio::AnyPin,
-    spi::{master::Spi, Mode},
+    spi::{Mode, master::Spi},
 };
 
 #[cfg(feature = "esp32")]
@@ -21,15 +21,15 @@ use mfrc522_02::consts::UidSize;
 
 #[embassy_executor::task]
 pub async fn rfid_task(
-    miso: AnyPin,
-    mosi: AnyPin,
-    sck: AnyPin,
+    miso: AnyPin<'static>,
+    mosi: AnyPin<'static>,
+    sck: AnyPin<'static>,
     #[cfg(feature = "esp32c3")] cs_pin: adv_shift_registers::wrappers::ShifterPin,
     #[cfg(feature = "esp32")] cs_pin: esp_hal::gpio::Output<'static>,
-    spi: esp_hal::peripherals::SPI2,
+    spi: esp_hal::peripherals::SPI2<'static>,
 
-    #[cfg(feature = "esp32c3")] dma_chan: esp_hal::dma::DmaChannel0,
-    #[cfg(feature = "esp32")] dma_chan: esp_hal::dma::Spi2DmaChannel,
+    #[cfg(feature = "esp32c3")] dma_chan: esp_hal::peripherals::DMA_CH0<'static>,
+    #[cfg(feature = "esp32")] dma_chan: esp_hal::peripherals::DMA_SPI2<'static>,
 
     global_state: GlobalState,
 ) {
