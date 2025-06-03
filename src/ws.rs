@@ -1,11 +1,11 @@
 use crate::{
     consts::WS_RETRY_MS,
-    state::{ota_state, GlobalState, Scene},
+    state::{GlobalState, Scene, ota_state},
     structs::{ApiError, FromPacket, TimerPacket, TimerPacketInner},
 };
 use alloc::{rc::Rc, string::ToString};
 use core::str::FromStr;
-use embassy_net::{tcp::TcpSocket, IpAddress, Stack};
+use embassy_net::{IpAddress, Stack, tcp::TcpSocket};
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, pubsub::PubSubChannel,
     signal::Signal,

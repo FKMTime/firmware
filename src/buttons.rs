@@ -1,6 +1,6 @@
 use crate::{
     stackmat::CURRENT_TIME,
-    state::{current_epoch, deeper_sleep_state, sleep_state, GlobalState, Scene},
+    state::{GlobalState, Scene, current_epoch, deeper_sleep_state, sleep_state},
     structs::DelegateResponsePacket,
     utils::buttons::{Button, ButtonTrigger, ButtonsHandler},
 };

@@ -11,8 +11,8 @@ use crate::{
         DEEPER_SLEEP_AFTER_MS, INSPECTION_TIME_PLUS2, LCD_INSPECTION_FRAME_TIME,
         SCROLL_TICKER_INVERVAL_MS, SLEEP_AFTER_MS,
     },
-    state::{deeper_sleep_state, sleep_state, GlobalState, Scene, SignaledGlobalStateInner},
-    translations::{get_translation, get_translation_params, TranslationKey},
+    state::{GlobalState, Scene, SignaledGlobalStateInner, deeper_sleep_state, sleep_state},
+    translations::{TranslationKey, get_translation, get_translation_params},
     utils::{
         lcd_abstract::{LcdAbstract, PrintAlign},
         stackmat::ms_to_time_str,

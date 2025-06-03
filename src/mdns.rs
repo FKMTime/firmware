@@ -1,6 +1,6 @@
 use embassy_net::{
-    udp::{PacketMetadata, UdpSocket},
     IpAddress, IpEndpoint, Stack,
+    udp::{PacketMetadata, UdpSocket},
 };
 use embassy_time::{Duration, Timer};
 use esp_hal_mdns::MdnsQuery;

@@ -1,7 +1,7 @@
 use crate::{
     buttons::HandlersDerive,
     consts::BUTTON_DEBOUNCE_TIME,
-    state::{sleep_state, GlobalState},
+    state::{GlobalState, sleep_state},
 };
 use alloc::vec::Vec;
 use embassy_time::{Instant, Timer};
