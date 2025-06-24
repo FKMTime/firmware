@@ -40,6 +40,10 @@ pub async fn battery_read_task(
     #[cfg(feature = "esp32")]
     let mut adc_pin = adc_config.enable_pin(adc_pin, Attenuation::_11dB);
 
+    #[cfg(feature = "esp32c3")]
+    let mut adc = Adc::new(adc, adc_config).into_async();
+
+    #[cfg(feature = "esp32")]
     let mut adc = Adc::new(adc, adc_config);
 
     let mut battery_start = Instant::now();
@@ -58,6 +62,10 @@ pub async fn battery_read_task(
             continue;
         }
 
+        #[cfg(feature = "esp32c3")]
+        let read = adc.read_oneshot(&mut adc_pin).await;
+
+        #[cfg(feature = "esp32")]
         let read = macros::nb_to_fut!(adc.read_oneshot(&mut adc_pin))
             .await
             .unwrap_or(0);
