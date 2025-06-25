@@ -54,7 +54,6 @@ source = "git+https://github.com/filipton/ag-lcd-async#c4834c24769bfb0c5c597c71c
 dependencies = [
  "embedded-hal 1.0.0",
  "embedded-hal-async",
- "port-expander",
 ]
 
 [[package]]
@@ -776,7 +775,6 @@ dependencies = [
  "esp-metadata",
  "esp-println",
  "heapless 0.8.0",
- "semihosting",
 ]
 
 [[package]]
@@ -830,7 +828,6 @@ dependencies = [
  "esp-hal-procmacros",
  "esp-metadata",
  "esp-riscv-rt",
- "esp32",
  "esp32c3",
  "fugit",
  "instability",
@@ -864,9 +861,9 @@ dependencies = [
 
 [[package]]
 name = "esp-hal-embassy"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fd751f4b235764f6e766731e7da09d8f8d443642b829c3e6e469c38320da044"
+checksum = "87807cdf22124ba46dbac7d7f6d3ee2e7f06c4e461f3783443464d868101647d"
 dependencies = [
  "cfg-if",
  "critical-section",
@@ -898,18 +895,6 @@ dependencies = [
 
 [[package]]
 name = "esp-hal-mfrc522"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "758af6baa61900e79f6c7984bff607257a58441076dbded66fd5a6b8f899a754"
-dependencies = [
- "embedded-hal 1.0.0",
- "embedded-hal-async",
- "heapless 0.8.0",
- "log",
-]
-
-[[package]]
-name = "esp-hal-mfrc522"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1af6ff595b0798c601021e29b5addbb531bfebfd0beda827a76adcecac2059a"
@@ -927,7 +912,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "522a63a912c9204405e1bac76d9eb3b3fa96d91a05310b34f6b5f9e5a0c282dc"
 dependencies = [
  "embedded-storage",
- "esp32",
  "esp32c3",
  "log",
 ]
@@ -1029,9 +1013,9 @@ dependencies = [
 
 [[package]]
 name = "esp-wifi"
-version = "0.14.0"
+version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f0e7cc4d0ceed4117e0f190abba1f021d986a5b6a54ef2116541e4288b700a9"
+checksum = "3700028d3d2ee57e6d2a5c5f60544711052f8d394e73a6f534b538fbfb9d058c"
 dependencies = [
  "allocator-api2",
  "bt-hci",
@@ -1053,7 +1037,6 @@ dependencies = [
  "portable-atomic",
  "portable_atomic_enum",
  "rand_core 0.9.3",
- "xtensa-lx-rt",
 ]
 
 [[package]]
@@ -1063,16 +1046,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6b5438361891c431970194a733415006fb3d00b6eb70b3dcb66fd58f04d9b39"
 dependencies = [
  "anyhow",
-]
-
-[[package]]
-name = "esp32"
-version = "0.37.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83ddfdb413ef0739d84bd3fce771e6e0feb6457ac1bcdd7a1dcd6326061e919d"
-dependencies = [
- "critical-section",
- "vcell",
 ]
 
 [[package]]
@@ -1121,21 +1094,18 @@ dependencies = [
  "esp-hal",
  "esp-hal-embassy",
  "esp-hal-mdns",
- "esp-hal-mfrc522 0.1.1",
- "esp-hal-mfrc522 0.2.1",
+ "esp-hal-mfrc522",
  "esp-hal-ota",
  "esp-hal-wifimanager",
  "esp-println",
  "esp-storage",
  "esp-wifi",
- "esp32",
  "esp32c3",
  "getrandom",
  "heapless 0.8.0",
  "log",
  "macros",
  "nb 1.1.0",
- "port-expander",
  "portable-atomic",
  "rand_core 0.6.4",
  "serde",
@@ -1653,19 +1623,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "port-expander"
-version = "0.6.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "066fe49bef400405499260dfb433b5c849db985ecf17f77344cc5ece46470339"
-dependencies = [
- "embedded-hal 1.0.0",
-]
-
-[[package]]
 name = "portable-atomic"
-version = "1.11.0"
+version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "350e9b48cbc6b0e028b0473b114454c6316e57336ee184ceab6e53f72c178b3e"
+checksum = "f84267b20a16ea918e43c6a88433c2d54fa145c92a811b5b047ccbe153674483"
 
 [[package]]
 name = "portable_atomic_enum"
@@ -1862,12 +1823,6 @@ dependencies = [
  "subtle",
  "zeroize",
 ]
-
-[[package]]
-name = "semihosting"
-version = "0.1.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3e1c7d2b77d80283c750a39c52f1ab4d17234e8f30bca43550f5b2375f41d5f"
 
 [[package]]
 name = "serde"

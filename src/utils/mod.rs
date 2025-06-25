@@ -8,15 +8,8 @@ pub mod signaled_mutex;
 pub mod stackmat;
 
 pub fn set_brownout_detection(state: bool) {
-    #[cfg(feature = "esp32c3")]
     unsafe {
         let rtc_cntl = &*esp32c3::RTC_CNTL::ptr();
-        rtc_cntl.int_ena().modify(|_, w| w.brown_out().bit(state));
-    }
-
-    #[cfg(feature = "esp32")]
-    unsafe {
-        let rtc_cntl = &*esp32::RTC_CNTL::ptr();
         rtc_cntl.int_ena().modify(|_, w| w.brown_out().bit(state));
     }
 }
@@ -36,11 +29,7 @@ pub fn get_efuse_u32() -> u32 {
     mac as u32
 }
 
-#[cfg(not(feature = "esp32c3"))]
-pub fn deeper_sleep() {}
-
 /// Sets cpu clock to 10mHz (not reversable)
-#[cfg(feature = "esp32c3")]
 pub fn deeper_sleep() {
     esp32c3_rtc_update_to_xtal();
     esp32c3_rtc_apb_freq_update();
@@ -48,7 +37,6 @@ pub fn deeper_sleep() {
     unsafe { crate::state::DEEPER_SLEEP = true };
 }
 
-#[cfg(feature = "esp32c3")]
 #[allow(unused)]
 #[inline(always)]
 fn ets_update_cpu_frequency_rom(ticks_per_us: u32) {
@@ -59,7 +47,6 @@ fn ets_update_cpu_frequency_rom(ticks_per_us: u32) {
     unsafe { ets_update_cpu_frequency(ticks_per_us) };
 }
 
-#[cfg(feature = "esp32c3")]
 fn esp32c3_rtc_update_to_xtal() {
     let _div = 1;
     ets_update_cpu_frequency_rom(10);
@@ -84,7 +71,6 @@ fn esp32c3_rtc_update_to_xtal() {
     }
 }
 
-#[cfg(feature = "esp32c3")]
 fn esp32c3_rtc_apb_freq_update() {
     let hz = 10000000;
     let rtc_cntl = unsafe { &*esp32c3::RTC_CNTL::ptr() };

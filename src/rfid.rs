@@ -12,25 +12,16 @@ use esp_hal::{
     gpio::AnyPin,
     spi::{Mode, master::Spi},
 };
-
-#[cfg(feature = "esp32")]
-use mfrc522_01::consts::UidSize;
-
-#[cfg(feature = "esp32c3")]
-use mfrc522_02::consts::UidSize;
+use esp_hal_mfrc522::consts::UidSize;
 
 #[embassy_executor::task]
 pub async fn rfid_task(
     miso: AnyPin<'static>,
     mosi: AnyPin<'static>,
     sck: AnyPin<'static>,
-    #[cfg(feature = "esp32c3")] cs_pin: adv_shift_registers::wrappers::ShifterPin,
-    #[cfg(feature = "esp32")] cs_pin: esp_hal::gpio::Output<'static>,
+    cs_pin: adv_shift_registers::wrappers::ShifterPin,
     spi: esp_hal::peripherals::SPI2<'static>,
-
-    #[cfg(feature = "esp32c3")] dma_chan: esp_hal::peripherals::DMA_CH0<'static>,
-    #[cfg(feature = "esp32")] dma_chan: esp_hal::peripherals::DMA_SPI2<'static>,
-
+    dma_chan: esp_hal::peripherals::DMA_CH0<'static>,
     global_state: GlobalState,
 ) {
     #[allow(clippy::manual_div_ceil)]
@@ -52,16 +43,11 @@ pub async fn rfid_task(
     .with_buffers(dma_rx_buf, dma_tx_buf)
     .into_async();
 
-    #[cfg(feature = "esp32")]
-    let mut mfrc522 =
-        mfrc522_01::MFRC522::new(spi, cs_pin, || embassy_time::Instant::now().as_micros());
-
-    #[cfg(feature = "esp32c3")]
     let mut mfrc522 = {
         let spi = embedded_hal_bus::spi::ExclusiveDevice::new(spi, cs_pin, embassy_time::Delay)
             .expect("Spi bus init failed (cs set high failed)");
 
-        mfrc522_02::MFRC522::new(spi)
+        esp_hal_mfrc522::MFRC522::new(spi)
     };
 
     #[cfg(not(feature = "e2e"))]

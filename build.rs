@@ -29,14 +29,9 @@ fn main() {
         format!("D{epoch}")
     };
 
-    let hw = if cfg!(feature = "esp32") {
-        "v2"
-    } else if cfg!(feature = "esp32c3") {
-        "v3"
-    } else {
-        "unknown"
-    };
-
+    // NOTE: change this if something changes in schematic, (but not MCU)
+    // This will enable firmware to be built for multiple hw revisions for example
+    let hw = "v3";
     let generated = VERSION_TEMPLATE
         .replace("{version}", &version_str)
         .replace("{hw}", hw)

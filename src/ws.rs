@@ -43,7 +43,6 @@ pub async fn ws_task(
     let mut ssl_rx_buf = alloc::vec::Vec::new();
     let mut ssl_tx_buf = alloc::vec::Vec::new();
 
-    #[cfg(feature = "esp32c3")]
     if ws_url.secure {
         ssl_rx_buf.resize(TLS_BUF_SIZE, 0);
         ssl_tx_buf.resize(TLS_BUF_SIZE, 0);

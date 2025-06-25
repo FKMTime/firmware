@@ -4,7 +4,6 @@ use crate::{
 use embassy_time::{Instant, Timer};
 use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 
-#[cfg(feature = "esp32c3")]
 type AdcCal = esp_hal::analog::adc::AdcCalBasic<esp_hal::peripherals::ADC1<'static>>;
 
 const BAT_MIN: f64 = 3200.0;
@@ -25,26 +24,14 @@ const BATTERY_CURVE: [(f64, u8); 11] = [
 
 #[embassy_executor::task]
 pub async fn battery_read_task(
-    #[cfg(feature = "esp32c3")] adc_pin: esp_hal::peripherals::GPIO2<'static>,
-
-    #[cfg(feature = "esp32")] adc_pin: esp_hal::peripherals::GPIO34<'static>,
-
+    adc_pin: esp_hal::peripherals::GPIO2<'static>,
     adc: esp_hal::peripherals::ADC1<'static>,
     state: crate::state::GlobalState,
 ) {
     let mut adc_config = AdcConfig::new();
 
-    #[cfg(feature = "esp32c3")]
     let mut adc_pin = adc_config.enable_pin_with_cal::<_, AdcCal>(adc_pin, Attenuation::_11dB);
-
-    #[cfg(feature = "esp32")]
-    let mut adc_pin = adc_config.enable_pin(adc_pin, Attenuation::_11dB);
-
-    #[cfg(feature = "esp32c3")]
     let mut adc = Adc::new(adc, adc_config).into_async();
-
-    #[cfg(feature = "esp32")]
-    let mut adc = Adc::new(adc, adc_config);
 
     let mut battery_start = Instant::now();
 
@@ -62,14 +49,7 @@ pub async fn battery_read_task(
             continue;
         }
 
-        #[cfg(feature = "esp32c3")]
         let read = adc.read_oneshot(&mut adc_pin).await;
-
-        #[cfg(feature = "esp32")]
-        let read = macros::nb_to_fut!(adc.read_oneshot(&mut adc_pin))
-            .await
-            .unwrap_or(0);
-
         if !lcd_sent {
             state
                 .show_battery
@@ -142,12 +122,6 @@ fn bat_percentage(mv: f64) -> u8 {
     ((mv - BAT_MIN) / (BAT_MAX - BAT_MIN) * 100.0) as u8
 }
 
-#[cfg(feature = "esp32")]
-fn calculate(x: f64) -> f64 {
-    6827.85 - 1.56797 * x
-}
-
-#[cfg(feature = "esp32c3")]
 fn calculate(x: f64) -> f64 {
     1.18323 * x + 276.754
 }

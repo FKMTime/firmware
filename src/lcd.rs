@@ -21,29 +21,11 @@ use crate::{
 
 #[embassy_executor::task]
 pub async fn lcd_task(
-    #[cfg(feature = "esp32")] i2c: esp_hal::i2c::master::I2c<'static, esp_hal::Blocking>,
-
-    #[cfg(feature = "esp32c3")] lcd_shifter: adv_shift_registers::wrappers::ShifterValue,
-
+    lcd_shifter: adv_shift_registers::wrappers::ShifterValue,
     global_state: GlobalState,
     wifi_setup_sig: Rc<Signal<NoopRawMutex, ()>>,
     display: ShifterValueRange,
 ) {
-    #[cfg(feature = "esp32")]
-    let mut i2c_expander = port_expander::Pcf8574::new(i2c, true, true, true);
-
-    #[cfg(feature = "esp32")]
-    let mut lcd = LcdDisplay::new_pcf8574(&mut i2c_expander, Delay)
-        .with_display(ag_lcd_async::Display::On)
-        .with_blink(ag_lcd_async::Blink::Off)
-        .with_cursor(ag_lcd_async::Cursor::Off)
-        .with_size(ag_lcd_async::Size::Dots5x8)
-        .with_cols(16)
-        .with_lines(ag_lcd_async::Lines::TwoLines)
-        .build()
-        .await;
-
-    #[cfg(feature = "esp32c3")]
     let mut lcd = {
         let bl_pin = lcd_shifter.get_pin_mut(1, true);
         let rs_pin = lcd_shifter.get_pin_mut(2, true);

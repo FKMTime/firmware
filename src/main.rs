@@ -71,28 +71,13 @@ macro_rules! mk_static {
 async fn main(spawner: Spawner) {
     let peripherals = esp_hal::init({
         let mut config = esp_hal::Config::default();
-
-        #[cfg(feature = "esp32")]
-        {
-            config = config.with_cpu_clock(esp_hal::clock::CpuClock::_80MHz);
-        }
-
-        #[cfg(feature = "esp32c3")]
-        {
-            config = config.with_cpu_clock(esp_hal::clock::CpuClock::_80MHz);
-        }
+        config = config.with_cpu_clock(esp_hal::clock::CpuClock::_80MHz);
 
         config
     });
 
-    #[cfg(not(feature = "esp32"))]
     esp_alloc::heap_allocator!(size: 120 * 1024);
-
     {
-        #[cfg(feature = "esp32")]
-        const HEAP_SIZE: usize = 90 * 1024;
-
-        #[cfg(not(feature = "esp32"))]
         const HEAP_SIZE: usize = 60 * 1024;
 
         #[unsafe(link_section = ".dram2_uninit")]
@@ -143,7 +128,6 @@ async fn main(spawner: Spawner) {
     spawner.must_spawn(buttons::buttons_task(
         global_state.clone(),
         board.button_input,
-        #[cfg(feature = "esp32c3")]
         board.buttons_shifter,
     ));
     spawner.must_spawn(stackmat::stackmat_task(
@@ -175,11 +159,6 @@ async fn main(spawner: Spawner) {
         &mut wm_settings.ssid,
         format_args!("FKM-{:X}", crate::utils::get_efuse_u32()),
     );
-
-    #[cfg(feature = "esp32")]
-    {
-        wm_settings.esp_restart_after_connection = true;
-    }
 
     // mark ota as valid
     {
