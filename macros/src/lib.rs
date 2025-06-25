@@ -59,12 +59,11 @@ pub fn generate_button_handler_enum(args: TokenStream) -> TokenStream {
         .collect();
 
     let span = proc_macro::Span::call_site();
-    let source_file = span.source_file();
-    if !source_file.is_real() {
-        panic!("Source file path not real!");
-    }
+    let source_file = span.source().local_file();
+    let Some(path) = source_file else {
+        panic!("File path not found!");
+    };
 
-    let path = source_file.path();
     let read = std::fs::read_to_string(&path);
     if let Err(_) = read {
         return quote! {

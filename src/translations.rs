@@ -122,7 +122,7 @@ pub fn get_translation(key: usize) -> String {
 pub fn get_translation_params<T: Display>(key: usize, params: &[T]) -> String {
     let mut translation = get_translation(key);
     for (i, arg) in params.iter().enumerate() {
-        let placeholder = alloc::format!("{{{}}}", i);
+        let placeholder = alloc::format!("{{{i}}}");
         translation = translation.replace(&placeholder, &arg.to_string());
     }
 

@@ -247,7 +247,7 @@ async fn main(spawner: Spawner) {
                     log::info!("Starting mdns lookup...");
                     global_state.state.lock().await.scene = Scene::MdnsWait;
                     let mdns_res = mdns::mdns_query(wifi_res.sta_stack).await;
-                    log::info!("Mdns result: {:?}", mdns_res);
+                    log::info!("Mdns result: {mdns_res:?}");
 
                     mdns_res.to_string()
                 } else {

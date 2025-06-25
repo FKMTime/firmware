@@ -3,7 +3,7 @@ use crate::{
     state::{GlobalState, Scene, ota_state},
     structs::{ApiError, FromPacket, TimerPacket, TimerPacketInner},
 };
-use alloc::{rc::Rc, string::ToString};
+use alloc::{boxed::Box, rc::Rc, string::ToString};
 use core::str::FromStr;
 use embassy_net::{IpAddress, Stack, tcp::TcpSocket};
 use embassy_sync::{
@@ -131,7 +131,7 @@ async fn ws_loop(
         let remote_endpoint = (ip, ws_url.port);
         let r = socket.connect(remote_endpoint).await;
         if let Err(e) = r {
-            log::error!("connect error: {:?}", e);
+            log::error!("connect error: {e:?}");
             Timer::after_millis(WS_RETRY_MS).await;
             continue;
         }
@@ -145,7 +145,7 @@ async fn ws_loop(
                 .await
                 .map_err(|_| ())?;
 
-            WsSocket::Tls(tls)
+            WsSocket::Tls(Box::new(tls))
         } else {
             WsSocket::Raw(socket)
         };
@@ -504,7 +504,7 @@ async fn wait_for_tagged_response(tag: u64) -> TimerPacket {
 }
 
 enum WsSocket<'a, 'b> {
-    Tls(TlsConnection<'b, TcpSocket<'a>, Aes128GcmSha256>),
+    Tls(Box<TlsConnection<'b, TcpSocket<'a>, Aes128GcmSha256>>),
     Raw(TcpSocket<'a>),
 }
 
