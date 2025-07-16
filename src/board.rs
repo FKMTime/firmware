@@ -3,7 +3,7 @@ use adv_shift_registers::wrappers::ShifterValueRange;
 use anyhow::Result;
 use esp_hal::{
     gpio::{AnyPin, Input, InputConfig, Level, Output, Pin, Pull},
-    peripherals::{ADC1, BT, Peripherals,  SPI2, TIMG0, TIMG1, UART1, WIFI},
+    peripherals::{ADC1, BT, Peripherals, SPI2, TIMG0, TIMG1, UART1, WIFI},
     rng::Rng,
     timer::timg::TimerGroup,
 };
