@@ -67,6 +67,8 @@ macro_rules! mk_static {
     }};
 }
 
+esp_bootloader_esp_idf::esp_app_desc!();
+
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) {
     let peripherals = esp_hal::init({
@@ -218,7 +220,6 @@ async fn main(spawner: Spawner) {
             Some(&nvs),
             board.rng,
             board.timg0.timer0,
-            board.radio_clk,
             board.wifi,
             board.bt,
             Some(wifi_setup_sig),

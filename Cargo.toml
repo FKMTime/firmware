@@ -5,18 +5,18 @@ authors = ["filipton <filipton12@gmail.com>"]
 edition = "2024"
 
 [dependencies]
-esp-backtrace = { version = "0.16.0", features = [ "exception-handler", "panic-handler", "println", "custom-pre-backtrace", "custom-halt", "esp32c3" ] }
-esp-hal = { version = "1.0.0-beta.1", features = [ "esp32c3" ] }
-esp-println = { version = "0.14.0", features = ["log-04", "esp32c3"] }
+esp-backtrace = { version = "0.17.0", features = [ "exception-handler", "panic-handler", "println", "custom-pre-backtrace", "custom-halt", "esp32c3" ] }
+esp-hal = { version = "1.0.0-rc.0", features = [ "esp32c3" ] }
+esp-println = { version = "0.15.0", features = ["log-04", "esp32c3"] }
 log = { version = "0.4.27" }
-esp-wifi = { version = "0.14.1", features = ["coex", "esp32c3"] }
-esp-hal-embassy = { version = "0.8.1", features = ["esp32c3"] }
+esp-wifi = { version = "0.15.0", features = ["coex", "esp32c3"] }
+esp-hal-embassy = { version = "0.9.0", features = ["esp32c3"] }
 embassy-executor = { version = "0.7.0", features = ["arch-riscv32", "nightly"] }
 embassy-net = { version = "0.7.0", features = ["tcp", "udp", "multicast", "dhcpv4", "medium-ethernet", "proto-ipv4", "dns"] }
 embassy-time = { version = "0.4.0" }
-esp-storage = { version = "0.6.0", features = ["esp32c3"] }
+esp-storage = { version = "0.7.0", features = ["esp32c3"] }
 embedded-storage = "0.3.1"
-static_cell = { version = "2.1.0", features = ["nightly"] }
+static_cell = { version = "2.1.1", features = ["nightly"] }
 heapless = { version = "0.8.0", default-features = false }
 esp-alloc = "0.8.0"
 esp-hal-wifimanager = { git = "https://github.com/filipton/esp-hal-wifimanager", default-features = false, features = ["ap", "ble", "esp32c3"] }
@@ -37,14 +37,15 @@ critical-section = "1.2.0"
 getrandom = { version = "=0.2.15", features = ["custom"] }
 uuid = { version = "=1.12.1", default-features = false, features = ["v4"] }
 dyn-smooth = "0.2.0"
-esp-hal-ota = { version = "0.4.1", features = ["esp32c3"] }
-esp32c3 = { version = "0.29.0" }
+esp-hal-ota = { version = "0.4.2", features = ["esp32c3"] }
+esp32c3 = { version = "0.30.0" }
 anyhow = { version = "1.0.98", default-features = false }
 embedded-hal-bus = { version = "0.3.0", features = ["async"] }
 embedded-tls = { version = "0.17.0", default-features = false, features = ["alloc", "embedded-io-adapters", "log"] }
 rand_core = { version = "0.6.4", features = ["getrandom"] }
 ag-lcd-async = { git = "https://github.com/filipton/ag-lcd-async", features = [] }
 esp-hal-mfrc522 = { version = "0.2.1", features = ["embassy-time"] }
+esp-bootloader-esp-idf = { version = "0.2.0", features = ["log-04", "esp32c3"] }
 
 [features]
 default = ["sleep"]
