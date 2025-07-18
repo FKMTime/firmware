@@ -54,16 +54,11 @@ pub async fn lcd_task(
 
     _ = lcd_driver.print(
         0,
-        &alloc::format!("ID: {:X}", crate::utils::get_efuse_u32()),
+        &alloc::format!("{:X}", crate::utils::get_efuse_u32()),
         PrintAlign::Left,
         true,
     );
-    _ = lcd_driver.print(
-        1,
-        &alloc::format!("VER: {}", crate::version::VERSION),
-        PrintAlign::Left,
-        true,
-    );
+    _ = lcd_driver.print(1, crate::version::VERSION, PrintAlign::Center, true);
     lcd_driver.display_on_lcd(&mut lcd).await;
 
     _ = lcd_driver.print(
