@@ -21,7 +21,7 @@ heapless = { version = "0.8.0", default-features = false }
 esp-alloc = "0.8.0"
 esp-hal-wifimanager = { version = "0.1.0", default-features = false, features = ["ap", "ble", "esp32c3"] }
 serde = { version = "1.0.219", features = ["alloc", "derive"], default-features = false }
-serde_json = { version = "1.0.140", default-features = false, features = ["alloc"] }
+serde_json = { version = "1.0.142", default-features = false, features = ["alloc"] }
 adv-shift-registers = "0.2.5"
 embedded-hal = "1.0.0"
 esp-hal-mdns = "0.1.0"
@@ -37,7 +37,7 @@ critical-section = "1.2.0"
 getrandom = { version = "=0.2.15", features = ["custom"] }
 uuid = { version = "=1.12.1", default-features = false, features = ["v4"] }
 dyn-smooth = "0.2.0"
-esp-hal-ota = { version = "0.4.2", features = ["esp32c3"] }
+esp-hal-ota = { version = "0.4.3", features = ["esp32c3"] }
 esp32c3 = { version = "0.30.0" }
 anyhow = { version = "1.0.98", default-features = false }
 embedded-hal-bus = { version = "0.3.0", features = ["async"] }
