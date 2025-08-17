@@ -47,7 +47,7 @@ pub async fn rfid_task(
         let spi = embedded_hal_bus::spi::ExclusiveDevice::new(spi, cs_pin, embassy_time::Delay)
             .expect("Spi bus init failed (cs set high failed)");
 
-        esp_hal_mfrc522::MFRC522::new(spi)
+        esp_hal_mfrc522::MFRC522::new(esp_hal_mfrc522::drivers::SpiDriver::new(spi))
     };
 
     #[cfg(not(feature = "e2e"))]
