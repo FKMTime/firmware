@@ -17,19 +17,19 @@ embassy-time = { version = "0.4.0" }
 esp-storage = { version = "0.7.0", features = ["esp32c3"] }
 embedded-storage = "0.3.1"
 static_cell = { version = "2.1.1", features = ["nightly"] }
-heapless = { version = "0.8.0", default-features = false }
+heapless = { version = "0.9.1", default-features = false }
 esp-alloc = "0.8.0"
 esp-hal-wifimanager = { version = "0.1.0", default-features = false, features = ["ap", "ble", "esp32c3"] }
 serde = { version = "1.0.219", features = ["alloc", "derive"], default-features = false }
-serde_json = { version = "1.0.142", default-features = false, features = ["alloc"] }
+serde_json = { version = "1.0.143", default-features = false, features = ["alloc"] }
 adv-shift-registers = "0.2.5"
 embedded-hal = "1.0.0"
-esp-hal-mdns = "0.1.0"
+esp-hal-mdns = "0.1.1"
 embedded-io-async = "0.6.1"
 macros = { path = "./macros" }
 nb = "1.1.0"
 embassy-futures = "0.1.1"
-embassy-sync = "0.7.0"
+embassy-sync = "0.7.1"
 ws-framer = { version = "0.3.0", default-features = false, features = ["alloc", "http", "getrandom02"] }
 embedded-hal-async = "1.0.0"
 portable-atomic = { version = "1.11.1", default-features = false }
