@@ -1,11 +1,10 @@
+use crate::consts::MDNS_RESEND_INTERVAL;
 use embassy_net::{
     IpAddress, IpEndpoint, Stack,
     udp::{PacketMetadata, UdpSocket},
 };
 use embassy_time::{Duration, Timer};
 use esp_hal_mdns::MdnsQuery;
-
-use crate::consts::MDNS_RESEND_INTERVAL;
 
 pub async fn mdns_query(stack: Stack<'static>) -> heapless::String<255> {
     let mut rx_buffer = [0; 1024];
