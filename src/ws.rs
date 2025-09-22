@@ -190,6 +190,25 @@ async fn ws_loop(
             .send(WsFrameOwned::Ping(alloc::vec::Vec::new()))
             .await;
 
+        #[cfg(feature = "auto_add")]
+        {
+            if !global_state
+                .state
+                .lock()
+                .await
+                .device_added
+                .unwrap_or(false)
+            {
+                crate::ws::send_packet(crate::structs::TimerPacket {
+                    tag: None,
+                    data: crate::structs::TimerPacketInner::Add {
+                        firmware: alloc::string::ToString::to_string(crate::version::FIRMWARE),
+                    },
+                })
+                .await;
+            }
+        }
+
         loop {
             let res = ws_rw(
                 &mut rx_framer,
@@ -216,14 +235,26 @@ async fn ws_loop(
     }
 }
 
+#[derive(Debug)]
+#[allow(dead_code)]
+enum WsRwError {
+    OtaError(esp_hal_ota::OtaError),
+    TaggedPublisherError,
+    SocketWriteError,
+    SocketReadError,
+    Other,
+}
+
 async fn ws_rw(
     framer_rx: &mut WsRxFramer<'_>,
     framer_tx: &mut WsTxFramer<'_>,
     global_state: GlobalState,
     socket: &mut WsSocket<'_, '_>,
-) -> Result<(), ()> {
-    let mut ota = Ota::new(FlashStorage::new()).map_err(|_| ())?;
-    let tagged_publisher = TAGGED_RETURN.publisher().map_err(|_| ())?;
+) -> Result<(), WsRwError> {
+    let mut ota = Ota::new(FlashStorage::new()).map_err(WsRwError::OtaError)?;
+    let tagged_publisher = TAGGED_RETURN
+        .publisher()
+        .map_err(|_| WsRwError::TaggedPublisherError)?;
     let recv = FRAME_CHANNEL.receiver();
 
     loop {
@@ -231,14 +262,19 @@ async fn ws_rw(
         let write_fut = recv.receive();
 
         let n = match embassy_futures::select::select(read_fut, write_fut).await {
-            embassy_futures::select::Either::First(read_res) => read_res,
+            embassy_futures::select::Either::First(read_res) => {
+                read_res.map_err(|_| WsRwError::SocketReadError)
+            }
             embassy_futures::select::Either::Second(write_frame) => {
                 let mut offset = 0;
                 let frame_ref = write_frame.into_ref();
 
                 loop {
                     let (data, finish) = framer_tx.partial_frame(&frame_ref, &mut offset);
-                    socket.write_all(data).await.map_err(|_| ())?;
+                    socket
+                        .write_all(data)
+                        .await
+                        .map_err(|_| WsRwError::SocketWriteError)?;
                     if !finish {
                         break;
                     }
@@ -252,7 +288,7 @@ async fn ws_rw(
 
         if n == 0 {
             log::warn!("read_n: 0");
-            return Err(());
+            return Err(WsRwError::Other);
         }
 
         framer_rx.revolve_write_offset(n);
@@ -315,7 +351,7 @@ async fn ws_rw(
 
                                 log::info!("Start update: {firmware}/{version}");
                                 log::info!("Begin update size: {size} crc: {crc}");
-                                ota.ota_begin(size, crc).map_err(|_| ())?;
+                                ota.ota_begin(size, crc).map_err(WsRwError::OtaError)?;
                                 unsafe {
                                     crate::state::OTA_STATE = true;
                                 }

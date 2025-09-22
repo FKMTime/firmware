@@ -56,6 +56,7 @@ release_build = ["sleep"]
 e2e = []
 qa = []
 sleep = []
+auto_add = []
 
 [profile.dev]
 opt-level = 3
