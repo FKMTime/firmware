@@ -326,7 +326,7 @@ async fn submit_reset_wifi(
 
     {
         let mut state = state.state.lock().await;
-        state.custom_message = Some(("Resseting WIFI".to_string(), "Restart in 5s...".to_string()));
+        state.custom_message = Some(("Resetting WIFI".to_string(), "Restart in 5s...".to_string()));
     }
 
     Timer::after_millis(5000).await;
