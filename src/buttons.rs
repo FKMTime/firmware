@@ -144,6 +144,7 @@ async fn submit_up(
             tag: None,
             data: crate::structs::TimerPacketInner::Add {
                 firmware: alloc::string::ToString::to_string(crate::version::FIRMWARE),
+                sign_key: unsafe { crate::state::SIGN_KEY },
             },
         })
         .await;

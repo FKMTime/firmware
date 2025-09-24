@@ -77,6 +77,7 @@ pub enum TimerPacketInner {
     },
     Add {
         firmware: String,
+        sign_key: u32,
     },
     EpochTime {
         current_epoch: u64,

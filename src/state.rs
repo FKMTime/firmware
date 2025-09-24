@@ -9,6 +9,7 @@ use esp_hal_wifimanager::Nvs;
 use serde::{Deserialize, Serialize};
 
 pub static mut EPOCH_BASE: u64 = 0;
+pub static mut SIGN_KEY: u32 = 0;
 pub static mut SLEEP_STATE: bool = false;
 pub static mut DEEPER_SLEEP: bool = false;
 pub static mut OTA_STATE: bool = false;

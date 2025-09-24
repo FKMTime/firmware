@@ -115,6 +115,22 @@ async fn main(spawner: Spawner) {
     let global_state = Rc::new(GlobalStateInner::new(&nvs));
     let wifi_setup_sig = Rc::new(Signal::new());
 
+    // TODO: add error handling here
+    let mut sign_key = [0; 4];
+    if nvs.get_key(b"SIGN_KEY", &mut sign_key).await.is_ok() {
+        unsafe {
+            crate::state::SIGN_KEY =
+                u32::from_be_bytes(sign_key.try_into().expect("Cannot fail")) >> 1;
+        }
+    } else {
+        _ = getrandom::getrandom(&mut sign_key);
+        _ = nvs.append_key(b"SIGN_KEY", &sign_key).await;
+        unsafe {
+            crate::state::SIGN_KEY =
+                u32::from_be_bytes(sign_key.try_into().expect("Cannot fail")) >> 1;
+        }
+    }
+
     spawner.must_spawn(lcd::lcd_task(
         board.lcd,
         global_state.clone(),
