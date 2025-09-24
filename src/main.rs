@@ -118,17 +118,8 @@ async fn main(spawner: Spawner) {
     // TODO: add error handling here
     let mut sign_key = [0; 4];
     if nvs.get_key(b"SIGN_KEY", &mut sign_key).await.is_ok() {
-        unsafe {
-            crate::state::SIGN_KEY =
-                u32::from_be_bytes(sign_key.try_into().expect("Cannot fail")) >> 1;
-        }
+        unsafe { crate::state::SIGN_KEY = u32::from_be_bytes(sign_key) >> 1 };
     } else {
-        _ = getrandom::getrandom(&mut sign_key);
-        _ = nvs.append_key(b"SIGN_KEY", &sign_key).await;
-        unsafe {
-            crate::state::SIGN_KEY =
-                u32::from_be_bytes(sign_key.try_into().expect("Cannot fail")) >> 1;
-        }
     }
 
     spawner.must_spawn(lcd::lcd_task(
@@ -351,6 +342,7 @@ async fn logger_task(global_state: GlobalState) {
             ws::send_packet(structs::TimerPacket {
                 tag: None,
                 data: structs::TimerPacketInner::Logs { logs: tmp_logs },
+                sign_key: None,
             })
             .await;
         }

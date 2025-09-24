@@ -205,6 +205,7 @@ async fn ws_loop(
                         firmware: alloc::string::ToString::to_string(crate::version::FIRMWARE),
                         sign_key: unsafe { crate::state::SIGN_KEY },
                     },
+                    sign_key: None,
                 })
                 .await;
             }
@@ -463,6 +464,7 @@ pub async fn send_test_ack(global_state: &GlobalState) {
     send_packet(TimerPacket {
         tag: None,
         data: TimerPacketInner::TestAck(global_state.state.value().await.snapshot_data()),
+        sign_key: Some(unsafe { crate::state::SIGN_KEY }),
     })
     .await;
 }
@@ -505,6 +507,7 @@ where
     let packet = TimerPacket {
         tag: Some(tag),
         data: packet,
+        sign_key: Some(unsafe { crate::state::SIGN_KEY }),
     };
     send_packet(packet).await;
 

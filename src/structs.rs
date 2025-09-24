@@ -24,6 +24,9 @@ pub struct TimerPacket {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tag: Option<u64>,
     pub data: TimerPacketInner,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sign_key: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

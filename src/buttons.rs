@@ -140,12 +140,18 @@ async fn submit_up(
 
     // Device add
     if !state_val.device_added.unwrap_or(false) {
+        let mut sign_key = [0; 4];
+        _ = getrandom::getrandom(&mut sign_key);
+        _ = state.nvs.append_key(b"SIGN_KEY", &sign_key).await;
+        unsafe { crate::state::SIGN_KEY = u32::from_be_bytes(sign_key) >> 1 };
+
         crate::ws::send_packet(crate::structs::TimerPacket {
             tag: None,
             data: crate::structs::TimerPacketInner::Add {
                 firmware: alloc::string::ToString::to_string(crate::version::FIRMWARE),
                 sign_key: unsafe { crate::state::SIGN_KEY },
             },
+            sign_key: None,
         })
         .await;
 
