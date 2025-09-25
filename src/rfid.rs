@@ -98,14 +98,27 @@ pub async fn rfid_task(
         }
 
         #[cfg(not(feature = "e2e"))]
-        let Ok(card_uid) = mfrc522
-            .get_card(UidSize::Four)
-            .await
-            .map(|c| c.get_number())
-        else {
+        let Ok(card) = mfrc522.get_card(UidSize::Four).await else {
             continue;
         };
+        let card_uid = card.get_number();
         log::info!("Card UID: {card_uid}");
+
+        // TODO: check read
+        let status = mfrc522
+            .pcd_authenticate(
+                esp_hal_mfrc522::consts::PICCCommand::PICC_CMD_MF_AUTH_KEY_A,
+                1,
+                &[0x42, 0x0, 0x69, 0x12, 0x15, 0x9A], // test read key
+                &card,
+            )
+            .await;
+        if status.is_ok() {
+            let mut buff = [0; 18];
+            let mut byte_count = 18;
+            let res = mfrc522.mifare_read(1, &mut buff, &mut byte_count).await;
+            log::info!("read: {res:?}, data: {buff:#?}");
+        }
 
         let last_scan_time = (Instant::now().saturating_duration_since(last_card.1)).as_millis();
         if last_card.0 == card_uid && last_scan_time < 500 {
