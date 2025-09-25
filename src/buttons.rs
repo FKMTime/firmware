@@ -330,6 +330,7 @@ async fn submit_reset_wifi(
         .nvs
         .invalidate_key(esp_hal_wifimanager::WIFI_NVS_KEY)
         .await;
+    _ = state.nvs.invalidate_key(b"SIGN_KEY").await;
 
     {
         let mut state = state.state.lock().await;

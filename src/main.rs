@@ -119,7 +119,6 @@ async fn main(spawner: Spawner) {
     let mut sign_key = [0; 4];
     if nvs.get_key(b"SIGN_KEY", &mut sign_key).await.is_ok() {
         unsafe { crate::state::SIGN_KEY = u32::from_be_bytes(sign_key) >> 1 };
-    } else {
     }
 
     spawner.must_spawn(lcd::lcd_task(
