@@ -139,11 +139,12 @@ async fn ws_loop(
         let mut socket = if ws_url.secure {
             let mut tls = TlsConnection::new(socket, ssl_rx_buf, ssl_tx_buf);
 
-            let config: TlsConfig<'_, Aes128GcmSha256> =
-                TlsConfig::new().with_server_name(ws_url.host);
+            let config: TlsConfig<'_, Aes128GcmSha256> = TlsConfig::new().enable_rsa_signatures();
             tls.open::<OsRng, NoVerify>(TlsContext::new(&config, &mut OsRng))
                 .await
-                .map_err(|_| ())?;
+                .map_err(|e| {
+                    log::error!("tls open error: {e:?}");
+                })?;
 
             WsSocket::Tls(Box::new(tls))
         } else {
@@ -263,7 +264,7 @@ async fn ws_rw(
         let read_fut = socket.read(framer_rx.mut_buf());
         let write_fut = recv.receive();
 
-        let n = match embassy_futures::select::select(read_fut, write_fut).await {
+        let Ok(n) = (match embassy_futures::select::select(read_fut, write_fut).await {
             embassy_futures::select::Either::First(read_res) => {
                 read_res.map_err(|_| WsRwError::SocketReadError)
             }
@@ -286,7 +287,9 @@ async fn ws_rw(
 
                 continue;
             }
-        }?;
+        }) else {
+            continue;
+        };
 
         if n == 0 {
             log::warn!("read_n: 0");
@@ -551,7 +554,9 @@ enum WsSocket<'a, 'b> {
 impl WsSocket<'_, '_> {
     pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize, ()> {
         match self {
-            WsSocket::Tls(tls_connection) => tls_connection.read(buf).await.map_err(|_| ()),
+            WsSocket::Tls(tls_connection) => tls_connection.read(buf).await.map_err(|e| {
+                log::error!("tls read error: {e:?}");
+            }),
             WsSocket::Raw(tcp_socket) => tcp_socket.read(buf).await.map_err(|_| ()),
         }
     }
