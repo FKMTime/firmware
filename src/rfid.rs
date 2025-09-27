@@ -138,10 +138,16 @@ pub async fn rfid_task(
             continue;
         }
 
+        if unsafe { !crate::state::TRUST_SERVER } {
+            log::error!("Skipping card scan. Server not trusted!");
+            continue;
+        }
+
         let resp = crate::ws::send_request::<CardInfoResponsePacket>(
             crate::structs::TimerPacketInner::CardInfoRequest {
                 card_id: card_uid as u64,
                 attendance_device: None,
+                sign_key: unsafe { crate::state::SIGN_KEY },
             },
         )
         .await;
@@ -245,6 +251,11 @@ async fn process_card_info_response(
                     return Ok(());
                 }
 
+                if unsafe { !crate::state::TRUST_SERVER } {
+                    log::error!("Skipping solve send. Server not trusted!");
+                    return Ok(());
+                }
+
                 let resp = crate::ws::send_request::<SolveConfirmPacket>(
                     crate::structs::TimerPacketInner::Solve {
                         solve_time: state.solve_time.ok_or(anyhow!("Solve time is None"))?,
@@ -256,6 +267,7 @@ async fn process_card_info_response(
                         delegate: false,
                         inspection_time,
                         group_id: state.solve_group.clone().map(|r| r.group_id).expect(""),
+                        sign_key: unsafe { crate::state::SIGN_KEY },
                     },
                 )
                 .await;

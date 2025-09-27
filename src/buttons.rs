@@ -142,8 +142,10 @@ async fn submit_up(
     if !state_val.device_added.unwrap_or(false) {
         let mut sign_key = [0; 4];
         _ = getrandom::getrandom(&mut sign_key);
+        _ = state.nvs.invalidate_key(b"SIGN_KEY").await;
         _ = state.nvs.append_key(b"SIGN_KEY", &sign_key).await;
         unsafe { crate::state::SIGN_KEY = u32::from_be_bytes(sign_key) >> 1 };
+        unsafe { crate::state::TRUST_SERVER = true };
 
         crate::ws::send_packet(crate::structs::TimerPacket {
             tag: None,
@@ -151,7 +153,6 @@ async fn submit_up(
                 firmware: alloc::string::ToString::to_string(crate::version::FIRMWARE),
                 sign_key: unsafe { crate::state::SIGN_KEY },
             },
-            sign_key: None,
         })
         .await;
 
@@ -380,6 +381,11 @@ async fn delegate_hold(
                 return Ok(false);
             }
 
+            if unsafe { !crate::state::TRUST_SERVER } {
+                log::error!("Skipping delegate hold. Server not trusted!");
+                return Ok(false);
+            }
+
             let inspection_time = if state_val.use_inspection()
                 && state_val.inspection_start.is_some()
                 && state_val.inspection_end.is_some()
@@ -404,6 +410,7 @@ async fn delegate_hold(
                 delegate: true,
                 inspection_time,
                 group_id: state_val.solve_group.clone().map(|r| r.group_id).expect(""),
+                sign_key: unsafe { crate::state::SIGN_KEY },
             };
 
             state_val.delegate_hold = Some(3);

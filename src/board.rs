@@ -3,7 +3,7 @@ use adv_shift_registers::wrappers::ShifterValueRange;
 use anyhow::Result;
 use esp_hal::{
     gpio::{AnyPin, Input, InputConfig, Level, Output, Pin, Pull},
-    peripherals::{ADC1, BT, Peripherals, SPI2, TIMG0, TIMG1, UART1, WIFI},
+    peripherals::{ADC1, AES, BT, Peripherals, SPI2, TIMG0, TIMG1, UART1, WIFI},
     rng::Rng,
     timer::timg::TimerGroup,
 };
@@ -19,6 +19,7 @@ pub struct Board {
     pub wifi: WIFI<'static>,
     pub bt: BT<'static>,
     pub spi_dma: esp_hal::peripherals::DMA_CH0<'static>,
+    pub aes: AES<'static>,
 
     // spi
     pub miso: AnyPin<'static>,
@@ -49,6 +50,7 @@ impl Board {
         let adc1 = peripherals.ADC1;
         let wifi = peripherals.WIFI;
         let bt = peripherals.BT;
+        let aes = peripherals.AES;
 
         let sck = peripherals.GPIO4.degrade();
         let miso = peripherals.GPIO5.degrade();
@@ -95,6 +97,7 @@ impl Board {
             adc1,
             wifi,
             bt,
+            aes,
 
             miso,
             mosi,

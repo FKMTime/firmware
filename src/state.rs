@@ -2,14 +2,18 @@ use crate::{structs::PossibleGroup, utils::signaled_mutex::SignaledMutex};
 use alloc::{rc::Rc, string::String, vec::Vec};
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
+    mutex::Mutex,
     signal::Signal,
 };
 use embassy_time::{Duration, Instant, Timer};
+use esp_hal::aes::Aes;
 use esp_hal_wifimanager::Nvs;
 use serde::{Deserialize, Serialize};
 
-pub static mut EPOCH_BASE: u64 = 0;
 pub static mut SIGN_KEY: u32 = 0;
+pub static mut TRUST_SERVER: bool = false;
+
+pub static mut EPOCH_BASE: u64 = 0;
 pub static mut SLEEP_STATE: bool = false;
 pub static mut DEEPER_SLEEP: bool = false;
 pub static mut OTA_STATE: bool = false;
@@ -127,13 +131,14 @@ pub struct GlobalStateInner {
     pub update_progress: Signal<CriticalSectionRawMutex, u8>,
 
     pub nvs: Nvs,
+    pub aes: Mutex<NoopRawMutex, Aes<'static>>,
 
     #[cfg(feature = "e2e")]
     pub e2e: End2End,
 }
 
 impl GlobalStateInner {
-    pub fn new(nvs: &Nvs) -> Self {
+    pub fn new(nvs: &Nvs, aes: esp_hal::peripherals::AES<'static>) -> Self {
         Self {
             state: SignaledMutex::new(SignaledGlobalStateInner::new()),
             timer_signal: Signal::new(),
@@ -141,6 +146,7 @@ impl GlobalStateInner {
             update_progress: Signal::new(),
 
             nvs: nvs.clone(),
+            aes: Mutex::new(Aes::new(aes)),
 
             #[cfg(feature = "e2e")]
             e2e: End2End::new(),

@@ -14,6 +14,12 @@ pub fn set_brownout_detection(state: bool) {
     }
 }
 
+pub fn get_random_u64() -> u64 {
+    let mut buf = [0; 8];
+    _ = getrandom::getrandom(&mut buf);
+    u64::from_be_bytes(buf)
+}
+
 /// This function returns value with maximum of signed integer
 /// (2147483647) to easily store it in postgres db as integer
 pub fn get_efuse_u32() -> u32 {

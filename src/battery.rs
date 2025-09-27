@@ -82,7 +82,6 @@ pub async fn battery_read_task(
                     level: Some(bat_percentage as f64),
                     voltage: Some(bat_calc_mv / 1000.0),
                 },
-                sign_key: Some(unsafe { crate::state::SIGN_KEY }),
             })
             .await;
         }

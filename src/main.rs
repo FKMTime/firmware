@@ -112,7 +112,7 @@ async fn main(spawner: Spawner) {
     log::info!("This firmware is in QA mode!");
 
     let nvs = Nvs::new_from_part_table().expect("Wrong partition configuration!");
-    let global_state = Rc::new(GlobalStateInner::new(&nvs));
+    let global_state = Rc::new(GlobalStateInner::new(&nvs, board.aes));
     let wifi_setup_sig = Rc::new(Signal::new());
 
     // TODO: add error handling here
@@ -341,7 +341,6 @@ async fn logger_task(global_state: GlobalState) {
             ws::send_packet(structs::TimerPacket {
                 tag: None,
                 data: structs::TimerPacketInner::Logs { logs: tmp_logs },
-                sign_key: None,
             })
             .await;
         }

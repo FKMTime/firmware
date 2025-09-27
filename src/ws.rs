@@ -49,6 +49,8 @@ pub async fn ws_task(
     }
 
     loop {
+        unsafe { crate::state::TRUST_SERVER = false };
+
         let ws_fut = ws_loop(
             &global_state,
             ws_url.as_ref(),
@@ -159,13 +161,15 @@ async fn ws_loop(
         let mut tx_framer = WsTxFramer::new(true, ws_tx_buf);
         let mut rx_framer = WsRxFramer::new(ws_rx_buf);
 
+        let random = crate::utils::get_random_u64();
         let path = alloc::format!(
-            "{}?id={}&ver={}&hw={}&firmware={}",
+            "{}?id={}&ver={}&hw={}&firmware={}&random={}",
             ws_url.path,
             crate::utils::get_efuse_u32(),
             crate::version::VERSION,
             crate::version::HW_VER,
             crate::version::FIRMWARE,
+            random
         );
 
         socket
@@ -173,7 +177,7 @@ async fn ws_loop(
             .await
             .map_err(|_| ())?;
 
-        loop {
+        let headers = loop {
             let n = socket.read(rx_framer.mut_buf()).await.map_err(|_| ())?;
             if n == 0 {
                 log::error!("error while reading http response");
@@ -181,9 +185,33 @@ async fn ws_loop(
             }
 
             let res = rx_framer.process_http_response(n);
-            if let Some(code) = res {
-                log::info!("http_resp_code: {code}");
-                break;
+            if let Some(resp) = res {
+                log::info!("http_resp_code: {}", resp.status_code);
+                break resp.headers;
+            }
+        };
+
+        if let Some(Ok(random_signed)) = headers
+            .iter()
+            .find(|h| h.name.to_lowercase() == "randomsigned")
+            .map(|h| h.value.parse::<u128>())
+        {
+            let mut key = [0; 16];
+            key[..4].copy_from_slice(&unsafe { crate::state::SIGN_KEY.to_be_bytes() });
+
+            let mut block = [0; 16];
+            block.copy_from_slice(&random_signed.to_be_bytes());
+
+            global_state.aes.lock().await.process(
+                &mut block,
+                esp_hal::aes::Mode::Decryption128,
+                esp_hal::aes::Key::Key16(key),
+            );
+
+            let recv_random = u64::from_be_bytes(block[..8].try_into().expect(""));
+            log::info!("random: {random}, recv_random: {recv_random}");
+            if random == recv_random {
+                unsafe { crate::state::TRUST_SERVER = true };
             }
         }
 
@@ -206,7 +234,6 @@ async fn ws_loop(
                         firmware: alloc::string::ToString::to_string(crate::version::FIRMWARE),
                         sign_key: unsafe { crate::state::SIGN_KEY },
                     },
-                    sign_key: None,
                 })
                 .await;
             }
@@ -467,7 +494,6 @@ pub async fn send_test_ack(global_state: &GlobalState) {
     send_packet(TimerPacket {
         tag: None,
         data: TimerPacketInner::TestAck(global_state.state.value().await.snapshot_data()),
-        sign_key: Some(unsafe { crate::state::SIGN_KEY }),
     })
     .await;
 }
@@ -510,7 +536,6 @@ where
     let packet = TimerPacket {
         tag: Some(tag),
         data: packet,
-        sign_key: Some(unsafe { crate::state::SIGN_KEY }),
     };
     send_packet(packet).await;
 
