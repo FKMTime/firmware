@@ -925,9 +925,9 @@ dependencies = [
 
 [[package]]
 name = "esp-hal-mfrc522"
-version = "0.3.0"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94cab451c26e5f7f298e5646478977183874182dfeb0922036c9dbfbd023f2ad"
+checksum = "1b0756a5a9787391021a7430c7988e384529a620473d61df4c3522e1e0c46721"
 dependencies = [
  "embassy-time 0.4.0",
  "embedded-hal-async",

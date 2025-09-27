@@ -44,7 +44,7 @@ embedded-hal-bus = { version = "0.3.0", features = ["async"] }
 embedded-tls = { version = "0.17.0", default-features = false, features = ["alloc", "embedded-io-adapters", "log"] }
 rand_core = { version = "0.6.4", features = ["getrandom"] }
 ag-lcd-async = { git = "https://github.com/filipton/ag-lcd-async", features = [] }
-esp-hal-mfrc522 = { version = "0.3.0", features = ["embassy-time"] }
+esp-hal-mfrc522 = { version = "0.3.2", features = ["embassy-time"] }
 esp-bootloader-esp-idf = { version = "0.2.0", features = ["log-04", "esp32c3"] }
 
 [features]
