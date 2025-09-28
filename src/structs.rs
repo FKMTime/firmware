@@ -70,6 +70,7 @@ pub enum TimerPacketInner {
         added: bool,
         locales: Vec<TranslationLocale>,
         default_locale: String,
+        fkm_token: i32,
     },
     Logs {
         logs: Vec<String>,

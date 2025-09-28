@@ -349,6 +349,7 @@ async fn ws_rw(
                                 added,
                                 locales,
                                 default_locale,
+                                fkm_token,
                             } => {
                                 let mut state = global_state.state.lock().await;
                                 state.device_added = Some(added);
@@ -363,6 +364,8 @@ async fn ws_rw(
 
                                 crate::translations::select_locale(&default_locale, &global_state);
                                 crate::translations::set_default_locale();
+
+                                unsafe { crate::state::FKM_TOKEN = fkm_token };
                             }
                             TimerPacketInner::ApiError(e) => {
                                 // if should_reset_time reset time

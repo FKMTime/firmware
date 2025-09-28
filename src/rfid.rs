@@ -128,6 +128,10 @@ pub async fn rfid_task(
             continue;
         }
 
+        let fkm_token = unsafe { crate::state::FKM_TOKEN };
+        if fkm_token != 0 {
+            log::info!("TODO: use fkm_token ({fkm_token}) to verify if card is legit (not copied)");
+        }
         // TODO: WRITE SECURED
         /*
         let status = mfrc522
