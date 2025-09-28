@@ -215,9 +215,8 @@ pub async fn rfid_task(
         #[cfg(not(feature = "e2e"))]
         {
             _ = mfrc522.picc_halta().await;
-            _ = mfrc522.pcd_stop_crypto1().await;
+            //_ = mfrc522.pcd_stop_crypto1().await;
         }
-        embassy_time::Timer::after_secs(1).await;
     }
 }
 

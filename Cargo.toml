@@ -41,7 +41,7 @@ esp-hal-ota = { version = "0.4.4", features = ["esp32c3"] }
 esp32c3 = { version = "0.30.0" }
 anyhow = { version = "1.0.99", default-features = false }
 embedded-hal-bus = { version = "0.3.0", features = ["async"] }
-embedded-tls = { version = "0.17.0", default-features = false, features = ["alloc", "embedded-io-adapters", "log"] }
+embedded-tls = { git = "https://github.com/drogue-iot/embedded-tls.git", rev="fbd486c4ee0c1f14bbc762976896afc9e2d708c8", default-features = false, features = ["alloc", "embedded-io-adapters", "log"] }
 rand_core = { version = "0.6.4", features = ["getrandom"] }
 ag-lcd-async = { git = "https://github.com/filipton/ag-lcd-async", features = [] }
 esp-hal-mfrc522 = { version = "0.3.2", features = ["embassy-time"] }

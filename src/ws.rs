@@ -141,12 +141,18 @@ async fn ws_loop(
         let mut socket = if ws_url.secure {
             let mut tls = TlsConnection::new(socket, ssl_rx_buf, ssl_tx_buf);
 
-            let config: TlsConfig<'_, Aes128GcmSha256> = TlsConfig::new().enable_rsa_signatures();
-            tls.open::<OsRng, NoVerify>(TlsContext::new(&config, &mut OsRng))
-                .await
-                .map_err(|e| {
-                    log::error!("tls open error: {e:?}");
-                })?;
+            let config = TlsConfig::new().enable_rsa_signatures();
+            tls.open(TlsContext::new(
+                &config,
+                Provider {
+                    rng: OsRng,
+                    verifier: NoVerify {},
+                },
+            ))
+            .await
+            .map_err(|e| {
+                log::error!("tls open error: {e:?}");
+            })?;
 
             WsSocket::Tls(Box::new(tls))
         } else {
@@ -209,9 +215,12 @@ async fn ws_loop(
             );
 
             let recv_random = u64::from_be_bytes(block[..8].try_into().expect(""));
-            log::info!("random: {random}, recv_random: {recv_random}");
+            let fkm_token = i32::from_be_bytes(block[8..12].try_into().expect(""));
+
+            log::info!("random: {random}, recv_random: {recv_random} | fkm_token: {fkm_token}");
             if random == recv_random {
                 unsafe { crate::state::TRUST_SERVER = true };
+                unsafe { crate::state::FKM_TOKEN = fkm_token };
             }
         }
 
@@ -598,5 +607,27 @@ impl WsSocket<'_, '_> {
         }
 
         Ok(())
+    }
+}
+
+struct Provider {
+    rng: OsRng,
+    verifier: NoVerify,
+}
+
+impl embedded_tls::CryptoProvider for Provider {
+    type CipherSuite = Aes128GcmSha256;
+
+    type Signature = &'static [u8];
+
+    fn rng(&mut self) -> impl embedded_tls::CryptoRngCore {
+        &mut self.rng
+    }
+
+    fn verifier(
+        &mut self,
+    ) -> Result<&mut impl embedded_tls::TlsVerifier<Self::CipherSuite>, embedded_tls::TlsError>
+    {
+        Ok(&mut self.verifier)
     }
 }
