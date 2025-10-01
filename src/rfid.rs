@@ -128,10 +128,47 @@ pub async fn rfid_task(
             continue;
         }
 
-        let fkm_token = unsafe { crate::state::FKM_TOKEN };
-        if fkm_token != 0 {
-            log::info!("TODO: use fkm_token ({fkm_token}) to verify if card is legit (not copied)");
+        if unsafe { crate::state::SECURE_RFID } {
+            let fkm_token = unsafe { crate::state::FKM_TOKEN };
+            let mut key = [0; 6];
+            key[..4].copy_from_slice(&fkm_token.to_be_bytes());
+
+            let status = mfrc522
+                .pcd_authenticate(
+                    esp_hal_mfrc522::consts::PICCCommand::PICC_CMD_MF_AUTH_KEY_A,
+                    63,
+                    &key,
+                    &card,
+                )
+                .await;
+
+            if status.is_err() {
+                log::error!("Cannot auth card!");
+                _ = mfrc522.picc_halta().await;
+                _ = mfrc522.pcd_stop_crypto1().await;
+                continue;
+            }
+
+            let mut buff = [0; 18];
+            let mut byte_count = 18;
+            let res = mfrc522.mifare_read(62, &mut buff, &mut byte_count).await;
+            if res.is_err() {
+                log::error!("Cannot read secured rfid info!");
+                _ = mfrc522.picc_halta().await;
+                _ = mfrc522.pcd_stop_crypto1().await;
+                continue;
+            }
+
+            let secured_uid = u128::from_be_bytes(buff[..16].try_into().expect(""));
+            if secured_uid != card_uid {
+                log::error!("Card is not secure!");
+                log::debug!("read: {res:?}, data: {buff:#?}");
+                _ = mfrc522.picc_halta().await;
+                _ = mfrc522.pcd_stop_crypto1().await;
+                continue;
+            }
         }
+
         // TODO: WRITE SECURED
         /*
         let status = mfrc522
@@ -160,25 +197,6 @@ pub async fn rfid_task(
 
             let res = mfrc522.mifare_write(63, &buff, 16).await;
             log::info!("write res: {res:?}");
-        }
-        */
-
-        // TODO: READ SECURED
-        /*
-        let status = mfrc522
-            .pcd_authenticate(
-                esp_hal_mfrc522::consts::PICCCommand::PICC_CMD_MF_AUTH_KEY_A,
-                63,
-                &[0x69, 0x42, 0x00, 0x13, 0x56, 0xAE],
-                &card,
-            )
-            .await;
-        log::info!("auth status2: {status:?}");
-        if status.is_ok() {
-            let mut buff = [0; 18];
-            let mut byte_count = 18;
-            let res = mfrc522.mifare_read(62, &mut buff, &mut byte_count).await;
-            log::info!("read: {res:?}, data: {buff:#?}");
         }
         */
 

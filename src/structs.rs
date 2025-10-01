@@ -71,6 +71,7 @@ pub enum TimerPacketInner {
         locales: Vec<TranslationLocale>,
         default_locale: String,
         fkm_token: i32,
+        secure_rfid: bool,
     },
     Logs {
         logs: Vec<String>,

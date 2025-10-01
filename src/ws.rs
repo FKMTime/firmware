@@ -221,6 +221,7 @@ async fn ws_loop(
             if random == recv_random {
                 unsafe { crate::state::TRUST_SERVER = true };
                 unsafe { crate::state::FKM_TOKEN = fkm_token };
+                unsafe { crate::state::SECURE_RFID = false };
             }
         }
 
@@ -350,6 +351,7 @@ async fn ws_rw(
                                 locales,
                                 default_locale,
                                 fkm_token,
+                                secure_rfid,
                             } => {
                                 let mut state = global_state.state.lock().await;
                                 state.device_added = Some(added);
@@ -366,6 +368,7 @@ async fn ws_rw(
                                 crate::translations::set_default_locale();
 
                                 unsafe { crate::state::FKM_TOKEN = fkm_token };
+                                unsafe { crate::state::SECURE_RFID = secure_rfid };
                             }
                             TimerPacketInner::ApiError(e) => {
                                 // if should_reset_time reset time
