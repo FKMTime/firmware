@@ -398,6 +398,10 @@ async fn ws_rw(
                                     continue;
                                 }
 
+                                if unsafe { !crate::state::TRUST_SERVER } {
+                                    continue;
+                                }
+
                                 log::info!("Start update: {firmware}/{version}");
                                 log::info!("Begin update size: {size} crc: {crc}");
                                 ota.ota_begin(size, crc).map_err(WsRwError::OtaError)?;
@@ -427,6 +431,10 @@ async fn ws_rw(
                 },
                 WsFrame::Binary(data) => {
                     if !crate::state::ota_state() {
+                        continue;
+                    }
+
+                    if unsafe { !crate::state::TRUST_SERVER } {
                         continue;
                     }
 
