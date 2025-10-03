@@ -301,7 +301,7 @@ async fn ws_rw(
         let read_fut = socket.read(framer_rx.mut_buf());
         let write_fut = recv.receive();
 
-        let Ok(n) = (match embassy_futures::select::select(read_fut, write_fut).await {
+        let res = match embassy_futures::select::select(read_fut, write_fut).await {
             embassy_futures::select::Either::First(read_res) => {
                 read_res.map_err(|_| WsRwError::SocketReadError)
             }
@@ -324,10 +324,12 @@ async fn ws_rw(
 
                 continue;
             }
-        }) else {
-            continue;
         };
 
+        let n = match res {
+            Ok(n) => n,
+            Err(e) => return Err(e),
+        };
         if n == 0 {
             log::warn!("read_n: 0");
             return Err(WsRwError::Other);
