@@ -282,6 +282,15 @@ async fn main(spawner: Spawner) {
         };
 
         utils::backtrace_store::read_saved_backtrace().await;
+        // TODO: test disable usb
+        esp_hal::gpio::Input::new(
+            board.usb_dp,
+            esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::None),
+        );
+        esp_hal::gpio::Input::new(
+            board.usb_dm,
+            esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::None),
+        );
 
         let ws_sleep_sig = Rc::new(Signal::new());
         spawner.must_spawn(ws::ws_task(

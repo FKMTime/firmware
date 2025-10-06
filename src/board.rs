@@ -35,6 +35,10 @@ pub struct Board {
 
     pub buttons_shifter: adv_shift_registers::wrappers::ShifterValue,
     pub lcd: adv_shift_registers::wrappers::ShifterValue,
+
+    // usb pins
+    pub usb_dp: AnyPin<'static>,
+    pub usb_dm: AnyPin<'static>,
 }
 
 impl Board {
@@ -57,6 +61,8 @@ impl Board {
         let mosi = peripherals.GPIO6.degrade();
         let battery = peripherals.GPIO2;
         let stackmat_rx = peripherals.GPIO20.degrade();
+        let usb_dp = peripherals.GPIO19.degrade();
+        let usb_dm = peripherals.GPIO18.degrade();
 
         let button_input = Input::new(
             peripherals.GPIO3,
@@ -111,6 +117,8 @@ impl Board {
             buttons_shifter,
             digits_shifters,
             lcd,
+            usb_dp,
+            usb_dm,
         })
     }
 }
