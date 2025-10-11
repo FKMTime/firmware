@@ -8,6 +8,7 @@ use esp_hal::{
     timer::timg::TimerGroup,
 };
 
+#[allow(dead_code)]
 pub struct Board {
     // peripherals
     pub timg0: TimerGroup<'static, TIMG0<'static>>,

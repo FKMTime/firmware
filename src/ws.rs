@@ -217,7 +217,7 @@ async fn ws_loop(
             let recv_random = u64::from_be_bytes(block[..8].try_into().expect(""));
             let fkm_token = i32::from_be_bytes(block[8..12].try_into().expect(""));
 
-            log::info!("random: {random}, recv_random: {recv_random} | fkm_token: {fkm_token}");
+            log::debug!("random: {random}, recv_random: {recv_random} | fkm_token: {fkm_token}");
             if random == recv_random {
                 unsafe { crate::state::TRUST_SERVER = true };
                 unsafe { crate::state::FKM_TOKEN = fkm_token };
@@ -604,9 +604,7 @@ enum WsSocket<'a, 'b> {
 impl WsSocket<'_, '_> {
     pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize, ()> {
         match self {
-            WsSocket::Tls(tls_connection) => tls_connection.read(buf).await.map_err(|e| {
-                log::error!("tls read error: {e:?}");
-            }),
+            WsSocket::Tls(tls_connection) => tls_connection.read(buf).await.map_err(|_| ()),
             WsSocket::Raw(tcp_socket) => tcp_socket.read(buf).await.map_err(|_| ()),
         }
     }
