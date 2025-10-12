@@ -46,6 +46,7 @@ rand_core = { version = "0.6.4", features = ["getrandom"] }
 ag-lcd-async = { git = "https://github.com/filipton/ag-lcd-async", features = [] }
 esp-hal-mfrc522 = { version = "0.3.2", features = ["embassy-time"] }
 esp-bootloader-esp-idf = { version = "0.2.0", features = ["log-04", "esp32c3"] }
+trouble-host = { version = "0.2.4", features = ["scan"] }
 
 [features]
 default = ["sleep"]
