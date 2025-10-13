@@ -84,5 +84,5 @@ fn esp32c3_rtc_apb_freq_update() {
 
     rtc_cntl
         .store5()
-        .modify(|_, w| unsafe { w.scratch5().bits(value) });
+        .modify(|_, w| unsafe { w.data().bits(value) });
 }

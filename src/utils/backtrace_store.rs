@@ -4,8 +4,10 @@ const MAX_BACKTRACE_ADDRESSES: usize = 10;
 const RA_OFFSET: usize = 4;
 
 pub async fn read_saved_backtrace() {
-    if let Some(nvs_part) = esp_hal_wifimanager::Nvs::read_nvs_partition_offset() {
-        let mut flash = FlashStorage::new();
+    if let Some(nvs_part) = esp_hal_wifimanager::Nvs::read_nvs_partition_offset(unsafe {
+        esp_hal::peripherals::FLASH::steal()
+    }) {
+        let mut flash = FlashStorage::new(unsafe { esp_hal::peripherals::FLASH::steal() });
 
         let mut buf = [0; 1024];
         let res = embedded_storage::ReadStorage::read(
@@ -124,8 +126,10 @@ pub extern "Rust" fn custom_pre_backtrace() {
         tmp.push_str(&alloc::format!("0x{:x}\n", addr - RA_OFFSET));
     }
 
-    if let Some(nvs_part) = esp_hal_wifimanager::Nvs::read_nvs_partition_offset() {
-        let mut flash = FlashStorage::new();
+    if let Some(nvs_part) = esp_hal_wifimanager::Nvs::read_nvs_partition_offset(unsafe {
+        esp_hal::peripherals::FLASH::steal()
+    }) {
+        let mut flash = FlashStorage::new(unsafe { esp_hal::peripherals::FLASH::steal() });
         _ = embedded_storage::Storage::write(
             &mut flash,
             (nvs_part.0 + nvs_part.1 - 2) as u32,

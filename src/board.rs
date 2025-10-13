@@ -3,7 +3,9 @@ use adv_shift_registers::wrappers::ShifterValueRange;
 use anyhow::Result;
 use esp_hal::{
     gpio::{AnyPin, Input, InputConfig, Level, Output, Pin, Pull},
-    peripherals::{ADC1, AES, BT, Peripherals, SPI2, TIMG0, TIMG1, UART1, WIFI},
+    peripherals::{
+        ADC1, AES, BT, FLASH, Peripherals, SPI2, SW_INTERRUPT, TIMG0, TIMG1, UART1, WIFI,
+    },
     rng::Rng,
     timer::timg::TimerGroup,
 };
@@ -21,6 +23,8 @@ pub struct Board {
     pub bt: BT<'static>,
     pub spi_dma: esp_hal::peripherals::DMA_CH0<'static>,
     pub aes: AES<'static>,
+    pub flash: FLASH<'static>,
+    pub sw_interrupt: SW_INTERRUPT<'static>,
 
     // spi
     pub miso: AnyPin<'static>,
@@ -48,7 +52,7 @@ impl Board {
 
         let timg0 = TimerGroup::new(peripherals.TIMG0);
         let timg1 = TimerGroup::new(peripherals.TIMG1);
-        let rng = Rng::new(peripherals.RNG);
+        let rng = Rng::new();
         let uart1 = peripherals.UART1;
         let spi2 = peripherals.SPI2;
         let spi_dma = peripherals.DMA_CH0;
@@ -56,6 +60,8 @@ impl Board {
         let wifi = peripherals.WIFI;
         let bt = peripherals.BT;
         let aes = peripherals.AES;
+        let flash = peripherals.FLASH;
+        let sw_interrupt = peripherals.SW_INTERRUPT;
 
         let sck = peripherals.GPIO4.degrade();
         let miso = peripherals.GPIO5.degrade();
@@ -105,6 +111,8 @@ impl Board {
             wifi,
             bt,
             aes,
+            flash,
+            sw_interrupt,
 
             miso,
             mosi,

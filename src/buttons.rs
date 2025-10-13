@@ -36,6 +36,11 @@ pub async fn buttons_task(
         ButtonTrigger::HoldOnce(1000),
         inspection_hold_stop(),
     );
+    handler.add_handler(
+        Button::First,
+        ButtonTrigger::HoldOnce(15000),
+        connect_bluetooth_display(),
+    );
 
     handler.add_handler(Button::Fourth, ButtonTrigger::Down, room_right());
     handler.add_handler(Button::Fourth, ButtonTrigger::HoldOnce(1000), dnf_button());
@@ -241,6 +246,16 @@ async fn inspection_hold_stop(
         return Ok(true);
     }
 
+    Ok(false)
+}
+
+#[macros::button_handler]
+async fn connect_bluetooth_display(
+    _triggered: &ButtonTrigger,
+    _hold_time: u64,
+    state: &GlobalState,
+) -> Result<bool, ()> {
+    _ = state;
     Ok(false)
 }
 

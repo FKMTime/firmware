@@ -11,7 +11,6 @@ use embassy_sync::{
     signal::Signal,
 };
 use embassy_time::{Duration, Instant, Timer, WithTimeout};
-use embedded_io_async::Write;
 use embedded_tls::{Aes128GcmSha256, NoVerify, TlsConfig, TlsConnection, TlsContext};
 use esp_hal_ota::Ota;
 use esp_storage::FlashStorage;
@@ -208,11 +207,11 @@ async fn ws_loop(
             let mut block = [0; 16];
             block.copy_from_slice(&random_signed.to_be_bytes());
 
-            global_state.aes.lock().await.process(
-                &mut block,
-                esp_hal::aes::Mode::Decryption128,
-                esp_hal::aes::Key::Key16(key),
-            );
+            global_state
+                .aes
+                .lock()
+                .await
+                .decrypt(&mut block, esp_hal::aes::Key::Key128(key));
 
             let recv_random = u64::from_be_bytes(block[..8].try_into().expect(""));
             let fkm_token = i32::from_be_bytes(block[8..12].try_into().expect(""));
@@ -291,7 +290,10 @@ async fn ws_rw(
     global_state: GlobalState,
     socket: &mut WsSocket<'_, '_>,
 ) -> Result<(), WsRwError> {
-    let mut ota = Ota::new(FlashStorage::new()).map_err(WsRwError::OtaError)?;
+    let mut ota = Ota::new(FlashStorage::new(unsafe {
+        esp_hal::peripherals::FLASH::steal()
+    }))
+    .map_err(WsRwError::OtaError)?;
     let tagged_publisher = TAGGED_RETURN
         .publisher()
         .map_err(|_| WsRwError::TaggedPublisherError)?;
@@ -610,17 +612,25 @@ impl WsSocket<'_, '_> {
     }
 
     pub async fn write_all(&mut self, buf: &[u8]) -> Result<(), ()> {
-        match self {
-            WsSocket::Tls(tls_connection) => {
-                tls_connection.write_all(buf).await.map_err(|_| ())?;
-                tls_connection.flush().await.map_err(|_| ())?;
-            }
-            WsSocket::Raw(tcp_socket) => {
-                tcp_socket.write_all(buf).await.map_err(|_| ())?;
-            }
+        let mut written = 0;
+        while written < buf.len() {
+            written += self.write(&buf[written..]).await?;
         }
 
         Ok(())
+    }
+
+    pub async fn write(&mut self, buf: &[u8]) -> Result<usize, ()> {
+        let n = match self {
+            WsSocket::Tls(tls_connection) => {
+                let n = tls_connection.write(buf).await.map_err(|_| ())?;
+                tls_connection.flush().await.map_err(|_| ())?;
+                n
+            }
+            WsSocket::Raw(tcp_socket) => tcp_socket.write(buf).await.map_err(|_| ())?,
+        };
+
+        Ok(n)
     }
 }
 

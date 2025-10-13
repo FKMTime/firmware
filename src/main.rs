@@ -12,6 +12,7 @@ use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
 use embassy_time::{Instant, Timer};
 use esp_backtrace as _;
+use esp_hal::interrupt::software::SoftwareInterruptControl;
 use esp_hal_wifimanager::{Nvs, WIFI_NVS_KEY};
 use esp_storage::FlashStorage;
 use state::{GlobalState, GlobalStateInner, SavedGlobalState, Scene, ota_state, sleep_state};
@@ -20,7 +21,7 @@ use utils::{logger::FkmLogger, set_brownout_detection};
 use ws_framer::{WsUrl, WsUrlOwned};
 
 #[cfg(feature = "esp_now")]
-use esp_wifi::esp_now::{EspNowManager, EspNowSender};
+use esp_radio::esp_now::{EspNowManager, EspNowSender};
 
 mod battery;
 mod bluetooth;
@@ -70,7 +71,7 @@ macro_rules! mk_static {
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
-#[esp_hal_embassy::main]
+#[esp_rtos::main]
 async fn main(spawner: Spawner) {
     let peripherals = esp_hal::init({
         let mut config = esp_hal::Config::default();
@@ -99,7 +100,8 @@ async fn main(spawner: Spawner) {
 
     set_brownout_detection(false);
     let board = Board::init(peripherals).expect("Board init error");
-    esp_hal_embassy::init(board.timg1.timer0);
+    let software_interrupt = SoftwareInterruptControl::new(board.sw_interrupt);
+    esp_rtos::start(board.timg1.timer0, software_interrupt.software_interrupt0);
     FkmLogger::set_logger();
 
     log::info!("Version: {}", version::VERSION);
@@ -112,7 +114,8 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "qa")]
     log::info!("This firmware is in QA mode!");
 
-    let nvs = Nvs::new_from_part_table().expect("Wrong partition configuration!");
+    let nvs = Nvs::new_from_part_table(unsafe { board.flash.clone_unchecked() })
+        .expect("Wrong partition configuration!");
     let global_state = Rc::new(GlobalStateInner::new(&nvs, board.aes));
     let wifi_setup_sig = Rc::new(Signal::new());
 
@@ -171,7 +174,9 @@ async fn main(spawner: Spawner) {
 
     // mark ota as valid
     {
-        if let Ok(mut ota) = esp_hal_ota::Ota::new(FlashStorage::new()) {
+        if let Ok(mut ota) =
+            esp_hal_ota::Ota::new(FlashStorage::new(unsafe { board.flash.clone_unchecked() }))
+        {
             let res = ota.ota_mark_app_valid();
             if let Err(e) = res {
                 log::error!("Ota mark app valid failed: {e:?}");
@@ -226,7 +231,6 @@ async fn main(spawner: Spawner) {
             #[cfg(not(feature = "qa"))]
             Some(&nvs),
             board.rng,
-            board.timg0.timer0,
             board.wifi,
             unsafe { board.bt.clone_unchecked() },
             Some(wifi_setup_sig),

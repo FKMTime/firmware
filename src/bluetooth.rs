@@ -1,15 +1,19 @@
 use core::cell::RefCell;
 use embassy_futures::join::join;
 use embassy_time::{Duration, Timer};
-use esp_wifi::{EspWifiController, ble::controller::BleConnector};
+use esp_radio::{Controller as RadioController, ble::controller::BleConnector};
 use trouble_host::prelude::*;
 
 #[embassy_executor::task]
 pub async fn bluetooth_timer_task(
-    init: &'static EspWifiController<'static>,
+    init: &'static RadioController<'static>,
     bt: esp_hal::peripherals::BT<'static>,
 ) {
-    let connector = BleConnector::new(init, bt);
+    let Ok(connector) = BleConnector::new(init, bt, esp_radio::ble::Config::default()) else {
+        log::error!("Cannot init ble connector");
+        return;
+    };
+
     let controller: ExternalController<_, 20> = ExternalController::new(connector);
 
     let address: Address = Address::random(esp_hal::efuse::Efuse::mac_address());
