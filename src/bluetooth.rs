@@ -1,3 +1,4 @@
+use crate::state::GlobalState;
 use core::cell::RefCell;
 use embassy_futures::join::join;
 use embassy_time::{Duration, Timer};
@@ -8,6 +9,7 @@ use trouble_host::prelude::*;
 pub async fn bluetooth_timer_task(
     init: &'static RadioController<'static>,
     bt: esp_hal::peripherals::BT<'static>,
+    state: GlobalState,
 ) {
     let Ok(connector) = BleConnector::new(init, bt, esp_radio::ble::Config::default()) else {
         log::error!("Cannot init ble connector");
@@ -29,6 +31,7 @@ pub async fn bluetooth_timer_task(
 
     let printer = Printer {
         seen: RefCell::new(heapless::Deque::new()),
+        state: &state,
     };
     let mut scanner = Scanner::new(central);
     let _ = join(runner.run_with_handler(&printer), async {
@@ -45,11 +48,12 @@ pub async fn bluetooth_timer_task(
 }
 
 #[allow(dead_code)]
-struct Printer {
+struct Printer<'a> {
     seen: RefCell<heapless::Deque<BdAddr, 128>>,
+    state: &'a GlobalState,
 }
 
-impl EventHandler for Printer {
+impl<'a> EventHandler for Printer<'a> {
     fn on_adv_reports(&self, mut it: LeAdvReportsIter<'_>) {
         let mut seen = self.seen.borrow_mut();
         while let Some(Ok(report)) = it.next() {

@@ -309,12 +309,11 @@ async fn main(spawner: Spawner) {
         spawner.must_spawn(logger_task(global_state.clone()));
 
         // BUG: this fails after wifi setup (its good if wifi is saved and ble isnt spawned)
-        /*
         spawner.must_spawn(bluetooth::bluetooth_timer_task(
             wifi_res.wifi_init,
             board.bt,
+            global_state.clone(),
         ));
-        */
 
         set_brownout_detection(true);
         global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
