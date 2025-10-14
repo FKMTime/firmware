@@ -174,11 +174,11 @@ async fn submit_up(
             }
             2 => {
                 // Sign Cards
-                state_val.error_text = Some("Not Implemented".to_string());
+                unsafe { crate::state::SIGN_CARDS_MODE = true };
             }
             3 => {
                 // Un-Sign Cards
-                state_val.error_text = Some("Not Implemented".to_string());
+                unsafe { crate::state::UNSIGN_CARDS_MODE = true };
             }
             4 => {} // Exit
             _ => {
