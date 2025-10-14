@@ -4,6 +4,14 @@ use alloc::{
 };
 use serde::{Deserialize, Serialize};
 
+pub const CONFIG_MENU_ITEMS: [&str; 5] = [
+    "Reset WiFi",
+    "BT Display",
+    "Sign Cards",
+    "Un-Sign Cards",
+    "Exit",
+];
+
 #[derive(Deserialize, Debug)]
 pub struct ConnSettings {
     pub mdns: bool,

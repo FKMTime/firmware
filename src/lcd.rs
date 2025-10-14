@@ -193,6 +193,35 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
         return Some(());
     }
 
+    // display custom message on top of everything!
+    if let Some((line1, line2)) = &current_state.custom_message {
+        _ = lcd_driver.print(0, line1, PrintAlign::Center, true);
+        _ = lcd_driver.print(1, line2, PrintAlign::Center, true);
+
+        return Some(());
+    }
+
+    if let Some(sel) = current_state.selected_config_menu {
+        lcd_driver.clear_all().ok()?;
+        lcd_driver.print(0, "<", PrintAlign::Left, false).ok()?;
+        lcd_driver.print(0, ">", PrintAlign::Right, false).ok()?;
+
+        lcd_driver
+            .print(0, "Config Menu", PrintAlign::Center, false)
+            .ok()?;
+
+        lcd_driver
+            .print(
+                1,
+                &alloc::format!("{}. {}", sel + 1, crate::structs::CONFIG_MENU_ITEMS[sel]),
+                PrintAlign::Left,
+                true,
+            )
+            .ok()?;
+
+        return Some(());
+    }
+
     let overwritten = process_lcd_overwrite(&current_state, global_state, lcd_driver).await;
     if overwritten {
         return Some(());
@@ -305,6 +334,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 .ok()?;
         }
         Scene::GroupSelect => {
+            lcd_driver.clear_all().ok()?;
             lcd_driver.print(0, "<", PrintAlign::Left, false).ok()?;
             lcd_driver.print(1, "<", PrintAlign::Left, false).ok()?;
             lcd_driver.print(0, ">", PrintAlign::Right, false).ok()?;
@@ -510,14 +540,6 @@ async fn process_lcd_overwrite(
     _global_state: &GlobalState,
     lcd_driver: &mut LcdAbstract<80, 16, 2, 3>,
 ) -> bool {
-    // display custom message on top of everything!
-    if let Some((line1, line2)) = &current_state.custom_message {
-        _ = lcd_driver.print(0, line1, PrintAlign::Center, true);
-        _ = lcd_driver.print(1, line2, PrintAlign::Center, true);
-
-        return true;
-    }
-
     if !current_state.scene.can_be_lcd_overwritten() {
         return false;
     }

@@ -25,24 +25,19 @@ pub async fn buttons_task(
     );
     handler.add_handler(
         Button::Third,
-        ButtonTrigger::HoldOnce(15000),
-        submit_reset_wifi(),
+        ButtonTrigger::HoldOnce(10000),
+        submit_config_menu(),
     );
 
-    handler.add_handler(Button::First, ButtonTrigger::Down, room_left());
+    handler.add_handler(Button::First, ButtonTrigger::Down, sel_left());
     handler.add_handler(Button::First, ButtonTrigger::Down, inspection_start());
     handler.add_handler(
         Button::First,
         ButtonTrigger::HoldOnce(1000),
         inspection_hold_stop(),
     );
-    handler.add_handler(
-        Button::First,
-        ButtonTrigger::HoldOnce(15000),
-        connect_bluetooth_display(),
-    );
 
-    handler.add_handler(Button::Fourth, ButtonTrigger::Down, room_right());
+    handler.add_handler(Button::Fourth, ButtonTrigger::Down, sel_right());
     handler.add_handler(Button::Fourth, ButtonTrigger::HoldOnce(1000), dnf_button());
     handler.add_handler(Button::Fourth, ButtonTrigger::Up, penalty_button());
 
@@ -90,12 +85,20 @@ async fn wakeup_button(
 }
 
 #[macros::button_handler]
-async fn room_left(
+async fn sel_left(
     _triggered: &ButtonTrigger,
     _hold_time: u64,
     state: &GlobalState,
 ) -> Result<bool, ()> {
     let mut state = state.state.lock().await;
+    if let Some(sel) = state.selected_config_menu.as_mut() {
+        *sel = sel
+            .wrapping_sub(1)
+            .min(crate::structs::CONFIG_MENU_ITEMS.len() - 1);
+
+        return Ok(true);
+    }
+
     if state.scene == Scene::GroupSelect {
         state.group_selected_idx = state
             .group_selected_idx
@@ -109,12 +112,21 @@ async fn room_left(
 }
 
 #[macros::button_handler]
-async fn room_right(
+async fn sel_right(
     _triggered: &ButtonTrigger,
     _hold_time: u64,
     state: &GlobalState,
 ) -> Result<bool, ()> {
     let mut state = state.state.lock().await;
+    if let Some(sel) = state.selected_config_menu.as_mut() {
+        *sel += 1;
+        if *sel == crate::structs::CONFIG_MENU_ITEMS.len() {
+            *sel = 0;
+        }
+
+        return Ok(true);
+    }
+
     if state.scene == Scene::GroupSelect {
         state.group_selected_idx += 1;
         if state.group_selected_idx == state.possible_groups.len() {
@@ -140,7 +152,44 @@ async fn submit_up(
         state_val.error_text = None;
         state.state.signal();
 
-        return Ok(false);
+        return Ok(true);
+    }
+
+    if let Some(sel) = state_val.selected_config_menu {
+        match sel {
+            0 => {
+                // Reset WiFi
+                _ = state
+                    .nvs
+                    .invalidate_key(esp_hal_wifimanager::WIFI_NVS_KEY)
+                    .await;
+                _ = state.nvs.invalidate_key(b"SIGN_KEY").await;
+
+                Timer::after_millis(250).await;
+                esp_hal::system::software_reset();
+            }
+            1 => {
+                // BT Display
+                state_val.error_text = Some("Not Implemented".to_string());
+            }
+            2 => {
+                // Sign Cards
+                state_val.error_text = Some("Not Implemented".to_string());
+            }
+            3 => {
+                // Un-Sign Cards
+                state_val.error_text = Some("Not Implemented".to_string());
+            }
+            4 => {} // Exit
+            _ => {
+                state_val.error_text = Some("Not Implemented".to_string());
+            }
+        }
+
+        state_val.selected_config_menu = None;
+        state.state.signal();
+
+        return Ok(true);
     }
 
     // Device add
@@ -161,7 +210,7 @@ async fn submit_up(
         })
         .await;
 
-        return Ok(false);
+        return Ok(true);
     }
 
     if state_val.should_skip_other_actions() {
@@ -250,16 +299,6 @@ async fn inspection_hold_stop(
 }
 
 #[macros::button_handler]
-async fn connect_bluetooth_display(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
-    _ = state;
-    Ok(false)
-}
-
-#[macros::button_handler]
 async fn dnf_button(
     _triggered: &ButtonTrigger,
     _hold_time: u64,
@@ -337,24 +376,17 @@ async fn submit_reset_competitor(
 }
 
 #[macros::button_handler]
-async fn submit_reset_wifi(
+async fn submit_config_menu(
     _triggered: &ButtonTrigger,
     _hold_time: u64,
     state: &GlobalState,
 ) -> Result<bool, ()> {
-    _ = state
-        .nvs
-        .invalidate_key(esp_hal_wifimanager::WIFI_NVS_KEY)
-        .await;
-    _ = state.nvs.invalidate_key(b"SIGN_KEY").await;
-
     {
         let mut state = state.state.lock().await;
-        state.custom_message = Some(("Resetting WIFI".to_string(), "Restart in 5s...".to_string()));
+        state.selected_config_menu = Some(0);
     }
 
-    Timer::after_millis(5000).await;
-    esp_hal::system::software_reset();
+    Ok(true)
 }
 
 #[macros::button_handler]

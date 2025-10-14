@@ -172,6 +172,7 @@ pub struct SignaledGlobalStateInner {
     pub error_text: Option<String>,
     pub possible_groups: Vec<PossibleGroup>,
     pub group_selected_idx: usize,
+    pub selected_config_menu: Option<usize>,
 
     pub device_added: Option<bool>,
     pub server_connected: Option<bool>,
@@ -220,6 +221,7 @@ impl SignaledGlobalStateInner {
             error_text: None,
             possible_groups: Vec::new(),
             group_selected_idx: 0,
+            selected_config_menu: None,
 
             device_added: None,
             server_connected: None,
