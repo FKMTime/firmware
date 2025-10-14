@@ -133,6 +133,7 @@ pub struct GlobalStateInner {
     pub timer_signal: Signal<NoopRawMutex, u64>,
     pub show_battery: Signal<CriticalSectionRawMutex, u8>,
     pub update_progress: Signal<CriticalSectionRawMutex, u8>,
+    pub sign_unsign_progress: Signal<CriticalSectionRawMutex, bool>,
 
     pub nvs: Nvs,
     pub aes: Mutex<NoopRawMutex, Aes<'static>>,
@@ -148,6 +149,7 @@ impl GlobalStateInner {
             timer_signal: Signal::new(),
             show_battery: Signal::new(),
             update_progress: Signal::new(),
+            sign_unsign_progress: Signal::new(),
 
             nvs: nvs.clone(),
             aes: Mutex::new(Aes::new(aes)),

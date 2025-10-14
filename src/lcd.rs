@@ -222,6 +222,42 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
         return Some(());
     }
 
+    if unsafe { crate::state::SIGN_CARDS_MODE || crate::state::UNSIGN_CARDS_MODE } {
+        lcd_driver.clear_all().ok()?;
+        lcd_driver
+            .print(0, "Signing | Submit To Exit", PrintAlign::Left, true)
+            .ok()?;
+
+        if global_state.sign_unsign_progress.signaled() {
+            let status = if global_state.sign_unsign_progress.wait().await {
+                "OK"
+            } else {
+                "FAIL"
+            };
+
+            lcd_driver
+                .print(
+                    1,
+                    &alloc::format!("Operation {}", status),
+                    PrintAlign::Center,
+                    true,
+                )
+                .ok()?;
+            lcd_driver.display_on_lcd(lcd).await;
+
+            Timer::after_millis(300).await;
+            lcd_driver
+                .print(1, "Scan the card", PrintAlign::Center, true)
+                .ok()?;
+        } else {
+            lcd_driver
+                .print(1, "Scan the card", PrintAlign::Center, true)
+                .ok()?;
+        }
+
+        return Some(());
+    }
+
     let overwritten = process_lcd_overwrite(&current_state, global_state, lcd_driver).await;
     if overwritten {
         return Some(());

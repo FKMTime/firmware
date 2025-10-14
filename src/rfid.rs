@@ -158,10 +158,19 @@ pub async fn rfid_task(
                 let res = mfrc522.mifare_write(63, &buff, 16).await;
                 if let Err(e) = res {
                     log::error!("cannot unsecure card error: {e:?}");
+                    global_state.sign_unsign_progress.signal(false);
+                    global_state.state.signal();
                     _ = mfrc522.picc_halta().await;
                     _ = mfrc522.pcd_stop_crypto1().await;
                     continue;
                 }
+
+                global_state.sign_unsign_progress.signal(true);
+                global_state.state.signal();
+            } else {
+                log::error!("unsign auth failed!");
+                global_state.sign_unsign_progress.signal(false);
+                global_state.state.signal();
             }
 
             _ = mfrc522.picc_halta().await;
@@ -198,6 +207,8 @@ pub async fn rfid_task(
                 let res = mfrc522.mifare_write(63, &buff, 16).await;
                 if let Err(e) = res {
                     log::error!("write res: {e:?}");
+                    global_state.sign_unsign_progress.signal(false);
+                    global_state.state.signal();
                     _ = mfrc522.picc_halta().await;
                     _ = mfrc522.pcd_stop_crypto1().await;
                     continue;
@@ -214,6 +225,8 @@ pub async fn rfid_task(
                     .await;
                 if status.is_err() {
                     log::error!("Cannot auth card!");
+                    global_state.sign_unsign_progress.signal(false);
+                    global_state.state.signal();
                     _ = mfrc522.picc_halta().await;
                     _ = mfrc522.pcd_stop_crypto1().await;
                     continue;
@@ -224,10 +237,18 @@ pub async fn rfid_task(
                 let res = mfrc522.mifare_write(62, &buff, 16).await;
                 if res.is_err() {
                     log::error!("Cannot write secured rfid info!");
+                    global_state.sign_unsign_progress.signal(false);
+                    global_state.state.signal();
                     _ = mfrc522.picc_halta().await;
                     _ = mfrc522.pcd_stop_crypto1().await;
                     continue;
                 }
+
+                global_state.sign_unsign_progress.signal(true);
+                global_state.state.signal();
+            } else {
+                global_state.sign_unsign_progress.signal(false);
+                global_state.state.signal();
             }
 
             _ = mfrc522.picc_halta().await;

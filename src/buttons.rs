@@ -155,6 +155,16 @@ async fn submit_up(
         return Ok(true);
     }
 
+    if unsafe { crate::state::SIGN_CARDS_MODE || crate::state::UNSIGN_CARDS_MODE } {
+        unsafe {
+            crate::state::SIGN_CARDS_MODE = false;
+            crate::state::UNSIGN_CARDS_MODE = false;
+        }
+
+        state.state.signal();
+        return Ok(true);
+    }
+
     if let Some(sel) = state_val.selected_config_menu {
         match sel {
             0 => {
@@ -175,10 +185,14 @@ async fn submit_up(
             2 => {
                 // Sign Cards
                 unsafe { crate::state::SIGN_CARDS_MODE = true };
+                // TODO: change this shit
+                // MAYBE make second scene set (for things like this)
             }
             3 => {
                 // Un-Sign Cards
                 unsafe { crate::state::UNSIGN_CARDS_MODE = true };
+                // TODO: change this shit
+                // MAYBE make second scene set (for things like this)
             }
             4 => {} // Exit
             _ => {
