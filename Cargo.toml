@@ -19,7 +19,7 @@ embedded-storage = "0.3.1"
 static_cell = { version = "2.1.1", features = ["nightly"] }
 heapless = { version = "0.9.1", default-features = false }
 esp-alloc = "0.9.0"
-esp-hal-wifimanager = { version = "0.2.1", default-features = false, features = ["ap", "ble", "esp32c3"] }
+esp-hal-wifimanager = { version = "0.2.2", default-features = false, features = ["ap", "ble", "esp32c3"] }
 serde = { version = "1.0.228", features = ["alloc", "derive"], default-features = false }
 serde_json = { version = "1.0.145", default-features = false, features = ["alloc"] }
 adv-shift-registers = "0.2.5"
@@ -46,7 +46,7 @@ rand_core = { version = "0.6.4", features = ["getrandom"] }
 ag-lcd-async = { git = "https://github.com/filipton/ag-lcd-async", features = [] }
 esp-hal-mfrc522 = { version = "0.3.2", features = ["embassy-time"] }
 esp-bootloader-esp-idf = { version = "0.3.0", features = ["log-04", "esp32c3"] }
-trouble-host = { version = "0.4.0", features = ["scan"] }
+trouble-host = { version = "0.5.0", features = ["scan", "security"] }
 
 [features]
 default = ["sleep"]
