@@ -113,43 +113,39 @@ pub async fn bluetooth_timer_task(
             .unwrap();
 
         let _ = join(client.task(), async {
-            log::info!("Looking for battery service");
+            log::info!("Looking for digits service");
             let services = client
-                .services_by_uuid(&Uuid::new_short(0x180f))
+                .services_by_uuid(&Uuid::from(0xa5bad9f2700a4c3db9e2e58ad262d40eu128))
                 .await
                 .unwrap();
             let service = services.first().unwrap().clone();
 
             log::info!("Looking for value handle");
             let c: Characteristic<u8> = client
-                .characteristic_by_uuid(&service, &Uuid::new_short(0x2a19))
+                .characteristic_by_uuid(
+                    &service,
+                    &Uuid::from(0xa5178cade4e045988053a4a78b9281e2u128),
+                )
                 .await
                 .unwrap();
 
-            log::info!("Subscribing notifications");
-            let mut listener = client.subscribe(&c, false).await.unwrap();
+            loop {
+                let mut data = [0; 8];
+                data[0] = 0x69;
+                data[1] = 0x42;
+                data[2] = 8;
+                data[3] = 3;
+                data[4] = 5;
+                data[5] = 1;
+                data[6] = 3;
+                data[7] = 7;
 
-            let _ = join(
-                async {
-                    loop {
-                        let mut data = [0; 1];
-                        client.read_characteristic(&c, &mut data[..]).await.unwrap();
-                        log::info!("Read value: {}", data[0]);
-                        Timer::after(Duration::from_secs(10)).await;
-                    }
-                },
-                async {
-                    loop {
-                        let data = listener.next().await;
-                        log::info!(
-                            "Got notification: {:?} (val: {})",
-                            data.as_ref(),
-                            data.as_ref()[0]
-                        );
-                    }
-                },
-            )
-            .await;
+                client
+                    .write_characteristic_without_response(&c, &mut data[..])
+                    .await
+                    .unwrap();
+                Timer::after_millis(1000 / 30).await;
+            }
         })
         .await;
     })
