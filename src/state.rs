@@ -131,6 +131,7 @@ pub type GlobalState = Rc<GlobalStateInner>;
 pub struct GlobalStateInner {
     pub state: SignaledMutex<CriticalSectionRawMutex, SignaledGlobalStateInner>,
     pub timer_signal: Signal<NoopRawMutex, u64>,
+    pub bt_display_signal: Signal<NoopRawMutex, u64>,
     pub show_battery: Signal<CriticalSectionRawMutex, u8>,
     pub update_progress: Signal<CriticalSectionRawMutex, u8>,
     pub sign_unsign_progress: Signal<CriticalSectionRawMutex, bool>,
@@ -147,6 +148,7 @@ impl GlobalStateInner {
         Self {
             state: SignaledMutex::new(SignaledGlobalStateInner::new()),
             timer_signal: Signal::new(),
+            bt_display_signal: Signal::new(),
             show_battery: Signal::new(),
             update_progress: Signal::new(),
             sign_unsign_progress: Signal::new(),

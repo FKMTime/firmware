@@ -1,6 +1,6 @@
 use crate::state::GlobalState;
 use core::cell::RefCell;
-use embassy_futures::join::join;
+use embassy_futures::select::select;
 use embassy_time::{Duration, Timer, with_timeout};
 use esp_radio::{Controller as RadioController, ble::controller::BleConnector};
 use rand_core::OsRng;
@@ -12,198 +12,229 @@ pub async fn bluetooth_timer_task(
     bt: esp_hal::peripherals::BT<'static>,
     state: GlobalState,
 ) {
-    let Ok(connector) = BleConnector::new(init, bt, esp_radio::ble::Config::default()) else {
-        log::error!("Cannot init ble connector");
-        return;
-    };
-
-    let controller: ExternalController<_, 20> = ExternalController::new(connector);
-
-    let address: Address = Address::random(esp_hal::efuse::Efuse::mac_address());
-    log::info!("[ble] address = {address:x?}");
-
-    let mut resources: HostResources<DefaultPacketPool, 1, 3> = HostResources::new();
-    let stack = trouble_host::new(controller, &mut resources)
-        .set_random_address(address)
-        .set_random_generator_seed(&mut OsRng);
-    let Host {
-        mut central,
-        mut runner,
-        ..
-    } = stack.build();
-
-    let (mut has_bond_info, bond_info) =
-        if let Some(bond_info) = load_bonding_info(&state.nvs).await {
-            log::info!("Bond stored. Adding to stack.");
-            stack.add_bond_information(bond_info.clone()).unwrap();
-            (true, Some(bond_info))
-        } else {
-            log::info!("No bond stored.");
-            (false, None)
+    loop {
+        let Ok(connector) = BleConnector::new(
+            init,
+            unsafe { bt.clone_unchecked() },
+            esp_radio::ble::Config::default(),
+        ) else {
+            log::error!("Cannot init ble connector");
+            return;
         };
 
-    /*
-    let printer = Printer {
-        seen: RefCell::new(heapless::Deque::new()),
-        state: &state,
-    };
+        let controller: ExternalController<_, 20> = ExternalController::new(connector);
 
-    let mut scanner = Scanner::new(central);
-    let _ = join(runner.run_with_handler(&printer), async {
-        let config = ScanConfig::default();
-        let mut _session = scanner.scan(&config).await.unwrap();
-        // Scan forever
-        loop {
-            Timer::after(Duration::from_secs(1)).await;
-        }
-    })
-    .await;
-    */
+        let address: Address = Address::random(esp_hal::efuse::Efuse::mac_address());
+        log::info!("[ble] address = {address:x?}");
 
-    // let central = scanner.into_inner();
-    let display_addr = bond_info
-        .map(|x| x.identity.bd_addr.into_inner())
-        .unwrap_or([156, 158, 110, 52, 62, 236]);
-    let target: Address = Address::random(display_addr);
+        let mut resources: HostResources<DefaultPacketPool, 1, 3> = HostResources::new();
+        let stack = trouble_host::new(controller, &mut resources)
+            .set_random_address(address)
+            .set_random_generator_seed(&mut OsRng);
+        let Host {
+            mut central,
+            mut runner,
+            ..
+        } = stack.build();
 
-    let config = ConnectConfig {
-        connect_params: Default::default(),
-        scan_config: ScanConfig {
-            filter_accept_list: &[(target.kind, &target.addr)],
-            ..Default::default()
-        },
-    };
+        /*
+        let printer = Printer {
+            seen: RefCell::new(heapless::Deque::new()),
+            state: &state,
+        };
 
-    log::info!("Scanning for peripheral...");
-    let _ = join(runner.run(), async {
-        loop {
-            log::info!("Connecting to {:?}", target);
-            let conn = match with_timeout(Duration::from_secs(5), central.connect(&config)).await {
-                Ok(Ok(conn)) => conn,
-                Ok(Err(e)) => {
-                    log::error!("Failed to connect: {:?}", e);
-                    Timer::after(Duration::from_secs(1)).await;
-                    continue;
-                }
-                Err(_) => {
-                    log::error!("Timeout connecting");
-                    Timer::after(Duration::from_secs(1)).await;
-                    continue;
-                }
-            };
-
-            // Allow bonding if a bond isn't already stored
-            conn.set_bondable(!has_bond_info).unwrap();
-            log::info!("Connected, creating gatt client");
-
-            {
-                conn.request_security().unwrap();
-                loop {
-                    match conn.next().await {
-                        ConnectionEvent::PairingComplete {
-                            security_level,
-                            bond,
-                        } => {
-                            log::info!("Pairing complete: {:?}", security_level);
-                            if let Some(bond) = bond {
-                                store_bonding_info(&state.nvs, &bond).await;
-                                has_bond_info = true;
-                            }
-                            break;
-                        }
-                        ConnectionEvent::PairingFailed(err) => {
-                            log::error!("Pairing failed: {:?}", err);
-                            break;
-                        }
-                        ConnectionEvent::Disconnected { reason } => {
-                            log::error!("Disconnected: {:?}", reason);
-                            break;
-                        }
-                        _ => {}
-                    }
-                }
+        let mut scanner = Scanner::new(central);
+        let _ = join(runner.run_with_handler(&printer), async {
+            let config = ScanConfig::default();
+            let mut _session = scanner.scan(&config).await.unwrap();
+            // Scan forever
+            loop {
+                Timer::after(Duration::from_secs(1)).await;
             }
+        })
+        .await;
+        */
 
-            let client = GattClient::<_, DefaultPacketPool, 10>::new(&stack, &conn)
-                .await
-                .unwrap();
-
-            use embassy_futures::select::{Either, select};
-
-            let conn_fut = async {
-                loop {
-                    match conn.next().await {
-                        ConnectionEvent::Disconnected { reason } => {
-                            log::info!("Disconnected: {:?}", reason);
-                            break;
-                        }
-                        _ => {}
-                    }
-                }
+        let (mut has_bond_info, bond_info) =
+            if let Some(bond_info) = load_bonding_info(&state.nvs).await {
+                log::info!("Bond stored. Adding to stack.");
+                stack.add_bond_information(bond_info.clone()).unwrap();
+                (true, Some(bond_info))
+            } else {
+                log::info!("No bond stored.");
+                (false, None)
             };
 
-            let write_fut = async {
-                log::info!("Looking for digits service");
-                let services = client
-                    .services_by_uuid(&Uuid::from(0xa5bad9f2700a4c3db9e2e58ad262d40eu128))
+        // let central = scanner.into_inner();
+        let display_addr = bond_info
+            .clone()
+            .map(|x| x.identity.bd_addr.into_inner())
+            .unwrap_or([156, 158, 110, 52, 62, 236]);
+        let target: Address = Address::random(display_addr);
+
+        let config = ConnectConfig {
+            connect_params: Default::default(),
+            scan_config: ScanConfig {
+                filter_accept_list: &[(target.kind, &target.addr)],
+                ..Default::default()
+            },
+        };
+
+        log::info!("Scanning for peripheral...");
+        let _ = select(runner.run(), async {
+            'outer: loop {
+                log::info!("Connecting to {:?}", target);
+                let conn =
+                    match with_timeout(Duration::from_secs(5), central.connect(&config)).await {
+                        Ok(Ok(conn)) => conn,
+                        Ok(Err(e)) => {
+                            log::error!("Failed to connect: {:?}", e);
+                            Timer::after(Duration::from_secs(1)).await;
+                            continue;
+                        }
+                        Err(_) => {
+                            log::error!("Timeout connecting");
+                            Timer::after(Duration::from_secs(1)).await;
+                            continue;
+                        }
+                    };
+
+                // Allow bonding if a bond isn't already stored
+                conn.set_bondable(!has_bond_info).unwrap();
+                log::info!("Connected, creating gatt client");
+
+                {
+                    conn.request_security().unwrap();
+                    loop {
+                        match conn.next().await {
+                            ConnectionEvent::PairingComplete {
+                                security_level,
+                                bond,
+                            } => {
+                                log::info!("Pairing complete: {:?}", security_level);
+                                if let Some(bond) = bond {
+                                    store_bonding_info(&state.nvs, &bond).await;
+                                    has_bond_info = true;
+                                } else {
+                                    break 'outer;
+                                }
+                                break;
+                            }
+                            ConnectionEvent::PairingFailed(err) => {
+                                log::error!("Pairing failed: {:?}", err);
+                                break;
+                            }
+                            ConnectionEvent::Disconnected { reason } => {
+                                log::error!(
+                                    "Disconnected1: {:?} ({:x})",
+                                    reason,
+                                    reason.into_inner()
+                                );
+                                if reason.into_inner() == 0x05 || reason.into_inner() == 0x3e {
+                                    // auth failed
+                                    _ = state.nvs.invalidate_key(b"BONDING_KEY").await;
+                                    if let Some(ref bond_info) = bond_info {
+                                        _ = stack.remove_bond_information(bond_info.identity);
+                                    }
+                                    break 'outer;
+                                }
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
+                let client = GattClient::<_, DefaultPacketPool, 10>::new(&stack, &conn)
                     .await
                     .unwrap();
-                let service = services.first().unwrap().clone();
 
-                log::info!("Looking for value handle");
-                let c: Characteristic<u8> = client
-                    .characteristic_by_uuid(
-                        &service,
-                        &Uuid::from(0xa5178cade4e045988053a4a78b9281e2u128),
+                use embassy_futures::select::{Either, select};
+
+                let conn_fut = async {
+                    loop {
+                        match conn.next().await {
+                            ConnectionEvent::Disconnected { reason } => {
+                                log::info!("Disconnected2: {:?}", reason);
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+                };
+
+                let write_fut = async {
+                    log::info!("Looking for digits service");
+                    let services = match with_timeout(
+                        Duration::from_secs(5),
+                        client
+                            .services_by_uuid(&Uuid::from(0xa5bad9f2700a4c3db9e2e58ad262d40eu128)),
                     )
                     .await
-                    .unwrap();
-
-                loop {
-                    let mut data = [0; 8];
-                    data[0] = 0x69;
-                    data[1] = 0x42;
-                    data[2] = 8;
-                    data[3] = 3;
-                    data[4] = 5;
-                    data[5] = 1;
-                    data[6] = 3;
-                    data[7] = 7;
-
-                    if !conn.is_connected() {
-                        break;
-                    }
-
-                    if client
-                        .write_characteristic_without_response(&c, &mut data[..])
-                        .await
-                        .is_err()
                     {
-                        break;
+                        Ok(Ok(conn)) => conn,
+                        Ok(Err(e)) => {
+                            log::error!("Failed to connect: {:?}", e);
+                            Timer::after(Duration::from_secs(1)).await;
+                            return;
+                        }
+                        Err(_) => {
+                            log::error!("Timeout connecting");
+                            Timer::after(Duration::from_secs(1)).await;
+                            return;
+                        }
+                    };
+                    let service = services.first().unwrap().clone();
+
+                    log::info!("Looking for value handle");
+                    let c: Characteristic<u64> = client
+                        .characteristic_by_uuid(
+                            &service,
+                            &Uuid::from(0xa5178cade4e045988053a4a78b9281e2u128),
+                        )
+                        .await
+                        .unwrap();
+
+                    let mut data = [0; 8];
+                    loop {
+                        let ms = state.bt_display_signal.wait().await;
+                        data.copy_from_slice(&ms.to_be_bytes());
+
+                        if !conn.is_connected() {
+                            break;
+                        }
+
+                        if client
+                            .write_characteristic_without_response(&c, &mut data[..])
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                        Timer::after_millis(1000 / 10).await;
                     }
-                    Timer::after_millis(1000 / 30).await;
-                }
-            };
+                };
 
-            let gatt_and_conn_events = select(conn_fut, write_fut);
+                let gatt_and_conn_events = select(conn_fut, write_fut);
 
-            match select(client.task(), gatt_and_conn_events).await {
-                Either::Second(Either::First(_)) => {
-                    log::info!("Connection event loop finished (disconnected)");
+                match select(client.task(), gatt_and_conn_events).await {
+                    Either::Second(Either::First(_)) => {
+                        log::info!("Connection event loop finished (disconnected)");
+                    }
+                    Either::Second(Either::Second(_)) => {
+                        log::info!("GATT operations finished");
+                    }
+                    _ => {}
                 }
-                Either::Second(Either::Second(_)) => {
-                    log::info!("GATT operations finished");
-                }
-                _ => {}
             }
-        }
-    })
-    .await;
+        })
+        .await;
+    }
 }
 
 async fn store_bonding_info(nvs: &esp_hal_wifimanager::Nvs, info: &BondInformation) {
     let mut buf = [0; 32];
-    _ = nvs.invalidate_key(b"BONDING_INFO").await;
+    _ = nvs.invalidate_key(b"BONDING_KEY").await;
 
     buf[..6].copy_from_slice(info.identity.bd_addr.raw());
     buf[6..22].copy_from_slice(info.ltk.to_le_bytes().as_slice());
@@ -219,12 +250,12 @@ async fn store_bonding_info(nvs: &esp_hal_wifimanager::Nvs, info: &BondInformati
         SecurityLevel::EncryptedAuthenticated => 2,
     };
 
-    nvs.append_key(b"BOUNDING_KEY", &buf).await.unwrap();
+    nvs.append_key(b"BONDING_KEY", &buf).await.unwrap();
 }
 
 async fn load_bonding_info(nvs: &esp_hal_wifimanager::Nvs) -> Option<BondInformation> {
     let mut buf = [0; 32];
-    let res = nvs.get_key(b"BOUNDING_KEY", &mut buf).await;
+    let res = nvs.get_key(b"BONDING_KEY", &mut buf).await;
     if res.is_err() {
         return None;
     }

@@ -245,6 +245,7 @@ pub async fn stackmat_task(
                 }
 
                 global_state.timer_signal.signal(parsed.1);
+                global_state.bt_display_signal.signal(parsed.1);
             }
         }
 
