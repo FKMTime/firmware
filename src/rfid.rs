@@ -1,5 +1,5 @@
 use crate::consts::RFID_RETRY_INIT_MS;
-use crate::state::{GlobalState, current_epoch, sleep_state};
+use crate::state::{GlobalState, MenuScene, current_epoch, sleep_state};
 use crate::structs::{CardInfoResponsePacket, SolveConfirmPacket};
 use crate::translations::{TranslationKey, get_translation};
 use alloc::string::ToString;
@@ -124,97 +124,95 @@ pub async fn rfid_task(
 
         if unsafe { !crate::state::TRUST_SERVER } {
             log::error!("Skipping card scan. Server not trusted!");
+            global_state.state.lock().await.error_text = Some("Server NOT Trusted!".to_string());
             _ = mfrc522.picc_halta().await;
             continue;
         }
 
-        if unsafe { crate::state::UNSIGN_CARDS_MODE } {
-            let fkm_token = unsafe { crate::state::FKM_TOKEN };
-            let mut key = [0; 6];
-            key[..4].copy_from_slice(&fkm_token.to_be_bytes());
+        let menu_scene = global_state.state.lock().await.menu_scene.clone();
+        match menu_scene {
+            Some(MenuScene::Signing) => {
+                let fkm_token = unsafe { crate::state::FKM_TOKEN };
 
-            let status = mfrc522
-                .pcd_authenticate(
-                    esp_hal_mfrc522::consts::PICCCommand::PICC_CMD_MF_AUTH_KEY_A,
-                    63,
-                    &key,
-                    &card,
-                )
-                .await;
+                let status = mfrc522
+                    .pcd_authenticate(
+                        esp_hal_mfrc522::consts::PICCCommand::PICC_CMD_MF_AUTH_KEY_A,
+                        63,
+                        &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+                        &card,
+                    )
+                    .await;
 
-            log::debug!("unsigning auth status: {status:?}");
-            if status.is_ok() {
-                let buff = [0; 16];
-                _ = mfrc522.mifare_write(62, &buff, 16).await;
+                let mut key = [0; 6];
+                key[..4].copy_from_slice(&fkm_token.to_be_bytes());
 
-                let mut buff = [0; 18];
-                buff[..6].copy_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
-                buff[6] = 0xFF;
-                buff[7] = 0x07;
-                buff[8] = 0x80;
-                buff[9] = 0x69;
-                buff[10..16].copy_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
+                log::debug!("signing auth status: {status:?}");
+                if status.is_ok() {
+                    let mut buff = [0; 18];
 
-                let res = mfrc522.mifare_write(63, &buff, 16).await;
-                if let Err(e) = res {
-                    log::error!("cannot unsecure card error: {e:?}");
+                    buff[..6].copy_from_slice(&key);
+                    buff[6] = 0xFF;
+                    buff[7] = 0x07;
+                    buff[8] = 0x80;
+                    buff[9] = 0x69;
+                    buff[10..16].copy_from_slice(&key);
+
+                    let res = mfrc522.mifare_write(63, &buff, 16).await;
+                    if let Err(e) = res {
+                        log::error!("write res: {e:?}");
+                        global_state.sign_unsign_progress.signal(false);
+                        global_state.state.signal();
+                        _ = mfrc522.picc_halta().await;
+                        _ = mfrc522.pcd_stop_crypto1().await;
+                        continue;
+                    }
+
+                    //_ = mfrc522.pcd_stop_crypto1().await;
+                    let status = mfrc522
+                        .pcd_authenticate(
+                            esp_hal_mfrc522::consts::PICCCommand::PICC_CMD_MF_AUTH_KEY_A,
+                            63,
+                            &key,
+                            &card,
+                        )
+                        .await;
+                    if status.is_err() {
+                        log::error!("Cannot auth card!");
+                        global_state.sign_unsign_progress.signal(false);
+                        global_state.state.signal();
+                        _ = mfrc522.picc_halta().await;
+                        _ = mfrc522.pcd_stop_crypto1().await;
+                        continue;
+                    }
+
+                    let mut buff = [0; 16];
+                    buff[..16].clone_from_slice(&card_uid.to_be_bytes());
+                    let res = mfrc522.mifare_write(62, &buff, 16).await;
+                    if res.is_err() {
+                        log::error!("Cannot write secured rfid info!");
+                        global_state.sign_unsign_progress.signal(false);
+                        global_state.state.signal();
+                        _ = mfrc522.picc_halta().await;
+                        _ = mfrc522.pcd_stop_crypto1().await;
+                        continue;
+                    }
+
+                    global_state.sign_unsign_progress.signal(true);
+                    global_state.state.signal();
+                } else {
                     global_state.sign_unsign_progress.signal(false);
                     global_state.state.signal();
-                    _ = mfrc522.picc_halta().await;
-                    _ = mfrc522.pcd_stop_crypto1().await;
-                    continue;
                 }
 
-                global_state.sign_unsign_progress.signal(true);
-                global_state.state.signal();
-            } else {
-                log::error!("unsign auth failed!");
-                global_state.sign_unsign_progress.signal(false);
-                global_state.state.signal();
+                _ = mfrc522.picc_halta().await;
+                _ = mfrc522.pcd_stop_crypto1().await;
+                continue;
             }
+            Some(MenuScene::Unsigning) => {
+                let fkm_token = unsafe { crate::state::FKM_TOKEN };
+                let mut key = [0; 6];
+                key[..4].copy_from_slice(&fkm_token.to_be_bytes());
 
-            _ = mfrc522.picc_halta().await;
-            _ = mfrc522.pcd_stop_crypto1().await;
-            continue;
-        }
-
-        if unsafe { crate::state::SIGN_CARDS_MODE } {
-            let fkm_token = unsafe { crate::state::FKM_TOKEN };
-
-            let status = mfrc522
-                .pcd_authenticate(
-                    esp_hal_mfrc522::consts::PICCCommand::PICC_CMD_MF_AUTH_KEY_A,
-                    63,
-                    &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
-                    &card,
-                )
-                .await;
-
-            let mut key = [0; 6];
-            key[..4].copy_from_slice(&fkm_token.to_be_bytes());
-
-            log::debug!("signing auth status: {status:?}");
-            if status.is_ok() {
-                let mut buff = [0; 18];
-
-                buff[..6].copy_from_slice(&key);
-                buff[6] = 0xFF;
-                buff[7] = 0x07;
-                buff[8] = 0x80;
-                buff[9] = 0x69;
-                buff[10..16].copy_from_slice(&key);
-
-                let res = mfrc522.mifare_write(63, &buff, 16).await;
-                if let Err(e) = res {
-                    log::error!("write res: {e:?}");
-                    global_state.sign_unsign_progress.signal(false);
-                    global_state.state.signal();
-                    _ = mfrc522.picc_halta().await;
-                    _ = mfrc522.pcd_stop_crypto1().await;
-                    continue;
-                }
-
-                //_ = mfrc522.pcd_stop_crypto1().await;
                 let status = mfrc522
                     .pcd_authenticate(
                         esp_hal_mfrc522::consts::PICCCommand::PICC_CMD_MF_AUTH_KEY_A,
@@ -223,37 +221,43 @@ pub async fn rfid_task(
                         &card,
                     )
                     .await;
-                if status.is_err() {
-                    log::error!("Cannot auth card!");
+
+                log::debug!("unsigning auth status: {status:?}");
+                if status.is_ok() {
+                    let buff = [0; 16];
+                    _ = mfrc522.mifare_write(62, &buff, 16).await;
+
+                    let mut buff = [0; 18];
+                    buff[..6].copy_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
+                    buff[6] = 0xFF;
+                    buff[7] = 0x07;
+                    buff[8] = 0x80;
+                    buff[9] = 0x69;
+                    buff[10..16].copy_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
+
+                    let res = mfrc522.mifare_write(63, &buff, 16).await;
+                    if let Err(e) = res {
+                        log::error!("cannot unsecure card error: {e:?}");
+                        global_state.sign_unsign_progress.signal(false);
+                        global_state.state.signal();
+                        _ = mfrc522.picc_halta().await;
+                        _ = mfrc522.pcd_stop_crypto1().await;
+                        continue;
+                    }
+
+                    global_state.sign_unsign_progress.signal(true);
+                    global_state.state.signal();
+                } else {
+                    log::error!("unsign auth failed!");
                     global_state.sign_unsign_progress.signal(false);
                     global_state.state.signal();
-                    _ = mfrc522.picc_halta().await;
-                    _ = mfrc522.pcd_stop_crypto1().await;
-                    continue;
                 }
 
-                let mut buff = [0; 16];
-                buff[..16].clone_from_slice(&card_uid.to_be_bytes());
-                let res = mfrc522.mifare_write(62, &buff, 16).await;
-                if res.is_err() {
-                    log::error!("Cannot write secured rfid info!");
-                    global_state.sign_unsign_progress.signal(false);
-                    global_state.state.signal();
-                    _ = mfrc522.picc_halta().await;
-                    _ = mfrc522.pcd_stop_crypto1().await;
-                    continue;
-                }
-
-                global_state.sign_unsign_progress.signal(true);
-                global_state.state.signal();
-            } else {
-                global_state.sign_unsign_progress.signal(false);
-                global_state.state.signal();
+                _ = mfrc522.picc_halta().await;
+                _ = mfrc522.pcd_stop_crypto1().await;
+                continue;
             }
-
-            _ = mfrc522.picc_halta().await;
-            _ = mfrc522.pcd_stop_crypto1().await;
-            continue;
+            _ => {}
         }
 
         if unsafe { crate::state::SECURE_RFID } {

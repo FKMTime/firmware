@@ -32,29 +32,26 @@ pub async fn bluetooth_timer_task(
             .set_random_address(address)
             .set_random_generator_seed(&mut OsRng);
         let Host {
-            mut central,
+            central,
             mut runner,
             ..
         } = stack.build();
 
-        /*
         let printer = Printer {
             seen: RefCell::new(heapless::Deque::new()),
             state: &state,
         };
 
         let mut scanner = Scanner::new(central);
-        let _ = join(runner.run_with_handler(&printer), async {
+        let _ = select(runner.run_with_handler(&printer), async {
             let config = ScanConfig::default();
             let mut _session = scanner.scan(&config).await.unwrap();
-            // Scan forever
-            loop {
-                Timer::after(Duration::from_secs(1)).await;
-            }
+            Timer::after(Duration::from_secs(30)).await;
+            return;
         })
         .await;
-        */
 
+        let mut central = scanner.into_inner();
         let (mut has_bond_info, bond_info) =
             if let Some(bond_info) = load_bonding_info(&state.nvs).await {
                 log::info!("Bond stored. Adding to stack.");
@@ -69,7 +66,7 @@ pub async fn bluetooth_timer_task(
         let display_addr = bond_info
             .clone()
             .map(|x| x.identity.bd_addr.into_inner())
-            .unwrap_or([156, 158, 110, 52, 62, 236]);
+            .unwrap_or([156, 158, 110, 52, 70, 208]);
         let target: Address = Address::random(display_addr);
 
         let config = ConnectConfig {

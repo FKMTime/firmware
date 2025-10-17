@@ -1,6 +1,6 @@
 use crate::{
     stackmat::CURRENT_TIME,
-    state::{GlobalState, Scene, current_epoch, deeper_sleep_state, sleep_state},
+    state::{GlobalState, MenuScene, Scene, current_epoch, deeper_sleep_state, sleep_state},
     structs::DelegateResponsePacket,
     utils::buttons::{Button, ButtonTrigger, ButtonsHandler},
 };
@@ -155,14 +155,13 @@ async fn submit_up(
         return Ok(true);
     }
 
-    if unsafe { crate::state::SIGN_CARDS_MODE || crate::state::UNSIGN_CARDS_MODE } {
-        unsafe {
-            crate::state::SIGN_CARDS_MODE = false;
-            crate::state::UNSIGN_CARDS_MODE = false;
+    match state_val.menu_scene {
+        Some(MenuScene::Signing) | Some(MenuScene::Unsigning) => {
+            state_val.menu_scene = None;
+            state.state.signal();
+            return Ok(true);
         }
-
-        state.state.signal();
-        return Ok(true);
+        _ => {}
     }
 
     if let Some(sel) = state_val.selected_config_menu {
@@ -180,19 +179,15 @@ async fn submit_up(
             }
             1 => {
                 // BT Display
-                state_val.error_text = Some("Not Implemented".to_string());
+                state_val.menu_scene = Some(MenuScene::BtDisplay);
             }
             2 => {
                 // Sign Cards
-                unsafe { crate::state::SIGN_CARDS_MODE = true };
-                // TODO: change this shit
-                // MAYBE make second scene set (for things like this)
+                state_val.menu_scene = Some(MenuScene::Signing);
             }
             3 => {
                 // Un-Sign Cards
-                unsafe { crate::state::UNSIGN_CARDS_MODE = true };
-                // TODO: change this shit
-                // MAYBE make second scene set (for things like this)
+                state_val.menu_scene = Some(MenuScene::Unsigning);
             }
             4 => {} // Exit
             _ => {

@@ -11,7 +11,9 @@ use crate::{
         DEEPER_SLEEP_AFTER_MS, INSPECTION_TIME_PLUS2, LCD_INSPECTION_FRAME_TIME,
         SCROLL_TICKER_INVERVAL_MS, SLEEP_AFTER_MS,
     },
-    state::{GlobalState, Scene, SignaledGlobalStateInner, deeper_sleep_state, sleep_state},
+    state::{
+        GlobalState, MenuScene, Scene, SignaledGlobalStateInner, deeper_sleep_state, sleep_state,
+    },
     translations::{TranslationKey, get_translation, get_translation_params},
     utils::{
         lcd_abstract::{LcdAbstract, PrintAlign},
@@ -222,40 +224,55 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
         return Some(());
     }
 
-    if unsafe { crate::state::SIGN_CARDS_MODE || crate::state::UNSIGN_CARDS_MODE } {
-        lcd_driver.clear_all().ok()?;
-        lcd_driver
-            .print(0, "Signing | Submit To Exit", PrintAlign::Left, true)
-            .ok()?;
-
-        if global_state.sign_unsign_progress.signaled() {
-            let status = if global_state.sign_unsign_progress.wait().await {
-                "OK"
+    match current_state.menu_scene {
+        Some(MenuScene::Signing) | Some(MenuScene::Unsigning) => {
+            let prefix = if current_state.menu_scene == Some(MenuScene::Signing) {
+                "S"
             } else {
-                "FAIL"
+                "Uns"
             };
 
+            lcd_driver.clear_all().ok()?;
             lcd_driver
                 .print(
-                    1,
-                    &alloc::format!("Operation {}", status),
-                    PrintAlign::Center,
+                    0,
+                    &alloc::format!("{prefix}igning | Submit To Exit"),
+                    PrintAlign::Left,
                     true,
                 )
                 .ok()?;
-            lcd_driver.display_on_lcd(lcd).await;
 
-            Timer::after_millis(300).await;
-            lcd_driver
-                .print(1, "Scan the card", PrintAlign::Center, true)
-                .ok()?;
-        } else {
-            lcd_driver
-                .print(1, "Scan the card", PrintAlign::Center, true)
-                .ok()?;
+            if global_state.sign_unsign_progress.signaled() {
+                let status = if global_state.sign_unsign_progress.wait().await {
+                    "OK"
+                } else {
+                    "FAIL"
+                };
+
+                lcd_driver
+                    .print(
+                        1,
+                        &alloc::format!("Operation {}", status),
+                        PrintAlign::Center,
+                        true,
+                    )
+                    .ok()?;
+                lcd_driver.display_on_lcd(lcd).await;
+
+                Timer::after_millis(300).await;
+                lcd_driver
+                    .print(1, "Scan the card", PrintAlign::Center, true)
+                    .ok()?;
+            } else {
+                lcd_driver
+                    .print(1, "Scan the card", PrintAlign::Center, true)
+                    .ok()?;
+            }
+
+            return Some(());
         }
-
-        return Some(());
+        Some(crate::state::MenuScene::BtDisplay) => {}
+        None => {}
     }
 
     let overwritten = process_lcd_overwrite(&current_state, global_state, lcd_driver).await;
