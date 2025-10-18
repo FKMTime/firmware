@@ -1,7 +1,7 @@
 use crate::{state::GlobalState, structs::BleDisplayDevice};
 use alloc::string::ToString;
 use core::cell::RefCell;
-use embassy_futures::select::{select, select3};
+use embassy_futures::select::{select, select4};
 use embassy_sync::{
     blocking_mutex::raw::NoopRawMutex,
     channel::{Channel, Sender},
@@ -44,7 +44,6 @@ pub async fn bluetooth_timer_task(
 
         let discovery_channel: Channel<NoopRawMutex, BleDisplayDevice, 10> =
             embassy_sync::channel::Channel::new();
-
         let printer = BleDiscovery {
             seen: RefCell::new(heapless::Deque::new()),
             sender: discovery_channel.sender(),
@@ -60,12 +59,12 @@ pub async fn bluetooth_timer_task(
                 .clear();
         }
 
-        let _ = select3(
+        let _ = select4(
             runner.run_with_handler(&printer),
             async {
                 let config = ScanConfig::default();
                 let mut _session = scanner.scan(&config).await.unwrap();
-                Timer::after(Duration::from_secs(30)).await;
+                Timer::after(Duration::from_secs(300)).await;
                 return;
             },
             async {
@@ -83,10 +82,19 @@ pub async fn bluetooth_timer_task(
                     }
                 }
             },
+            async {
+                loop {
+                    Timer::after_millis(200).await;
+                    if state.ble_connect_sig.signaled() {
+                        return;
+                    }
+                }
+            },
         )
         .await;
 
         let mut central = scanner.into_inner();
+
         let (mut has_bond_info, bond_info) =
             if let Some(bond_info) = load_bonding_info(&state.nvs).await {
                 log::info!("Bond stored. Adding to stack.");
@@ -97,9 +105,10 @@ pub async fn bluetooth_timer_task(
                 (false, None)
             };
 
-        let Some(display_addr) = bond_info.clone().map(|x| x.identity.bd_addr.into_inner()) else {
-            continue;
-        };
+        let display_addr = bond_info
+            .clone()
+            .map(|x| x.identity.bd_addr.into_inner())
+            .unwrap_or(state.ble_connect_sig.wait().await.addr);
         let target: Address = Address::random(display_addr);
 
         let config = ConnectConfig {
@@ -241,7 +250,6 @@ pub async fn bluetooth_timer_task(
                         {
                             break;
                         }
-                        Timer::after_millis(1000 / 10).await;
                     }
                 };
 

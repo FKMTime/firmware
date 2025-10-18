@@ -134,7 +134,7 @@ async fn sel_right(
     }
 
     if state.menu_scene == Some(MenuScene::BtDisplay) {
-        if state.selected_bluetooth_item <= state.discovered_bluetooth_devices.len() + 1 {
+        if state.selected_bluetooth_item < state.discovered_bluetooth_devices.len() + 1 {
             state.selected_bluetooth_item += 1;
         }
 
@@ -180,6 +180,12 @@ async fn submit_up(
                 log::debug!(
                     "[BtD] Try to connect to: {:?}",
                     state_val.discovered_bluetooth_devices[state_val.selected_bluetooth_item]
+                );
+
+                _ = state.nvs.invalidate_key(b"BONDING_KEY").await;
+                state.ble_connect_sig.signal(
+                    state_val.discovered_bluetooth_devices[state_val.selected_bluetooth_item]
+                        .clone(),
                 );
             } else if state_val.selected_bluetooth_item
                 == state_val.discovered_bluetooth_devices.len()
