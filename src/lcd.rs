@@ -271,7 +271,44 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
 
             return Some(());
         }
-        Some(crate::state::MenuScene::BtDisplay) => {}
+        Some(crate::state::MenuScene::BtDisplay) => {
+            lcd_driver.clear_all().ok()?;
+            if current_state.selected_bluetooth_item
+                == current_state.discovered_bluetooth_devices.len()
+            {
+                lcd_driver
+                    .print(0, "Unpair", PrintAlign::Center, true)
+                    .ok()?;
+            } else if current_state.selected_bluetooth_item
+                == current_state.discovered_bluetooth_devices.len() + 1
+            {
+                lcd_driver.print(0, "Exit", PrintAlign::Center, true).ok()?;
+            } else if current_state.selected_bluetooth_item
+                < current_state.discovered_bluetooth_devices.len()
+            {
+                if let Some(display_dev) = current_state
+                    .discovered_bluetooth_devices
+                    .get(current_state.selected_bluetooth_item)
+                {
+                    lcd_driver
+                        .print(0, &display_dev.name, PrintAlign::Center, true)
+                        .ok()?;
+
+                    lcd_driver
+                        .print(
+                            1,
+                            &alloc::format!("{:x?}", display_dev.addr),
+                            PrintAlign::Center,
+                            true,
+                        )
+                        .ok()?;
+                }
+            } else {
+                global_state.state.lock().await.selected_bluetooth_item = 0;
+            }
+
+            return Some(());
+        }
         None => {}
     }
 

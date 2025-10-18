@@ -1,4 +1,7 @@
-use crate::{structs::PossibleGroup, utils::signaled_mutex::SignaledMutex};
+use crate::{
+    structs::{BleDisplayDevice, PossibleGroup},
+    utils::signaled_mutex::SignaledMutex,
+};
 use alloc::{rc::Rc, string::String, vec::Vec};
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
@@ -182,9 +185,14 @@ pub struct SignaledGlobalStateInner {
     pub solve_group: Option<PossibleGroup>,
 
     pub error_text: Option<String>,
+
     pub possible_groups: Vec<PossibleGroup>,
     pub group_selected_idx: usize,
+
     pub selected_config_menu: Option<usize>,
+
+    pub discovered_bluetooth_devices: Vec<BleDisplayDevice>,
+    pub selected_bluetooth_item: usize,
 
     pub device_added: Option<bool>,
     pub server_connected: Option<bool>,
@@ -235,6 +243,8 @@ impl SignaledGlobalStateInner {
             possible_groups: Vec::new(),
             group_selected_idx: 0,
             selected_config_menu: None,
+            selected_bluetooth_item: 0,
+            discovered_bluetooth_devices: Vec::new(),
 
             device_added: None,
             server_connected: None,

@@ -1,6 +1,11 @@
-use crate::state::GlobalState;
+use crate::{state::GlobalState, structs::BleDisplayDevice};
+use alloc::string::ToString;
 use core::cell::RefCell;
-use embassy_futures::select::select;
+use embassy_futures::select::{select, select3};
+use embassy_sync::{
+    blocking_mutex::raw::NoopRawMutex,
+    channel::{Channel, Sender},
+};
 use embassy_time::{Duration, Timer, with_timeout};
 use esp_radio::{Controller as RadioController, ble::controller::BleConnector};
 use rand_core::OsRng;
@@ -37,18 +42,48 @@ pub async fn bluetooth_timer_task(
             ..
         } = stack.build();
 
-        let printer = Printer {
+        let discovery_channel: Channel<NoopRawMutex, BleDisplayDevice, 10> =
+            embassy_sync::channel::Channel::new();
+
+        let printer = BleDiscovery {
             seen: RefCell::new(heapless::Deque::new()),
-            state: &state,
+            sender: discovery_channel.sender(),
         };
 
         let mut scanner = Scanner::new(central);
-        let _ = select(runner.run_with_handler(&printer), async {
-            let config = ScanConfig::default();
-            let mut _session = scanner.scan(&config).await.unwrap();
-            Timer::after(Duration::from_secs(30)).await;
-            return;
-        })
+        {
+            state
+                .state
+                .lock()
+                .await
+                .discovered_bluetooth_devices
+                .clear();
+        }
+
+        let _ = select3(
+            runner.run_with_handler(&printer),
+            async {
+                let config = ScanConfig::default();
+                let mut _session = scanner.scan(&config).await.unwrap();
+                Timer::after(Duration::from_secs(30)).await;
+                return;
+            },
+            async {
+                loop {
+                    let recv = discovery_channel.receive().await;
+                    {
+                        let mut state = state.state.lock().await;
+                        if state.selected_bluetooth_item >= state.discovered_bluetooth_devices.len()
+                            && state.selected_bluetooth_item > 0
+                        {
+                            state.selected_bluetooth_item += 1;
+                        }
+
+                        state.discovered_bluetooth_devices.push(recv);
+                    }
+                }
+            },
+        )
         .await;
 
         let mut central = scanner.into_inner();
@@ -62,11 +97,9 @@ pub async fn bluetooth_timer_task(
                 (false, None)
             };
 
-        // let central = scanner.into_inner();
-        let display_addr = bond_info
-            .clone()
-            .map(|x| x.identity.bd_addr.into_inner())
-            .unwrap_or([156, 158, 110, 52, 70, 208]);
+        let Some(display_addr) = bond_info.clone().map(|x| x.identity.bd_addr.into_inner()) else {
+            continue;
+        };
         let target: Address = Address::random(display_addr);
 
         let config = ConnectConfig {
@@ -276,12 +309,12 @@ async fn load_bonding_info(nvs: &esp_hal_wifimanager::Nvs) -> Option<BondInforma
 }
 
 #[allow(dead_code)]
-struct Printer<'a> {
+struct BleDiscovery<'a> {
     seen: RefCell<heapless::Deque<BdAddr, 128>>,
-    state: &'a GlobalState,
+    sender: Sender<'a, NoopRawMutex, BleDisplayDevice, 10>,
 }
 
-impl<'a> EventHandler for Printer<'a> {
+impl EventHandler for BleDiscovery<'_> {
     fn on_adv_reports(&self, mut it: LeAdvReportsIter<'_>) {
         let mut seen = self.seen.borrow_mut();
         while let Some(Ok(report)) = it.next() {
@@ -290,6 +323,11 @@ impl<'a> EventHandler for Printer<'a> {
                     log::debug!("[ble] discovered: {:?} with name: {name}", report.addr);
                     if name.starts_with("FKMD-") {
                         log::info!("Disovered FKM Display! [{:?}] ({name})", report.addr);
+
+                        _ = self.sender.try_send(BleDisplayDevice {
+                            name: name.to_string(),
+                            addr: report.addr.into_inner(),
+                        });
                     }
                 }
 

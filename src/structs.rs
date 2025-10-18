@@ -12,6 +12,12 @@ pub const CONFIG_MENU_ITEMS: [&str; 5] = [
     "Exit",
 ];
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct BleDisplayDevice {
+    pub name: String,
+    pub addr: [u8; 6],
+}
+
 #[derive(Deserialize, Debug)]
 pub struct ConnSettings {
     pub mdns: bool,

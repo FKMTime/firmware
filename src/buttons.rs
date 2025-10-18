@@ -99,6 +99,12 @@ async fn sel_left(
         return Ok(true);
     }
 
+    if state.menu_scene == Some(MenuScene::BtDisplay) {
+        state.selected_bluetooth_item = state.selected_bluetooth_item.saturating_sub(1);
+
+        return Ok(true);
+    }
+
     if state.scene == Scene::GroupSelect {
         state.group_selected_idx = state
             .group_selected_idx
@@ -122,6 +128,14 @@ async fn sel_right(
         *sel += 1;
         if *sel == crate::structs::CONFIG_MENU_ITEMS.len() {
             *sel = 0;
+        }
+
+        return Ok(true);
+    }
+
+    if state.menu_scene == Some(MenuScene::BtDisplay) {
+        if state.selected_bluetooth_item <= state.discovered_bluetooth_devices.len() + 1 {
+            state.selected_bluetooth_item += 1;
         }
 
         return Ok(true);
@@ -161,6 +175,28 @@ async fn submit_up(
             state.state.signal();
             return Ok(true);
         }
+        Some(MenuScene::BtDisplay) => {
+            if state_val.selected_bluetooth_item < state_val.discovered_bluetooth_devices.len() {
+                log::debug!(
+                    "[BtD] Try to connect to: {:?}",
+                    state_val.discovered_bluetooth_devices[state_val.selected_bluetooth_item]
+                );
+            } else if state_val.selected_bluetooth_item
+                == state_val.discovered_bluetooth_devices.len()
+            {
+                log::debug!("[BtD] Unpair current device");
+                _ = state.nvs.invalidate_key(b"BONDING_KEY").await;
+            } else if state_val.selected_bluetooth_item
+                == state_val.discovered_bluetooth_devices.len() + 1
+            {
+                log::debug!("[BtD] Exit");
+            }
+
+            state_val.menu_scene = None;
+            state_val.selected_bluetooth_item = 0;
+            state.state.signal();
+            return Ok(true);
+        }
         _ => {}
     }
 
@@ -173,20 +209,18 @@ async fn submit_up(
                     .invalidate_key(esp_hal_wifimanager::WIFI_NVS_KEY)
                     .await;
                 _ = state.nvs.invalidate_key(b"SIGN_KEY").await;
+                _ = state.nvs.invalidate_key(b"BONDING_KEY").await;
 
                 Timer::after_millis(250).await;
                 esp_hal::system::software_reset();
             }
             1 => {
-                // BT Display
                 state_val.menu_scene = Some(MenuScene::BtDisplay);
             }
             2 => {
-                // Sign Cards
                 state_val.menu_scene = Some(MenuScene::Signing);
             }
             3 => {
-                // Un-Sign Cards
                 state_val.menu_scene = Some(MenuScene::Unsigning);
             }
             4 => {} // Exit
