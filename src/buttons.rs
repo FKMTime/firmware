@@ -192,6 +192,7 @@ async fn submit_up(
             {
                 log::debug!("[BtD] Unpair current device");
                 _ = state.nvs.invalidate_key(b"BONDING_KEY").await;
+                state.ble_unpair_sig.signal(());
             } else if state_val.selected_bluetooth_item
                 == state_val.discovered_bluetooth_devices.len() + 1
             {

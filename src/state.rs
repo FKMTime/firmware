@@ -144,6 +144,7 @@ pub struct GlobalStateInner {
     pub update_progress: Signal<CriticalSectionRawMutex, u8>,
     pub sign_unsign_progress: Signal<CriticalSectionRawMutex, bool>,
     pub ble_connect_sig: Signal<CriticalSectionRawMutex, BleDisplayDevice>,
+    pub ble_unpair_sig: Signal<CriticalSectionRawMutex, ()>,
 
     pub nvs: Nvs,
     pub aes: Mutex<NoopRawMutex, Aes<'static>>,
@@ -162,6 +163,7 @@ impl GlobalStateInner {
             update_progress: Signal::new(),
             sign_unsign_progress: Signal::new(),
             ble_connect_sig: Signal::new(),
+            ble_unpair_sig: Signal::new(),
 
             nvs: nvs.clone(),
             aes: Mutex::new(Aes::new(aes)),
