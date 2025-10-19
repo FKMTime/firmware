@@ -1,6 +1,8 @@
 use crate::{
     stackmat::CURRENT_TIME,
-    state::{GlobalState, MenuScene, Scene, current_epoch, deeper_sleep_state, sleep_state},
+    state::{
+        BleAction, GlobalState, MenuScene, Scene, current_epoch, deeper_sleep_state, sleep_state,
+    },
     structs::DelegateResponsePacket,
     utils::buttons::{Button, ButtonTrigger, ButtonsHandler},
 };
@@ -183,16 +185,19 @@ async fn submit_up(
                 );
 
                 _ = state.nvs.invalidate_key(b"BONDING_KEY").await;
-                state.ble_connect_sig.signal(
-                    state_val.discovered_bluetooth_devices[state_val.selected_bluetooth_item]
-                        .clone(),
+                state.ble_sig.signal(
+                    BleAction::Connect(
+                        state_val.discovered_bluetooth_devices[state_val.selected_bluetooth_item]
+                            .clone(),
+                    )
+                    .clone(),
                 );
             } else if state_val.selected_bluetooth_item
                 == state_val.discovered_bluetooth_devices.len()
             {
                 log::debug!("[BtD] Unpair current device");
                 _ = state.nvs.invalidate_key(b"BONDING_KEY").await;
-                state.ble_unpair_sig.signal(());
+                state.ble_sig.signal(BleAction::Unpair);
             } else if state_val.selected_bluetooth_item
                 == state_val.discovered_bluetooth_devices.len() + 1
             {
@@ -223,6 +228,7 @@ async fn submit_up(
             }
             1 => {
                 state_val.menu_scene = Some(MenuScene::BtDisplay);
+                state.ble_sig.signal(BleAction::StartScan);
             }
             2 => {
                 state_val.menu_scene = Some(MenuScene::Signing);

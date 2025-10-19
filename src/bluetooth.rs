@@ -1,4 +1,7 @@
-use crate::{state::GlobalState, structs::BleDisplayDevice};
+use crate::{
+    state::{BleAction, GlobalState, MenuScene},
+    structs::BleDisplayDevice,
+};
 use alloc::string::ToString;
 use core::cell::RefCell;
 use embassy_futures::select::{Either, select, select3, select4};
@@ -18,6 +21,26 @@ pub async fn bluetooth_timer_task(
     state: GlobalState,
 ) {
     loop {
+        let (mut has_bond_info, bond_info) =
+            if let Some(bond_info) = load_bonding_info(&state.nvs).await {
+                log::info!("Bond stored.");
+                (true, Some(bond_info))
+            } else {
+                log::info!("No bond stored.");
+
+                let current_menu_scene = state.state.lock().await.menu_scene.clone();
+                if current_menu_scene != Some(MenuScene::BtDisplay) {
+                    loop {
+                        let sig = state.ble_sig.wait().await;
+                        if let BleAction::StartScan = sig {
+                            break;
+                        }
+                    }
+                }
+
+                (false, None)
+            };
+
         let Ok(connector) = BleConnector::new(
             init,
             unsafe { bt.clone_unchecked() },
@@ -41,16 +64,6 @@ pub async fn bluetooth_timer_task(
             mut runner,
             ..
         } = stack.build();
-
-        let (mut has_bond_info, bond_info) =
-            if let Some(bond_info) = load_bonding_info(&state.nvs).await {
-                log::info!("Bond stored. Adding to stack.");
-                stack.add_bond_information(bond_info.clone()).unwrap();
-                (true, Some(bond_info))
-            } else {
-                log::info!("No bond stored.");
-                (false, None)
-            };
 
         let mut central = if !has_bond_info {
             let discovery_channel: Channel<NoopRawMutex, BleDisplayDevice, 10> =
@@ -98,7 +111,7 @@ pub async fn bluetooth_timer_task(
                 async {
                     loop {
                         Timer::after_millis(200).await;
-                        if state.ble_connect_sig.signaled() {
+                        if state.ble_sig.signaled() {
                             break;
                         }
                     }
@@ -108,12 +121,21 @@ pub async fn bluetooth_timer_task(
 
             scanner.into_inner()
         } else {
+            stack
+                .add_bond_information(bond_info.clone().unwrap())
+                .unwrap();
+
             central
         };
 
         let display_addr = match bond_info {
             Some(ref bond_info) => bond_info.identity.bd_addr.into_inner(),
-            None => state.ble_connect_sig.wait().await.addr,
+            None => loop {
+                let sig = state.ble_sig.wait().await;
+                if let BleAction::Connect(d) = sig {
+                    break d.addr;
+                }
+            },
         };
         let target: Address = Address::random(display_addr);
 
@@ -129,7 +151,12 @@ pub async fn bluetooth_timer_task(
         let _ = select3(
             runner.run(),
             async {
-                state.ble_unpair_sig.wait().await;
+                loop {
+                    let sig = state.ble_sig.wait().await;
+                    if let BleAction::Unpair = sig {
+                        break;
+                    }
+                }
             },
             async {
                 'outer: loop {
