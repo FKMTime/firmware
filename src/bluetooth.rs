@@ -1,7 +1,7 @@
 use crate::{state::GlobalState, structs::BleDisplayDevice};
 use alloc::string::ToString;
 use core::cell::RefCell;
-use embassy_futures::select::select3;
+use embassy_futures::select::{Either, select, select3, select4};
 use embassy_sync::{
     blocking_mutex::raw::NoopRawMutex,
     channel::{Channel, Sender},
@@ -70,10 +70,15 @@ pub async fn bluetooth_timer_task(
                     .clear();
             }
 
-            let config = ScanConfig::default();
-            let mut _session = scanner.scan(&config).await.unwrap();
-            let _ = select3(
+            let _ = select4(
                 runner.run_with_handler(&printer),
+                async {
+                    let config = ScanConfig::default();
+                    let mut _session = scanner.scan(&config).await.unwrap();
+                    loop {
+                        Timer::after_millis(10000).await;
+                    }
+                },
                 async {
                     loop {
                         let recv = discovery_channel.receive().await;
@@ -94,23 +99,22 @@ pub async fn bluetooth_timer_task(
                     loop {
                         Timer::after_millis(200).await;
                         if state.ble_connect_sig.signaled() {
-                            return;
+                            break;
                         }
                     }
                 },
             )
             .await;
 
-            drop(_session);
             scanner.into_inner()
         } else {
             central
         };
 
-        let display_addr = bond_info
-            .clone()
-            .map(|x| x.identity.bd_addr.into_inner())
-            .unwrap_or(state.ble_connect_sig.wait().await.addr);
+        let display_addr = match bond_info {
+            Some(ref bond_info) => bond_info.identity.bd_addr.into_inner(),
+            None => state.ble_connect_sig.wait().await.addr,
+        };
         let target: Address = Address::random(display_addr);
 
         let config = ConnectConfig {
@@ -159,12 +163,17 @@ pub async fn bluetooth_timer_task(
                                     bond,
                                 } => {
                                     log::info!("Pairing complete: {:?}", security_level);
+
                                     if let Some(bond) = bond {
                                         store_bonding_info(&state.nvs, &bond).await;
                                         has_bond_info = true;
-                                    } else {
+                                    }
+
+                                    if !security_level.encrypted() {
+                                        _ = state.nvs.invalidate_key(b"BONDING_KEY").await;
                                         break 'outer;
                                     }
+
                                     break;
                                 }
                                 ConnectionEvent::PairingFailed(err) => {
@@ -195,8 +204,6 @@ pub async fn bluetooth_timer_task(
                     let client = GattClient::<_, DefaultPacketPool, 10>::new(&stack, &conn)
                         .await
                         .unwrap();
-
-                    use embassy_futures::select::{Either, select};
 
                     let conn_fut = async {
                         loop {
@@ -260,7 +267,6 @@ pub async fn bluetooth_timer_task(
                     };
 
                     let gatt_and_conn_events = select(conn_fut, write_fut);
-
                     match select(client.task(), gatt_and_conn_events).await {
                         Either::Second(Either::First(_)) => {
                             log::info!("Connection event loop finished (disconnected)");
