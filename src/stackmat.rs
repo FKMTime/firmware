@@ -20,9 +20,11 @@ pub async fn stackmat_task(
     global_state: GlobalState,
 ) {
     let serial_config = esp_hal::uart::Config::default().with_baudrate(1200);
-    let mut uart = UartRx::new(uart, serial_config)
-        .expect("Uart Rx new failed")
-        .with_rx(uart_pin);
+    let Ok(mut uart) = UartRx::new(uart, serial_config).map(|u| u.with_rx(uart_pin))
+    else {
+        log::error!("Stackmat task error while creating UartRx instance!");
+        return;
+    };
 
     #[cfg(feature = "e2e")]
     let mut e2e_data = (StackmatTimerState::Reset, 0, esp_hal::time::Instant::now());

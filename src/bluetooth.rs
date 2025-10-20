@@ -21,25 +21,24 @@ pub async fn bluetooth_timer_task(
     state: GlobalState,
 ) {
     loop {
-        let (mut has_bond_info, bond_info) =
-            if let Some(bond_info) = load_bonding_info(&state.nvs).await {
-                log::info!("Bond stored.");
-                (true, Some(bond_info))
-            } else {
-                log::info!("No bond stored.");
+        let mut bond_info = if let Some(bond_info) = load_bonding_info(&state.nvs).await {
+            log::info!("Bond stored.");
+            Some(bond_info)
+        } else {
+            log::info!("No bond stored.");
 
-                let current_menu_scene = state.state.lock().await.menu_scene.clone();
-                if current_menu_scene != Some(MenuScene::BtDisplay) {
-                    loop {
-                        let sig = state.ble_sig.wait().await;
-                        if let BleAction::StartScan = sig {
-                            break;
-                        }
+            let current_menu_scene = state.state.lock().await.menu_scene.clone();
+            if current_menu_scene != Some(MenuScene::BtDisplay) {
+                loop {
+                    let sig = state.ble_sig.wait().await;
+                    if let BleAction::StartScan = sig {
+                        break;
                     }
                 }
+            }
 
-                (false, None)
-            };
+            None
+        };
 
         let Ok(connector) = BleConnector::new(
             init,
@@ -65,67 +64,77 @@ pub async fn bluetooth_timer_task(
             ..
         } = stack.build();
 
-        let mut central = if !has_bond_info {
-            let discovery_channel: Channel<NoopRawMutex, BleDisplayDevice, 10> =
-                embassy_sync::channel::Channel::new();
-            let printer = BleDiscovery {
-                seen: RefCell::new(heapless::Deque::new()),
-                sender: discovery_channel.sender(),
-            };
-
-            let mut scanner = Scanner::new(central);
-            {
-                state
-                    .state
-                    .lock()
-                    .await
-                    .discovered_bluetooth_devices
-                    .clear();
+        let mut central = match bond_info {
+            Some(ref bond) => {
+                if let Err(e) = stack.add_bond_information(bond.clone()) {
+                    log::error!("Add bond information failed! ({e:?})");
+                    break;
+                }
+                central
             }
+            None => {
+                let discovery_channel: Channel<NoopRawMutex, BleDisplayDevice, 10> =
+                    embassy_sync::channel::Channel::new();
+                let printer = BleDiscovery {
+                    seen: RefCell::new(heapless::Deque::new()),
+                    sender: discovery_channel.sender(),
+                };
 
-            let _ = select4(
-                runner.run_with_handler(&printer),
-                async {
-                    let config = ScanConfig::default();
-                    let mut _session = scanner.scan(&config).await.unwrap();
-                    loop {
-                        Timer::after_millis(10000).await;
-                    }
-                },
-                async {
-                    loop {
-                        let recv = discovery_channel.receive().await;
-                        {
-                            let mut state = state.state.lock().await;
-                            if state.selected_bluetooth_item
-                                >= state.discovered_bluetooth_devices.len()
-                                && state.selected_bluetooth_item > 0
-                            {
-                                state.selected_bluetooth_item += 1;
+                let mut scanner = Scanner::new(central);
+                {
+                    state
+                        .state
+                        .lock()
+                        .await
+                        .discovered_bluetooth_devices
+                        .clear();
+                }
+
+                let _ = select4(
+                    runner.run_with_handler(&printer),
+                    async {
+                        let config = ScanConfig::default();
+                        let mut _session = match scanner.scan(&config).await {
+                            Ok(s) => s,
+                            Err(e) => {
+                                log::error!("Cannot start ble scan! ({e:?})");
+                                return;
                             }
+                        };
 
-                            state.discovered_bluetooth_devices.push(recv);
+                        loop {
+                            Timer::after_millis(10000).await;
                         }
-                    }
-                },
-                async {
-                    loop {
-                        Timer::after_millis(200).await;
-                        if state.ble_sig.signaled() {
-                            break;
+                    },
+                    async {
+                        loop {
+                            let recv = discovery_channel.receive().await;
+                            {
+                                let mut state = state.state.lock().await;
+                                if state.selected_bluetooth_item
+                                    >= state.discovered_bluetooth_devices.len()
+                                    && state.selected_bluetooth_item > 0
+                                {
+                                    state.selected_bluetooth_item += 1;
+                                }
+
+                                state.discovered_bluetooth_devices.push(recv);
+                            }
                         }
-                    }
-                },
-            )
-            .await;
+                    },
+                    async {
+                        loop {
+                            Timer::after_millis(200).await;
+                            if state.ble_sig.signaled() {
+                                break;
+                            }
+                        }
+                    },
+                )
+                .await;
 
-            scanner.into_inner()
-        } else {
-            stack
-                .add_bond_information(bond_info.clone().unwrap())
-                .unwrap();
-
-            central
+                scanner.into_inner()
+            }
         };
 
         let display_addr = match bond_info {
@@ -178,11 +187,16 @@ pub async fn bluetooth_timer_task(
                     };
 
                     // Allow bonding if a bond isn't already stored
-                    conn.set_bondable(!has_bond_info).unwrap();
-                    log::info!("Connected, creating gatt client");
-
+                    if let Err(e) = conn.set_bondable(bond_info.is_none()) {
+                        log::error!("Set bondable failed! ({e:?})");
+                        continue;
+                    }
                     {
-                        conn.request_security().unwrap();
+                        if let Err(e) = conn.request_security() {
+                            log::error!("Request security failed ({e:?})");
+                            continue;
+                        }
+
                         loop {
                             match conn.next().await {
                                 ConnectionEvent::PairingComplete {
@@ -193,7 +207,7 @@ pub async fn bluetooth_timer_task(
 
                                     if let Some(bond) = bond {
                                         store_bonding_info(&state.nvs, &bond).await;
-                                        has_bond_info = true;
+                                        bond_info = Some(bond);
                                     }
 
                                     if !security_level.encrypted() {
@@ -213,7 +227,9 @@ pub async fn bluetooth_timer_task(
                                         reason,
                                         reason.into_inner()
                                     );
-                                    if reason.into_inner() == 0x05 || reason.into_inner() == 0x3e {
+                                    if reason.into_inner() == 0x05
+                                    /* || reason.into_inner() == 0x3e */
+                                    {
                                         // auth failed
                                         _ = state.nvs.invalidate_key(b"BONDING_KEY").await;
                                         if let Some(ref bond_info) = bond_info {
@@ -228,9 +244,12 @@ pub async fn bluetooth_timer_task(
                         }
                     }
 
-                    let client = GattClient::<_, DefaultPacketPool, 10>::new(&stack, &conn)
-                        .await
-                        .unwrap();
+                    let Ok(client) =
+                        GattClient::<_, DefaultPacketPool, 10>::new(&stack, &conn).await
+                    else {
+                        log::error!("Failed to create Gatt client!");
+                        continue;
+                    };
 
                     let conn_fut = async {
                         loop {
@@ -242,7 +261,6 @@ pub async fn bluetooth_timer_task(
                     };
 
                     let write_fut = async {
-                        log::info!("Looking for digits service");
                         let services = match with_timeout(
                             Duration::from_secs(5),
                             client.services_by_uuid(&Uuid::from(
@@ -263,16 +281,22 @@ pub async fn bluetooth_timer_task(
                                 return;
                             }
                         };
-                        let service = services.first().unwrap().clone();
 
-                        log::info!("Looking for value handle");
-                        let c: Characteristic<u64> = client
-                            .characteristic_by_uuid(
+                        let Some(service) = services.first().cloned() else {
+                            log::error!("Cannot find ble service!");
+                            return;
+                        };
+
+                        let Ok(c) = client
+                            .characteristic_by_uuid::<u64>(
                                 &service,
                                 &Uuid::from(0xa5178cade4e045988053a4a78b9281e2u128),
                             )
                             .await
-                            .unwrap();
+                        else {
+                            log::error!("Cannot find ble characteristic!");
+                            return;
+                        };
 
                         let mut data = [0; 8];
                         loop {
@@ -316,19 +340,16 @@ async fn store_bonding_info(nvs: &esp_hal_wifimanager::Nvs, info: &BondInformati
 
     buf[..6].copy_from_slice(info.identity.bd_addr.raw());
     buf[6..22].copy_from_slice(info.ltk.to_le_bytes().as_slice());
-    log::info!(
-        "store {:?} {:?} {:?}",
-        info.identity.bd_addr,
-        info.ltk,
-        info.security_level
-    );
     buf[22] = match info.security_level {
         SecurityLevel::NoEncryption => 0,
         SecurityLevel::Encrypted => 1,
         SecurityLevel::EncryptedAuthenticated => 2,
     };
 
-    nvs.append_key(b"BONDING_KEY", &buf).await.unwrap();
+    let res = nvs.append_key(b"BONDING_KEY", &buf).await;
+    if let Err(e) = res {
+        log::error!("NVS Bonding key store failed! ({e:?})");
+    }
 }
 
 async fn load_bonding_info(nvs: &esp_hal_wifimanager::Nvs) -> Option<BondInformation> {
@@ -338,16 +359,15 @@ async fn load_bonding_info(nvs: &esp_hal_wifimanager::Nvs) -> Option<BondInforma
         return None;
     }
 
-    let bd_addr = BdAddr::new(buf[..6].try_into().unwrap());
+    let bd_addr = BdAddr::new(buf[..6].try_into().expect("Cannot fail"));
     let security_level = match buf[22] {
         0 => SecurityLevel::NoEncryption,
         1 => SecurityLevel::Encrypted,
         2 => SecurityLevel::EncryptedAuthenticated,
         _ => return None,
     };
-    let ltk = LongTermKey::from_le_bytes(buf[6..22].try_into().unwrap());
+    let ltk = LongTermKey::from_le_bytes(buf[6..22].try_into().expect("Cannot fail"));
 
-    log::info!("load {:?} {:?} {:?}", bd_addr, ltk, security_level);
     Some(BondInformation {
         identity: Identity { bd_addr, irk: None },
         security_level,
@@ -367,9 +387,8 @@ impl EventHandler for BleDiscovery<'_> {
         let mut seen = self.seen.borrow_mut();
         while let Some(Ok(report)) = it.next() {
             if !seen.iter().any(|b| b.raw() == report.addr.raw()) {
-                if let Some(name) = parse_device_name(report.data) {
-                    log::debug!("[ble] discovered: {:?} with name: {name}", report.addr);
-                    if name.starts_with("FKMD-") {
+                if let Some(name) = parse_device_name(report.data)
+                    && name.starts_with("FKMD-") {
                         log::info!("Disovered FKM Display! [{:?}] ({name})", report.addr);
 
                         _ = self.sender.try_send(BleDisplayDevice {
@@ -377,12 +396,11 @@ impl EventHandler for BleDiscovery<'_> {
                             addr: report.addr.into_inner(),
                         });
                     }
-                }
 
                 if seen.is_full() {
                     seen.pop_front();
                 }
-                seen.push_back(report.addr).unwrap();
+                _ = seen.push_back(report.addr);
             }
         }
     }

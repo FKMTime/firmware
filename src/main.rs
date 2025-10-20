@@ -188,11 +188,12 @@ async fn main(spawner: Spawner) {
     {
         let init = &*mk_static!(
             esp_wifi::EspWifiController<'static>,
-            esp_wifi::init(board.timg0.timer0, board.rng.clone(), board.radio_clk).unwrap()
+            esp_wifi::init(board.timg0.timer0, board.rng.clone(), board.radio_clk)
+                .expect("EXPERIMENT")
         );
 
         let (manager, tx, mut rx) = esp_wifi::esp_now::EspNow::new(&init, board.wifi)
-            .unwrap()
+            .expect("EXPERIMENT")
             .split();
 
         _ = manager.set_power_saving(esp_wifi::config::PowerSaveMode::None);
@@ -208,7 +209,7 @@ async fn main(spawner: Spawner) {
 
             if &recv.info.dst_address == ESP_NOW_DST {
                 if recv.data().len() == 16 {
-                    let counter = u128::from_be_bytes(recv.data().try_into().unwrap());
+                    let counter = u128::from_be_bytes(recv.data().try_into().expect("EXPERIMENT"));
                     if counter - last_counter == 0 {
                         log::warn!("First packet?");
                     } else if counter - last_counter > 1 {
@@ -393,10 +394,10 @@ async fn bc_test_task(mut tx: EspNowSender<'static>, manager: EspNowManager<'sta
                 channel: None,
                 encrypt: false,
             })
-            .unwrap();
+            .expect("EXPERIMENT");
 
         let r = tx.send_async(ESP_NOW_DST, &counter.to_be_bytes()).await;
-        manager.remove_peer(ESP_NOW_DST).unwrap();
+        manager.remove_peer(ESP_NOW_DST).expect("EXPERIMENT");
 
         counter += 1;
         Timer::after_millis(1000).await;

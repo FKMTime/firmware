@@ -23,7 +23,7 @@ fn main() {
     } else {
         let epoch = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("Cannot fail? (Getting epoch)")
             .as_secs();
 
         format!("D{epoch}")
@@ -37,6 +37,11 @@ fn main() {
         .replace("{hw}", hw)
         .replace("{firmware}", "STATION");
 
-    let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
-    std::fs::write(out_dir.join("version.rs"), generated.trim()).unwrap();
+    let Ok(out_dir) = std::env::var("OUT_DIR").map(PathBuf::from) else {
+        panic!("Compiler should set OUT_DIR!");
+    };
+
+    std::fs::write(out_dir.join("version.rs"), generated.trim()).unwrap_or_else(|_| {
+        panic!("build.rs version.rs inside outdir ({out_dir:?}) failed to write!")
+    });
 }

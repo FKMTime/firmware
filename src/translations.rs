@@ -88,7 +88,14 @@ pub fn process_locale(locale: String, records: Vec<TranslationRecord>) {
                     translations: alloc::vec![None; TRANSLATIONS_COUNT],
                 });
 
-                t.get_mut(idx).expect("")
+                let locale = t.get_mut(idx);
+                match locale {
+                    Some(locale) => locale,
+                    None => {
+                        log::error!("Process locale failed!");
+                        return;
+                    }
+                }
             }
         };
 

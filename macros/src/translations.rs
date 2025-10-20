@@ -30,8 +30,8 @@ impl Parse for TranslationsHandler {
 pub fn load_translations_macro(args: TokenStream) -> TokenStream {
     let TranslationsHandler { path } = syn::parse_macro_input!(args as TranslationsHandler);
 
-    let read = std::fs::read(&path).unwrap();
-    let translations: Vec<TranslationRecord> = serde_json::from_slice(&read).unwrap();
+    let read = std::fs::read(&path).expect("Cannot read translations file!");
+    let translations: Vec<TranslationRecord> = serde_json::from_slice(&read).unwrap_or(Vec::new());
 
     let translations_count = translations.len();
     let declaration = quote! {

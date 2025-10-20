@@ -112,10 +112,13 @@ async fn ws_loop(
                 .query(ws_url.ip, embassy_net::dns::DnsQueryType::A)
                 .await;
 
-            let Ok(res) = res else {
-                log::error!("[WS]Dns resolver error: {:?}", res.expect_err(""));
-                Timer::after_millis(1000).await;
-                continue;
+            let res = match res {
+                Ok(res) => res,
+                Err(e) => {
+                    log::error!("[WS]Dns resolver error: {e:?}");
+                    Timer::after_millis(1000).await;
+                    continue;
+                }
             };
 
             let Some(IpAddress::Ipv4(addr)) = res.first() else {

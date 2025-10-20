@@ -64,18 +64,15 @@ pub fn generate_button_handler_enum(args: TokenStream) -> TokenStream {
         panic!("File path not found!");
     };
 
-    let read = std::fs::read_to_string(&path);
-    if let Err(_) = read {
+    let Ok(read) = std::fs::read_to_string(&path) else {
         return quote! {
             #[doc(hidden)]
             pub enum HandlersDerive {}
         }
         .into();
-    }
+    };
 
-    let read = read.unwrap();
-    let input_file = syn::parse_file(&read).unwrap();
-
+    let input_file = syn::parse_file(&read).expect("SYN Cannot parse file");
     let mut output_ty: Option<proc_macro2::TokenStream> = None;
     let mut output_enum = Vec::new();
     let mut output_enum_impl = Vec::new();
