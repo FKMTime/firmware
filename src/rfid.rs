@@ -26,26 +26,39 @@ pub async fn rfid_task(
 ) {
     #[allow(clippy::manual_div_ceil)]
     let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(512);
-    let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).expect("Dma tx buf failed");
-    let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).expect("Dma rx buf failed");
+    let Ok(dma_tx_buf) = DmaTxBuf::new(tx_descriptors, tx_buffer) else {
+        log::error!("Dma tx buf failed");
+        return;
+    };
+    let Ok(dma_rx_buf) = DmaRxBuf::new(rx_descriptors, rx_buffer) else {
+        log::error!("Dma rx buf failed");
+        return;
+    };
 
-    let spi = Spi::new(
+    let Ok(spi) = Spi::new(
         spi,
         esp_hal::spi::master::Config::default()
             .with_frequency(Rate::from_khz(400))
             .with_mode(Mode::_0),
     )
-    .expect("Spi init failed")
-    .with_sck(sck)
-    .with_miso(miso)
-    .with_mosi(mosi)
-    .with_dma(dma_chan)
-    .with_buffers(dma_rx_buf, dma_tx_buf)
-    .into_async();
+    .map(|s| {
+        s.with_sck(sck)
+            .with_miso(miso)
+            .with_mosi(mosi)
+            .with_dma(dma_chan)
+            .with_buffers(dma_rx_buf, dma_tx_buf)
+            .into_async()
+    }) else {
+        log::error!("Rfid task error while creating Spi instance!");
+        return;
+    };
 
     let mut mfrc522 = {
-        let spi = embedded_hal_bus::spi::ExclusiveDevice::new(spi, cs_pin, embassy_time::Delay)
-            .expect("Spi bus init failed (cs set high failed)");
+        let Ok(spi) = embedded_hal_bus::spi::ExclusiveDevice::new(spi, cs_pin, embassy_time::Delay)
+        else {
+            log::error!("Spi bus init failed (cs set high failed)");
+            return;
+        };
 
         esp_hal_mfrc522::MFRC522::new(esp_hal_mfrc522::drivers::SpiDriver::new(spi))
     };

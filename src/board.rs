@@ -1,6 +1,6 @@
 use crate::utils::stackmat::{DEC_DIGITS, DOT_MOD};
 use adv_shift_registers::wrappers::ShifterValueRange;
-use anyhow::Result;
+use embedded_hal::digital::OutputPin;
 use esp_hal::{
     gpio::{AnyPin, Input, InputConfig, Level, Output, Pin, Pull},
     peripherals::{
@@ -47,9 +47,7 @@ pub struct Board {
 }
 
 impl Board {
-    pub fn init(peripherals: Peripherals) -> Result<Board> {
-        use embedded_hal::digital::OutputPin;
-
+    pub fn init(peripherals: Peripherals) -> Board {
         let timg0 = TimerGroup::new(peripherals.TIMG0);
         let timg1 = TimerGroup::new(peripherals.TIMG1);
         let rng = Rng::new();
@@ -100,7 +98,7 @@ impl Board {
         let mut cs = adv_shift_reg.get_pin_mut(1, 0, true);
         _ = cs.set_high();
 
-        Ok(Board {
+        Board {
             timg0,
             timg1,
             rng,
@@ -128,6 +126,6 @@ impl Board {
             lcd,
             usb_dp,
             usb_dm,
-        })
+        }
     }
 }

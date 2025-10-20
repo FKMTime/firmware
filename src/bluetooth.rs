@@ -359,14 +359,14 @@ async fn load_bonding_info(nvs: &esp_hal_wifimanager::Nvs) -> Option<BondInforma
         return None;
     }
 
-    let bd_addr = BdAddr::new(buf[..6].try_into().expect("Cannot fail"));
+    let bd_addr = BdAddr::new(buf[..6].try_into().expect(""));
     let security_level = match buf[22] {
         0 => SecurityLevel::NoEncryption,
         1 => SecurityLevel::Encrypted,
         2 => SecurityLevel::EncryptedAuthenticated,
         _ => return None,
     };
-    let ltk = LongTermKey::from_le_bytes(buf[6..22].try_into().expect("Cannot fail"));
+    let ltk = LongTermKey::from_le_bytes(buf[6..22].try_into().expect(""));
 
     Some(BondInformation {
         identity: Identity { bd_addr, irk: None },
@@ -388,14 +388,15 @@ impl EventHandler for BleDiscovery<'_> {
         while let Some(Ok(report)) = it.next() {
             if !seen.iter().any(|b| b.raw() == report.addr.raw()) {
                 if let Some(name) = parse_device_name(report.data)
-                    && name.starts_with("FKMD-") {
-                        log::info!("Disovered FKM Display! [{:?}] ({name})", report.addr);
+                    && name.starts_with("FKMD-")
+                {
+                    log::info!("Disovered FKM Display! [{:?}] ({name})", report.addr);
 
-                        _ = self.sender.try_send(BleDisplayDevice {
-                            name: name.to_string(),
-                            addr: report.addr.into_inner(),
-                        });
-                    }
+                    _ = self.sender.try_send(BleDisplayDevice {
+                        name: name.to_string(),
+                        addr: report.addr.into_inner(),
+                    });
+                }
 
                 if seen.is_full() {
                     seen.pop_front();

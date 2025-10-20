@@ -99,7 +99,7 @@ async fn main(spawner: Spawner) {
     }
 
     set_brownout_detection(false);
-    let board = Board::init(peripherals).expect("Board init error");
+    let board = Board::init(peripherals);
     let software_interrupt = SoftwareInterruptControl::new(board.sw_interrupt);
     esp_rtos::start(board.timg1.timer0, software_interrupt.software_interrupt0);
     FkmLogger::set_logger();

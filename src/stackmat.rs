@@ -20,8 +20,7 @@ pub async fn stackmat_task(
     global_state: GlobalState,
 ) {
     let serial_config = esp_hal::uart::Config::default().with_baudrate(1200);
-    let Ok(mut uart) = UartRx::new(uart, serial_config).map(|u| u.with_rx(uart_pin))
-    else {
+    let Ok(mut uart) = UartRx::new(uart, serial_config).map(|u| u.with_rx(uart_pin)) else {
         log::error!("Stackmat task error while creating UartRx instance!");
         return;
     };
