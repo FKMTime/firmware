@@ -17,6 +17,7 @@ pub static mut SIGN_KEY: u32 = 0;
 pub static mut TRUST_SERVER: bool = false;
 pub static mut FKM_TOKEN: i32 = 0;
 pub static mut SECURE_RFID: bool = false;
+pub static mut AUTO_SETUP: bool = false;
 
 pub static mut EPOCH_BASE: u64 = 0;
 pub static mut SLEEP_STATE: bool = false;

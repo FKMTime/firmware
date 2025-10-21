@@ -49,6 +49,9 @@ pub async fn ws_task(
 
     loop {
         unsafe { crate::state::TRUST_SERVER = false };
+        unsafe { crate::state::SECURE_RFID = false };
+        unsafe { crate::state::AUTO_SETUP = false };
+        unsafe { crate::state::FKM_TOKEN = 0 };
 
         let ws_fut = ws_loop(
             &global_state,
@@ -223,7 +226,6 @@ async fn ws_loop(
             if random == recv_random {
                 unsafe { crate::state::TRUST_SERVER = true };
                 unsafe { crate::state::FKM_TOKEN = fkm_token };
-                unsafe { crate::state::SECURE_RFID = false };
             }
         }
 
@@ -359,6 +361,7 @@ async fn ws_rw(
                                 default_locale,
                                 fkm_token,
                                 secure_rfid,
+                                auto_setup,
                             } => {
                                 let mut state = global_state.state.lock().await;
                                 state.device_added = Some(added);
@@ -376,6 +379,7 @@ async fn ws_rw(
 
                                 unsafe { crate::state::FKM_TOKEN = fkm_token };
                                 unsafe { crate::state::SECURE_RFID = secure_rfid };
+                                unsafe { crate::state::AUTO_SETUP = auto_setup };
                             }
                             TimerPacketInner::ApiError(e) => {
                                 // if should_reset_time reset time

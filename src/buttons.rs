@@ -231,9 +231,19 @@ async fn submit_up(
                 state.ble_sig.signal(BleAction::StartScan);
             }
             2 => {
+                if unsafe { !crate::state::AUTO_SETUP } {
+                    state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
+                    return Ok(true);
+                }
+
                 state_val.menu_scene = Some(MenuScene::Signing);
             }
             3 => {
+                if unsafe { !crate::state::AUTO_SETUP } {
+                    state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
+                    return Ok(true);
+                }
+
                 state_val.menu_scene = Some(MenuScene::Unsigning);
             }
             4 => {} // Exit
