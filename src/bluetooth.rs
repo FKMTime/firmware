@@ -2,12 +2,13 @@ use crate::{
     state::{BleAction, GlobalState, MenuScene},
     structs::BleDisplayDevice,
 };
-use alloc::string::ToString;
+use alloc::{rc::Rc, string::ToString};
 use core::cell::RefCell;
 use embassy_futures::select::{Either, select, select3, select4};
 use embassy_sync::{
-    blocking_mutex::raw::NoopRawMutex,
+    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
     channel::{Channel, Sender},
+    signal::Signal,
 };
 use embassy_time::{Duration, Timer, with_timeout};
 use esp_radio::{Controller as RadioController, ble::controller::BleConnector};
@@ -19,6 +20,35 @@ pub async fn bluetooth_timer_task(
     init: &'static RadioController<'static>,
     bt: esp_hal::peripherals::BT<'static>,
     state: GlobalState,
+    sleep_sig: Rc<Signal<CriticalSectionRawMutex, bool>>,
+) {
+    loop {
+        let mut sleep = false;
+        embassy_futures::select::select(bluetooth_loop(init, &bt, &state), async {
+            loop {
+                if sleep_sig.wait().await {
+                    sleep = true;
+                    break;
+                }
+            }
+        })
+        .await;
+
+        Timer::after_millis(1000).await;
+        if sleep {
+            loop {
+                if !sleep_sig.wait().await {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+async fn bluetooth_loop(
+    init: &'static RadioController<'static>,
+    bt: &esp_hal::peripherals::BT<'static>,
+    state: &GlobalState,
 ) {
     loop {
         let mut bond_info = if let Some(bond_info) = load_bonding_info(&state.nvs).await {

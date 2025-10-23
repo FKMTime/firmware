@@ -309,10 +309,12 @@ async fn main(spawner: Spawner) {
         ));
         spawner.must_spawn(logger_task(global_state.clone()));
 
+        let ble_sleep_sig = Rc::new(Signal::new());
         spawner.must_spawn(bluetooth::bluetooth_timer_task(
             wifi_res.wifi_init,
             board.bt,
             global_state.clone(),
+            ble_sleep_sig.clone(),
         ));
 
         set_brownout_detection(true);
@@ -331,6 +333,7 @@ async fn main(spawner: Spawner) {
             if sleep_state() != last_sleep {
                 last_sleep = sleep_state();
                 ws_sleep_sig.signal(last_sleep);
+                ble_sleep_sig.signal(last_sleep);
 
                 match last_sleep {
                     true => {
