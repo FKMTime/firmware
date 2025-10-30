@@ -389,14 +389,14 @@ async fn load_bonding_info(nvs: &esp_hal_wifimanager::Nvs) -> Option<BondInforma
         return None;
     }
 
-    let bd_addr = BdAddr::new(buf[..6].try_into().expect(""));
+    let bd_addr = BdAddr::new(buf[..6].try_into().unwrap_or_default());
     let security_level = match buf[22] {
         0 => SecurityLevel::NoEncryption,
         1 => SecurityLevel::Encrypted,
         2 => SecurityLevel::EncryptedAuthenticated,
         _ => return None,
     };
-    let ltk = LongTermKey::from_le_bytes(buf[6..22].try_into().expect(""));
+    let ltk = LongTermKey::from_le_bytes(buf[6..22].try_into().unwrap_or_default());
 
     Some(BondInformation {
         identity: Identity { bd_addr, irk: None },

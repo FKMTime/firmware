@@ -264,7 +264,7 @@ async fn main(spawner: Spawner) {
 
                     mdns_res.to_string()
                 } else {
-                    conn_settings.ws_url.clone().expect("")
+                    conn_settings.ws_url.clone().unwrap_or_default()
                 };
 
             let ws_url = WsUrl::from_str(&url);

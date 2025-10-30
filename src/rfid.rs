@@ -304,7 +304,7 @@ pub async fn rfid_task(
                 continue;
             }
 
-            let secured_uid = u128::from_be_bytes(buff[..16].try_into().expect(""));
+            let secured_uid = u128::from_be_bytes(buff[..16].try_into().unwrap_or_default());
             if secured_uid != card_uid {
                 log::error!("Card is not secure!");
                 log::debug!("read: {res:?}, data: {buff:#?}");
@@ -404,8 +404,8 @@ async fn process_card_info_response(
         crate::state::Scene::Finished => {
             if state.current_competitor != Some(resp.card_id) && state.time_confirmed {
                 state.current_judge = Some(resp.card_id);
-            } else if state.current_competitor.is_some()
-                && state.current_judge.is_some()
+            } else if let Some(current_competitor) = state.current_competitor
+                && let Some(current_judge) = state.current_judge
                 && state.current_competitor == Some(resp.card_id)
                 && state.time_confirmed
             {
@@ -416,14 +416,19 @@ async fn process_card_info_response(
                     .map(|(end, start)| (end - start).as_millis() as i64)
                     .unwrap_or(0);
 
-                if state.session_id.is_none() {
-                    state.session_id = Some(uuid::Uuid::new_v4().to_string());
-                }
+                let session_id = match &state.session_id {
+                    Some(sess_id) => sess_id.clone(),
+                    None => {
+                        let sess_id = uuid::Uuid::new_v4().to_string();
+                        state.session_id = Some(sess_id.clone());
+                        sess_id
+                    }
+                };
 
-                if state.solve_group.is_none() {
+                let Some(ref solve_group) = state.solve_group else {
                     log::error!("Solve group is none! (How would that happen?)");
                     return Ok(());
-                }
+                };
 
                 if unsafe { !crate::state::TRUST_SERVER } {
                     log::error!("Skipping solve send. Server not trusted!");
@@ -434,20 +439,20 @@ async fn process_card_info_response(
                     crate::structs::TimerPacketInner::Solve {
                         solve_time: state.solve_time.ok_or(anyhow!("Solve time is None"))?,
                         penalty: state.penalty.unwrap_or(0) as i64,
-                        competitor_id: state.current_competitor.expect(""),
-                        judge_id: state.current_judge.expect(""),
+                        competitor_id: current_competitor,
+                        judge_id: current_judge,
                         timestamp: current_epoch(),
-                        session_id: state.session_id.clone().expect(""),
+                        session_id,
                         delegate: false,
                         inspection_time,
-                        group_id: state.solve_group.clone().map(|r| r.group_id).expect(""),
+                        group_id: solve_group.group_id.clone(),
                         sign_key: unsafe { crate::state::SIGN_KEY },
                     },
                 )
                 .await;
 
                 if resp.is_ok() {
-                    log::info!("solve_resp: {resp:?}");
+                    log::warn!("solve_resp: {resp:?}");
                     state.reset_solve_state(Some(&global_state.nvs)).await;
                 }
             }

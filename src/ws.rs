@@ -219,8 +219,8 @@ async fn ws_loop(
                 .await
                 .decrypt(&mut block, esp_hal::aes::Key::Key128(key));
 
-            let recv_random = u64::from_be_bytes(block[..8].try_into().expect(""));
-            let fkm_token = i32::from_be_bytes(block[8..12].try_into().expect(""));
+            let recv_random = u64::from_be_bytes(block[..8].try_into().unwrap_or_default());
+            let fkm_token = i32::from_be_bytes(block[8..12].try_into().unwrap_or_default());
 
             log::debug!(
                 "[trust] random: {random}, recv_random: {recv_random} | fkm_token: {fkm_token}"

@@ -485,14 +485,13 @@ async fn delegate_hold(
                 return Ok(false);
             }
 
-            if state_val.session_id.is_none() {
-                state_val.session_id = Some(uuid::Uuid::new_v4().to_string());
-            }
-
-            if state_val.current_competitor.is_none() || state_val.solve_group.is_none() {
+            let (Some(current_competitor), Some(solve_group)) = (
+                state_val.current_competitor,
+                state_val.solve_group.clone().map(|x| x.group_id),
+            ) else {
                 log::error!("Delegate hold: competitor or solve_group none!");
                 return Ok(false);
-            }
+            };
 
             if unsafe { !crate::state::TRUST_SERVER } {
                 log::error!("Skipping delegate hold. Server not trusted!");
@@ -500,29 +499,33 @@ async fn delegate_hold(
             }
 
             let inspection_time = if state_val.use_inspection()
-                && state_val.inspection_start.is_some()
-                && state_val.inspection_end.is_some()
+                && let Some(start) = state_val.inspection_start
+                && let Some(end) = state_val.inspection_end
             {
-                (state_val.inspection_end.expect("") - state_val.inspection_start.expect(""))
-                    .as_millis() as i64
+                (end - start).as_millis() as i64
             } else {
                 0
             };
 
-            if state_val.session_id.is_none() {
-                state_val.session_id = Some(uuid::Uuid::new_v4().to_string());
-            }
+            let session_id = match &state_val.session_id {
+                Some(sess_id) => sess_id.clone(),
+                None => {
+                    let sess_id = uuid::Uuid::new_v4().to_string();
+                    state_val.session_id = Some(sess_id.clone());
+                    sess_id
+                }
+            };
 
             let packet = crate::structs::TimerPacketInner::Solve {
                 solve_time: state_val.solve_time.unwrap_or(0),
                 penalty: state_val.penalty.unwrap_or(0) as i64,
-                competitor_id: state_val.current_competitor.expect(""),
+                competitor_id: current_competitor,
                 judge_id: state_val.current_judge.unwrap_or(0),
                 timestamp: current_epoch(),
-                session_id: state_val.session_id.clone().expect(""),
+                session_id,
                 delegate: true,
                 inspection_time,
-                group_id: state_val.solve_group.clone().map(|r| r.group_id).expect(""),
+                group_id: solve_group,
                 sign_key: unsafe { crate::state::SIGN_KEY },
             };
 
