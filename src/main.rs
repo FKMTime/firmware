@@ -20,9 +20,6 @@ use structs::ConnSettings;
 use utils::{logger::FkmLogger, set_brownout_detection};
 use ws_framer::{WsUrl, WsUrlOwned};
 
-#[cfg(feature = "esp_now")]
-use esp_radio::esp_now::{EspNowManager, EspNowSender};
-
 mod battery;
 mod bluetooth;
 mod board;
@@ -56,19 +53,6 @@ pub fn custom_rng(buf: &mut [u8]) -> Result<(), getrandom::Error> {
     Ok(())
 }
 getrandom::register_custom_getrandom!(custom_rng);
-
-#[cfg(feature = "esp_now")]
-const ESP_NOW_DST: &[u8; 6] = &[156, 158, 110, 52, 70, 200];
-#[cfg(feature = "esp_now")]
-macro_rules! mk_static {
-    ($t:ty,$val:expr) => {{
-        static STATIC_CELL: static_cell::StaticCell<$t> = static_cell::StaticCell::new();
-        #[deny(unused_attributes)]
-        let x = STATIC_CELL.uninit().write(($val));
-        x
-    }};
-}
-
 esp_bootloader_esp_idf::esp_app_desc!();
 
 #[esp_rtos::main]
@@ -183,165 +167,122 @@ async fn main(spawner: Spawner) {
             }
         }
     }
+    let wifi_res = esp_hal_wifimanager::init_wm(
+        wm_settings,
+        &spawner,
+        #[cfg(feature = "qa")]
+        None,
+        #[cfg(not(feature = "qa"))]
+        Some(&nvs),
+        board.rng,
+        board.wifi,
+        unsafe { board.bt.clone_unchecked() },
+        Some(wifi_setup_sig),
+    )
+    .await;
 
-    #[cfg(feature = "esp_now")]
-    {
-        let init = &*mk_static!(
-            esp_wifi::EspWifiController<'static>,
-            esp_wifi::init(board.timg0.timer0, board.rng.clone(), board.radio_clk)
-                .expect("EXPERIMENT")
-        );
+    let Ok(mut wifi_res) = wifi_res else {
+        log::error!("WifiManager failed!!! Restarting in 1s!");
+        Timer::after_millis(1000).await;
+        esp_hal::system::software_reset();
+    };
 
-        let (manager, tx, mut rx) = esp_wifi::esp_now::EspNow::new(&init, board.wifi)
-            .expect("EXPERIMENT")
-            .split();
+    #[cfg(feature = "qa")]
+    crate::qa::send_qa_resp(crate::qa::QaSignal::WifiSetup);
 
-        _ = manager.set_power_saving(esp_wifi::config::PowerSaveMode::None);
-        //_ = manager.set_rate(esp_wifi::esp_now::WifiPhyRate::RateMax);
-        _ = manager.set_pmk(&[69, 4, 2, 0, 1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let conn_settings: ConnSettings = wifi_res
+        .data
+        .take()
+        .and_then(|d| serde_json::from_value(d).ok())
+        .unwrap_or_default();
 
-        spawner.must_spawn(bc_test_task(tx, manager));
-        let mut last_counter = 0;
-        loop {
-            let recv = rx.receive_async().await;
-            log::info!("ESP_NOW frame recv: {:?}", recv.info);
-            log::info!("{:?}", recv.data());
+    let mut parse_retry_count = 0;
+    let ws_url = loop {
+        let url = if conn_settings.mdns || conn_settings.ws_url.is_none() || parse_retry_count > 0 {
+            log::info!("Starting mdns lookup...");
+            global_state.state.lock().await.scene = Scene::MdnsWait;
+            let mdns_res = mdns::mdns_query(wifi_res.sta_stack).await;
+            log::info!("Mdns result: {mdns_res:?}");
 
-            if &recv.info.dst_address == ESP_NOW_DST {
-                if recv.data().len() == 16 {
-                    let counter = u128::from_be_bytes(recv.data().try_into().expect("EXPERIMENT"));
-                    if counter - last_counter == 0 {
-                        log::warn!("First packet?");
-                    } else if counter - last_counter > 1 {
-                        log::error!("PACKET LOST!");
-                    }
+            mdns_res.to_string()
+        } else {
+            conn_settings.ws_url.clone().unwrap_or_default()
+        };
 
-                    last_counter = counter;
+        let ws_url = WsUrl::from_str(&url);
+        match ws_url {
+            Some(ws_url) => break WsUrlOwned::new(&ws_url),
+            None => {
+                parse_retry_count += 1;
+                log::error!("Mdns parse failed! Retry ({parse_retry_count})..");
+                Timer::after_millis(1000).await;
+                if parse_retry_count > 3 {
+                    log::error!("Cannot parse wsurl! Reseting wifi configuration!");
+                    _ = nvs.invalidate_key(WIFI_NVS_KEY).await;
+                    Timer::after_millis(1000).await;
+
+                    esp_hal::system::software_reset();
                 }
+
+                continue;
             }
         }
+    };
+
+    utils::backtrace_store::read_saved_backtrace().await;
+    // TODO: test disable usb
+    /*
+    esp_hal::gpio::Input::new(
+        board.usb_dp,
+        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::None),
+    );
+    esp_hal::gpio::Input::new(
+        board.usb_dm,
+        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::None),
+    );
+    */
+
+    let ws_sleep_sig = Rc::new(Signal::new());
+    spawner.must_spawn(ws::ws_task(
+        wifi_res.sta_stack,
+        ws_url,
+        global_state.clone(),
+        ws_sleep_sig.clone(),
+    ));
+    spawner.must_spawn(logger_task(global_state.clone()));
+
+    let ble_sleep_sig = Rc::new(Signal::new());
+    spawner.must_spawn(bluetooth::bluetooth_timer_task(
+        wifi_res.wifi_init,
+        board.bt,
+        global_state.clone(),
+        ble_sleep_sig.clone(),
+    ));
+
+    set_brownout_detection(true);
+    global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
+    if let Some(saved_state) = SavedGlobalState::from_nvs(&nvs).await {
+        global_state
+            .state
+            .lock()
+            .await
+            .parse_saved_state(saved_state);
     }
 
-    #[cfg(not(feature = "esp_now"))]
-    {
-        let wifi_res = esp_hal_wifimanager::init_wm(
-            wm_settings,
-            &spawner,
-            #[cfg(feature = "qa")]
-            None,
-            #[cfg(not(feature = "qa"))]
-            Some(&nvs),
-            board.rng,
-            board.wifi,
-            unsafe { board.bt.clone_unchecked() },
-            Some(wifi_setup_sig),
-        )
-        .await;
+    let mut last_sleep = false;
+    loop {
+        Timer::after_millis(100).await;
+        if sleep_state() != last_sleep {
+            last_sleep = sleep_state();
+            ws_sleep_sig.signal(last_sleep);
+            ble_sleep_sig.signal(last_sleep);
 
-        let Ok(mut wifi_res) = wifi_res else {
-            log::error!("WifiManager failed!!! Restarting in 1s!");
-            Timer::after_millis(1000).await;
-            esp_hal::system::software_reset();
-        };
-
-        #[cfg(feature = "qa")]
-        crate::qa::send_qa_resp(crate::qa::QaSignal::WifiSetup);
-
-        let conn_settings: ConnSettings = wifi_res
-            .data
-            .take()
-            .and_then(|d| serde_json::from_value(d).ok())
-            .unwrap_or_default();
-
-        let mut parse_retry_count = 0;
-        let ws_url = loop {
-            let url =
-                if conn_settings.mdns || conn_settings.ws_url.is_none() || parse_retry_count > 0 {
-                    log::info!("Starting mdns lookup...");
-                    global_state.state.lock().await.scene = Scene::MdnsWait;
-                    let mdns_res = mdns::mdns_query(wifi_res.sta_stack).await;
-                    log::info!("Mdns result: {mdns_res:?}");
-
-                    mdns_res.to_string()
-                } else {
-                    conn_settings.ws_url.clone().unwrap_or_default()
-                };
-
-            let ws_url = WsUrl::from_str(&url);
-            match ws_url {
-                Some(ws_url) => break WsUrlOwned::new(&ws_url),
-                None => {
-                    parse_retry_count += 1;
-                    log::error!("Mdns parse failed! Retry ({parse_retry_count})..");
-                    Timer::after_millis(1000).await;
-                    if parse_retry_count > 3 {
-                        log::error!("Cannot parse wsurl! Reseting wifi configuration!");
-                        _ = nvs.invalidate_key(WIFI_NVS_KEY).await;
-                        Timer::after_millis(1000).await;
-
-                        esp_hal::system::software_reset();
-                    }
-
-                    continue;
+            match last_sleep {
+                true => {
+                    unsafe { crate::state::TRUST_SERVER = false };
+                    wifi_res.stop_radio()
                 }
-            }
-        };
-
-        utils::backtrace_store::read_saved_backtrace().await;
-        // TODO: test disable usb
-        /*
-        esp_hal::gpio::Input::new(
-            board.usb_dp,
-            esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::None),
-        );
-        esp_hal::gpio::Input::new(
-            board.usb_dm,
-            esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::None),
-        );
-        */
-
-        let ws_sleep_sig = Rc::new(Signal::new());
-        spawner.must_spawn(ws::ws_task(
-            wifi_res.sta_stack,
-            ws_url,
-            global_state.clone(),
-            ws_sleep_sig.clone(),
-        ));
-        spawner.must_spawn(logger_task(global_state.clone()));
-
-        let ble_sleep_sig = Rc::new(Signal::new());
-        spawner.must_spawn(bluetooth::bluetooth_timer_task(
-            wifi_res.wifi_init,
-            board.bt,
-            global_state.clone(),
-            ble_sleep_sig.clone(),
-        ));
-
-        set_brownout_detection(true);
-        global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
-        if let Some(saved_state) = SavedGlobalState::from_nvs(&nvs).await {
-            global_state
-                .state
-                .lock()
-                .await
-                .parse_saved_state(saved_state);
-        }
-
-        let mut last_sleep = false;
-        loop {
-            Timer::after_millis(100).await;
-            if sleep_state() != last_sleep {
-                last_sleep = sleep_state();
-                ws_sleep_sig.signal(last_sleep);
-                ble_sleep_sig.signal(last_sleep);
-
-                match last_sleep {
-                    true => {
-                        unsafe { crate::state::TRUST_SERVER = false };
-                        wifi_res.stop_radio()
-                    }
-                    false => wifi_res.restart_radio(),
-                }
+                false => wifi_res.restart_radio(),
             }
         }
     }
@@ -382,27 +323,5 @@ async fn logger_task(global_state: GlobalState) {
 
             heap_start = Instant::now();
         }
-    }
-}
-
-#[cfg(feature = "esp_now")]
-#[embassy_executor::task]
-async fn bc_test_task(mut tx: EspNowSender<'static>, manager: EspNowManager<'static>) {
-    let mut counter = 0u128;
-    loop {
-        manager
-            .add_peer(esp_wifi::esp_now::PeerInfo {
-                peer_address: *ESP_NOW_DST,
-                lmk: None,
-                channel: None,
-                encrypt: false,
-            })
-            .expect("EXPERIMENT");
-
-        let r = tx.send_async(ESP_NOW_DST, &counter.to_be_bytes()).await;
-        manager.remove_peer(ESP_NOW_DST).expect("EXPERIMENT");
-
-        counter += 1;
-        Timer::after_millis(1000).await;
     }
 }

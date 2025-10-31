@@ -50,7 +50,6 @@ trouble-host = { version = "0.5.0", features = ["scan", "security"] }
 
 [features]
 default = ["sleep"]
-esp_now = ["esp-radio/esp-now"]
 gen_version = []
 bat_dev_lcd = []
 release_build = ["sleep"]
