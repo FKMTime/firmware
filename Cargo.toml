@@ -5,21 +5,21 @@ authors = ["filipton <filipton12@gmail.com>"]
 edition = "2024"
 
 [dependencies]
-esp-backtrace = { version = "0.18.0", features = [ "panic-handler", "println", "custom-pre-backtrace", "custom-halt", "esp32c3" ] }
-esp-hal = { version = "1.0.0-rc.1", features = [ "esp32c3" ] }
-esp-println = { version = "0.16.0", features = ["log-04", "esp32c3"] }
+esp-backtrace = { version = "0.18.1", features = [ "panic-handler", "println", "custom-pre-backtrace", "custom-halt", "esp32c3" ] }
+esp-hal = { version = "1.0.0", features = [ "esp32c3" ] }
+esp-println = { version = "0.16.1", features = ["log-04", "esp32c3"] }
 log = { version = "0.4.28" }
-esp-radio = { version = "0.16.0", features = ["coex", "esp32c3"] }
-esp-rtos = { version = "0.1.0", features = ["esp32c3", "embassy", "esp-radio"] }
+esp-radio = { version = "0.17.0", features = ["coex", "esp32c3"] }
+esp-rtos = { version = "0.2.0", features = ["esp32c3", "embassy", "esp-radio"] }
 embassy-executor = { version = "0.9.1", features = ["arch-riscv32", "nightly"] }
 embassy-net = { version = "0.7.1", features = ["tcp", "udp", "multicast", "dhcpv4", "medium-ethernet", "proto-ipv4", "dns"] }
 embassy-time = { version = "0.5.0" }
-esp-storage = { version = "0.8.0", features = ["esp32c3"] }
+esp-storage = { version = "0.8.1", features = ["esp32c3"] }
 embedded-storage = "0.3.1"
 static_cell = { version = "2.1.1", features = ["nightly"] }
 heapless = { version = "0.9.1", default-features = false }
 esp-alloc = "0.9.0"
-esp-hal-wifimanager = { version = "0.2.3", default-features = false, features = ["ap", "ble", "esp32c3"] }
+esp-hal-wifimanager = { version = "0.2.4", default-features = false, features = ["ap", "ble", "esp32c3"] }
 serde = { version = "1.0.228", features = ["alloc", "derive"], default-features = false }
 serde_json = { version = "1.0.145", default-features = false, features = ["alloc"] }
 adv-shift-registers = "0.2.5"
@@ -45,7 +45,7 @@ embedded-tls = { git = "https://github.com/drogue-iot/embedded-tls.git", rev="fb
 rand_core = { version = "0.6.4", features = ["getrandom"] }
 ag-lcd-async = { git = "https://github.com/filipton/ag-lcd-async", features = [] }
 esp-hal-mfrc522 = { version = "0.3.2", features = ["embassy-time"] }
-esp-bootloader-esp-idf = { version = "0.3.0", features = ["log-04", "esp32c3"] }
+esp-bootloader-esp-idf = { version = "0.4.0", features = ["log-04", "esp32c3"] }
 trouble-host = { version = "0.5.0", features = ["scan", "security"] }
 
 [features]
