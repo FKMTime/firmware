@@ -167,6 +167,8 @@ async fn main(spawner: Spawner) {
             }
         }
     }
+
+    Timer::after_millis(500).await;
     let wifi_res = esp_hal_wifimanager::init_wm(
         wm_settings,
         &spawner,
