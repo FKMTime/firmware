@@ -45,8 +45,9 @@ pub async fn battery_read_task(
     let mut avg = RollingAverage::<128>::new();
     let mut lcd_sent = false;
 
+    let mut sample_rate_millis = 10;
     loop {
-        Timer::after_millis(10).await;
+        Timer::after_millis(sample_rate_millis).await;
         if sleep_state() {
             Timer::after_millis(500).await;
             continue;
@@ -69,6 +70,7 @@ pub async fn battery_read_task(
                 .signal(bat_percentage(calculate(read as f64)));
 
             lcd_sent = true;
+            sample_rate_millis = 100;
         }
 
         if battery_start > now || (now - battery_start).as_millis() < BATTERY_SEND_INTERVAL_MS {
