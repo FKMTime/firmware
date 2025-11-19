@@ -2,6 +2,7 @@
 #![no_main]
 #![feature(impl_trait_in_assoc_type)]
 #![feature(asm_experimental_arch)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 extern crate alloc;
 use alloc::string::{String, ToString};
@@ -98,8 +99,13 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "qa")]
     log::info!("This firmware is in QA mode!");
 
-    let nvs = Nvs::new_from_part_table(unsafe { board.flash.clone_unchecked() })
-        .expect("Wrong partition configuration!");
+    let Ok(nvs) = Nvs::new_from_part_table(unsafe { board.flash.clone_unchecked() }) else {
+        loop {
+            log::error!("Wrong partition table! Re-flash firmware with espflash!");
+            Timer::after_millis(1000).await;
+        }
+    };
+
     let global_state = Rc::new(GlobalStateInner::new(&nvs, board.aes));
     let wifi_setup_sig = Rc::new(Signal::new());
 

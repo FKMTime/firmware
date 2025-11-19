@@ -106,13 +106,16 @@ pub async fn stackmat_task(
         #[cfg(not(feature = "e2e"))]
         let n = {
             let n = uart.read_buffered(&mut read_buf);
-            let Ok(n) = n else {
-                #[cfg(not(feature = "release_build"))]
-                {
-                    log::error!("uart: read_bytes err {:?}", n.expect_err(""));
-                }
+            let n = match n {
+                Ok(n) => n,
+                Err(e) => {
+                    #[cfg(not(feature = "release_build"))]
+                    {
+                        log::error!("uart: read_bytes err {e:?}");
+                    }
 
-                continue;
+                    continue;
+                }
             };
 
             if n == 0 {
