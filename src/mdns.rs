@@ -6,6 +6,8 @@ use embassy_net::{
 use embassy_time::{Duration, Timer};
 use esp_hal_mdns::MdnsQuery;
 
+const FKMTIME_MDNS: &str = "_fkmtime._tcp.local.";
+
 pub async fn mdns_query(stack: Stack<'static>) -> heapless::String<255> {
     let mut rx_buffer = [0; 1024];
     let mut tx_buffer = [0; 1024];
@@ -24,7 +26,7 @@ pub async fn mdns_query(stack: Stack<'static>) -> heapless::String<255> {
     _ = sock.bind(5353);
     _ = stack.join_multicast_group(ip_addr);
 
-    let mut mdns = MdnsQuery::new("_stackmat._tcp.local", MDNS_RESEND_INTERVAL, || {
+    let mut mdns = MdnsQuery::new(FKMTIME_MDNS, MDNS_RESEND_INTERVAL, || {
         esp_hal::time::Instant::now()
             .duration_since_epoch()
             .as_millis()
