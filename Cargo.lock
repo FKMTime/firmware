@@ -815,7 +815,7 @@ dependencies = [
 [[package]]
 name = "embedded-tls"
 version = "0.17.1"
-source = "git+https://github.com/drogue-iot/embedded-tls.git#a51df0acebae200661451b94fc2f308d395a9fef"
+source = "git+https://github.com/filipton/embedded-tls#78377add18a64c45c401bf7379bb930b627f042c"
 dependencies = [
  "aes-gcm",
  "digest",
