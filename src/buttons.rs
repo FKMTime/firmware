@@ -233,6 +233,7 @@ async fn submit_up(
             2 => {
                 if unsafe { !crate::state::AUTO_SETUP } {
                     state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
+                    state.state.signal();
                     return Ok(true);
                 }
 
@@ -241,6 +242,7 @@ async fn submit_up(
             3 => {
                 if unsafe { !crate::state::AUTO_SETUP } {
                     state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
+                    state.state.signal();
                     return Ok(true);
                 }
 
