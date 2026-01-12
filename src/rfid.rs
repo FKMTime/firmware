@@ -86,7 +86,20 @@ pub async fn rfid_task(
 
             match rfid_sleep {
                 true => _ = mfrc522.pcd_soft_power_down().await,
-                false => _ = mfrc522.pcd_soft_power_up().await,
+                false => {
+                    _ = mfrc522.pcd_soft_power_up().await;
+                    loop {
+                        _ = mfrc522.pcd_init().await;
+                        if mfrc522.pcd_is_init().await {
+                            break;
+                        }
+
+                        log::error!(
+                            "MFRC522 init failed! Try to power cycle to module! Retrying..."
+                        );
+                        Timer::after(Duration::from_millis(RFID_RETRY_INIT_MS)).await;
+                    }
+                }
             }
         }
 
@@ -314,9 +327,16 @@ pub async fn rfid_task(
             }
         }
 
+        let is_competitor = {
+            let state = global_state.state.lock().await;
+            state.current_competitor.is_none()
+                || state.current_competitor.unwrap_or_default() == card_uid as u64
+        };
+
         let resp = crate::ws::send_request::<CardInfoResponsePacket>(
             crate::structs::TimerPacketInner::CardInfoRequest {
                 card_id: card_uid as u64,
+                is_competitor,
                 attendance_device: None,
                 sign_key: unsafe { crate::state::SIGN_KEY },
             },
