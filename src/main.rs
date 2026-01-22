@@ -109,10 +109,8 @@ async fn main(spawner: Spawner) {
     let global_state = Rc::new(GlobalStateInner::new(&nvs, board.aes));
     let wifi_setup_sig = Rc::new(Signal::new());
 
-    // TODO: add error handling here
-    let mut sign_key = [0; 4];
-    if nvs.get_key(b"SIGN_KEY", &mut sign_key).await.is_ok() {
-        unsafe { crate::state::SIGN_KEY = u32::from_be_bytes(sign_key) >> 1 };
+    if let Ok(sign_key) = nvs.get::<u32>("SIGN_KEY").await {
+        unsafe { crate::state::SIGN_KEY = sign_key };
     }
 
     spawner.must_spawn(lcd::lcd_task(
@@ -182,7 +180,6 @@ async fn main(spawner: Spawner) {
         None,
         #[cfg(not(feature = "qa"))]
         Some(&nvs),
-        board.rng,
         board.wifi,
         unsafe { board.bt.clone_unchecked() },
         Some(wifi_setup_sig),
@@ -226,7 +223,7 @@ async fn main(spawner: Spawner) {
                 Timer::after_millis(1000).await;
                 if parse_retry_count > 3 {
                     log::error!("Cannot parse wsurl! Reseting wifi configuration!");
-                    _ = nvs.invalidate_key(WIFI_NVS_KEY).await;
+                    _ = nvs.delete(WIFI_NVS_KEY).await;
                     Timer::after_millis(1000).await;
 
                     esp_hal::system::software_reset();

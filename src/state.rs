@@ -417,10 +417,8 @@ impl SavedGlobalState {
             Timer::after_millis(5).await;
         }
 
-        let mut buf = [0; 1024];
-        nvs.get_key(b"SAVED_GLOBAL_STATE", &mut buf).await.ok()?;
-        let end_pos = buf.iter().position(|&x| x == 0x00).unwrap_or(buf.len());
-        let res: SavedGlobalState = serde_json::from_slice(&buf[..end_pos]).ok()?;
+        let res = nvs.get::<Vec<u8>>("SAVED_GLOBAL_STATE").await.ok()?;
+        let res: SavedGlobalState = serde_json::from_slice(&res).ok()?;
 
         // 6hours
         if current_epoch() - res.solve_epoch > 6 * 60 * 60 {
@@ -434,8 +432,8 @@ impl SavedGlobalState {
     pub async fn to_nvs(&self, nvs: &Nvs) {
         let res = serde_json::to_vec(&self);
         if let Ok(vec) = res {
-            _ = nvs.invalidate_key(b"SAVED_GLOBAL_STATE").await;
-            let res = nvs.append_key(b"SAVED_GLOBAL_STATE", &vec).await;
+            _ = nvs.delete("SAVED_GLOBAL_STATE").await;
+            let res = nvs.set("SAVED_GLOBAL_STATE", vec.as_slice()).await;
             if let Err(e) = res {
                 log::error!(
                     "{e:?} Faile to write to nvs! (SAVED_GLOBAL_STATE {})",
@@ -446,9 +444,9 @@ impl SavedGlobalState {
     }
 
     pub async fn clear_saved_global_state(nvs: &Nvs) {
-        let res = nvs.invalidate_key(b"SAVED_GLOBAL_STATE").await;
+        let res = nvs.delete("SAVED_GLOBAL_STATE").await;
         if let Err(e) = res {
-            log::error!("{e:?} Faile to invalidate nvs key! (SAVED_GLOBAL_STATE)",);
+            log::error!("{e:?} Faile to delete nvs key! (SAVED_GLOBAL_STATE)",);
         }
     }
 }

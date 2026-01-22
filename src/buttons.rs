@@ -184,7 +184,7 @@ async fn submit_up(
                     state_val.discovered_bluetooth_devices[state_val.selected_bluetooth_item]
                 );
 
-                _ = state.nvs.invalidate_key(b"BONDING_KEY").await;
+                _ = state.nvs.delete("BONDING_KEY").await;
                 state.ble_sig.signal(
                     BleAction::Connect(
                         state_val.discovered_bluetooth_devices[state_val.selected_bluetooth_item]
@@ -196,7 +196,7 @@ async fn submit_up(
                 == state_val.discovered_bluetooth_devices.len()
             {
                 log::debug!("[BtD] Unpair current device");
-                _ = state.nvs.invalidate_key(b"BONDING_KEY").await;
+                _ = state.nvs.delete("BONDING_KEY").await;
                 state.ble_sig.signal(BleAction::Unpair);
             } else if state_val.selected_bluetooth_item
                 == state_val.discovered_bluetooth_devices.len() + 1
@@ -216,12 +216,9 @@ async fn submit_up(
         match sel {
             0 => {
                 // Reset WiFi
-                _ = state
-                    .nvs
-                    .invalidate_key(esp_hal_wifimanager::WIFI_NVS_KEY)
-                    .await;
-                _ = state.nvs.invalidate_key(b"SIGN_KEY").await;
-                _ = state.nvs.invalidate_key(b"BONDING_KEY").await;
+                _ = state.nvs.delete(esp_hal_wifimanager::WIFI_NVS_KEY).await;
+                _ = state.nvs.delete("SIGN_KEY").await;
+                _ = state.nvs.delete("BONDING_KEY").await;
 
                 Timer::after_millis(250).await;
                 esp_hal::system::software_reset();
@@ -264,9 +261,11 @@ async fn submit_up(
     if !state_val.device_added.unwrap_or(false) {
         let mut sign_key = [0; 4];
         _ = getrandom::getrandom(&mut sign_key);
-        _ = state.nvs.invalidate_key(b"SIGN_KEY").await;
-        _ = state.nvs.append_key(b"SIGN_KEY", &sign_key).await;
-        unsafe { crate::state::SIGN_KEY = u32::from_be_bytes(sign_key) >> 1 };
+        let sign_key = u32::from_be_bytes(sign_key) >> 1;
+
+        _ = state.nvs.delete("SIGN_KEY").await;
+        _ = state.nvs.set("SIGN_KEY", sign_key).await;
+        unsafe { crate::state::SIGN_KEY = sign_key };
         unsafe { crate::state::TRUST_SERVER = true };
 
         crate::ws::send_packet(crate::structs::TimerPacket {

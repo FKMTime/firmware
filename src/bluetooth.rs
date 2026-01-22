@@ -2,7 +2,7 @@ use crate::{
     state::{BleAction, GlobalState, MenuScene},
     structs::BleDisplayDevice,
 };
-use alloc::{rc::Rc, string::ToString};
+use alloc::{rc::Rc, string::ToString, vec::Vec};
 use core::cell::RefCell;
 use embassy_futures::select::{Either, select, select3, select4};
 use embassy_sync::{
@@ -241,7 +241,7 @@ async fn bluetooth_loop(
                                     }
 
                                     if !security_level.encrypted() {
-                                        _ = state.nvs.invalidate_key(b"BONDING_KEY").await;
+                                        _ = state.nvs.delete("BONDING_KEY").await;
                                         break 'outer;
                                     }
 
@@ -261,7 +261,7 @@ async fn bluetooth_loop(
                                     /* || reason.into_inner() == 0x3e */
                                     {
                                         // auth failed
-                                        _ = state.nvs.invalidate_key(b"BONDING_KEY").await;
+                                        _ = state.nvs.delete("BONDING_KEY").await;
                                         if let Some(ref bond_info) = bond_info {
                                             _ = stack.remove_bond_information(bond_info.identity);
                                         }
@@ -366,7 +366,7 @@ async fn bluetooth_loop(
 
 async fn store_bonding_info(nvs: &esp_hal_wifimanager::Nvs, info: &BondInformation) {
     let mut buf = [0; 32];
-    _ = nvs.invalidate_key(b"BONDING_KEY").await;
+    _ = nvs.delete("BONDING_KEY").await;
 
     buf[..6].copy_from_slice(info.identity.bd_addr.raw());
     buf[6..22].copy_from_slice(info.ltk.to_le_bytes().as_slice());
@@ -376,16 +376,18 @@ async fn store_bonding_info(nvs: &esp_hal_wifimanager::Nvs, info: &BondInformati
         SecurityLevel::EncryptedAuthenticated => 2,
     };
 
-    let res = nvs.append_key(b"BONDING_KEY", &buf).await;
+    let res = nvs.set("BONDING_KEY", buf.as_slice()).await;
     if let Err(e) = res {
         log::error!("NVS Bonding key store failed! ({e:?})");
     }
 }
 
 async fn load_bonding_info(nvs: &esp_hal_wifimanager::Nvs) -> Option<BondInformation> {
-    let mut buf = [0; 32];
-    let res = nvs.get_key(b"BONDING_KEY", &mut buf).await;
-    if res.is_err() {
+    let Ok(buf) = nvs.get::<Vec<u8>>("BONDING_KEY").await else {
+        return None;
+    };
+
+    if buf.len() != 32 {
         return None;
     }
 
