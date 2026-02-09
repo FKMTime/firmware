@@ -170,6 +170,7 @@ pub struct PossibleGroup {
 pub struct SolveConfirmPacket {
     pub competitor_id: u64,
     pub session_id: String,
+    pub message: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

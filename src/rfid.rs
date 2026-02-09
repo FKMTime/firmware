@@ -471,9 +471,21 @@ async fn process_card_info_response(
                 )
                 .await;
 
-                if resp.is_ok() {
+                if let Ok(resp) = resp {
                     log::warn!("solve_resp: {resp:?}");
                     state.reset_solve_state(Some(&global_state.nvs)).await;
+
+                    let words: alloc::vec::Vec<&str> = resp.message.split(' ').collect();
+                    let first_line = words[..2].join(" ");
+                    let second_line = words[2..].join(" ");
+
+                    state.custom_message = Some((first_line, second_line));
+                    drop(state);
+                    Timer::after_millis(3000).await;
+
+                    {
+                        global_state.state.lock().await.custom_message = None;
+                    }
                 }
             }
         }
