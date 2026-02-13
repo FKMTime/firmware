@@ -84,6 +84,7 @@ pub async fn rfid_task(
         if sleep_state() != rfid_sleep {
             rfid_sleep = sleep_state();
 
+            /*
             match rfid_sleep {
                 true => _ = mfrc522.pcd_soft_power_down().await,
                 false => {
@@ -101,6 +102,7 @@ pub async fn rfid_task(
                     }
                 }
             }
+            */
         }
 
         if rfid_sleep {
