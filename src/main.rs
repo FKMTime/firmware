@@ -283,10 +283,7 @@ async fn main(spawner: Spawner) {
             ble_sleep_sig.signal(last_sleep);
 
             match last_sleep {
-                true => {
-                    unsafe { crate::state::TRUST_SERVER = false };
-                    wifi_res.stop_radio()
-                }
+                true => wifi_res.stop_radio(),
                 false => wifi_res.restart_radio(),
             }
         }

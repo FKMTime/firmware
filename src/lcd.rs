@@ -121,9 +121,16 @@ pub async fn lcd_task(
                     lcd_driver.display_on_lcd(&mut lcd).await;
                     lcd.backlight_off();
 
+                    {
+                        global_state.state.lock().await.server_connected = Some(false);
+                    }
+
                     unsafe {
                         crate::state::SLEEP_STATE = true;
+                        crate::state::TRUST_SERVER = false;
                     }
+
+                    global_state.state.signal_reset();
                 }
 
                 #[cfg(not(any(feature = "e2e", feature = "qa")))]

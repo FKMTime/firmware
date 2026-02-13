@@ -29,6 +29,10 @@ impl<M: RawMutex, T: Clone + PartialEq> SignaledMutex<M, T> {
         self.update_sig.signal(());
     }
 
+    pub fn signal_reset(&self) {
+        self.update_sig.reset();
+    }
+
     pub fn signalled(&self) -> bool {
         self.update_sig.signaled()
     }
