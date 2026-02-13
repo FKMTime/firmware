@@ -17,7 +17,7 @@ use esp_storage::FlashStorage;
 use rand_core::OsRng;
 use ws_framer::{WsFrame, WsFrameOwned, WsRxFramer, WsTxFramer, WsUrl, WsUrlOwned};
 
-static FRAME_CHANNEL: Channel<CriticalSectionRawMutex, WsFrameOwned, 10> = Channel::new();
+static FRAME_CHANNEL: Channel<CriticalSectionRawMutex, WsFrameOwned, 32> = Channel::new();
 static TAGGED_RETURN: PubSubChannel<CriticalSectionRawMutex, (u64, TimerPacket), 20, 20, 4> =
     PubSubChannel::new();
 
@@ -234,9 +234,7 @@ async fn ws_loop(
             }
         }
 
-        FRAME_CHANNEL
-            .send(WsFrameOwned::Ping(alloc::vec::Vec::new()))
-            .await;
+        _ = FRAME_CHANNEL.try_send(WsFrameOwned::Ping(alloc::vec::Vec::new()));
 
         #[cfg(feature = "auto_add")]
         {
@@ -427,6 +425,7 @@ async fn ws_rw(
                                 state.scene = Scene::Update;
                                 drop(state);
 
+                                clear_frame_channel();
                                 FRAME_CHANNEL
                                     .send(WsFrameOwned::Binary(alloc::vec::Vec::new()))
                                     .await;
@@ -472,9 +471,7 @@ async fn ws_rw(
                 }
                 WsFrame::Close(_, _) => todo!(),
                 WsFrame::Ping(_) => {
-                    FRAME_CHANNEL
-                        .send(WsFrameOwned::Pong(alloc::vec::Vec::new()))
-                        .await;
+                    _ = FRAME_CHANNEL.try_send(WsFrameOwned::Pong(alloc::vec::Vec::new()));
                 }
                 _ => {}
             }
@@ -576,7 +573,14 @@ where
         tag: Some(tag),
         data: packet,
     };
-    send_packet(packet).await;
+
+    send_packet(packet)
+        .with_timeout(Duration::from_millis(5000))
+        .await
+        .map_err(|_| ApiError {
+            should_reset_time: false,
+            error: "Channel full".to_string(),
+        })?;
 
     let packet = if timeout {
         wait_for_tagged_response(tag)
