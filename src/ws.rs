@@ -48,7 +48,7 @@ pub async fn ws_task(
     }
 
     loop {
-        unsafe { crate::state::TRUST_SERVER = true };
+        unsafe { crate::state::TRUST_SERVER = false };
         unsafe { crate::state::SECURE_RFID = false };
         unsafe { crate::state::AUTO_SETUP = false };
         unsafe { crate::state::FKM_TOKEN = 0 };

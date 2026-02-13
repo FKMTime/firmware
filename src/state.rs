@@ -14,7 +14,7 @@ use esp_hal_wifimanager::Nvs;
 use serde::{Deserialize, Serialize};
 
 pub static mut SIGN_KEY: u32 = 0;
-pub static mut TRUST_SERVER: bool = true;
+pub static mut TRUST_SERVER: bool = false;
 pub static mut FKM_TOKEN: i32 = 0;
 pub static mut SECURE_RFID: bool = false;
 pub static mut AUTO_SETUP: bool = false;
@@ -435,10 +435,7 @@ impl SavedGlobalState {
             _ = nvs.delete("SAVED_STATE").await;
             let res = nvs.set("SAVED_STATE", vec.as_slice()).await;
             if let Err(e) = res {
-                log::error!(
-                    "{e:?} Faile to write to nvs! (SAVED_STATE {})",
-                    vec.len()
-                );
+                log::error!("{e:?} Faile to write to nvs! (SAVED_STATE {})", vec.len());
             }
         }
     }
