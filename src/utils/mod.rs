@@ -37,8 +37,7 @@ pub fn get_efuse_u32() -> u32 {
 
 /// Sets cpu clock to 10mHz (not reversable)
 pub fn deeper_sleep() {
-    esp32c3_rtc_update_to_xtal();
-    esp32c3_rtc_apb_freq_update();
+    esp32c3_set_cpu_freq_10mhz();
 
     unsafe { crate::state::DEEPER_SLEEP = true };
 }
@@ -53,36 +52,29 @@ fn ets_update_cpu_frequency_rom(ticks_per_us: u32) {
     unsafe { ets_update_cpu_frequency(ticks_per_us) };
 }
 
-fn esp32c3_rtc_update_to_xtal() {
-    let _div = 1;
-    ets_update_cpu_frequency_rom(10);
+fn esp32c3_set_cpu_freq_10mhz() {
+    use esp32c3::{RTC_CNTL, SYSTEM};
 
-    let system_control = unsafe { &*esp32c3::SYSTEM::ptr() };
+    let rtc_cntl = unsafe { &*RTC_CNTL::ptr() };
+    let system = unsafe { &*SYSTEM::ptr() };
+
+    const TARGET_FREQ_MHZ: u32 = 10;
+    const TARGET_FREQ_HZ: u32 = TARGET_FREQ_MHZ * 1_000_000;
+
     unsafe {
-        // Set divider from XTAL to APB clock. Need to set divider to 1 (reg. value 0)
-        // first.
-        system_control.sysclk_conf().modify(|_, w| {
-            w.pre_div_cnt()
-                .bits(0)
-                .pre_div_cnt()
-                .bits((_div - 1) as u16)
-        });
+        let divider = 4u16;
+        system.sysclk_conf().modify(|_, w| w.pre_div_cnt().bits(0));
 
-        // No need to adjust the REF_TICK
-
-        // Switch clock source
-        system_control
+        system
             .sysclk_conf()
-            .modify(|_, w| w.soc_clk_sel().bits(0));
+            .modify(|_, w| w.pre_div_cnt().bits(divider - 1));
+
+        system.sysclk_conf().modify(|_, w| w.soc_clk_sel().bits(0));
+        ets_update_cpu_frequency_rom(TARGET_FREQ_MHZ);
+
+        let freq_value = (TARGET_FREQ_HZ >> 12) & 0xFFFF;
+        rtc_cntl
+            .store5()
+            .write(|w| w.data().bits(freq_value | (freq_value << 16)));
     }
-}
-
-fn esp32c3_rtc_apb_freq_update() {
-    let hz = 10000000;
-    let rtc_cntl = unsafe { &*esp32c3::RTC_CNTL::ptr() };
-    let value = ((hz >> 12) & u16::MAX as u32) | (((hz >> 12) & u16::MAX as u32) << 16);
-
-    rtc_cntl
-        .store5()
-        .modify(|_, w| unsafe { w.data().bits(value) });
 }
