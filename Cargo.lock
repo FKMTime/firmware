@@ -1021,12 +1021,13 @@ dependencies = [
 
 [[package]]
 name = "esp-hal-ota"
-version = "0.4.5"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0f57c560af3fe8037ea9aadc094089703a5b6fdd808b7c68650125615d71a8e"
+checksum = "41a02262490740c997b7c1df6efc1a3dc604befc83c7d2d2c0e65689c0babdd7"
 dependencies = [
  "embedded-storage",
  "esp32c3",
+ "log",
 ]
 
 [[package]]
@@ -1045,9 +1046,9 @@ dependencies = [
 
 [[package]]
 name = "esp-hal-wifimanager"
-version = "0.2.6"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0b15e93fad0cfe050f1417ebb4527cd49d167b9330d3310bbd7334ebd482e58"
+checksum = "568708cef9fc75742c7aafe29c12c340f0516c75a6232e977946e558e200e8f7"
 dependencies = [
  "embassy-executor",
  "embassy-futures",
@@ -1058,6 +1059,7 @@ dependencies = [
  "embedded-storage",
  "esp-hal",
  "esp-hal-dhcp-server",
+ "esp-hal-ota",
  "esp-nvs",
  "esp-radio",
  "esp-rtos",
@@ -1877,9 +1879,9 @@ dependencies = [
 
 [[package]]
 name = "portable-atomic"
-version = "1.13.0"
+version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f89776e4d69bb58bc6993e99ffa1d11f228b839984854c7daeb5d37f87cbe950"
+checksum = "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
 
 [[package]]
 name = "portable-atomic-util"
