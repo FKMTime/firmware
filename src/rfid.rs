@@ -133,9 +133,13 @@ pub async fn rfid_task(
         log::info!("Card UID: {card_uid}");
 
         let last_scan_time = (Instant::now().saturating_duration_since(last_card.1)).as_millis();
-        if (last_card.0 == card_uid && last_scan_time < 500)
-            || global_state.state.value().await.server_connected != Some(true)
-        {
+        let is_server_connected = if cfg!(feature = "qa") {
+            true
+        } else {
+            global_state.state.value().await.server_connected == Some(true)
+        };
+
+        if (last_card.0 == card_uid && last_scan_time < 500) || !is_server_connected {
             log::warn!(
                 "Skipping card scan: {last_scan_time:?} {card_uid} {}",
                 last_card.0
