@@ -19,6 +19,7 @@ fn main() {
 
     println!("cargo:rustc-link-arg-bins=-Tlinkall.x");
     println!("cargo:rustc-cfg=feature=\"gen_version\"");
+    println!("cargo:rerun-if-env-changed=RELEASE_BUILD");
 
     let version_str = if let Ok(rel) = std::env::var("RELEASE_BUILD") {
         println!("cargo:rustc-cfg=feature=\"release_build\"");
