@@ -173,7 +173,9 @@ async fn ws_loop(
         };
 
         {
-            global_state.state.lock().await.server_connected = Some(true);
+            let mut state = global_state.state.lock().await;
+            state.server_connected = Some(true);
+            state.wifi_conn_lost = false; // reset conn lost flag
         }
 
         log::info!("connected!");
