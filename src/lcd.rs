@@ -642,18 +642,24 @@ async fn process_lcd_overwrite(
     }
 
     if current_state.server_connected == Some(false) {
-        _ = lcd_driver.print(
-            0,
-            &get_translation(TranslationKey::SERVER_DISCONNECTED_HEADER),
-            PrintAlign::Center,
-            true,
-        );
-        _ = lcd_driver.print(
-            1,
-            &get_translation(TranslationKey::SERVER_DISCONNECTED_FOOTER),
-            PrintAlign::Center,
-            true,
-        );
+        if current_state.wifi_conn_lost {
+            // TODO: maybe add to this translation
+            _ = lcd_driver.print(0, "Wi-Fi", PrintAlign::Center, true);
+            _ = lcd_driver.print(1, "Connection lost", PrintAlign::Center, true);
+        } else {
+            _ = lcd_driver.print(
+                0,
+                &get_translation(TranslationKey::SERVER_DISCONNECTED_HEADER),
+                PrintAlign::Center,
+                true,
+            );
+            _ = lcd_driver.print(
+                1,
+                &get_translation(TranslationKey::SERVER_DISCONNECTED_FOOTER),
+                PrintAlign::Center,
+                true,
+            );
+        }
     } else if current_state.device_added == Some(false) {
         #[cfg(not(feature = "e2e"))]
         let lines = (

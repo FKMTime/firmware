@@ -108,6 +108,7 @@ async fn main(spawner: Spawner) {
 
     let global_state = Rc::new(GlobalStateInner::new(&nvs, board.aes));
     let wifi_setup_sig = Rc::new(Signal::new());
+    let wifi_conn_sig = Rc::new(Signal::new());
 
     if let Ok(sign_key) = nvs.get::<u32>("SIGN_KEY").await {
         unsafe { crate::state::SIGN_KEY = sign_key };
@@ -151,6 +152,7 @@ async fn main(spawner: Spawner) {
 
     let mut wm_settings = esp_hal_wifimanager::WmSettings {
         wifi_panel: include_str!("panel.html"),
+        wifi_conn_signal: Some(wifi_conn_sig.clone()),
         ..Default::default()
     };
 
@@ -235,17 +237,6 @@ async fn main(spawner: Spawner) {
     };
 
     utils::backtrace_store::read_saved_backtrace().await;
-    // TODO: test disable usb
-    /*
-    esp_hal::gpio::Input::new(
-        board.usb_dp,
-        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::None),
-    );
-    esp_hal::gpio::Input::new(
-        board.usb_dm,
-        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::None),
-    );
-    */
 
     let ws_sleep_sig = Rc::new(Signal::new());
     spawner.must_spawn(ws::ws_task(
@@ -253,6 +244,7 @@ async fn main(spawner: Spawner) {
         ws_url,
         global_state.clone(),
         ws_sleep_sig.clone(),
+        wifi_conn_sig,
     ));
     spawner.must_spawn(logger_task(global_state.clone()));
 

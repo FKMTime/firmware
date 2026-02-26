@@ -206,6 +206,7 @@ pub struct SignaledGlobalStateInner {
 
     pub device_added: Option<bool>,
     pub server_connected: Option<bool>,
+    pub wifi_conn_lost: bool,
     pub stackmat_connected: Option<bool>,
     pub current_competitor: Option<u64>,
     pub current_judge: Option<u64>,
@@ -258,6 +259,7 @@ impl SignaledGlobalStateInner {
 
             device_added: None,
             server_connected: None,
+            wifi_conn_lost: false,
             stackmat_connected: None,
             current_competitor: None,
             current_judge: None,

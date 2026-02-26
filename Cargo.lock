@@ -483,7 +483,7 @@ checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 [[package]]
 name = "elliptic-curve"
 version = "0.13.8"
-source = "git+https://github.com/filipton/rust-crypto-traits.git#588f30dd57a8c26ea0612956a50391da5ad76624"
+source = "git+https://github.com/filipton/rust-crypto-traits.git#6cccf748b4cadfa39dc36ce37ab0da780c0d8b69"
 dependencies = [
  "base16ct",
  "crypto-bigint",
@@ -996,9 +996,9 @@ dependencies = [
 
 [[package]]
 name = "esp-hal-wifimanager"
-version = "0.2.8"
+version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "568708cef9fc75742c7aafe29c12c340f0516c75a6232e977946e558e200e8f7"
+checksum = "0d53035bd652e92ce93897221799999dc6a5b53edbd5759ed2a7e72c632ff592"
 dependencies = [
  "embassy-executor",
  "embassy-futures",

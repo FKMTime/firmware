@@ -4,14 +4,15 @@ source ~/export-esp.sh
 
 get_version() {
     local target=$1
-    local build_dir="target/${target}/release/build"
+    local build_dir="target/${target}"
 
     if [ ! -d "$build_dir" ]; then
         echo "Build directory not found: ${build_dir}" >&2
         return 1
     fi
 
-    local latest_file=$(find "$build_dir" -type f -name "version.rs" -exec ls -l {} + | sort -k 6,7 -nr | head -n 1 | awk '{print $NF}')
+    local latest_file=$(find "$build_dir" -type f -name "version.rs" -printf "%T@ %p\n" | sort -nr | head -n 1 | awk '{print $2}')
+
     if [ -f "$latest_file" ]; then
         cat "$latest_file"
         return 0

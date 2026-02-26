@@ -30,6 +30,7 @@ pub async fn ws_task(
     ws_url: WsUrlOwned,
     global_state: GlobalState,
     ws_sleep_sig: Rc<Signal<CriticalSectionRawMutex, bool>>,
+    wifi_conn_sig: Rc<Signal<CriticalSectionRawMutex, bool>>,
 ) {
     log::debug!("ws_url: {ws_url:?}");
 
@@ -63,6 +64,7 @@ pub async fn ws_task(
             &mut ws_tx_buf,
             &mut ssl_rx_buf,
             &mut ssl_tx_buf,
+            &wifi_conn_sig,
         );
 
         let res = embassy_futures::select::select(ws_fut, ws_sleep_sig.wait()).await;
@@ -101,6 +103,7 @@ async fn ws_loop(
     ws_tx_buf: &mut [u8],
     ssl_rx_buf: &mut [u8],
     ssl_tx_buf: &mut [u8],
+    wifi_conn_sig: &Rc<Signal<CriticalSectionRawMutex, bool>>,
 ) -> Result<(), ()> {
     loop {
         {
@@ -138,6 +141,11 @@ async fn ws_loop(
         let remote_endpoint = (ip, ws_url.port);
         let r = socket.connect(remote_endpoint).await;
         if let Err(e) = r {
+            // but if wifi conneceted signal was sent remove wifi connection lost msg
+            if wifi_conn_sig.signaled() && wifi_conn_sig.wait().await {
+                global_state.state.lock().await.wifi_conn_lost = false;
+            }
+
             log::error!("connect error: {e:?}");
             Timer::after_millis(WS_RETRY_MS).await;
             continue;
@@ -262,6 +270,7 @@ async fn ws_loop(
                 &mut tx_framer,
                 global_state.clone(),
                 &mut socket,
+                wifi_conn_sig,
             )
             .await;
 
@@ -289,6 +298,7 @@ enum WsRwError {
     TaggedPublisherError,
     SocketWriteError,
     SocketReadError,
+    WifiDisconnected,
     Other,
 }
 
@@ -297,6 +307,7 @@ async fn ws_rw(
     framer_tx: &mut WsTxFramer<'_>,
     global_state: GlobalState,
     socket: &mut WsSocket<'_, '_>,
+    wifi_conn_sig: &Rc<Signal<CriticalSectionRawMutex, bool>>,
 ) -> Result<(), WsRwError> {
     let mut ota = Ota::new(FlashStorage::new(unsafe {
         esp_hal::peripherals::FLASH::steal()
@@ -311,11 +322,13 @@ async fn ws_rw(
         let read_fut = socket.read(framer_rx.mut_buf());
         let write_fut = recv.receive();
 
-        let res = match embassy_futures::select::select(read_fut, write_fut).await {
-            embassy_futures::select::Either::First(read_res) => {
+        let res = match embassy_futures::select::select3(read_fut, write_fut, wifi_conn_sig.wait())
+            .await
+        {
+            embassy_futures::select::Either3::First(read_res) => {
                 read_res.map_err(|_| WsRwError::SocketReadError)
             }
-            embassy_futures::select::Either::Second(write_frame) => {
+            embassy_futures::select::Either3::Second(write_frame) => {
                 let mut offset = 0;
                 let frame_ref = write_frame.into_ref();
 
@@ -333,6 +346,16 @@ async fn ws_rw(
                 }
 
                 continue;
+            }
+            embassy_futures::select::Either3::Third(state) => {
+                if state {
+                    // wifi connected signal
+                    continue;
+                }
+
+                global_state.state.lock().await.wifi_conn_lost = true;
+                log::error!("Wifi disconnected, ws_rw stop.");
+                return Err(WsRwError::WifiDisconnected);
             }
         };
 
