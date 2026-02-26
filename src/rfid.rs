@@ -396,36 +396,35 @@ async fn process_card_info_response(
     }
 
     match state.scene {
-        crate::state::Scene::WaitingForCompetitor => {
-            if state.current_competitor.is_none() && resp.can_compete {
-                state.competitor_display = Some(resp.display);
-                state.current_competitor = Some(resp.card_id);
+        crate::state::Scene::WaitingForCompetitor
+            if state.current_competitor.is_none() && resp.can_compete =>
+        {
+            state.competitor_display = Some(resp.display);
+            state.current_competitor = Some(resp.card_id);
 
-                let competitor_locale =
-                    crate::translations::get_locale_index(&resp.country_iso2.to_lowercase());
-                if competitor_locale != crate::translations::current_locale_index() {
-                    crate::translations::select_locale_idx(competitor_locale, global_state);
+            let competitor_locale =
+                crate::translations::get_locale_index(&resp.country_iso2.to_lowercase());
+            if competitor_locale != crate::translations::current_locale_index() {
+                crate::translations::select_locale_idx(competitor_locale, global_state);
+            }
+
+            match resp.possible_groups.len() {
+                1 => {
+                    state.solve_group = Some(resp.possible_groups[0].clone());
+
+                    if state.solve_time.is_some() {
+                        state.scene = crate::state::Scene::Finished;
+                    } else {
+                        state.scene = crate::state::Scene::CompetitorInfo;
+                    }
                 }
-
-                match resp.possible_groups.len() {
-                    1 => {
-                        state.solve_group = Some(resp.possible_groups[0].clone());
-
-                        if state.solve_time.is_some() {
-                            state.scene = crate::state::Scene::Finished;
-                        } else {
-                            state.scene = crate::state::Scene::CompetitorInfo;
-                        }
-                    }
-                    2.. => {
-                        state.possible_groups = resp.possible_groups;
-                        state.scene = crate::state::Scene::GroupSelect;
-                    }
-                    _ => {
-                        state.reset_solve_state(None).await;
-                        state.error_text =
-                            Some(get_translation(TranslationKey::EMPTY_GROUPS_ERROR));
-                    }
+                2.. => {
+                    state.possible_groups = resp.possible_groups;
+                    state.scene = crate::state::Scene::GroupSelect;
+                }
+                _ => {
+                    state.reset_solve_state(None).await;
+                    state.error_text = Some(get_translation(TranslationKey::EMPTY_GROUPS_ERROR));
                 }
             }
         }
