@@ -104,10 +104,6 @@ pub async fn lcd_task(
 
         embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, fbuf.into_iter()).unwrap();
         disp.flush().await.unwrap();
-
-        if start.elapsed().as_secs() > 120 {
-            break;
-        }
     }
 
     /*

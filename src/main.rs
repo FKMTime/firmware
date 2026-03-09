@@ -123,13 +123,12 @@ async fn main(spawner: Spawner) {
         //board.digits_shifters.clone(),
     ));
 
-    /*
     spawner.must_spawn(battery::battery_read_task(
-        board.battery,
-        board.adc1,
+        board.i2c.clone(),
+        //board.battery,
+        //board.adc1,
         global_state.clone(),
     ));
-    */
     spawner.must_spawn(buttons::buttons_task(
         global_state.clone(),
         board.buttons,

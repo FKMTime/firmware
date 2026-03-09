@@ -1,5 +1,7 @@
 use crate::{
-    consts::BATTERY_SEND_INTERVAL_MS, state::sleep_state, utils::rolling_average::RollingAverage,
+    consts::BATTERY_SEND_INTERVAL_MS,
+    state::sleep_state,
+    utils::{rolling_average::RollingAverage, shared_i2c::SharedI2C},
 };
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
@@ -24,22 +26,27 @@ const BAT_MAX: f64 = BATTERY_CURVE[BATTERY_CURVE.len() - 1].0;
 
 #[embassy_executor::task]
 pub async fn battery_read_task(
-    adc_pin: esp_hal::peripherals::GPIO2<'static>,
-    adc: esp_hal::peripherals::ADC1<'static>,
+    i2c: SharedI2C,
+    //adc_pin: esp_hal::peripherals::GPIO2<'static>,
+    //adc: esp_hal::peripherals::ADC1<'static>,
     state: crate::state::GlobalState,
 ) {
+    /*
     let mut adc_config = AdcConfig::new();
 
     let mut adc_pin = adc_config.enable_pin_with_cal::<_, AdcCal>(adc_pin, Attenuation::_11dB);
     let mut adc = Adc::new(adc, adc_config).into_async();
 
-    let mut battery_start = Instant::now().saturating_add(Duration::from_millis(300));
 
     let base_freq = 2.0;
     let sample_freq = 1000.0;
     let sensitivity = 0.5;
     let mut smoother = dyn_smooth::DynamicSmootherEcoF32::new(base_freq, sample_freq, sensitivity);
     let mut avg = RollingAverage::<128>::new();
+    */
+    let mut gauge = bq27441::Bq27441Async::new(i2c).await.unwrap();
+
+    let mut battery_start = Instant::now().saturating_add(Duration::from_millis(300));
     let mut lcd_sent = false;
 
     let mut sample_rate_millis = 10;
@@ -50,9 +57,12 @@ pub async fn battery_read_task(
             continue;
         }
 
+        /*
         let read = adc.read_oneshot(&mut adc_pin).await;
         let read = smoother.tick(read as f32);
         avg.push(read);
+        */
+        let read = 0;
 
         #[cfg(feature = "bat_dev_lcd")]
         {
@@ -62,6 +72,10 @@ pub async fn battery_read_task(
 
         let now = Instant::now();
         if !lcd_sent && battery_start <= now {
+            let voltage = gauge.voltage().await.unwrap();
+            let soc = gauge.state_of_charge().await.unwrap();
+            log::info!("{voltage} {soc}%");
+
             state
                 .show_battery
                 .signal(bat_percentage(calculate(read as f64)));

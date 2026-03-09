@@ -54,6 +54,7 @@ display-interface-i2c = "0.5.0"
 embedded-graphics = "0.8.2"
 embedded-graphics-framebuf = "0.5.0"
 oled_async = { version = "0.2.0", features = ["i2c"] }
+bq27441 = { version = "0.1.0", features = ["async", "embassy"] }
 
 [patch.crates-io]
 elliptic-curve = { git = "https://github.com/filipton/rust-crypto-traits.git" }
