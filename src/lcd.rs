@@ -1,11 +1,20 @@
 use adv_shift_registers::wrappers::ShifterValueRange;
 use ag_lcd_async::LcdDisplay;
 use alloc::{rc::Rc, string::ToString};
+use display_interface_i2c::I2CInterface;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Delay, Duration, Instant, Timer};
+use embedded_graphics::{
+    Drawable,
+    pixelcolor::BinaryColor,
+    prelude::{DrawTarget, Point},
+    text::{Alignment, Text},
+};
+use embedded_graphics_framebuf::FrameBuf;
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::delay::DelayNs;
 use esp_hal::gpio::Output;
+use oled_async::{displays::ssd1309::Ssd1309_128_64, mode::GraphicsMode};
 
 use crate::{
     consts::{
@@ -45,27 +54,10 @@ pub async fn lcd_task(
     disp.clear();
     disp.flush().await.unwrap();
 
-    let text_style = embedded_graphics::mono_font::MonoTextStyleBuilder::new()
-        .font(&embedded_graphics::mono_font::ascii::FONT_6X10)
-        .text_color(embedded_graphics::pixelcolor::BinaryColor::On)
-        .build();
-
-    embedded_graphics::Drawable::draw(
-        &embedded_graphics::text::Text::with_baseline(
-            "test 123",
-            embedded_graphics::prelude::Point::zero(),
-            text_style,
-            embedded_graphics::text::Baseline::Top,
-        ),
-        &mut disp,
-    )
-    .unwrap();
-
-    disp.flush().await.unwrap();
-
     let mut data = [embedded_graphics::pixelcolor::BinaryColor::Off; (128 * 64) as usize];
     let mut fbuf = embedded_graphics_framebuf::FrameBuf::new(&mut data, 128, 64);
 
+    /*
     let start = Instant::now();
     loop {
         embedded_graphics::prelude::DrawTarget::clear(
@@ -91,19 +83,144 @@ pub async fn lcd_task(
         )
         .unwrap();
 
-        embedded_graphics::Drawable::draw(
-            &embedded_graphics::text::Text::with_baseline(
-                "Hello Rust!",
-                embedded_graphics::prelude::Point::new(0, 16),
-                text_style,
-                embedded_graphics::text::Baseline::Top,
-            ),
-            &mut fbuf,
+        Text::with_alignment(
+            "First line\nSecond line",
+            Point::new(128 / 2, 16),
+            text_style,
+            Alignment::Center,
         )
+        .draw(&mut fbuf)
         .unwrap();
 
         embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, fbuf.into_iter()).unwrap();
         disp.flush().await.unwrap();
+    }
+    */
+
+    let mut lcd_driver: LcdAbstract<80, 16, 2, 3> = LcdAbstract::new();
+    _ = lcd_driver.print(
+        0,
+        &alloc::format!("{:X}", crate::utils::get_efuse_u32()),
+        PrintAlign::Left,
+        true,
+    );
+    _ = lcd_driver.print(1, crate::version::VERSION, PrintAlign::Center, true);
+    fbuf.clear(BinaryColor::Off);
+    lcd_driver.display_on_oled(&mut fbuf).await;
+    embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, fbuf.into_iter()).unwrap();
+    disp.flush().await.unwrap();
+
+    _ = lcd_driver.print(
+        0,
+        &alloc::format!("{}%", global_state.show_battery.wait().await),
+        PrintAlign::Right,
+        false,
+    );
+    fbuf.clear(BinaryColor::Off);
+    lcd_driver.display_on_oled(&mut fbuf).await;
+    embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, fbuf.into_iter()).unwrap();
+    disp.flush().await.unwrap();
+
+    Timer::after_millis(2500).await;
+
+    fbuf.clear(BinaryColor::Off);
+    _ = lcd_driver.clear_all();
+    embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, fbuf.into_iter()).unwrap();
+    disp.flush().await.unwrap();
+
+    let mut last_update;
+    loop {
+        let current_state = global_state.state.value().await.clone();
+        log::debug!("lcd current_state: {current_state:?}");
+        last_update = Instant::now();
+
+        if sleep_state() {
+            //lcd.backlight_on();
+
+            unsafe {
+                crate::state::SLEEP_STATE = false;
+            }
+        }
+
+        let current_scene = current_state.scene.clone();
+        let fut = async {
+            let _ = process_lcd(
+                current_state,
+                &global_state,
+                &mut lcd_driver,
+                &wifi_setup_sig,
+                &mut fbuf,
+                &mut disp,
+            )
+            .await;
+            fbuf.clear(BinaryColor::Off);
+            lcd_driver.display_on_oled(&mut fbuf).await;
+            embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, fbuf.into_iter()).unwrap();
+            disp.flush().await.unwrap();
+
+            let mut scroll_ticker =
+                embassy_time::Ticker::every(Duration::from_millis(SCROLL_TICKER_INVERVAL_MS));
+            loop {
+                scroll_ticker.next().await;
+                let changed = lcd_driver.scroll_step();
+                if changed.is_ok_and(|c| c) {
+                    fbuf.clear(BinaryColor::Off);
+                    lcd_driver.display_on_oled(&mut fbuf).await;
+                    embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, fbuf.into_iter())
+                        .unwrap();
+                    disp.flush().await.unwrap();
+                }
+
+                #[cfg(not(any(feature = "e2e", feature = "qa")))]
+                if !sleep_state()
+                    && (Instant::now() - last_update).as_millis() > SLEEP_AFTER_MS
+                    && current_scene.can_sleep()
+                {
+                    _ = lcd_driver.print(0, "Sleep", PrintAlign::Center, true);
+                    _ = lcd_driver.print(1, "Press any key", PrintAlign::Center, true);
+                    fbuf.clear(BinaryColor::Off);
+                    lcd_driver.display_on_oled(&mut fbuf).await;
+                    embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, fbuf.into_iter())
+                        .unwrap();
+                    disp.flush().await.unwrap();
+                    //lcd.backlight_off();
+
+                    {
+                        global_state.state.lock().await.server_connected = Some(false);
+                    }
+
+                    unsafe {
+                        crate::state::SLEEP_STATE = true;
+                        crate::state::TRUST_SERVER = false;
+                    }
+
+                    global_state.state.signal_reset();
+                }
+
+                #[cfg(not(any(feature = "e2e", feature = "qa")))]
+                if sleep_state()
+                    && !deeper_sleep_state()
+                    && (Instant::now() - last_update).as_millis() > DEEPER_SLEEP_AFTER_MS
+                {
+                    _ = lcd_driver.print(0, "Deep Sleep", PrintAlign::Center, true);
+                    _ = lcd_driver.print(1, "Press any key", PrintAlign::Center, true);
+                    fbuf.clear(BinaryColor::Off);
+                    lcd_driver.display_on_oled(&mut fbuf).await;
+                    embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, fbuf.into_iter())
+                        .unwrap();
+                    disp.flush().await.unwrap();
+                    crate::utils::deeper_sleep();
+                }
+            }
+        };
+
+        let res = embassy_futures::select::select(fut, global_state.state.wait()).await;
+        match res {
+            embassy_futures::select::Either::First(_) => {}
+            embassy_futures::select::Either::Second(_) => {
+                continue;
+            }
+        }
     }
 
     /*
@@ -236,13 +353,15 @@ pub async fn lcd_task(
     */
 }
 
-async fn process_lcd<T: OutputPin, D: DelayNs>(
+async fn process_lcd(
     current_state: SignaledGlobalStateInner,
     global_state: &GlobalState,
     lcd_driver: &mut LcdAbstract<80, 16, 2, 3>,
-    lcd: &mut LcdDisplay<T, D>,
+    //lcd: &mut LcdDisplay<T, D>,
     wifi_setup_sig: &Signal<NoopRawMutex, ()>,
-    display: &ShifterValueRange,
+    //display: &ShifterValueRange,
+    fbuf: &mut FrameBuf<BinaryColor, &mut [BinaryColor; 128 * 64]>,
+    disp: &mut GraphicsMode<Ssd1309_128_64, I2CInterface<SharedI2C>>,
 ) -> Option<()> {
     #[cfg(feature = "bat_dev_lcd")]
     {
@@ -344,7 +463,10 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                         true,
                     )
                     .ok()?;
-                lcd_driver.display_on_lcd(lcd).await;
+                fbuf.clear(BinaryColor::Off);
+                lcd_driver.display_on_oled(fbuf).await;
+                embedded_graphics::prelude::DrawTarget::draw_iter(disp, fbuf.into_iter()).unwrap();
+                disp.flush().await.unwrap();
 
                 Timer::after_millis(300).await;
                 lcd_driver
@@ -472,7 +594,10 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 )
                 .ok()?;
 
-            lcd_driver.display_on_lcd(lcd).await;
+            fbuf.clear(BinaryColor::Off);
+            lcd_driver.display_on_oled(fbuf).await;
+            embedded_graphics::prelude::DrawTarget::draw_iter(disp, fbuf.into_iter()).unwrap();
+            disp.flush().await.unwrap();
             wifi_setup_sig.wait().await;
             global_state.state.lock().await.scene = Scene::AutoSetupWait;
         }
@@ -607,7 +732,10 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                     .print(0, &time_str, PrintAlign::Center, true)
                     .ok()?;
 
-                lcd_driver.display_on_lcd(lcd).await;
+                fbuf.clear(BinaryColor::Off);
+                lcd_driver.display_on_oled(fbuf).await;
+                embedded_graphics::prelude::DrawTarget::draw_iter(disp, fbuf.into_iter()).unwrap();
+                disp.flush().await.unwrap();
                 Timer::after_millis(LCD_INSPECTION_FRAME_TIME).await;
             }
         }
@@ -618,8 +746,11 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 .print(0, &time_str, PrintAlign::Center, true)
                 .ok()?;
 
-            display.set_data_raw(&crate::utils::stackmat::time_str_to_display(&time_str));
-            lcd_driver.display_on_lcd(lcd).await;
+            //display.set_data_raw(&crate::utils::stackmat::time_str_to_display(&time_str));
+            fbuf.clear(BinaryColor::Off);
+            lcd_driver.display_on_oled(fbuf).await;
+            embedded_graphics::prelude::DrawTarget::draw_iter(disp, fbuf.into_iter()).unwrap();
+            disp.flush().await.unwrap();
         },
         Scene::Finished => {
             let solve_time = current_state.solve_time.unwrap_or(0);
@@ -704,7 +835,10 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 let progress = global_state.update_progress.wait().await;
                 _ = lcd_driver.print(1, &alloc::format!("{progress}%"), PrintAlign::Center, true);
 
-                lcd_driver.display_on_lcd(lcd).await;
+                fbuf.clear(BinaryColor::Off);
+                lcd_driver.display_on_oled(fbuf).await;
+                embedded_graphics::prelude::DrawTarget::draw_iter(disp, fbuf.into_iter()).unwrap();
+                disp.flush().await.unwrap();
             }
         }
     }

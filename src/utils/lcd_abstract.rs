@@ -1,4 +1,12 @@
 use ag_lcd_async::LcdDisplay;
+use alloc::{string::String, vec::Vec};
+use embedded_graphics::{
+    Drawable,
+    pixelcolor::BinaryColor,
+    prelude::Point,
+    text::{Alignment, Text},
+};
+use embedded_graphics_framebuf::FrameBuf;
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::delay::DelayNs;
 
@@ -163,5 +171,33 @@ impl<const LINE_SIZE: usize, const X: usize, const Y: usize, const SCROLLER_WT: 
                 display_data.1[y].copy_from_slice(line.0);
             }
         }
+    }
+
+    pub async fn display_on_oled(
+        &mut self,
+        fbuf: &mut FrameBuf<BinaryColor, &mut [BinaryColor; 128 * 64]>,
+    ) {
+        let display_data = self.display_data();
+
+        let text_style = embedded_graphics::mono_font::MonoTextStyleBuilder::new()
+            .font(&embedded_graphics::mono_font::ascii::FONT_6X10)
+            .text_color(embedded_graphics::pixelcolor::BinaryColor::On)
+            .build();
+
+        let text = display_data
+            .0
+            .iter()
+            .map(|l| l.0.iter().map(|c| *c as char).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Text::with_alignment(
+            &text,
+            Point::new(128 / 2, 26),
+            text_style,
+            Alignment::Center,
+        )
+        .draw(fbuf)
+        .unwrap();
     }
 }

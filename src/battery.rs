@@ -44,14 +44,14 @@ pub async fn battery_read_task(
     let mut smoother = dyn_smooth::DynamicSmootherEcoF32::new(base_freq, sample_freq, sensitivity);
     let mut avg = RollingAverage::<128>::new();
     */
-    let mut gauge = bq27441::Bq27441Async::new(i2c).await.unwrap();
+    let Ok(mut gauge) = bq27441::Bq27441Async::new(i2c).await else {
+        state.show_battery.signal(0);
+        log::error!("BQ27441 init failed!");
+        return;
+    };
 
-    let mut battery_start = Instant::now().saturating_add(Duration::from_millis(300));
     let mut lcd_sent = false;
-
-    let mut sample_rate_millis = 10;
     loop {
-        Timer::after_millis(sample_rate_millis).await;
         if sleep_state() {
             Timer::after_millis(500).await;
             continue;
@@ -62,53 +62,55 @@ pub async fn battery_read_task(
         let read = smoother.tick(read as f32);
         avg.push(read);
         */
-        let read = 0;
 
+        /*
         #[cfg(feature = "bat_dev_lcd")]
         {
             let mut state = state.state.lock().await;
             state.current_bat_read = Some(read);
         }
+        */
 
-        let now = Instant::now();
-        if !lcd_sent && battery_start <= now {
-            let voltage = gauge.voltage().await.unwrap();
-            let soc = gauge.state_of_charge().await.unwrap();
-            log::info!("{voltage} {soc}%");
+        if !lcd_sent {
+            let mut soc = gauge.state_of_charge().await.unwrap_or(0) as u8;
+            if soc == 0 {
+                let volt = gauge.voltage().await.unwrap_or(0) as f64;
+                soc = bat_percentage(calculate(volt));
+            }
 
-            state
-                .show_battery
-                .signal(bat_percentage(calculate(read as f64)));
-
+            state.show_battery.signal(soc);
             lcd_sent = true;
-            sample_rate_millis = 100;
-        }
-
-        if battery_start > now || (now - battery_start).as_millis() < BATTERY_SEND_INTERVAL_MS {
+            Timer::after_millis(BATTERY_SEND_INTERVAL_MS).await;
             continue;
         }
 
-        battery_start = Instant::now();
-        let bat_calc_mv = calculate(read as f64);
-        let bat_percentage = bat_percentage(bat_calc_mv);
+        let mut soc = gauge.state_of_charge().await.unwrap_or(0) as u8;
+        let mv = gauge.voltage().await.unwrap_or(0) as f64;
+        if soc == 0 {
+            soc = bat_percentage(calculate(mv));
+        }
+        state.show_battery.signal(soc);
 
         if state.state.lock().await.server_connected == Some(true) {
             crate::ws::send_packet(crate::structs::TimerPacket {
                 tag: None,
                 data: crate::structs::TimerPacketInner::Battery {
-                    level: Some(bat_percentage as f64),
-                    voltage: Some(bat_calc_mv / 1000.0),
+                    level: Some(soc as f64),
+                    voltage: Some(mv),
                 },
             })
             .await;
         }
 
-        log::info!("calc({read}): {bat_calc_mv}mV {bat_percentage}%");
+        log::info!("Battery {mv}mv {soc}%");
+        Timer::after_millis(BATTERY_SEND_INTERVAL_MS).await;
+        /*
         #[cfg(feature = "bat_dev_lcd")]
         {
             let mut state = state.state.lock().await;
             state.avg_bat_read = avg.average();
         }
+        */
     }
 }
 
