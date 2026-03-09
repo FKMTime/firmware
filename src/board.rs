@@ -1,4 +1,7 @@
-use crate::utils::stackmat::{DEC_DIGITS, DOT_MOD};
+use crate::utils::{
+    shared_i2c::SharedI2C,
+    stackmat::{DEC_DIGITS, DOT_MOD},
+};
 use adv_shift_registers::wrappers::ShifterValueRange;
 use alloc::rc::Rc;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
@@ -15,8 +18,6 @@ use esp_hal::{
     time::Rate,
     timer::timg::TimerGroup,
 };
-
-pub type MutexI2C = Rc<Mutex<NoopRawMutex, I2c<'static, Async>>>;
 
 #[allow(dead_code)]
 pub struct Board {
@@ -41,7 +42,7 @@ pub struct Board {
     //pub cs: adv_shift_registers::wrappers::ShifterPin,
 
     // i2c
-    pub i2c: MutexI2C,
+    pub i2c: SharedI2C,
 
     pub stackmat_rx: AnyPin<'static>,
 
@@ -113,7 +114,7 @@ impl Board {
             .with_sda(peripherals.GPIO8)
             .with_scl(peripherals.GPIO9)
             .into_async();
-        let i2c: Rc<Mutex<NoopRawMutex, _>> = Rc::new(Mutex::new(i2c));
+        let i2c = SharedI2C::new(i2c);
 
         //let button_input = Input::new(
         //    peripherals.GPIO3,

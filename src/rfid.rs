@@ -2,6 +2,7 @@ use crate::consts::RFID_RETRY_INIT_MS;
 use crate::state::{GlobalState, MenuScene, current_epoch, sleep_state};
 use crate::structs::{CardInfoResponsePacket, SolveConfirmPacket};
 use crate::translations::{TranslationKey, get_translation};
+use crate::utils::shared_i2c::SharedI2C;
 use alloc::string::ToString;
 use anyhow::{Result, anyhow};
 use embassy_time::{Duration, Instant, Timer};
@@ -17,7 +18,7 @@ use esp_hal_mfrc522::consts::UidSize;
 
 #[embassy_executor::task]
 pub async fn rfid_task(
-    i2c: crate::board::MutexI2C,
+    i2c: SharedI2C,
     //miso: AnyPin<'static>,
     //mosi: AnyPin<'static>,
     //sck: AnyPin<'static>,
@@ -26,7 +27,7 @@ pub async fn rfid_task(
     //dma_chan: esp_hal::peripherals::DMA_CH0<'static>,
     global_state: GlobalState,
 ) {
-    let driver = esp_hal_mfrc522::drivers::I2CLockDriver::new(i2c, 0x28);
+    let driver = esp_hal_mfrc522::drivers::I2CDriver::new(i2c, 0x28);
     let mut mfrc522 = esp_hal_mfrc522::MFRC522::new(driver);
 
     /*

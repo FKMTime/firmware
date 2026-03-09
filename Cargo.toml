@@ -45,10 +45,15 @@ embedded-hal-bus = { version = "0.3.0", features = ["async"] }
 embedded-tls = { git = "https://github.com/filipton/embedded-tls", default-features = false, features = ["alloc", "embedded-io-adapters", "log"] }
 rand_core = { version = "0.6.4", features = ["getrandom"] }
 ag-lcd-async = { git = "https://github.com/filipton/ag-lcd-async", features = [] }
-#esp-hal-mfrc522 = { version = "0.3.4", features = ["embassy-time"] }
-esp-hal-mfrc522 = { path = "../esp-hal-mfrc522", features = ["alloc", "embassy-time"] }
+esp-hal-mfrc522 = { version = "0.3.3", features = ["embassy-time"] }
 esp-bootloader-esp-idf = { version = "0.4.0", features = ["log-04", "esp32c3"] }
 trouble-host = { version = "0.5.1", features = ["scan", "security"] }
+
+display-interface = "0.5.0"
+display-interface-i2c = "0.5.0"
+ssd1309 = {git="https://github.com/oakamil/ssd1309.git"}
+embedded-graphics = "0.8.2"
+embedded-graphics-framebuf = "0.5.0"
 
 [patch.crates-io]
 elliptic-curve = { git = "https://github.com/filipton/rust-crypto-traits.git" }
