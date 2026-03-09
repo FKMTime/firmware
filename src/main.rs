@@ -11,7 +11,7 @@ use board::Board;
 use consts::LOG_SEND_INTERVAL_MS;
 use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
-use embassy_time::{Instant, Timer};
+use embassy_time::{Delay, Instant, Timer};
 use esp_backtrace as _;
 use esp_hal::interrupt::software::SoftwareInterruptControl;
 use esp_hal_wifimanager::{Nvs, WIFI_NVS_KEY};
@@ -114,6 +114,85 @@ async fn main(spawner: Spawner) {
         unsafe { crate::state::SIGN_KEY = sign_key };
     }
 
+    let di = display_interface_i2c::I2CInterface::new(board.i2c.clone(), 0x3C, 0x40);
+    let raw_disp =
+        oled_async::builder::Builder::new(oled_async::displays::ssd1309::Ssd1309_128_64 {})
+            .with_rotation(oled_async::prelude::DisplayRotation::Rotate180)
+            .connect(di);
+
+    let mut disp: oled_async::mode::GraphicsMode<_, _> = raw_disp.into();
+    let mut display_rst = board.display_rst;
+    disp.reset(&mut display_rst, &mut Delay);
+
+    disp.init().await.unwrap();
+    disp.clear();
+    disp.flush().await.unwrap();
+
+    let text_style = embedded_graphics::mono_font::MonoTextStyleBuilder::new()
+        .font(&embedded_graphics::mono_font::ascii::FONT_6X10)
+        .text_color(embedded_graphics::pixelcolor::BinaryColor::On)
+        .build();
+
+    embedded_graphics::Drawable::draw(
+        &embedded_graphics::text::Text::with_baseline(
+            "test 123",
+            embedded_graphics::prelude::Point::zero(),
+            text_style,
+            embedded_graphics::text::Baseline::Top,
+        ),
+        &mut disp,
+    )
+    .unwrap();
+
+    disp.flush().await.unwrap();
+
+    let mut data = [embedded_graphics::pixelcolor::BinaryColor::Off; (128 * 64) as usize];
+    let mut fbuf = embedded_graphics_framebuf::FrameBuf::new(&mut data, 128, 64);
+
+    let start = Instant::now();
+    loop {
+        embedded_graphics::prelude::DrawTarget::clear(
+            &mut fbuf,
+            embedded_graphics::pixelcolor::BinaryColor::Off,
+        );
+        Timer::after(embassy_time::Duration::from_millis(1000 / 60)).await;
+
+        let text_style = embedded_graphics::mono_font::MonoTextStyleBuilder::new()
+            .font(&embedded_graphics::mono_font::ascii::FONT_6X10)
+            .text_color(embedded_graphics::pixelcolor::BinaryColor::On)
+            .build();
+
+        let time_str = utils::stackmat::ms_to_time_str(start.elapsed().as_millis());
+        embedded_graphics::Drawable::draw(
+            &embedded_graphics::text::Text::with_baseline(
+                &alloc::format!("Hello world! {time_str}"),
+                embedded_graphics::prelude::Point::zero(),
+                text_style,
+                embedded_graphics::text::Baseline::Top,
+            ),
+            &mut fbuf,
+        )
+        .unwrap();
+
+        embedded_graphics::Drawable::draw(
+            &embedded_graphics::text::Text::with_baseline(
+                "Hello Rust!",
+                embedded_graphics::prelude::Point::new(0, 16),
+                text_style,
+                embedded_graphics::text::Baseline::Top,
+            ),
+            &mut fbuf,
+        )
+        .unwrap();
+
+        embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, fbuf.into_iter()).unwrap();
+        disp.flush().await.unwrap();
+
+        if start.elapsed().as_secs() > 120 {
+            break;
+        }
+    }
+
     /*
     spawner.must_spawn(lcd::lcd_task(
         board.lcd,
@@ -141,7 +220,7 @@ async fn main(spawner: Spawner) {
         global_state.clone(),
     ));
     spawner.must_spawn(rfid::rfid_task(
-        board.i2c,
+        board.i2c.clone(),
         //board.miso,
         //board.mosi,
         //board.sck,

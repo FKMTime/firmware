@@ -51,9 +51,9 @@ trouble-host = { version = "0.5.1", features = ["scan", "security"] }
 
 display-interface = "0.5.0"
 display-interface-i2c = "0.5.0"
-ssd1309 = {git="https://github.com/oakamil/ssd1309.git"}
 embedded-graphics = "0.8.2"
 embedded-graphics-framebuf = "0.5.0"
+oled_async = { version = "0.2.0", features = ["i2c"] }
 
 [patch.crates-io]
 elliptic-curve = { git = "https://github.com/filipton/rust-crypto-traits.git" }

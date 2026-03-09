@@ -40,8 +40,7 @@ pub struct Board {
     //pub mosi: AnyPin<'static>,
     //pub sck: AnyPin<'static>,
     //pub cs: adv_shift_registers::wrappers::ShifterPin,
-
-    // i2c
+    pub display_rst: Output<'static>,
     pub i2c: SharedI2C,
 
     pub stackmat_rx: AnyPin<'static>,
@@ -82,6 +81,12 @@ impl Board {
         let stackmat_rx = peripherals.GPIO20.degrade();
         let usb_dp = peripherals.GPIO19.degrade();
         let usb_dm = peripherals.GPIO18.degrade();
+
+        let display_rst = Output::new(
+            peripherals.GPIO7,
+            esp_hal::gpio::Level::Low,
+            Default::default(),
+        );
 
         let b1 = Input::new(
             peripherals.GPIO0,
@@ -165,6 +170,7 @@ impl Board {
             //cs,
             i2c,
 
+            display_rst,
             stackmat_rx,
             buttons: [b1, b2, b3, b4],
             // battery,
