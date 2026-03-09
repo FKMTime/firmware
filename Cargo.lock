@@ -48,15 +48,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ag-lcd-async"
-version = "0.3.0"
-source = "git+https://github.com/filipton/ag-lcd-async#c4834c24769bfb0c5c597c71c675b9f0b6305bf3"
-dependencies = [
- "embedded-hal 1.0.0",
- "embedded-hal-async",
-]
-
-[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -644,12 +635,6 @@ name = "dotenvy"
 version = "0.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
-
-[[package]]
-name = "dyn-smooth"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47fac87554ece38a037e0d53e750ee5129670b6f97e712bb0c411268181f3700"
 
 [[package]]
 name = "ecdsa"
@@ -1542,14 +1527,12 @@ name = "fkm-firmware"
 version = "0.1.0"
 dependencies = [
  "adv-shift-registers",
- "ag-lcd-async",
  "anyhow",
  "bq27441",
  "critical-section",
  "display-interface",
  "display-interface-i2c",
  "dotenvy",
- "dyn-smooth",
  "embassy-executor",
  "embassy-futures",
  "embassy-net",
