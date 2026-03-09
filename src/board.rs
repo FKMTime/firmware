@@ -1,14 +1,22 @@
 use crate::utils::stackmat::{DEC_DIGITS, DOT_MOD};
 use adv_shift_registers::wrappers::ShifterValueRange;
+use alloc::rc::Rc;
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use embedded_hal::digital::OutputPin;
 use esp_hal::{
+    Async,
     gpio::{AnyPin, Input, InputConfig, Level, Output, Pin, Pull},
+    i2c::master::I2c,
     peripherals::{
-        ADC1, AES, BT, FLASH, Peripherals, SPI2, SW_INTERRUPT, TIMG0, TIMG1, UART1, WIFI,
+        self, ADC1, AES, BT, FLASH, I2C0, Peripherals, SPI2, SW_INTERRUPT, TIMG0, TIMG1, UART1,
+        WIFI,
     },
     rng::Rng,
+    time::Rate,
     timer::timg::TimerGroup,
 };
+
+pub type MutexI2C = Rc<Mutex<NoopRawMutex, I2c<'static, Async>>>;
 
 #[allow(dead_code)]
 pub struct Board {
@@ -27,19 +35,24 @@ pub struct Board {
     pub sw_interrupt: SW_INTERRUPT<'static>,
 
     // spi
-    pub miso: AnyPin<'static>,
-    pub mosi: AnyPin<'static>,
-    pub sck: AnyPin<'static>,
-    pub cs: adv_shift_registers::wrappers::ShifterPin,
+    //pub miso: AnyPin<'static>,
+    //pub mosi: AnyPin<'static>,
+    //pub sck: AnyPin<'static>,
+    //pub cs: adv_shift_registers::wrappers::ShifterPin,
+
+    // i2c
+    pub i2c: MutexI2C,
 
     pub stackmat_rx: AnyPin<'static>,
 
-    pub battery: esp_hal::peripherals::GPIO2<'static>,
-    pub button_input: Input<'static>,
-    pub digits_shifters: ShifterValueRange,
+    pub buttons: [Input<'static>; 4],
 
-    pub buttons_shifter: adv_shift_registers::wrappers::ShifterValue,
-    pub lcd: adv_shift_registers::wrappers::ShifterValue,
+    // pub battery: esp_hal::peripherals::GPIO2<'static>,
+    //pub button_input: Input<'static>,
+    //pub digits_shifters: ShifterValueRange,
+
+    //pub buttons_shifter: adv_shift_registers::wrappers::ShifterValue,
+    // pub lcd: adv_shift_registers::wrappers::ShifterValue,
 
     // usb pins
     pub usb_dp: AnyPin<'static>,
@@ -61,42 +74,75 @@ impl Board {
         let flash = peripherals.FLASH;
         let sw_interrupt = peripherals.SW_INTERRUPT;
 
-        let sck = peripherals.GPIO4.degrade();
-        let miso = peripherals.GPIO5.degrade();
-        let mosi = peripherals.GPIO6.degrade();
-        let battery = peripherals.GPIO2;
+        //let sck = peripherals.GPIO4.degrade();
+        //let miso = peripherals.GPIO5.degrade();
+        //let mosi = peripherals.GPIO6.degrade();
+        //let battery = peripherals.GPIO2;
         let stackmat_rx = peripherals.GPIO20.degrade();
         let usb_dp = peripherals.GPIO19.degrade();
         let usb_dm = peripherals.GPIO18.degrade();
 
-        let button_input = Input::new(
+        let b1 = Input::new(
+            peripherals.GPIO0,
+            InputConfig::default().with_pull(Pull::Down),
+        );
+
+        let b2 = Input::new(
+            peripherals.GPIO1,
+            InputConfig::default().with_pull(Pull::Down),
+        );
+
+        let b3 = Input::new(
+            peripherals.GPIO2,
+            InputConfig::default().with_pull(Pull::Down),
+        );
+
+        let b4 = Input::new(
             peripherals.GPIO3,
             InputConfig::default().with_pull(Pull::Down),
         );
 
-        let shifter_data_pin = Output::new(peripherals.GPIO10, Level::Low, Default::default());
-        let shifter_latch_pin = Output::new(peripherals.GPIO1, Level::Low, Default::default());
-        let shifter_clk_pin = Output::new(peripherals.GPIO21, Level::Low, Default::default());
+        let Ok(i2c) = I2c::new(
+            peripherals.I2C0,
+            esp_hal::i2c::master::Config::default().with_frequency(Rate::from_khz(400)),
+        ) else {
+            log::error!("Rfid task error while creating Spi instance!");
+            panic!()
+        };
+        let i2c = i2c
+            .with_sda(peripherals.GPIO8)
+            .with_scl(peripherals.GPIO9)
+            .into_async();
+        let i2c: Rc<Mutex<NoopRawMutex, _>> = Rc::new(Mutex::new(i2c));
 
-        let adv_shift_reg = adv_shift_registers::AdvancedShiftRegister::<8, _>::new(
-            shifter_data_pin,
-            shifter_clk_pin,
-            shifter_latch_pin,
-            0,
-        );
-        let adv_shift_reg = alloc::boxed::Box::new(adv_shift_reg);
-        let adv_shift_reg = alloc::boxed::Box::leak(adv_shift_reg);
+        //let button_input = Input::new(
+        //    peripherals.GPIO3,
+        //    InputConfig::default().with_pull(Pull::Down),
+        //);
 
-        let mut backlight = adv_shift_reg.get_pin_mut(1, 1, false);
-        _ = backlight.set_high();
+        //let shifter_data_pin = Output::new(peripherals.GPIO10, Level::Low, Default::default());
+        //let shifter_latch_pin = Output::new(peripherals.GPIO5, Level::Low, Default::default());
+        //let shifter_clk_pin = Output::new(peripherals.GPIO21, Level::Low, Default::default());
 
-        let buttons_shifter = adv_shift_reg.get_shifter_mut(0);
-        let lcd = adv_shift_reg.get_shifter_mut(1);
-        let digits_shifters = adv_shift_reg.get_shifter_range_mut(2..8);
-        digits_shifters.set_data(&[!DEC_DIGITS[8] ^ DOT_MOD; 6]);
+        //let adv_shift_reg = adv_shift_registers::AdvancedShiftRegister::<8, _>::new(
+        //    shifter_data_pin,
+        //    shifter_clk_pin,
+        //    shifter_latch_pin,
+        //    0,
+        //);
+        //let adv_shift_reg = alloc::boxed::Box::new(adv_shift_reg);
+        //let adv_shift_reg = alloc::boxed::Box::leak(adv_shift_reg);
 
-        let mut cs = adv_shift_reg.get_pin_mut(1, 0, true);
-        _ = cs.set_high();
+        //let mut backlight = adv_shift_reg.get_pin_mut(1, 1, false);
+        //_ = backlight.set_high();
+
+        //let buttons_shifter = adv_shift_reg.get_shifter_mut(0);
+        //let lcd = adv_shift_reg.get_shifter_mut(1);
+        //let digits_shifters = adv_shift_reg.get_shifter_range_mut(2..8);
+        //digits_shifters.set_data(&[!DEC_DIGITS[8] ^ DOT_MOD; 6]);
+
+        //let mut cs = adv_shift_reg.get_pin_mut(1, 0, true);
+        //_ = cs.set_high();
 
         Board {
             timg0,
@@ -112,18 +158,20 @@ impl Board {
             flash,
             sw_interrupt,
 
-            miso,
-            mosi,
-            sck,
-            cs,
+            //miso,
+            //mosi,
+            //sck,
+            //cs,
+            i2c,
 
-            battery,
             stackmat_rx,
-            button_input,
+            buttons: [b1, b2, b3, b4],
+            // battery,
+            //button_input,
 
-            buttons_shifter,
-            digits_shifters,
-            lcd,
+            //buttons_shifter,
+            //digits_shifters,
+            //lcd,
             usb_dp,
             usb_dm,
         }

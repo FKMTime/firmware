@@ -5,6 +5,7 @@ use crate::translations::{TranslationKey, get_translation};
 use alloc::string::ToString;
 use anyhow::{Result, anyhow};
 use embassy_time::{Duration, Instant, Timer};
+use esp_hal::i2c::master::I2c;
 use esp_hal::time::Rate;
 use esp_hal::{
     dma::{DmaRxBuf, DmaTxBuf},
@@ -16,14 +17,19 @@ use esp_hal_mfrc522::consts::UidSize;
 
 #[embassy_executor::task]
 pub async fn rfid_task(
-    miso: AnyPin<'static>,
-    mosi: AnyPin<'static>,
-    sck: AnyPin<'static>,
-    cs_pin: adv_shift_registers::wrappers::ShifterPin,
-    spi: esp_hal::peripherals::SPI2<'static>,
-    dma_chan: esp_hal::peripherals::DMA_CH0<'static>,
+    i2c: crate::board::MutexI2C,
+    //miso: AnyPin<'static>,
+    //mosi: AnyPin<'static>,
+    //sck: AnyPin<'static>,
+    //cs_pin: adv_shift_registers::wrappers::ShifterPin,
+    //spi: esp_hal::peripherals::SPI2<'static>,
+    //dma_chan: esp_hal::peripherals::DMA_CH0<'static>,
     global_state: GlobalState,
 ) {
+    let driver = esp_hal_mfrc522::drivers::I2CLockDriver::new(i2c, 0x28);
+    let mut mfrc522 = esp_hal_mfrc522::MFRC522::new(driver);
+
+    /*
     #[allow(clippy::manual_div_ceil)]
     let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(512);
     let Ok(dma_tx_buf) = DmaTxBuf::new(tx_descriptors, tx_buffer) else {
@@ -62,6 +68,7 @@ pub async fn rfid_task(
 
         esp_hal_mfrc522::MFRC522::new(esp_hal_mfrc522::drivers::SpiDriver::new(spi))
     };
+    */
 
     #[cfg(not(feature = "e2e"))]
     loop {

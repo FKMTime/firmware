@@ -114,6 +114,7 @@ async fn main(spawner: Spawner) {
         unsafe { crate::state::SIGN_KEY = sign_key };
     }
 
+    /*
     spawner.must_spawn(lcd::lcd_task(
         board.lcd,
         global_state.clone(),
@@ -126,24 +127,27 @@ async fn main(spawner: Spawner) {
         board.adc1,
         global_state.clone(),
     ));
+    */
     spawner.must_spawn(buttons::buttons_task(
         global_state.clone(),
-        board.button_input,
-        board.buttons_shifter,
+        board.buttons,
+        //board.button_input,
+        //board.buttons_shifter,
     ));
     spawner.must_spawn(stackmat::stackmat_task(
         board.uart1,
         board.stackmat_rx,
-        board.digits_shifters,
+        // board.digits_shifters,
         global_state.clone(),
     ));
     spawner.must_spawn(rfid::rfid_task(
-        board.miso,
-        board.mosi,
-        board.sck,
-        board.cs,
-        board.spi2,
-        board.spi_dma,
+        board.i2c,
+        //board.miso,
+        //board.mosi,
+        //board.sck,
+        //board.cs,
+        //board.spi2,
+        //board.spi_dma,
         global_state.clone(),
     ));
 

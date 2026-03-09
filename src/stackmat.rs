@@ -16,7 +16,7 @@ pub static mut CURRENT_TIME: u64 = 0;
 pub async fn stackmat_task(
     uart: UART1<'static>,
     uart_pin: AnyPin<'static>,
-    display: ShifterValueRange,
+    // display: ShifterValueRange,
     global_state: GlobalState,
 ) {
     let serial_config = esp_hal::uart::Config::default().with_baudrate(1200);
@@ -50,7 +50,7 @@ pub async fn stackmat_task(
             && last_state != Some(false)
         {
             last_state = Some(false);
-            display.set_data(&[255; 6]);
+            // display.set_data(&[255; 6]);
 
             let mut state = global_state.state.lock().await;
             state.stackmat_connected = Some(false);
@@ -203,7 +203,7 @@ pub async fn stackmat_task(
                             }
 
                             let time_str = ms_to_time_str(parsed.1);
-                            display.set_data(&time_str_to_display(&time_str));
+                            // display.set_data(&time_str_to_display(&time_str));
 
                             #[cfg(feature = "qa")]
                             crate::qa::send_qa_resp(crate::qa::QaSignal::Stackmat(parsed.1));
@@ -237,7 +237,7 @@ pub async fn stackmat_task(
                             state.time_confirmed = true;
                         }
 
-                        display.set_data(&[255; 6]);
+                        // display.set_data(&[255; 6]);
                     }
 
                     last_stackmat_state = parsed.0;

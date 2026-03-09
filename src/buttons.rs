@@ -15,8 +15,9 @@ macros::generate_button_handler_enum!(triggered: &ButtonTrigger, hold_time: u64,
 #[embassy_executor::task]
 pub async fn buttons_task(
     state: GlobalState,
-    button_input: Input<'static>,
-    button_reg: adv_shift_registers::wrappers::ShifterValue,
+    button_inputs: [Input<'static>; 4],
+    //button_input: Input<'static>,
+    //button_reg: adv_shift_registers::wrappers::ShifterValue,
 ) {
     let mut handler = ButtonsHandler::new(Some(wakeup_button()));
     handler.add_handler(Button::Third, ButtonTrigger::Up, submit_up());
@@ -55,7 +56,8 @@ pub async fn buttons_task(
     );
     handler.add_handler(Button::Second, ButtonTrigger::Up, delegate_hold());
 
-    handler.run(&state, &button_input, &button_reg).await;
+    //handler.run(&state, &button_input, &button_reg).await;
+    handler.run(&state, &button_inputs).await;
 }
 
 #[macros::button_handler]
