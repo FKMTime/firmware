@@ -20,16 +20,15 @@ jobs:
       matrix:
         action:
           - command: build
-            args: --no-default-features --target=riscv32imc-unknown-none-elf --release
+            args: --no-default-features --features v3 --target=riscv32imc-unknown-none-elf --release
+          - command: build
+            args: --no-default-features --features v4 --target=riscv32imc-unknown-none-elf --release
           - command: fmt
             args: --all -- --check --color always
           - command: clippy
-            args: --no-default-features --target=riscv32imc-unknown-none-elf --workspace -- -D warnings
-        features: [v3, v4]
-        exclude:
-          - action:
-              command: fmt
-            features: v4
+            args: --no-default-features --features v3 --target=riscv32imc-unknown-none-elf --workspace -- -D warnings
+          - command: clippy
+            args: --no-default-features --features v4 --target=riscv32imc-unknown-none-elf --workspace -- -D warnings
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -42,14 +41,4 @@ jobs:
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
       - name: Run command
-        run: |
-          ARGS="${{ matrix.action.args }}"
-          if [ "${{ matrix.action.command }}" != "fmt" ]; then
-            FEATURES="--features ${{ matrix.features }}"
-            if [[ "$ARGS" == *" -- "* ]]; then
-              ARGS="${ARGS/ -- / $FEATURES -- }"
-            else
-              ARGS="$ARGS $FEATURES"
-            fi
-          fi
-          cargo ${{ matrix.action.command }} $ARGS
+        run: cargo ${{ matrix.action.command }} ${{ matrix.action.args }}
