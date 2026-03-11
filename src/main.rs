@@ -11,7 +11,7 @@ use board::Board;
 use consts::LOG_SEND_INTERVAL_MS;
 use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
-use embassy_time::{Delay, Instant, Timer};
+use embassy_time::{Instant, Timer};
 use esp_backtrace as _;
 use esp_hal::interrupt::software::SoftwareInterruptControl;
 use esp_hal_wifimanager::{Nvs, WIFI_NVS_KEY};
@@ -21,12 +21,10 @@ use structs::ConnSettings;
 use utils::{logger::FkmLogger, set_brownout_detection};
 use ws_framer::{WsUrl, WsUrlOwned};
 
-mod battery;
 mod bluetooth;
 mod board;
 mod buttons;
 mod consts;
-mod lcd;
 mod mdns;
 mod rfid;
 mod stackmat;
@@ -36,6 +34,11 @@ mod translations;
 mod utils;
 mod version;
 mod ws;
+
+#[cfg(feature = "v4")]
+mod battery_v4;
+#[cfg(feature = "v4")]
+mod lcd_v4;
 
 #[cfg(feature = "qa")]
 mod qa;
@@ -114,41 +117,51 @@ async fn main(spawner: Spawner) {
         unsafe { crate::state::SIGN_KEY = sign_key };
     }
 
-    spawner.must_spawn(lcd::lcd_task(
+    #[cfg(feature = "v4")]
+    spawner.must_spawn(lcd_v4::lcd_task(
         board.i2c.clone(),
         board.display_rst,
-        //board.lcd,
         global_state.clone(),
         wifi_setup_sig.clone(),
-        //board.digits_shifters.clone(),
     ));
 
-    spawner.must_spawn(battery::battery_read_task(
+    #[cfg(feature = "v4")]
+    spawner.must_spawn(battery_v4::battery_read_task(
         board.i2c.clone(),
-        //board.battery,
-        //board.adc1,
         global_state.clone(),
     ));
+
     spawner.must_spawn(buttons::buttons_task(
         global_state.clone(),
+        #[cfg(feature = "v4")]
         board.buttons,
-        //board.button_input,
-        //board.buttons_shifter,
+        #[cfg(feature = "v3")]
+        board.button_input,
+        #[cfg(feature = "v3")]
+        board.buttons_shifter,
     ));
     spawner.must_spawn(stackmat::stackmat_task(
         board.uart1,
         board.stackmat_rx,
-        // board.digits_shifters,
+        #[cfg(feature = "v3")]
+        board.digits_shifters,
         global_state.clone(),
     ));
     spawner.must_spawn(rfid::rfid_task(
+        #[cfg(feature = "v4")]
         board.i2c.clone(),
-        //board.miso,
-        //board.mosi,
-        //board.sck,
-        //board.cs,
-        //board.spi2,
-        //board.spi_dma,
+        #[cfg(feature = "v3")]
+        board.miso,
+        #[cfg(feature = "v3")]
+        board.mosi,
+        #[cfg(feature = "v3")]
+        board.sck,
+        #[cfg(feature = "v3")]
+        board.cs,
+        #[cfg(feature = "v3")]
+        board.spi2,
+        #[cfg(feature = "v3")]
+        board.spi_dma,
         global_state.clone(),
     ));
 

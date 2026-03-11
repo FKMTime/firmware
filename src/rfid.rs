@@ -2,46 +2,55 @@ use crate::consts::RFID_RETRY_INIT_MS;
 use crate::state::{GlobalState, MenuScene, current_epoch, sleep_state};
 use crate::structs::{CardInfoResponsePacket, SolveConfirmPacket};
 use crate::translations::{TranslationKey, get_translation};
-use crate::utils::shared_i2c::SharedI2C;
 use alloc::string::ToString;
 use anyhow::{Result, anyhow};
 use embassy_time::{Duration, Instant, Timer};
+use esp_hal_mfrc522::consts::UidSize;
+
+#[cfg(feature = "v3")]
 use esp_hal::i2c::master::I2c;
+#[cfg(feature = "v3")]
 use esp_hal::time::Rate;
+#[cfg(feature = "v3")]
 use esp_hal::{
     dma::{DmaRxBuf, DmaTxBuf},
     dma_buffers,
     gpio::AnyPin,
     spi::{Mode, master::Spi},
 };
-use esp_hal_mfrc522::consts::UidSize;
 
 #[embassy_executor::task]
 pub async fn rfid_task(
-    i2c: SharedI2C,
-    //miso: AnyPin<'static>,
-    //mosi: AnyPin<'static>,
-    //sck: AnyPin<'static>,
-    //cs_pin: adv_shift_registers::wrappers::ShifterPin,
-    //spi: esp_hal::peripherals::SPI2<'static>,
-    //dma_chan: esp_hal::peripherals::DMA_CH0<'static>,
+    #[cfg(feature = "v4")] i2c: crate::utils::shared_i2c::SharedI2C,
+    #[cfg(feature = "v3")] miso: AnyPin<'static>,
+    #[cfg(feature = "v3")] mosi: AnyPin<'static>,
+    #[cfg(feature = "v3")] sck: AnyPin<'static>,
+    #[cfg(feature = "v3")] cs_pin: adv_shift_registers::wrappers::ShifterPin,
+    #[cfg(feature = "v3")] spi: esp_hal::peripherals::SPI2<'static>,
+    #[cfg(feature = "v3")] dma_chan: esp_hal::peripherals::DMA_CH0<'static>,
     global_state: GlobalState,
 ) {
-    let driver = esp_hal_mfrc522::drivers::I2CDriver::new(i2c, 0x28);
-    let mut mfrc522 = esp_hal_mfrc522::MFRC522::new(driver);
+    #[cfg(feature = "v4")]
+    let mut mfrc522 = {
+        let driver = esp_hal_mfrc522::drivers::I2CDriver::new(i2c, 0x28);
+        esp_hal_mfrc522::MFRC522::new(driver)
+    };
 
-    /*
     #[allow(clippy::manual_div_ceil)]
+    #[cfg(feature = "v3")]
     let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(512);
+    #[cfg(feature = "v3")]
     let Ok(dma_tx_buf) = DmaTxBuf::new(tx_descriptors, tx_buffer) else {
         log::error!("Dma tx buf failed");
         return;
     };
+    #[cfg(feature = "v3")]
     let Ok(dma_rx_buf) = DmaRxBuf::new(rx_descriptors, rx_buffer) else {
         log::error!("Dma rx buf failed");
         return;
     };
 
+    #[cfg(feature = "v3")]
     let Ok(spi) = Spi::new(
         spi,
         esp_hal::spi::master::Config::default()
@@ -60,6 +69,7 @@ pub async fn rfid_task(
         return;
     };
 
+    #[cfg(feature = "v3")]
     let mut mfrc522 = {
         let Ok(spi) = embedded_hal_bus::spi::ExclusiveDevice::new(spi, cs_pin, embassy_time::Delay)
         else {
@@ -69,7 +79,6 @@ pub async fn rfid_task(
 
         esp_hal_mfrc522::MFRC522::new(esp_hal_mfrc522::drivers::SpiDriver::new(spi))
     };
-    */
 
     #[cfg(not(feature = "e2e"))]
     loop {

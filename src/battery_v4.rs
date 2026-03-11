@@ -1,12 +1,5 @@
-use crate::{
-    consts::BATTERY_SEND_INTERVAL_MS,
-    state::sleep_state,
-    utils::{rolling_average::RollingAverage, shared_i2c::SharedI2C},
-};
-use embassy_time::{Duration, Instant, Timer};
-use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
-
-type AdcCal = esp_hal::analog::adc::AdcCalCurve<esp_hal::peripherals::ADC1<'static>>;
+use crate::{consts::BATTERY_SEND_INTERVAL_MS, state::sleep_state, utils::shared_i2c::SharedI2C};
+use embassy_time::Timer;
 
 const BATTERY_CURVE: [(f64, u8); 11] = [
     (3350.0, 0),
@@ -25,25 +18,7 @@ const BAT_MIN: f64 = BATTERY_CURVE[0].0;
 const BAT_MAX: f64 = BATTERY_CURVE[BATTERY_CURVE.len() - 1].0;
 
 #[embassy_executor::task]
-pub async fn battery_read_task(
-    i2c: SharedI2C,
-    //adc_pin: esp_hal::peripherals::GPIO2<'static>,
-    //adc: esp_hal::peripherals::ADC1<'static>,
-    state: crate::state::GlobalState,
-) {
-    /*
-    let mut adc_config = AdcConfig::new();
-
-    let mut adc_pin = adc_config.enable_pin_with_cal::<_, AdcCal>(adc_pin, Attenuation::_11dB);
-    let mut adc = Adc::new(adc, adc_config).into_async();
-
-
-    let base_freq = 2.0;
-    let sample_freq = 1000.0;
-    let sensitivity = 0.5;
-    let mut smoother = dyn_smooth::DynamicSmootherEcoF32::new(base_freq, sample_freq, sensitivity);
-    let mut avg = RollingAverage::<128>::new();
-    */
+pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState) {
     let Ok(mut gauge) = bq27441::Bq27441Async::new(i2c).await else {
         state.show_battery.signal(0);
         log::error!("BQ27441 init failed!");
@@ -56,20 +31,6 @@ pub async fn battery_read_task(
             Timer::after_millis(500).await;
             continue;
         }
-
-        /*
-        let read = adc.read_oneshot(&mut adc_pin).await;
-        let read = smoother.tick(read as f32);
-        avg.push(read);
-        */
-
-        /*
-        #[cfg(feature = "bat_dev_lcd")]
-        {
-            let mut state = state.state.lock().await;
-            state.current_bat_read = Some(read);
-        }
-        */
 
         if !lcd_sent {
             let mut soc = gauge.state_of_charge().await.unwrap_or(0) as u8;
@@ -104,13 +65,6 @@ pub async fn battery_read_task(
 
         log::info!("Battery {mv}mv {soc}%");
         Timer::after_millis(BATTERY_SEND_INTERVAL_MS).await;
-        /*
-        #[cfg(feature = "bat_dev_lcd")]
-        {
-            let mut state = state.state.lock().await;
-            state.avg_bat_read = avg.average();
-        }
-        */
     }
 }
 

@@ -68,9 +68,9 @@ impl ButtonsHandler {
     pub async fn run(
         &mut self,
         state: &GlobalState,
-        //button_input: &Input<'static>,
-        button_inputs: &[Input<'static>],
-        //button_reg: &adv_shift_registers::wrappers::ShifterValue,
+        #[cfg(feature = "v4")] button_inputs: &[Input<'static>],
+        #[cfg(feature = "v3")] button_input: &Input<'static>,
+        #[cfg(feature = "v3")] button_reg: &adv_shift_registers::wrappers::ShifterValue,
     ) {
         let mut debounce_time = esp_hal::time::Instant::now();
         let mut old_debounced = i32::MAX;
@@ -105,16 +105,16 @@ impl ButtonsHandler {
                 }
             }
 
+            #[cfg(feature = "v4")]
             {
                 for i in 0..4 {
                     if button_inputs[i].is_high() {
-                        // if button_input.is_high() {
                         out_val |= 1 << i;
                     }
                 }
             }
 
-            /*
+            #[cfg(feature = "v3")]
             {
                 let mut val = 0b10000000;
                 for i in 0..4 {
@@ -126,7 +126,6 @@ impl ButtonsHandler {
                     val >>= 1;
                 }
             }
-            */
 
             if old_val != out_val {
                 old_val = out_val;

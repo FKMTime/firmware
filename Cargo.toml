@@ -47,18 +47,18 @@ esp-hal-mfrc522 = { version = "0.3.3", features = ["embassy-time"] }
 esp-bootloader-esp-idf = { version = "0.4.0", features = ["log-04", "esp32c3"] }
 trouble-host = { version = "0.5.1", features = ["scan", "security"] }
 
-display-interface = "0.5.0"
-display-interface-i2c = "0.5.0"
-embedded-graphics = "0.8.2"
-embedded-graphics-framebuf = "0.5.0"
-oled_async = { version = "0.2.0", features = ["i2c"] }
-bq27441 = { version = "0.1.0", features = ["async", "embassy"] }
+display-interface = { version = "0.5.0", optional = true }
+display-interface-i2c = { version = "0.5.0", optional = true }
+embedded-graphics = { version = "0.8.2", optional = true }
+embedded-graphics-framebuf = { version = "0.5.0", optional = true }
+oled_async = { version = "0.2.0", features = ["i2c"], optional = true }
+bq27441 = { version = "0.1.0", features = ["async", "embassy"], optional = true }
 
 [patch.crates-io]
 elliptic-curve = { git = "https://github.com/filipton/rust-crypto-traits.git" }
 
 [features]
-default = ["sleep"]
+default = ["sleep", "v4"]
 gen_version = []
 bat_dev_lcd = []
 release_build = ["sleep"]
@@ -67,7 +67,7 @@ qa = []
 sleep = []
 auto_add = []
 v3 = []
-v4 = []
+v4 = ["dep:display-interface", "dep:display-interface-i2c", "dep:embedded-graphics", "dep:embedded-graphics-framebuf", "dep:oled_async", "dep:bq27441"]
 
 [profile.dev]
 opt-level = 3

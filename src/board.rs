@@ -1,23 +1,19 @@
-use crate::utils::{
-    shared_i2c::SharedI2C,
-    stackmat::{DEC_DIGITS, DOT_MOD},
-};
-use adv_shift_registers::wrappers::ShifterValueRange;
-use alloc::rc::Rc;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
-use embedded_hal::digital::OutputPin;
 use esp_hal::{
-    Async,
-    gpio::{AnyPin, Input, InputConfig, Level, Output, Pin, Pull},
+    gpio::{AnyPin, Input, InputConfig, Output, Pin, Pull},
     i2c::master::I2c,
     peripherals::{
-        self, ADC1, AES, BT, FLASH, I2C0, Peripherals, SPI2, SW_INTERRUPT, TIMG0, TIMG1, UART1,
-        WIFI,
+        ADC1, AES, BT, FLASH, Peripherals, SPI2, SW_INTERRUPT, TIMG0, TIMG1, UART1, WIFI,
     },
     rng::Rng,
     time::Rate,
     timer::timg::TimerGroup,
 };
+
+#[cfg(feature = "v3")]
+use crate::utils::stackmat::{DEC_DIGITS, DOT_MOD};
+
+#[cfg(feature = "v4")]
+use crate::utils::shared_i2c::SharedI2C;
 
 #[allow(dead_code)]
 pub struct Board {
@@ -36,23 +32,36 @@ pub struct Board {
     pub sw_interrupt: SW_INTERRUPT<'static>,
 
     // spi
-    //pub miso: AnyPin<'static>,
-    //pub mosi: AnyPin<'static>,
-    //pub sck: AnyPin<'static>,
-    //pub cs: adv_shift_registers::wrappers::ShifterPin,
+    #[cfg(feature = "v3")]
+    pub miso: AnyPin<'static>,
+    #[cfg(feature = "v3")]
+    pub mosi: AnyPin<'static>,
+    #[cfg(feature = "v3")]
+    pub sck: AnyPin<'static>,
+    #[cfg(feature = "v3")]
+    pub cs: adv_shift_registers::wrappers::ShifterPin,
+
+    #[cfg(feature = "v4")]
     pub display_rst: Output<'static>,
+    #[cfg(feature = "v4")]
     pub i2c: SharedI2C,
 
     pub stackmat_rx: AnyPin<'static>,
 
+    #[cfg(feature = "v4")]
     pub buttons: [Input<'static>; 4],
 
-    // pub battery: esp_hal::peripherals::GPIO2<'static>,
-    //pub button_input: Input<'static>,
-    //pub digits_shifters: ShifterValueRange,
+    #[cfg(feature = "v3")]
+    pub battery: esp_hal::peripherals::GPIO2<'static>,
+    #[cfg(feature = "v3")]
+    pub button_input: Input<'static>,
+    #[cfg(feature = "v3")]
+    pub digits_shifters: adv_shift_registers::wrappers::ShifterValueRange,
 
-    //pub buttons_shifter: adv_shift_registers::wrappers::ShifterValue,
-    // pub lcd: adv_shift_registers::wrappers::ShifterValue,
+    #[cfg(feature = "v3")]
+    pub buttons_shifter: adv_shift_registers::wrappers::ShifterValue,
+    #[cfg(feature = "v3")]
+    pub lcd: adv_shift_registers::wrappers::ShifterValue,
 
     // usb pins
     pub usb_dp: AnyPin<'static>,
@@ -74,10 +83,6 @@ impl Board {
         let flash = peripherals.FLASH;
         let sw_interrupt = peripherals.SW_INTERRUPT;
 
-        //let sck = peripherals.GPIO4.degrade();
-        //let miso = peripherals.GPIO5.degrade();
-        //let mosi = peripherals.GPIO6.degrade();
-        //let battery = peripherals.GPIO2;
         let stackmat_rx = peripherals.GPIO20.degrade();
         let usb_dp = peripherals.GPIO19.degrade();
         let usb_dm = peripherals.GPIO18.degrade();
@@ -121,35 +126,6 @@ impl Board {
             .into_async();
         let i2c = SharedI2C::new(i2c);
 
-        //let button_input = Input::new(
-        //    peripherals.GPIO3,
-        //    InputConfig::default().with_pull(Pull::Down),
-        //);
-
-        //let shifter_data_pin = Output::new(peripherals.GPIO10, Level::Low, Default::default());
-        //let shifter_latch_pin = Output::new(peripherals.GPIO5, Level::Low, Default::default());
-        //let shifter_clk_pin = Output::new(peripherals.GPIO21, Level::Low, Default::default());
-
-        //let adv_shift_reg = adv_shift_registers::AdvancedShiftRegister::<8, _>::new(
-        //    shifter_data_pin,
-        //    shifter_clk_pin,
-        //    shifter_latch_pin,
-        //    0,
-        //);
-        //let adv_shift_reg = alloc::boxed::Box::new(adv_shift_reg);
-        //let adv_shift_reg = alloc::boxed::Box::leak(adv_shift_reg);
-
-        //let mut backlight = adv_shift_reg.get_pin_mut(1, 1, false);
-        //_ = backlight.set_high();
-
-        //let buttons_shifter = adv_shift_reg.get_shifter_mut(0);
-        //let lcd = adv_shift_reg.get_shifter_mut(1);
-        //let digits_shifters = adv_shift_reg.get_shifter_range_mut(2..8);
-        //digits_shifters.set_data(&[!DEC_DIGITS[8] ^ DOT_MOD; 6]);
-
-        //let mut cs = adv_shift_reg.get_pin_mut(1, 0, true);
-        //_ = cs.set_high();
-
         Board {
             timg0,
             timg1,
@@ -164,21 +140,12 @@ impl Board {
             flash,
             sw_interrupt,
 
-            //miso,
-            //mosi,
-            //sck,
-            //cs,
             i2c,
 
             display_rst,
             stackmat_rx,
             buttons: [b1, b2, b3, b4],
-            // battery,
-            //button_input,
 
-            //buttons_shifter,
-            //digits_shifters,
-            //lcd,
             usb_dp,
             usb_dm,
         }

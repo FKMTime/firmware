@@ -10,8 +10,6 @@ use embedded_graphics::{
     text::{Alignment, Text},
 };
 use embedded_graphics_framebuf::FrameBuf;
-use embedded_hal::digital::OutputPin;
-use embedded_hal_async::delay::DelayNs;
 use esp_hal::gpio::Output;
 use oled_async::{displays::ssd1309::Ssd1309_128_64, mode::GraphicsMode};
 

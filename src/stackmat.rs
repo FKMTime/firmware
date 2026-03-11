@@ -1,11 +1,8 @@
 use crate::{
     consts::{INSPECTION_TIME_DNF, INSPECTION_TIME_PLUS2},
     state::{GlobalState, Scene, sleep_state},
-    utils::stackmat::{
-        StackmatTimerState, ms_to_time_str, parse_stackmat_data, time_str_to_display,
-    },
+    utils::stackmat::{StackmatTimerState, parse_stackmat_data},
 };
-use adv_shift_registers::wrappers::ShifterValueRange;
 use alloc::string::ToString;
 use embassy_time::{Instant, Timer};
 use esp_hal::{gpio::AnyPin, peripherals::UART1, uart::UartRx};
@@ -16,7 +13,7 @@ pub static mut CURRENT_TIME: u64 = 0;
 pub async fn stackmat_task(
     uart: UART1<'static>,
     uart_pin: AnyPin<'static>,
-    // display: ShifterValueRange,
+    #[cfg(feature = "v3")] display: adv_shift_registers::wrappers::ShifterValueRange,
     global_state: GlobalState,
 ) {
     let serial_config = esp_hal::uart::Config::default().with_baudrate(1200);
@@ -50,7 +47,8 @@ pub async fn stackmat_task(
             && last_state != Some(false)
         {
             last_state = Some(false);
-            // display.set_data(&[255; 6]);
+            #[cfg(feature = "v3")]
+            display.set_data(&[255; 6]);
 
             let mut state = global_state.state.lock().await;
             state.stackmat_connected = Some(false);
@@ -202,8 +200,13 @@ pub async fn stackmat_task(
                                 saved_state.to_nvs(&global_state.nvs).await;
                             }
 
-                            let time_str = ms_to_time_str(parsed.1);
-                            // display.set_data(&time_str_to_display(&time_str));
+                            #[cfg(feature = "v3")]
+                            {
+                                let time_str = crate::utils::stackmat::ms_to_time_str(parsed.1);
+                                display.set_data(&crate::utils::stackmat::time_str_to_display(
+                                    &time_str,
+                                ));
+                            }
 
                             #[cfg(feature = "qa")]
                             crate::qa::send_qa_resp(crate::qa::QaSignal::Stackmat(parsed.1));
@@ -237,7 +240,8 @@ pub async fn stackmat_task(
                             state.time_confirmed = true;
                         }
 
-                        // display.set_data(&[255; 6]);
+                        #[cfg(feature = "v3")]
+                        display.set_data(&[255; 6]);
                     }
 
                     last_stackmat_state = parsed.0;
