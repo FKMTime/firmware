@@ -25,6 +25,11 @@ jobs:
             args: --all -- --check --color always
           - command: clippy
             args: --no-default-features --target=riscv32imc-unknown-none-elf --workspace -- -D warnings
+        features: [v3, v4]
+        exclude:
+          - action:
+              command: fmt
+            features: v4
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -37,4 +42,4 @@ jobs:
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
       - name: Run command
-        run: cargo ${{ matrix.action.command }} ${{ matrix.action.args }}
+        run: cargo ${{ matrix.action.command }} ${{ matrix.action.args }}${{ matrix.action.command != 'fmt' && format(' --features {0}', matrix.features) || '' }}

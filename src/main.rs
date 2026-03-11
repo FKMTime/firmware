@@ -35,6 +35,11 @@ mod utils;
 mod version;
 mod ws;
 
+#[cfg(feature = "v3")]
+mod battery_v3;
+#[cfg(feature = "v3")]
+mod lcd_v3;
+
 #[cfg(feature = "v4")]
 mod battery_v4;
 #[cfg(feature = "v4")]
@@ -117,6 +122,13 @@ async fn main(spawner: Spawner) {
         unsafe { crate::state::SIGN_KEY = sign_key };
     }
 
+    #[cfg(feature = "v3")]
+    spawner.must_spawn(lcd_v3::lcd_task(
+        board.lcd,
+        global_state.clone(),
+        wifi_setup_sig.clone(),
+        board.digits_shifters.clone(),
+    ));
     #[cfg(feature = "v4")]
     spawner.must_spawn(lcd_v4::lcd_task(
         board.i2c.clone(),
@@ -125,6 +137,12 @@ async fn main(spawner: Spawner) {
         wifi_setup_sig.clone(),
     ));
 
+    #[cfg(feature = "v3")]
+    spawner.must_spawn(battery_v3::battery_read_task(
+        board.battery,
+        board.adc1,
+        global_state.clone(),
+    ));
     #[cfg(feature = "v4")]
     spawner.must_spawn(battery_v4::battery_read_task(
         board.i2c.clone(),

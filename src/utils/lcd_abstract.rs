@@ -1,11 +1,4 @@
-use alloc::{string::String, vec::Vec};
-use embedded_graphics::{
-    Drawable,
-    pixelcolor::BinaryColor,
-    prelude::Point,
-    text::{Alignment, Text},
-};
-use embedded_graphics_framebuf::FrameBuf;
+use ag_lcd_async::LcdDisplay;
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::delay::DelayNs;
 
@@ -159,31 +152,16 @@ impl<const LINE_SIZE: usize, const X: usize, const Y: usize, const SCROLLER_WT: 
         Ok(())
     }
 
-    pub async fn display_on_oled(
-        &mut self,
-        fbuf: &mut FrameBuf<BinaryColor, &mut [BinaryColor; 128 * 64]>,
-    ) {
+    pub async fn display_on_lcd<T: OutputPin, D: DelayNs>(&mut self, lcd: &mut LcdDisplay<T, D>) {
         let display_data = self.display_data();
+        for (y, line) in display_data.0.iter().enumerate() {
+            if line.1 {
+                lcd.set_position(0, y as u8).await;
+                lcd.print(unsafe { core::str::from_utf8_unchecked(line.0) })
+                    .await;
 
-        let text_style = embedded_graphics::mono_font::MonoTextStyleBuilder::new()
-            .font(&embedded_graphics::mono_font::ascii::FONT_6X10)
-            .text_color(embedded_graphics::pixelcolor::BinaryColor::On)
-            .build();
-
-        let text = display_data
-            .0
-            .iter()
-            .map(|l| l.0.iter().map(|c| *c as char).collect::<String>())
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        Text::with_alignment(
-            &text,
-            Point::new(128 / 2, 26),
-            text_style,
-            Alignment::Center,
-        )
-        .draw(fbuf)
-        .unwrap();
+                display_data.1[y].copy_from_slice(line.0);
+            }
+        }
     }
 }

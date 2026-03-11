@@ -1,12 +1,16 @@
 pub mod arc;
 pub mod backtrace_store;
 pub mod buttons;
-pub mod lcd_abstract;
 pub mod logger;
 pub mod rolling_average;
-pub mod shared_i2c;
 pub mod signaled_mutex;
 pub mod stackmat;
+
+#[cfg(feature = "v3")]
+pub mod lcd_abstract;
+
+#[cfg(feature = "v4")]
+pub mod shared_i2c;
 
 pub fn set_brownout_detection(state: bool) {
     unsafe {

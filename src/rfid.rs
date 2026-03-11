@@ -8,8 +8,6 @@ use embassy_time::{Duration, Instant, Timer};
 use esp_hal_mfrc522::consts::UidSize;
 
 #[cfg(feature = "v3")]
-use esp_hal::i2c::master::I2c;
-#[cfg(feature = "v3")]
 use esp_hal::time::Rate;
 #[cfg(feature = "v3")]
 use esp_hal::{
