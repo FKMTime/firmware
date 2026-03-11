@@ -42,4 +42,14 @@ jobs:
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
       - name: Run command
-        run: cargo ${{ matrix.action.command }} ${{ matrix.action.args }}${{ matrix.action.command != 'fmt' && format(' --features {0}', matrix.features) || '' }}
+        run: |
+          ARGS="${{ matrix.action.args }}"
+          if [ "${{ matrix.action.command }}" != "fmt" ]; then
+            FEATURES="--features ${{ matrix.features }}"
+            if [[ "$ARGS" == *" -- "* ]]; then
+              ARGS="${ARGS/ -- / $FEATURES -- }"
+            else
+              ARGS="$ARGS $FEATURES"
+            fi
+          fi
+          cargo ${{ matrix.action.command }} $ARGS
