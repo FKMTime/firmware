@@ -3,10 +3,12 @@ use display_interface_i2c::I2CInterface;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Delay, Duration, Instant, Timer};
 use embedded_graphics::{
-    Drawable,
+    Drawable, Pixel,
+    mono_font::MonoTextStyle,
     pixelcolor::BinaryColor,
-    prelude::{DrawTarget, Point},
-    text::{Alignment, Text},
+    prelude::{Angle, DrawTarget, Point, Primitive, Size},
+    primitives::{Arc, Circle, Line, PrimitiveStyle, Rectangle},
+    text::{Alignment, Baseline, Text, TextStyleBuilder},
 };
 use embedded_graphics_framebuf::FrameBuf;
 use esp_hal::gpio::Output;
@@ -47,8 +49,199 @@ pub async fn lcd_task(
     let mut data =
         alloc::vec![embedded_graphics::pixelcolor::BinaryColor::Off; (128 * 64) as usize];
     let data: &mut [BinaryColor; 128 * 64] = data.as_mut_array().unwrap();
-
     let mut fbuf = embedded_graphics_framebuf::FrameBuf::new(data, 128, 64);
+
+    let charging = true;
+    let wifi_connected = true;
+    let server_connected = true;
+    let timer_connected = true;
+
+    let stroke = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
+
+    // ── WiFi icon (arcs centered at x=5, y=9 so they arc upward above the bar) ───
+    Pixel(Point::new(5, 8), BinaryColor::On)
+        .draw(&mut disp)
+        .unwrap();
+
+    if wifi_connected {
+        // Inner arc
+        Arc::new(
+            Point::new(3, 7),
+            4,
+            Angle::from_degrees(210.0),
+            Angle::from_degrees(120.0),
+        )
+        .into_styled(stroke)
+        .draw(&mut disp)
+        .unwrap();
+        // Middle arc
+        Arc::new(
+            Point::new(1, 5),
+            8,
+            Angle::from_degrees(210.0),
+            Angle::from_degrees(120.0),
+        )
+        .into_styled(stroke)
+        .draw(&mut disp)
+        .unwrap();
+        // Outer arc
+        Arc::new(
+            Point::new(-1, 3),
+            12,
+            Angle::from_degrees(210.0),
+            Angle::from_degrees(120.0),
+        )
+        .into_styled(stroke)
+        .draw(&mut disp)
+        .unwrap();
+    } else {
+        Line::new(Point::new(1, 2), Point::new(9, 8))
+            .into_styled(stroke)
+            .draw(&mut disp)
+            .unwrap();
+        Line::new(Point::new(9, 2), Point::new(1, 8))
+            .into_styled(stroke)
+            .draw(&mut disp)
+            .unwrap();
+    }
+
+    // ── Server icon (x=13..24, y=1..8, bottom at y=8 → 1px gap before rule) ──────
+    Rectangle::new(Point::new(13, 1), Size::new(12, 8))
+        .into_styled(stroke)
+        .draw(&mut disp)
+        .unwrap();
+    Line::new(Point::new(14, 5), Point::new(23, 5))
+        .into_styled(stroke)
+        .draw(&mut disp)
+        .unwrap();
+    Pixel(Point::new(22, 3), BinaryColor::On)
+        .draw(&mut disp)
+        .unwrap();
+    Pixel(Point::new(22, 7), BinaryColor::On)
+        .draw(&mut disp)
+        .unwrap();
+
+    if !server_connected {
+        Line::new(Point::new(13, 1), Point::new(24, 8))
+            .into_styled(stroke)
+            .draw(&mut disp)
+            .unwrap();
+        Line::new(Point::new(24, 1), Point::new(13, 8))
+            .into_styled(stroke)
+            .draw(&mut disp)
+            .unwrap();
+    }
+
+    // ── Timer / stopwatch icon (x=27..35, y=1..8) ────────────────────────────────
+    // Button on top
+    Line::new(Point::new(30, 1), Point::new(32, 1))
+        .into_styled(stroke)
+        .draw(&mut disp)
+        .unwrap();
+    // Round body: diameter=7 → top_left=(27,2), center=(30,5), bottom=y=8
+    Circle::new(Point::new(27, 2), 7)
+        .into_styled(stroke)
+        .draw(&mut disp)
+        .unwrap();
+    // Clock hand pointing upper-right
+    Line::new(Point::new(30, 5), Point::new(32, 3))
+        .into_styled(stroke)
+        .draw(&mut disp)
+        .unwrap();
+
+    if !timer_connected {
+        Line::new(Point::new(27, 2), Point::new(33, 8))
+            .into_styled(stroke)
+            .draw(&mut disp)
+            .unwrap();
+        Line::new(Point::new(33, 2), Point::new(27, 8))
+            .into_styled(stroke)
+            .draw(&mut disp)
+            .unwrap();
+    }
+
+    // ── Horizontal rule ───────────────────────────────────────────────────────────
+    Line::new(Point::new(0, 10), Point::new(128, 10))
+        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+        .draw(&mut disp)
+        .unwrap();
+
+    // ── Battery % ────────────────────────────────────────────────────────────────
+    let style = MonoTextStyle::new(&profont::PROFONT_10_POINT, BinaryColor::On);
+    let text_style = TextStyleBuilder::new()
+        .alignment(Alignment::Right)
+        .baseline(Baseline::Top)
+        .build();
+    Text::with_text_style("69%", Point::new(128, -1), style, text_style)
+        .draw(&mut disp)
+        .unwrap();
+
+    // ── Charging bolt (right side, only when charging) ───────────────────────────
+    // Sits to the left of the battery text (~20px wide text → bolt at x=104)
+    if charging {
+        let bx = 104i32; // top-left x of the bolt
+        let by = 1i32; // top-left y (leaves 1px gap before rule at y=10)
+
+        // Row 0: 0001
+        Pixel(Point::new(bx + 3, by + 0), BinaryColor::On)
+            .draw(&mut disp)
+            .unwrap();
+        // Row 1: 0010
+        Pixel(Point::new(bx + 2, by + 1), BinaryColor::On)
+            .draw(&mut disp)
+            .unwrap();
+        // Row 2: 0100
+        Pixel(Point::new(bx + 1, by + 2), BinaryColor::On)
+            .draw(&mut disp)
+            .unwrap();
+        // Row 3: 1111
+        Pixel(Point::new(bx + 0, by + 3), BinaryColor::On)
+            .draw(&mut disp)
+            .unwrap();
+        Pixel(Point::new(bx + 1, by + 3), BinaryColor::On)
+            .draw(&mut disp)
+            .unwrap();
+        Pixel(Point::new(bx + 2, by + 3), BinaryColor::On)
+            .draw(&mut disp)
+            .unwrap();
+        Pixel(Point::new(bx + 3, by + 3), BinaryColor::On)
+            .draw(&mut disp)
+            .unwrap();
+        // Row 4: 0001
+        Pixel(Point::new(bx + 3, by + 4), BinaryColor::On)
+            .draw(&mut disp)
+            .unwrap();
+        // Row 5: 1010
+        Pixel(Point::new(bx + 0, by + 5), BinaryColor::On)
+            .draw(&mut disp)
+            .unwrap();
+        Pixel(Point::new(bx + 2, by + 5), BinaryColor::On)
+            .draw(&mut disp)
+            .unwrap();
+        // Row 6: 1100
+        Pixel(Point::new(bx + 0, by + 6), BinaryColor::On)
+            .draw(&mut disp)
+            .unwrap();
+        Pixel(Point::new(bx + 1, by + 6), BinaryColor::On)
+            .draw(&mut disp)
+            .unwrap();
+        // Row 7: 1110
+        Pixel(Point::new(bx + 0, by + 7), BinaryColor::On)
+            .draw(&mut disp)
+            .unwrap();
+        Pixel(Point::new(bx + 1, by + 7), BinaryColor::On)
+            .draw(&mut disp)
+            .unwrap();
+        Pixel(Point::new(bx + 2, by + 7), BinaryColor::On)
+            .draw(&mut disp)
+            .unwrap();
+    }
+
+    disp.flush().await.unwrap();
+
+    return;
+
+    /*
 
     let start = Instant::now();
     loop {
@@ -93,6 +286,7 @@ pub async fn lcd_task(
             break;
         }
     }
+    */
 
     fbuf.clear(BinaryColor::Off);
     //lcd_driver.display_on_oled(&mut fbuf).await;

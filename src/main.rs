@@ -1,7 +1,6 @@
 #![no_std]
 #![no_main]
 #![feature(impl_trait_in_assoc_type)]
-#![feature(asm_experimental_arch)]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 extern crate alloc;

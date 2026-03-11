@@ -54,6 +54,7 @@ embedded-graphics = { version = "0.8.2", optional = true }
 embedded-graphics-framebuf = { version = "0.5.0", optional = true }
 oled_async = { version = "0.2.0", features = ["i2c"], optional = true }
 bq27441 = { version = "0.1.0", features = ["async", "embassy"], optional = true }
+profont = { version = "0.7.0", optional = true }
 
 #v3 only
 dyn-smooth = { version = "0.2.0", optional = true }
@@ -72,7 +73,7 @@ qa = []
 sleep = []
 auto_add = []
 v3 = ["dep:dyn-smooth", "dep:ag-lcd-async"]
-v4 = ["dep:display-interface", "dep:display-interface-i2c", "dep:embedded-graphics", "dep:embedded-graphics-framebuf", "dep:oled_async", "dep:bq27441"]
+v4 = ["dep:display-interface", "dep:display-interface-i2c", "dep:embedded-graphics", "dep:embedded-graphics-framebuf", "dep:oled_async", "dep:bq27441", "dep:profont"]
 
 [profile.dev]
 opt-level = 3
