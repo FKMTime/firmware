@@ -148,10 +148,12 @@ pub struct GlobalStateInner {
     pub state: SignaledMutex<CriticalSectionRawMutex, SignaledGlobalStateInner>,
     pub timer_signal: Signal<NoopRawMutex, u64>,
     pub bt_display_signal: Signal<NoopRawMutex, u64>,
-    pub show_battery: Signal<CriticalSectionRawMutex, u8>,
     pub update_progress: Signal<CriticalSectionRawMutex, u8>,
     pub sign_unsign_progress: Signal<CriticalSectionRawMutex, bool>,
     pub ble_sig: Signal<CriticalSectionRawMutex, BleAction>,
+
+    #[cfg(feature = "v3")]
+    pub show_battery: Signal<CriticalSectionRawMutex, u8>,
 
     pub nvs: Nvs,
     pub aes: Mutex<NoopRawMutex, Aes<'static>>,
@@ -166,10 +168,12 @@ impl GlobalStateInner {
             state: SignaledMutex::new(SignaledGlobalStateInner::new()),
             timer_signal: Signal::new(),
             bt_display_signal: Signal::new(),
-            show_battery: Signal::new(),
             update_progress: Signal::new(),
             sign_unsign_progress: Signal::new(),
             ble_sig: Signal::new(),
+
+            #[cfg(feature = "v3")]
+            show_battery: Signal::new(),
 
             nvs: nvs.clone(),
             aes: Mutex::new(Aes::new(aes)),
@@ -214,6 +218,9 @@ pub struct SignaledGlobalStateInner {
 
     pub delegate_used: bool,
     pub delegate_hold: Option<u8>,
+
+    #[cfg(feature = "v4")]
+    pub battery_status: (u8, bool),
 
     #[cfg(feature = "bat_dev_lcd")]
     pub current_bat_read: Option<f32>,
@@ -267,6 +274,9 @@ impl SignaledGlobalStateInner {
 
             delegate_used: false,
             delegate_hold: None,
+
+            #[cfg(feature = "v4")]
+            battery_status: (0, false),
 
             #[cfg(feature = "bat_dev_lcd")]
             current_bat_read: None,

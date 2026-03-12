@@ -1,4 +1,4 @@
-use alloc::{rc::Rc, string::ToString};
+use alloc::{format, rc::Rc, string::ToString};
 use display_interface_i2c::I2CInterface;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Delay, Duration, Instant, Timer};
@@ -188,7 +188,7 @@ pub async fn lcd_task(
     let mut data =
         alloc::vec![embedded_graphics::pixelcolor::BinaryColor::Off; (128 * 11) as usize];
     let data: &mut [BinaryColor; 128 * 11] = data.as_mut_array().unwrap();
-    let mut fbuf = embedded_graphics_framebuf::FrameBuf::new(data, 128, 11);
+    let mut top_bar_fbuf = embedded_graphics_framebuf::FrameBuf::new(data, 128, 11);
 
     /*
     let thin_stroke = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
@@ -199,40 +199,97 @@ pub async fn lcd_task(
     let smiley_with_cross = Overlay::new(SMILEY, cross);
     */
 
-    let style = MonoTextStyle::new(
-        &embedded_graphics::mono_font::ascii::FONT_7X13,
-        BinaryColor::On,
-    );
-    let text_style = TextStyleBuilder::new()
-        .alignment(Alignment::Right)
-        .baseline(Baseline::Top)
-        .build();
-    let text = Text::with_text_style("100%", Point::zero(), style, text_style);
+    let mut last_update;
+    loop {
+        let current_state = global_state.state.value().await.clone();
+        log::debug!("lcd current_state: {current_state:?}");
+        last_update = Instant::now();
 
-    LinearLayout::horizontal(
-        /*
-        Chain::new(SMILEY)
-            .append(smiley_with_cross)
-            .append(CHARGING)
-            .append(text),
-            */
-        Chain::new(Resources::CHARGING).append(text)
-    )
-    .with_alignment(embedded_layout::align::vertical::Center)
-    .with_spacing(FixedMargin(2))
-    .arrange()
-    .align_to(
-        &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
-        embedded_layout::align::horizontal::Right,
-        embedded_layout::align::vertical::Center,
-    )
-    .draw(&mut fbuf)
-    .unwrap();
+        top_bar_fbuf.clear(BinaryColor::Off);
+        let style = MonoTextStyle::new(
+            &embedded_graphics::mono_font::ascii::FONT_7X13,
+            BinaryColor::On,
+        );
+        let text_style = TextStyleBuilder::new()
+            .alignment(Alignment::Right)
+            .baseline(Baseline::Top)
+            .build();
 
-    Line::new(Point::new(0, 10), Point::new(128, 10))
-        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
-        .draw(&mut fbuf)
+        let text = format!("{}%", current_state.battery_status.0);
+        let text = Text::with_text_style(&text, Point::zero(), style, text_style);
+        if current_state.battery_status.1 {
+            LinearLayout::horizontal(Chain::new(Resources::CHARGING).append(text))
+                .with_alignment(embedded_layout::align::vertical::Center)
+                .with_spacing(FixedMargin(1))
+                .arrange()
+                .align_to(
+                    &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
+                    embedded_layout::align::horizontal::Right,
+                    embedded_layout::align::vertical::Center,
+                )
+                .draw(&mut top_bar_fbuf)
+                .unwrap();
+        } else {
+            LinearLayout::horizontal(Chain::new(text))
+                .with_alignment(embedded_layout::align::vertical::Center)
+                .with_spacing(FixedMargin(1))
+                .arrange()
+                .align_to(
+                    &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
+                    embedded_layout::align::horizontal::Right,
+                    embedded_layout::align::vertical::Center,
+                )
+                .draw(&mut top_bar_fbuf)
+                .unwrap();
+        }
+
+        LinearLayout::horizontal(
+            Chain::new(Resources::WIFI)
+                .append(Resources::SERVER)
+                .append(Resources::TIMER),
+        )
+        .with_alignment(embedded_layout::align::vertical::Center)
+        .with_spacing(FixedMargin(2))
+        .arrange()
+        .align_to(
+            &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
+            embedded_layout::align::horizontal::Left,
+            embedded_layout::align::vertical::Center,
+        )
+        .draw(&mut top_bar_fbuf)
         .unwrap();
+
+        Line::new(Point::new(0, 10), Point::new(128, 10))
+            .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+            .draw(&mut top_bar_fbuf)
+            .unwrap();
+
+        disp.draw_iter(top_bar_fbuf.into_iter()).unwrap();
+        disp.flush().await.unwrap();
+
+        if sleep_state() {
+            //lcd.backlight_on();
+
+            unsafe {
+                crate::state::SLEEP_STATE = false;
+            }
+        }
+
+        let current_scene = current_state.scene.clone();
+        let fut = async {
+            loop {
+                Timer::after_millis(100).await;
+            }
+        };
+
+        let res = embassy_futures::select::select(fut, global_state.state.wait()).await;
+        match res {
+            embassy_futures::select::Either::First(_) => {}
+            embassy_futures::select::Either::Second(_) => {
+                continue;
+            }
+        }
+    }
 
     /*
     let charging = true;
@@ -422,9 +479,6 @@ pub async fn lcd_task(
     }
     */
 
-    disp.draw_iter(fbuf.into_iter()).unwrap();
-    disp.flush().await.unwrap();
-
     return;
 
     /*
@@ -474,16 +528,16 @@ pub async fn lcd_task(
     }
     */
 
-    fbuf.clear(BinaryColor::Off);
+    top_bar_fbuf.clear(BinaryColor::Off);
     //lcd_driver.display_on_oled(&mut fbuf).await;
-    embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, fbuf.into_iter()).unwrap();
+    embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, top_bar_fbuf.into_iter()).unwrap();
     disp.flush().await.unwrap();
 
     Timer::after_millis(2500).await;
 
-    fbuf.clear(BinaryColor::Off);
+    top_bar_fbuf.clear(BinaryColor::Off);
     //_ = lcd_driver.clear_all();
-    embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, fbuf.into_iter()).unwrap();
+    embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, top_bar_fbuf.into_iter()).unwrap();
     disp.flush().await.unwrap();
 
     let mut last_update;

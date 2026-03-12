@@ -74,7 +74,7 @@ qa = []
 sleep = []
 auto_add = []
 v3 = ["dep:dyn-smooth", "dep:ag-lcd-async"]
-v4 = ["dep:display-interface", "dep:display-interface-i2c", "dep:embedded-graphics", "dep:embedded-graphics-framebuf", "dep:oled_async", "dep:bq27441", "dep:profont"]
+v4 = ["dep:display-interface", "dep:display-interface-i2c", "dep:embedded-graphics", "dep:embedded-graphics-framebuf", "dep:oled_async", "dep:bq27441", "dep:profont", "dep:embedded-layout"]
 
 [profile.dev]
 opt-level = 3

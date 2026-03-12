@@ -1,5 +1,5 @@
 use crate::{consts::BATTERY_SEND_INTERVAL_MS, state::sleep_state, utils::shared_i2c::SharedI2C};
-use embassy_time::Timer;
+use embassy_time::{Instant, Timer};
 
 const BATTERY_CURVE: [(f64, u8); 11] = [
     (3350.0, 0),
@@ -20,28 +20,16 @@ const BAT_MAX: f64 = BATTERY_CURVE[BATTERY_CURVE.len() - 1].0;
 #[embassy_executor::task]
 pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState) {
     let Ok(mut gauge) = bq27441::Bq27441Async::new(i2c).await else {
-        state.show_battery.signal(0);
         log::error!("BQ27441 init failed!");
         return;
     };
 
-    let mut lcd_sent = false;
+    let mut last_sent = Instant::now();
     loop {
+        Timer::after_millis(100).await;
+
         if sleep_state() {
             Timer::after_millis(500).await;
-            continue;
-        }
-
-        if !lcd_sent {
-            let mut soc = gauge.state_of_charge().await.unwrap_or(0) as u8;
-            if soc == 0 {
-                let volt = gauge.voltage().await.unwrap_or(0) as f64;
-                soc = bat_percentage(calculate(volt));
-            }
-
-            state.show_battery.signal(soc);
-            lcd_sent = true;
-            Timer::after_millis(BATTERY_SEND_INTERVAL_MS).await;
             continue;
         }
 
@@ -50,21 +38,29 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
         if soc == 0 {
             soc = bat_percentage(calculate(mv));
         }
-        state.show_battery.signal(soc);
 
-        if state.state.lock().await.server_connected == Some(true) {
-            crate::ws::send_packet(crate::structs::TimerPacket {
-                tag: None,
-                data: crate::structs::TimerPacketInner::Battery {
-                    level: Some(soc as f64),
-                    voltage: Some(mv),
-                },
-            })
-            .await;
+        let ma = gauge.average_current().await.unwrap_or(0);
+
+        {
+            let mut state = state.state.lock().await;
+            state.battery_status = (soc, ma >= 0)
         }
 
-        log::info!("Battery {mv}mv {soc}%");
-        Timer::after_millis(BATTERY_SEND_INTERVAL_MS).await;
+        if last_sent.elapsed().as_millis() >= BATTERY_SEND_INTERVAL_MS {
+            if state.state.lock().await.server_connected == Some(true) {
+                crate::ws::send_packet(crate::structs::TimerPacket {
+                    tag: None,
+                    data: crate::structs::TimerPacketInner::Battery {
+                        level: Some(soc as f64),
+                        voltage: Some(mv),
+                    },
+                })
+                .await;
+            }
+
+            log::info!("Battery {mv}mv {soc}%");
+            last_sent = Instant::now();
+        }
     }
 }
 
