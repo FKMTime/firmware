@@ -38,7 +38,6 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
         if soc == 0 {
             soc = bat_percentage(calculate(mv));
         }
-
         let ma = gauge.average_current().await.unwrap_or(0);
 
         {
@@ -58,7 +57,7 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
                 .await;
             }
 
-            log::info!("Battery {mv}mv {soc}%");
+            log::info!("Battery {mv}mv {soc}% (avg current: {ma}mA)");
             last_sent = Instant::now();
         }
     }

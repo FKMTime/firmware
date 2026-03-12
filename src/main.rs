@@ -229,6 +229,10 @@ async fn main(spawner: Spawner) {
         esp_hal::system::software_reset();
     };
 
+    {
+        global_state.state.lock().await.wifi_connected = Some(true);
+    }
+
     #[cfg(feature = "qa")]
     crate::qa::send_qa_resp(crate::qa::QaSignal::WifiSetup);
 

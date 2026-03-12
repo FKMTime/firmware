@@ -143,7 +143,7 @@ async fn ws_loop(
         if let Err(e) = r {
             // but if wifi conneceted signal was sent remove wifi connection lost msg
             if wifi_conn_sig.signaled() && wifi_conn_sig.wait().await {
-                global_state.state.lock().await.wifi_conn_lost = false;
+                global_state.state.lock().await.wifi_connected = Some(true);
             }
 
             log::error!("connect error: {e:?}");
@@ -175,7 +175,7 @@ async fn ws_loop(
         {
             let mut state = global_state.state.lock().await;
             state.server_connected = Some(true);
-            state.wifi_conn_lost = false; // reset conn lost flag
+            state.wifi_connected = Some(true);
         }
 
         log::info!("connected!");
@@ -355,7 +355,7 @@ async fn ws_rw(
                     continue;
                 }
 
-                global_state.state.lock().await.wifi_conn_lost = true;
+                global_state.state.lock().await.wifi_connected = Some(false);
                 log::error!("Wifi disconnected, ws_rw stop.");
                 return Err(WsRwError::WifiDisconnected);
             }

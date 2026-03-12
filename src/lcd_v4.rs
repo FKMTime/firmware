@@ -165,6 +165,78 @@ where
     }
 }
 
+pub struct CrossedIcon<A> {
+    base: A,
+    top_left: Point,
+    crossed: bool,
+    cross_size: u32,
+}
+
+impl<A: Dimensions> CrossedIcon<A> {
+    pub fn new(base: A, crossed: bool, cross_size: u32) -> Self {
+        let base_box = base.bounding_box();
+        Self {
+            base,
+            top_left: base_box.top_left,
+            crossed,
+            cross_size,
+        }
+    }
+}
+
+impl<A: Dimensions> Dimensions for CrossedIcon<A> {
+    fn bounding_box(&self) -> Rectangle {
+        Rectangle::new(self.top_left, self.base.bounding_box().size)
+    }
+}
+
+impl<A: Transform> Transform for CrossedIcon<A> {
+    fn translate(&self, by: Point) -> Self {
+        Self {
+            top_left: self.top_left + by,
+            base: self.base.translate(by),
+            crossed: self.crossed,
+            cross_size: self.cross_size,
+        }
+    }
+    fn translate_mut(&mut self, by: Point) -> &mut Self {
+        self.top_left += by;
+        self.base.translate_mut(by);
+        self
+    }
+}
+
+impl<A> Drawable for CrossedIcon<A>
+where
+    A: Drawable<Color = BinaryColor> + Dimensions,
+{
+    type Color = BinaryColor;
+    type Output = ();
+    fn draw<D: DrawTarget<Color = BinaryColor>>(&self, target: &mut D) -> Result<(), D::Error> {
+        self.base.draw(target)?;
+        if self.crossed {
+            let thin_stroke = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
+            let bb = self.bounding_box();
+
+            // Center the cross over the bounding box
+            let offset = Point::new(
+                (bb.size.width as i32 - self.cross_size as i32) / 2,
+                (bb.size.height as i32 - self.cross_size as i32) / 2,
+            );
+            let tl = bb.top_left + offset;
+            let s = self.cross_size as i32 - 1;
+
+            Line::new(tl, tl + Point::new(s, s))
+                .into_styled(thin_stroke)
+                .draw(target)?;
+            Line::new(tl + Point::new(0, s), tl + Point::new(s, 0))
+                .into_styled(thin_stroke)
+                .draw(target)?;
+        }
+        Ok(())
+    }
+}
+
 #[embassy_executor::task]
 pub async fn lcd_task(
     i2c: SharedI2C,
@@ -190,14 +262,10 @@ pub async fn lcd_task(
     let data: &mut [BinaryColor; 128 * 11] = data.as_mut_array().unwrap();
     let mut top_bar_fbuf = embedded_graphics_framebuf::FrameBuf::new(data, 128, 11);
 
-    /*
     let thin_stroke = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
     let cross_h = Line::new(Point::new(0, 0), Point::new(8, 8)).into_styled(thin_stroke);
     let cross_v = Line::new(Point::new(0, 8), Point::new(8, 0)).into_styled(thin_stroke);
     let cross = Overlay::new(cross_h, cross_v);
-
-    let smiley_with_cross = Overlay::new(SMILEY, cross);
-    */
 
     let mut last_update;
     loop {
@@ -244,9 +312,21 @@ pub async fn lcd_task(
         }
 
         LinearLayout::horizontal(
-            Chain::new(Resources::WIFI)
-                .append(Resources::SERVER)
-                .append(Resources::TIMER),
+            Chain::new(CrossedIcon::new(
+                Resources::WIFI,
+                !current_state.wifi_connected.unwrap_or(false),
+                9,
+            ))
+            .append(CrossedIcon::new(
+                Resources::SERVER,
+                !current_state.server_connected.unwrap_or(false),
+                9,
+            ))
+            .append(CrossedIcon::new(
+                Resources::TIMER,
+                !current_state.stackmat_connected.unwrap_or(false),
+                9,
+            )),
         )
         .with_alignment(embedded_layout::align::vertical::Center)
         .with_spacing(FixedMargin(2))
@@ -290,196 +370,6 @@ pub async fn lcd_task(
             }
         }
     }
-
-    /*
-    let charging = true;
-    let wifi_connected = true;
-    let server_connected = true;
-    let timer_connected = true;
-
-    let stroke = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
-
-    // ── WiFi icon (arcs centered at x=5, y=9 so they arc upward above the bar) ───
-    Pixel(Point::new(5, 8), BinaryColor::On)
-        .draw(&mut fbuf)
-        .unwrap();
-
-    if wifi_connected {
-        // Inner arc
-        Arc::new(
-            Point::new(3, 7),
-            4,
-            Angle::from_degrees(210.0),
-            Angle::from_degrees(120.0),
-        )
-        .into_styled(stroke)
-        .draw(&mut fbuf)
-        .unwrap();
-        // Middle arc
-        Arc::new(
-            Point::new(1, 5),
-            8,
-            Angle::from_degrees(210.0),
-            Angle::from_degrees(120.0),
-        )
-        .into_styled(stroke)
-        .draw(&mut fbuf)
-        .unwrap();
-        // Outer arc
-        Arc::new(
-            Point::new(-1, 3),
-            12,
-            Angle::from_degrees(210.0),
-            Angle::from_degrees(120.0),
-        )
-        .into_styled(stroke)
-        .draw(&mut fbuf)
-        .unwrap();
-    } else {
-        Line::new(Point::new(1, 2), Point::new(9, 8))
-            .into_styled(stroke)
-            .draw(&mut fbuf)
-            .unwrap();
-        Line::new(Point::new(9, 2), Point::new(1, 8))
-            .into_styled(stroke)
-            .draw(&mut fbuf)
-            .unwrap();
-    }
-
-    // ── Server icon (x=13..24, y=1..8, bottom at y=8 → 1px gap before rule) ──────
-    Rectangle::new(Point::new(13, 1), Size::new(12, 8))
-        .into_styled(stroke)
-        .draw(&mut fbuf)
-        .unwrap();
-    Line::new(Point::new(14, 5), Point::new(23, 5))
-        .into_styled(stroke)
-        .draw(&mut fbuf)
-        .unwrap();
-    Pixel(Point::new(22, 3), BinaryColor::On)
-        .draw(&mut fbuf)
-        .unwrap();
-    Pixel(Point::new(22, 7), BinaryColor::On)
-        .draw(&mut fbuf)
-        .unwrap();
-
-    if !server_connected {
-        Line::new(Point::new(13, 1), Point::new(24, 8))
-            .into_styled(stroke)
-            .draw(&mut fbuf)
-            .unwrap();
-        Line::new(Point::new(24, 1), Point::new(13, 8))
-            .into_styled(stroke)
-            .draw(&mut fbuf)
-            .unwrap();
-    }
-
-    // ── Timer / stopwatch icon (x=27..35, y=1..8) ────────────────────────────────
-    // Button on top
-    Line::new(Point::new(30, 1), Point::new(32, 1))
-        .into_styled(stroke)
-        .draw(&mut fbuf)
-        .unwrap();
-    // Round body: diameter=7 → top_left=(27,2), center=(30,5), bottom=y=8
-    Circle::new(Point::new(27, 2), 7)
-        .into_styled(stroke)
-        .draw(&mut fbuf)
-        .unwrap();
-    // Clock hand pointing upper-right
-    Line::new(Point::new(30, 5), Point::new(32, 3))
-        .into_styled(stroke)
-        .draw(&mut fbuf)
-        .unwrap();
-
-    if !timer_connected {
-        Line::new(Point::new(27, 2), Point::new(33, 8))
-            .into_styled(stroke)
-            .draw(&mut fbuf)
-            .unwrap();
-        Line::new(Point::new(33, 2), Point::new(27, 8))
-            .into_styled(stroke)
-            .draw(&mut fbuf)
-            .unwrap();
-    }
-
-    // ── Horizontal rule ───────────────────────────────────────────────────────────
-    Line::new(Point::new(0, 10), Point::new(128, 10))
-        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
-        .draw(&mut fbuf)
-        .unwrap();
-
-    // ── Battery % ────────────────────────────────────────────────────────────────
-    let style = MonoTextStyle::new(&profont::PROFONT_10_POINT, BinaryColor::On);
-    let text_style = TextStyleBuilder::new()
-        .alignment(Alignment::Right)
-        .baseline(Baseline::Top)
-        .build();
-    Text::with_text_style("10%", Point::new(128, -1), style, text_style)
-        .draw(&mut fbuf)
-        .unwrap();
-
-    // ── Charging bolt (right side, only when charging) ───────────────────────────
-    // Sits to the left of the battery text (~20px wide text → bolt at x=104)
-    if charging {
-        let bx = 104i32; // top-left x of the bolt
-        let by = 1i32; // top-left y (leaves 1px gap before rule at y=10)
-
-        // Row 0: 0001
-        Pixel(Point::new(bx + 3, by + 0), BinaryColor::On)
-            .draw(&mut fbuf)
-            .unwrap();
-        // Row 1: 0010
-        Pixel(Point::new(bx + 2, by + 1), BinaryColor::On)
-            .draw(&mut fbuf)
-            .unwrap();
-        // Row 2: 0100
-        Pixel(Point::new(bx + 1, by + 2), BinaryColor::On)
-            .draw(&mut fbuf)
-            .unwrap();
-        // Row 3: 1111
-        Pixel(Point::new(bx + 0, by + 3), BinaryColor::On)
-            .draw(&mut fbuf)
-            .unwrap();
-        Pixel(Point::new(bx + 1, by + 3), BinaryColor::On)
-            .draw(&mut fbuf)
-            .unwrap();
-        Pixel(Point::new(bx + 2, by + 3), BinaryColor::On)
-            .draw(&mut fbuf)
-            .unwrap();
-        Pixel(Point::new(bx + 3, by + 3), BinaryColor::On)
-            .draw(&mut fbuf)
-            .unwrap();
-        // Row 4: 0001
-        Pixel(Point::new(bx + 3, by + 4), BinaryColor::On)
-            .draw(&mut fbuf)
-            .unwrap();
-        // Row 5: 1010
-        Pixel(Point::new(bx + 0, by + 5), BinaryColor::On)
-            .draw(&mut fbuf)
-            .unwrap();
-        Pixel(Point::new(bx + 2, by + 5), BinaryColor::On)
-            .draw(&mut fbuf)
-            .unwrap();
-        // Row 6: 1100
-        Pixel(Point::new(bx + 0, by + 6), BinaryColor::On)
-            .draw(&mut fbuf)
-            .unwrap();
-        Pixel(Point::new(bx + 1, by + 6), BinaryColor::On)
-            .draw(&mut fbuf)
-            .unwrap();
-        // Row 7: 1110
-        Pixel(Point::new(bx + 0, by + 7), BinaryColor::On)
-            .draw(&mut fbuf)
-            .unwrap();
-        Pixel(Point::new(bx + 1, by + 7), BinaryColor::On)
-            .draw(&mut fbuf)
-            .unwrap();
-        Pixel(Point::new(bx + 2, by + 7), BinaryColor::On)
-            .draw(&mut fbuf)
-            .unwrap();
-    }
-    */
-
-    return;
 
     /*
 

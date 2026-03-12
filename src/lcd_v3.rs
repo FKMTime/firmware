@@ -642,7 +642,7 @@ async fn process_lcd_overwrite(
     }
 
     if current_state.server_connected == Some(false) {
-        if current_state.wifi_conn_lost {
+        if current_state.wifi_connected == Some(false) {
             // TODO: maybe add to this translation
             _ = lcd_driver.print(0, "Wi-Fi", PrintAlign::Center, true);
             _ = lcd_driver.print(1, "Connection lost", PrintAlign::Center, true);
