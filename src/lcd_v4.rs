@@ -1,4 +1,5 @@
 use alloc::{format, rc::Rc, string::ToString};
+use anyhow::Result;
 use display_interface_i2c::I2CInterface;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Delay, Duration, Instant, Timer};
@@ -237,6 +238,15 @@ where
     }
 }
 
+pub const FBUF_WIDTH: usize = 128;
+pub const FBUF_HEIGHT: usize = 64;
+pub const FBUF_SIZE: usize = FBUF_WIDTH * FBUF_HEIGHT;
+
+pub struct OledData<'a> {
+    pub fbuf: FrameBuf<BinaryColor, &'a mut [BinaryColor; FBUF_SIZE]>,
+    pub disp: GraphicsMode<Ssd1309_128_64, I2CInterface<SharedI2C>>,
+}
+
 #[embassy_executor::task]
 pub async fn lcd_task(
     i2c: SharedI2C,
@@ -253,182 +263,16 @@ pub async fn lcd_task(
     let mut disp: oled_async::mode::GraphicsMode<_, _> = raw_disp.into();
     disp.reset(&mut display_rst, &mut Delay);
 
+    // TODO: remove all these unwraps!
     disp.init().await.unwrap();
     disp.clear();
     disp.flush().await.unwrap();
 
-    let mut data =
-        alloc::vec![embedded_graphics::pixelcolor::BinaryColor::Off; (128 * 11) as usize];
-    let data: &mut [BinaryColor; 128 * 11] = data.as_mut_array().unwrap();
-    let mut top_bar_fbuf = embedded_graphics_framebuf::FrameBuf::new(data, 128, 11);
+    let mut data = alloc::vec![embedded_graphics::pixelcolor::BinaryColor::Off; FBUF_SIZE];
+    let data: &mut [BinaryColor; FBUF_SIZE] = data.as_mut_array().unwrap();
+    let fbuf = embedded_graphics_framebuf::FrameBuf::new(data, FBUF_WIDTH, FBUF_HEIGHT);
 
-    let thin_stroke = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
-    let cross_h = Line::new(Point::new(0, 0), Point::new(8, 8)).into_styled(thin_stroke);
-    let cross_v = Line::new(Point::new(0, 8), Point::new(8, 0)).into_styled(thin_stroke);
-    let cross = Overlay::new(cross_h, cross_v);
-
-    let mut last_update;
-    loop {
-        let current_state = global_state.state.value().await.clone();
-        log::debug!("lcd current_state: {current_state:?}");
-        last_update = Instant::now();
-
-        top_bar_fbuf.clear(BinaryColor::Off);
-        let style = MonoTextStyle::new(
-            &embedded_graphics::mono_font::ascii::FONT_7X13,
-            BinaryColor::On,
-        );
-        let text_style = TextStyleBuilder::new()
-            .alignment(Alignment::Right)
-            .baseline(Baseline::Top)
-            .build();
-
-        let text = format!("{}%", current_state.battery_status.0);
-        let text = Text::with_text_style(&text, Point::zero(), style, text_style);
-        if current_state.battery_status.1 {
-            LinearLayout::horizontal(Chain::new(Resources::CHARGING).append(text))
-                .with_alignment(embedded_layout::align::vertical::Center)
-                .with_spacing(FixedMargin(1))
-                .arrange()
-                .align_to(
-                    &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
-                    embedded_layout::align::horizontal::Right,
-                    embedded_layout::align::vertical::Center,
-                )
-                .draw(&mut top_bar_fbuf)
-                .unwrap();
-        } else {
-            LinearLayout::horizontal(Chain::new(text))
-                .with_alignment(embedded_layout::align::vertical::Center)
-                .with_spacing(FixedMargin(1))
-                .arrange()
-                .align_to(
-                    &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
-                    embedded_layout::align::horizontal::Right,
-                    embedded_layout::align::vertical::Center,
-                )
-                .draw(&mut top_bar_fbuf)
-                .unwrap();
-        }
-
-        LinearLayout::horizontal(
-            Chain::new(CrossedIcon::new(
-                Resources::WIFI,
-                !current_state.wifi_connected.unwrap_or(false),
-                9,
-            ))
-            .append(CrossedIcon::new(
-                Resources::SERVER,
-                !current_state.server_connected.unwrap_or(false),
-                9,
-            ))
-            .append(CrossedIcon::new(
-                Resources::TIMER,
-                !current_state.stackmat_connected.unwrap_or(false),
-                9,
-            )),
-        )
-        .with_alignment(embedded_layout::align::vertical::Center)
-        .with_spacing(FixedMargin(2))
-        .arrange()
-        .align_to(
-            &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
-            embedded_layout::align::horizontal::Left,
-            embedded_layout::align::vertical::Center,
-        )
-        .draw(&mut top_bar_fbuf)
-        .unwrap();
-
-        Line::new(Point::new(0, 10), Point::new(128, 10))
-            .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
-            .draw(&mut top_bar_fbuf)
-            .unwrap();
-
-        disp.draw_iter(top_bar_fbuf.into_iter()).unwrap();
-        disp.flush().await.unwrap();
-
-        if sleep_state() {
-            //lcd.backlight_on();
-
-            unsafe {
-                crate::state::SLEEP_STATE = false;
-            }
-        }
-
-        let current_scene = current_state.scene.clone();
-        let fut = async {
-            loop {
-                Timer::after_millis(100).await;
-            }
-        };
-
-        let res = embassy_futures::select::select(fut, global_state.state.wait()).await;
-        match res {
-            embassy_futures::select::Either::First(_) => {}
-            embassy_futures::select::Either::Second(_) => {
-                continue;
-            }
-        }
-    }
-
-    /*
-
-    let start = Instant::now();
-    loop {
-        embedded_graphics::prelude::DrawTarget::clear(
-            &mut fbuf,
-            embedded_graphics::pixelcolor::BinaryColor::Off,
-        );
-        Timer::after(embassy_time::Duration::from_millis(1000 / 60)).await;
-
-        let text_style = embedded_graphics::mono_font::MonoTextStyleBuilder::new()
-            .font(&embedded_graphics::mono_font::ascii::FONT_6X10)
-            .text_color(embedded_graphics::pixelcolor::BinaryColor::On)
-            .build();
-
-        let time_str = crate::utils::stackmat::ms_to_time_str(start.elapsed().as_millis());
-        embedded_graphics::Drawable::draw(
-            &embedded_graphics::text::Text::with_baseline(
-                &alloc::format!("Hello world! {time_str}"),
-                embedded_graphics::prelude::Point::zero(),
-                text_style,
-                embedded_graphics::text::Baseline::Top,
-            ),
-            &mut fbuf,
-        )
-        .unwrap();
-
-        embedded_graphics::Drawable::draw(
-            &embedded_graphics::text::Text::with_baseline(
-                "Hello Rust!",
-                embedded_graphics::prelude::Point::new(0, 16),
-                text_style,
-                embedded_graphics::text::Baseline::Top,
-            ),
-            &mut fbuf,
-        )
-        .unwrap();
-
-        embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, fbuf.into_iter()).unwrap();
-        disp.flush().await.unwrap();
-
-        if start.elapsed().as_secs() > 120 {
-            break;
-        }
-    }
-    */
-
-    top_bar_fbuf.clear(BinaryColor::Off);
-    //lcd_driver.display_on_oled(&mut fbuf).await;
-    embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, top_bar_fbuf.into_iter()).unwrap();
-    disp.flush().await.unwrap();
-
-    Timer::after_millis(2500).await;
-
-    top_bar_fbuf.clear(BinaryColor::Off);
-    //_ = lcd_driver.clear_all();
-    embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, top_bar_fbuf.into_iter()).unwrap();
-    disp.flush().await.unwrap();
+    let mut oled = OledData { fbuf, disp };
 
     let mut last_update;
     loop {
@@ -446,47 +290,51 @@ pub async fn lcd_task(
 
         let current_scene = current_state.scene.clone();
         let fut = async {
-            /*
-            let _ = process_lcd(
-                current_state,
-                &global_state,
-                &mut lcd_driver,
-                &wifi_setup_sig,
-                &mut fbuf,
-                &mut disp,
-            )
-            .await;
-            fbuf.clear(BinaryColor::Off);
-            lcd_driver.display_on_oled(&mut fbuf).await;
-            embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, fbuf.into_iter()).unwrap();
-            disp.flush().await.unwrap();
+            oled.fbuf.clear(BinaryColor::Off);
+            _ = process_top_bar(&current_state, &global_state, &mut oled).await;
+            _ = process_main(&current_state, &global_state, &wifi_setup_sig, &mut oled).await;
 
-            let mut scroll_ticker =
-                embassy_time::Ticker::every(Duration::from_millis(SCROLL_TICKER_INVERVAL_MS));
+            oled.disp.draw_iter(oled.fbuf.into_iter()).unwrap();
+            oled.disp.flush().await.unwrap();
+
             loop {
-                scroll_ticker.next().await;
-                let changed = lcd_driver.scroll_step();
-                if changed.is_ok_and(|c| c) {
-                    fbuf.clear(BinaryColor::Off);
-                    lcd_driver.display_on_oled(&mut fbuf).await;
-                    embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, fbuf.into_iter())
-                        .unwrap();
-                    disp.flush().await.unwrap();
-                }
+                Timer::after_millis(1000).await;
 
                 #[cfg(not(any(feature = "e2e", feature = "qa")))]
                 if !sleep_state()
                     && (Instant::now() - last_update).as_millis() > SLEEP_AFTER_MS
                     && current_scene.can_sleep()
                 {
-                    _ = lcd_driver.print(0, "Sleep", PrintAlign::Center, true);
-                    _ = lcd_driver.print(1, "Press any key", PrintAlign::Center, true);
-                    fbuf.clear(BinaryColor::Off);
-                    lcd_driver.display_on_oled(&mut fbuf).await;
-                    embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, fbuf.into_iter())
-                        .unwrap();
-                    disp.flush().await.unwrap();
-                    //lcd.backlight_off();
+                    oled.fbuf.clear(BinaryColor::Off);
+
+                    let style = MonoTextStyle::new(
+                        &embedded_graphics::mono_font::ascii::FONT_7X13,
+                        BinaryColor::On,
+                    );
+                    let text_style = TextStyleBuilder::new()
+                        .alignment(Alignment::Center)
+                        .baseline(Baseline::Middle)
+                        .build();
+
+                    let text = Text::with_text_style(
+                        "Sleep\nPress any key...",
+                        Point::zero(),
+                        style,
+                        text_style,
+                    );
+
+                    LinearLayout::horizontal(Chain::new(text))
+                        .with_alignment(embedded_layout::align::vertical::Center)
+                        .arrange()
+                        .align_to(
+                            &Rectangle::new(Point::new(0, 0), Size::new(128, 64)),
+                            embedded_layout::align::horizontal::Center,
+                            embedded_layout::align::vertical::Center,
+                        )
+                        .draw(&mut oled.fbuf);
+
+                    oled.disp.draw_iter(oled.fbuf.into_iter()).unwrap();
+                    oled.disp.flush().await.unwrap();
 
                     {
                         global_state.state.lock().await.server_connected = Some(false);
@@ -505,17 +353,39 @@ pub async fn lcd_task(
                     && !deeper_sleep_state()
                     && (Instant::now() - last_update).as_millis() > DEEPER_SLEEP_AFTER_MS
                 {
-                    _ = lcd_driver.print(0, "Deep Sleep", PrintAlign::Center, true);
-                    _ = lcd_driver.print(1, "Press any key", PrintAlign::Center, true);
-                    fbuf.clear(BinaryColor::Off);
-                    lcd_driver.display_on_oled(&mut fbuf).await;
-                    embedded_graphics::prelude::DrawTarget::draw_iter(&mut disp, fbuf.into_iter())
-                        .unwrap();
-                    disp.flush().await.unwrap();
+                    oled.fbuf.clear(BinaryColor::Off);
+                    let style = MonoTextStyle::new(
+                        &embedded_graphics::mono_font::ascii::FONT_7X13,
+                        BinaryColor::On,
+                    );
+                    let text_style = TextStyleBuilder::new()
+                        .alignment(Alignment::Center)
+                        .baseline(Baseline::Middle)
+                        .build();
+
+                    let text = Text::with_text_style(
+                        "Deep Sleep\nPress any key...",
+                        Point::zero(),
+                        style,
+                        text_style,
+                    );
+
+                    LinearLayout::horizontal(Chain::new(text))
+                        .with_alignment(embedded_layout::align::vertical::Center)
+                        .arrange()
+                        .align_to(
+                            &Rectangle::new(Point::new(0, 0), Size::new(128, 64)),
+                            embedded_layout::align::horizontal::Center,
+                            embedded_layout::align::vertical::Center,
+                        )
+                        .draw(&mut oled.fbuf);
+
+                    oled.disp.draw_iter(oled.fbuf.into_iter()).unwrap();
+                    oled.disp.flush().await.unwrap();
+
                     crate::utils::deeper_sleep();
                 }
             }
-            */
         };
 
         let res = embassy_futures::select::select(fut, global_state.state.wait()).await;
@@ -526,6 +396,89 @@ pub async fn lcd_task(
             }
         }
     }
+}
+
+async fn process_top_bar(
+    current_state: &SignaledGlobalStateInner,
+    _global_state: &GlobalState,
+    oled: &mut OledData<'_>,
+) -> Result<()> {
+    let style = MonoTextStyle::new(
+        &embedded_graphics::mono_font::ascii::FONT_7X13,
+        BinaryColor::On,
+    );
+    let text_style = TextStyleBuilder::new()
+        .alignment(Alignment::Right)
+        .baseline(Baseline::Top)
+        .build();
+
+    let text = format!("{}%", current_state.battery_status.0);
+    let text = Text::with_text_style(&text, Point::zero(), style, text_style);
+    if current_state.battery_status.1 {
+        LinearLayout::horizontal(Chain::new(Resources::CHARGING).append(text))
+            .with_alignment(embedded_layout::align::vertical::Center)
+            .with_spacing(FixedMargin(1))
+            .arrange()
+            .align_to(
+                &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
+                embedded_layout::align::horizontal::Right,
+                embedded_layout::align::vertical::Center,
+            )
+            .draw(&mut oled.fbuf)?;
+    } else {
+        LinearLayout::horizontal(Chain::new(text))
+            .with_alignment(embedded_layout::align::vertical::Center)
+            .with_spacing(FixedMargin(1))
+            .arrange()
+            .align_to(
+                &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
+                embedded_layout::align::horizontal::Right,
+                embedded_layout::align::vertical::Center,
+            )
+            .draw(&mut oled.fbuf)?;
+    }
+
+    LinearLayout::horizontal(
+        Chain::new(CrossedIcon::new(
+            Resources::WIFI,
+            !current_state.wifi_connected.unwrap_or(false),
+            9,
+        ))
+        .append(CrossedIcon::new(
+            Resources::SERVER,
+            !current_state.server_connected.unwrap_or(false),
+            9,
+        ))
+        .append(CrossedIcon::new(
+            Resources::TIMER,
+            !current_state.stackmat_connected.unwrap_or(false),
+            9,
+        )),
+    )
+    .with_alignment(embedded_layout::align::vertical::Center)
+    .with_spacing(FixedMargin(2))
+    .arrange()
+    .align_to(
+        &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
+        embedded_layout::align::horizontal::Left,
+        embedded_layout::align::vertical::Center,
+    )
+    .draw(&mut oled.fbuf)?;
+
+    Line::new(Point::new(0, 10), Point::new(128, 10))
+        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+        .draw(&mut oled.fbuf)?;
+
+    Ok(())
+}
+
+async fn process_main(
+    current_state: &SignaledGlobalStateInner,
+    global_state: &GlobalState,
+    wifi_setup_sig: &Signal<NoopRawMutex, ()>,
+    oled: &mut OledData<'_>,
+) -> Result<()> {
+    Ok(())
 }
 
 /*

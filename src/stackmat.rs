@@ -53,7 +53,6 @@ pub async fn stackmat_task(
             let mut state = global_state.state.lock().await;
             state.stackmat_connected = Some(false);
 
-            // TODO: re-think this and maybe reset whole state?
             if state.scene == Scene::Timer {
                 if state.current_competitor.is_some() {
                     state.scene = Scene::CompetitorInfo;
