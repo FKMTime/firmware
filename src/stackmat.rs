@@ -148,7 +148,7 @@ pub async fn stackmat_task(
                     CURRENT_TIME = parsed.1;
                 }
 
-                if parsed.0 != last_stackmat_state {
+                if parsed.0 != last_stackmat_state && parsed.0 != StackmatTimerState::Unknown {
                     if parsed.0 == StackmatTimerState::Running {
                         let mut state = global_state.state.lock().await;
                         if state.scene <= Scene::Inspection && state.solve_time.is_none() {
@@ -160,13 +160,7 @@ pub async fn stackmat_task(
                         }
                     } else if parsed.0 == StackmatTimerState::Stopped {
                         let mut state = global_state.state.lock().await;
-                        let last_solve_diff = if cfg!(not(any(feature = "e2e", feature = "qa"))) {
-                            state.last_solve_time.unwrap_or(0).abs_diff(parsed.1)
-                        } else {
-                            1000
-                        };
-
-                        if state.solve_time.is_none() && last_solve_diff > 10 {
+                        if state.solve_time.is_none() {
                             let inspection_time = state
                                 .inspection_end
                                 .zip(state.inspection_start)
@@ -208,8 +202,6 @@ pub async fn stackmat_task(
                             #[cfg(feature = "qa")]
                             crate::qa::send_qa_resp(crate::qa::QaSignal::Stackmat(parsed.1));
                         } else if state.scene == Scene::Timer {
-                            // this will only happen on e2e (i dont think any human is capable of
-                            // pausing timer two times in a row at the same time)
                             state.scene = Scene::WaitingForCompetitor;
                         }
                     } else if parsed.0 == StackmatTimerState::Reset {

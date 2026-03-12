@@ -188,7 +188,6 @@ pub struct SignaledGlobalStateInner {
     pub inspection_start: Option<Instant>,
     pub inspection_end: Option<Instant>,
     pub solve_time: Option<u64>,
-    pub last_solve_time: Option<u64>,
     pub penalty: Option<i8>,
     pub session_id: Option<String>,
     pub time_confirmed: bool,
@@ -244,7 +243,6 @@ impl SignaledGlobalStateInner {
             inspection_start: None,
             inspection_end: None,
             solve_time: None,
-            last_solve_time: None,
             penalty: None,
             session_id: None,
             time_confirmed: false,
@@ -301,8 +299,6 @@ impl SignaledGlobalStateInner {
     }
 
     pub async fn reset_solve_state(&mut self, save_nvs: Option<&Nvs>) {
-        self.last_solve_time = self.solve_time;
-
         self.solve_time = None;
         self.penalty = None;
         self.inspection_start = None;
@@ -333,7 +329,6 @@ impl SignaledGlobalStateInner {
         self.inspection_start = None;
         self.inspection_end = None;
         self.solve_time = None;
-        self.last_solve_time = None;
         self.penalty = None;
         self.session_id = None;
         self.time_confirmed = false;
