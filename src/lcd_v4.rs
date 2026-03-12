@@ -303,7 +303,7 @@ pub async fn lcd_task(
         .build();
 
     let text = format!(
-        "S\\N: {:X}\nVER: {}",
+        "S/N: {:X}\nVER: {}",
         crate::utils::get_efuse_u32(),
         crate::version::VERSION
     );
@@ -529,6 +529,29 @@ async fn process_main(
         return Ok(());
     }
 
+    match current_state.scene {
+        Scene::Timer => {
+            oled.fbuf.fill_solid(&MAIN_RECT, BinaryColor::Off);
+            let text_rect = Rectangle::new(Point::new(0, 28), Size::new(128, 17));
+
+            loop {
+                let time = global_state.timer_signal.wait().await;
+                let time_str = ms_to_time_str(time);
+                let style = MonoTextStyle::new(&profont::PROFONT_14_POINT, BinaryColor::On);
+                let text_style = TextStyleBuilder::new()
+                    .alignment(Alignment::Center)
+                    .baseline(Baseline::Middle)
+                    .build();
+
+                _ = oled.disp.fill_solid(&text_rect, BinaryColor::Off);
+                _ = Text::with_text_style(&time_str, Point::new(64, 36), style, text_style)
+                    .draw(&mut oled.disp);
+                _ = oled.disp.flush().await;
+            }
+        }
+        _ => {}
+    }
+
     Ok(())
 }
 
@@ -564,9 +587,6 @@ async fn process_main_overwrite(
                     embedded_layout::align::vertical::Center,
                 )
                 .draw(&mut oled.fbuf);
-
-            oled.disp.draw_iter(oled.fbuf.into_iter()).unwrap();
-            oled.disp.flush().await.unwrap();
         } else {
             let style = MonoTextStyle::new(
                 &embedded_graphics::mono_font::ascii::FONT_7X13,
@@ -626,10 +646,7 @@ async fn process_main_overwrite(
             )
             .draw(&mut oled.fbuf);
     } else if current_state.stackmat_connected == Some(false) {
-        let style = MonoTextStyle::new(
-            &embedded_graphics::mono_font::ascii::FONT_7X13,
-            BinaryColor::On,
-        );
+        let style = MonoTextStyle::new(&profont::PROFONT_14_POINT, BinaryColor::On);
         let text_style = TextStyleBuilder::new()
             .alignment(Alignment::Center)
             .baseline(Baseline::Middle)
@@ -1150,65 +1167,5 @@ async fn process_lcd(
     }
 
     Some(())
-}
-
-async fn process_lcd_overwrite(
-    current_state: &SignaledGlobalStateInner,
-    _global_state: &GlobalState,
-    lcd_driver: &mut LcdAbstract<80, 16, 2, 3>,
-) -> bool {
-    if !current_state.scene.can_be_lcd_overwritten() {
-        return false;
-    }
-
-    if current_state.server_connected == Some(false) {
-        if current_state.wifi_conn_lost {
-            // TODO: maybe add to this translation
-            _ = lcd_driver.print(0, "Wi-Fi", PrintAlign::Center, true);
-            _ = lcd_driver.print(1, "Connection lost", PrintAlign::Center, true);
-        } else {
-            _ = lcd_driver.print(
-                0,
-                &get_translation(TranslationKey::SERVER_DISCONNECTED_HEADER),
-                PrintAlign::Center,
-                true,
-            );
-            _ = lcd_driver.print(
-                1,
-                &get_translation(TranslationKey::SERVER_DISCONNECTED_FOOTER),
-                PrintAlign::Center,
-                true,
-            );
-        }
-    } else if current_state.device_added == Some(false) {
-        #[cfg(not(feature = "e2e"))]
-        let lines = (
-            &get_translation(TranslationKey::DEVICE_NOT_ADDED_HEADER),
-            &get_translation(TranslationKey::DEVICE_NOT_ADDED_FOOTER),
-        );
-
-        #[cfg(feature = "e2e")]
-        let lines = ("Press submit", "To start HIL");
-
-        _ = lcd_driver.print(0, lines.0, PrintAlign::Center, true);
-        _ = lcd_driver.print(1, lines.1, PrintAlign::Center, true);
-    } else if current_state.stackmat_connected == Some(false) {
-        _ = lcd_driver.print(
-            0,
-            &get_translation(TranslationKey::STACKMAT_DISCONNECTED_HEADER),
-            PrintAlign::Center,
-            true,
-        );
-        _ = lcd_driver.print(
-            1,
-            &get_translation(TranslationKey::STACKMAT_DISCONNECTED_FOOTER),
-            PrintAlign::Center,
-            true,
-        );
-    } else {
-        return false;
-    }
-
-    true
 }
 */
