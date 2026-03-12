@@ -6,13 +6,18 @@ use embedded_graphics::{
     Drawable, Pixel,
     mono_font::MonoTextStyle,
     pixelcolor::BinaryColor,
-    prelude::{Angle, DrawTarget, Point, Primitive, Size},
+    prelude::*,
     primitives::{Arc, Circle, Line, PrimitiveStyle, Rectangle},
     text::{Alignment, Baseline, Text, TextStyleBuilder},
 };
 use embedded_graphics_framebuf::FrameBuf;
+use embedded_layout::{
+    layout::linear::{FixedMargin, LinearLayout},
+    prelude::*,
+};
 use esp_hal::gpio::Output;
 use oled_async::{displays::ssd1309::Ssd1309_128_64, mode::GraphicsMode};
+use profont::PROFONT_12_POINT;
 
 use crate::{
     consts::{
@@ -25,6 +30,140 @@ use crate::{
     translations::{TranslationKey, get_translation, get_translation_params},
     utils::{shared_i2c::SharedI2C, stackmat::ms_to_time_str},
 };
+
+macros::load_lcd_resources!("src/resources");
+
+#[derive(Clone, Copy)]
+pub struct PixelArt {
+    data: &'static [u8], // packed bits, MSB first, row by row
+    width: u32,
+    height: u32,
+    top_left: Point,
+}
+
+impl PixelArt {
+    pub const fn new(data: &'static [u8], width: u32, height: u32) -> Self {
+        Self {
+            data,
+            width,
+            height,
+            top_left: Point::zero(),
+        }
+    }
+
+    fn bytes_per_row(&self) -> u32 {
+        (self.width + 7) / 8
+    }
+}
+
+impl Dimensions for PixelArt {
+    fn bounding_box(&self) -> Rectangle {
+        Rectangle::new(self.top_left, Size::new(self.width, self.height))
+    }
+}
+
+impl Transform for PixelArt {
+    fn translate(&self, by: Point) -> Self {
+        Self {
+            top_left: self.top_left + by,
+            ..*self
+        }
+    }
+    fn translate_mut(&mut self, by: Point) -> &mut Self {
+        self.top_left += by;
+        self
+    }
+}
+
+impl Drawable for PixelArt {
+    type Color = BinaryColor;
+    type Output = ();
+
+    fn draw<D: DrawTarget<Color = BinaryColor>>(&self, target: &mut D) -> Result<(), D::Error> {
+        let origin = self.top_left;
+        let bpr = self.bytes_per_row();
+        let (w, h) = (self.width, self.height);
+        let data = self.data;
+
+        target.draw_iter((0..h).flat_map(move |y| {
+            (0..w).map(move |x| {
+                let byte = data[(y * bpr + x / 8) as usize];
+                let on = byte & (0x80 >> (x % 8)) != 0;
+                Pixel(
+                    origin + Point::new(x as i32, y as i32),
+                    if on {
+                        BinaryColor::On
+                    } else {
+                        BinaryColor::Off
+                    },
+                )
+            })
+        }))
+    }
+}
+
+pub struct Overlay<A, B> {
+    base: A,
+    overlay: B,
+    top_left: Point,
+}
+
+impl<A: Dimensions, B: Dimensions + Transform> Overlay<A, B> {
+    pub fn new(base: A, overlay: B) -> Self {
+        let base_box = base.bounding_box();
+        let overlay_box = overlay.bounding_box();
+
+        // center overlay over base
+        let offset = Point::new(
+            (base_box.size.width as i32 - overlay_box.size.width as i32) / 2,
+            (base_box.size.height as i32 - overlay_box.size.height as i32) / 2,
+        );
+        let overlay = overlay.translate(base_box.top_left + offset);
+
+        Self {
+            top_left: base_box.top_left,
+            base,
+            overlay,
+        }
+    }
+}
+
+impl<A: Dimensions, B> Dimensions for Overlay<A, B> {
+    fn bounding_box(&self) -> Rectangle {
+        Rectangle::new(self.top_left, self.base.bounding_box().size)
+    }
+}
+
+impl<A: Transform, B: Transform> Transform for Overlay<A, B> {
+    fn translate(&self, by: Point) -> Self {
+        Self {
+            top_left: self.top_left + by,
+            base: self.base.translate(by),
+            overlay: self.overlay.translate(by),
+        }
+    }
+    fn translate_mut(&mut self, by: Point) -> &mut Self {
+        self.top_left += by;
+        self.base.translate_mut(by);
+        self.overlay.translate_mut(by);
+        self
+    }
+}
+
+impl<A, B> Drawable for Overlay<A, B>
+where
+    A: Drawable<Color = BinaryColor>,
+    B: Drawable<Color = BinaryColor>,
+{
+    type Color = BinaryColor;
+    type Output = ();
+
+    fn draw<D: DrawTarget<Color = BinaryColor>>(&self, target: &mut D) -> Result<(), D::Error> {
+        self.base.draw(target)?;
+        self.overlay.draw(target)?;
+        Ok(())
+    }
+}
 
 #[embassy_executor::task]
 pub async fn lcd_task(
@@ -47,10 +186,55 @@ pub async fn lcd_task(
     disp.flush().await.unwrap();
 
     let mut data =
-        alloc::vec![embedded_graphics::pixelcolor::BinaryColor::Off; (128 * 64) as usize];
-    let data: &mut [BinaryColor; 128 * 64] = data.as_mut_array().unwrap();
-    let mut fbuf = embedded_graphics_framebuf::FrameBuf::new(data, 128, 64);
+        alloc::vec![embedded_graphics::pixelcolor::BinaryColor::Off; (128 * 11) as usize];
+    let data: &mut [BinaryColor; 128 * 11] = data.as_mut_array().unwrap();
+    let mut fbuf = embedded_graphics_framebuf::FrameBuf::new(data, 128, 11);
 
+    /*
+    let thin_stroke = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
+    let cross_h = Line::new(Point::new(0, 0), Point::new(8, 8)).into_styled(thin_stroke);
+    let cross_v = Line::new(Point::new(0, 8), Point::new(8, 0)).into_styled(thin_stroke);
+    let cross = Overlay::new(cross_h, cross_v);
+
+    let smiley_with_cross = Overlay::new(SMILEY, cross);
+    */
+
+    let style = MonoTextStyle::new(
+        &embedded_graphics::mono_font::ascii::FONT_7X13,
+        BinaryColor::On,
+    );
+    let text_style = TextStyleBuilder::new()
+        .alignment(Alignment::Right)
+        .baseline(Baseline::Top)
+        .build();
+    let text = Text::with_text_style("100%", Point::zero(), style, text_style);
+
+    LinearLayout::horizontal(
+        /*
+        Chain::new(SMILEY)
+            .append(smiley_with_cross)
+            .append(CHARGING)
+            .append(text),
+            */
+        Chain::new(Resources::CHARGING).append(text)
+    )
+    .with_alignment(embedded_layout::align::vertical::Center)
+    .with_spacing(FixedMargin(2))
+    .arrange()
+    .align_to(
+        &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
+        embedded_layout::align::horizontal::Right,
+        embedded_layout::align::vertical::Center,
+    )
+    .draw(&mut fbuf)
+    .unwrap();
+
+    Line::new(Point::new(0, 10), Point::new(128, 10))
+        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+        .draw(&mut fbuf)
+        .unwrap();
+
+    /*
     let charging = true;
     let wifi_connected = true;
     let server_connected = true;
@@ -60,7 +244,7 @@ pub async fn lcd_task(
 
     // ── WiFi icon (arcs centered at x=5, y=9 so they arc upward above the bar) ───
     Pixel(Point::new(5, 8), BinaryColor::On)
-        .draw(&mut disp)
+        .draw(&mut fbuf)
         .unwrap();
 
     if wifi_connected {
@@ -72,7 +256,7 @@ pub async fn lcd_task(
             Angle::from_degrees(120.0),
         )
         .into_styled(stroke)
-        .draw(&mut disp)
+        .draw(&mut fbuf)
         .unwrap();
         // Middle arc
         Arc::new(
@@ -82,7 +266,7 @@ pub async fn lcd_task(
             Angle::from_degrees(120.0),
         )
         .into_styled(stroke)
-        .draw(&mut disp)
+        .draw(&mut fbuf)
         .unwrap();
         // Outer arc
         Arc::new(
@@ -92,43 +276,43 @@ pub async fn lcd_task(
             Angle::from_degrees(120.0),
         )
         .into_styled(stroke)
-        .draw(&mut disp)
+        .draw(&mut fbuf)
         .unwrap();
     } else {
         Line::new(Point::new(1, 2), Point::new(9, 8))
             .into_styled(stroke)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
         Line::new(Point::new(9, 2), Point::new(1, 8))
             .into_styled(stroke)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
     }
 
     // ── Server icon (x=13..24, y=1..8, bottom at y=8 → 1px gap before rule) ──────
     Rectangle::new(Point::new(13, 1), Size::new(12, 8))
         .into_styled(stroke)
-        .draw(&mut disp)
+        .draw(&mut fbuf)
         .unwrap();
     Line::new(Point::new(14, 5), Point::new(23, 5))
         .into_styled(stroke)
-        .draw(&mut disp)
+        .draw(&mut fbuf)
         .unwrap();
     Pixel(Point::new(22, 3), BinaryColor::On)
-        .draw(&mut disp)
+        .draw(&mut fbuf)
         .unwrap();
     Pixel(Point::new(22, 7), BinaryColor::On)
-        .draw(&mut disp)
+        .draw(&mut fbuf)
         .unwrap();
 
     if !server_connected {
         Line::new(Point::new(13, 1), Point::new(24, 8))
             .into_styled(stroke)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
         Line::new(Point::new(24, 1), Point::new(13, 8))
             .into_styled(stroke)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
     }
 
@@ -136,34 +320,34 @@ pub async fn lcd_task(
     // Button on top
     Line::new(Point::new(30, 1), Point::new(32, 1))
         .into_styled(stroke)
-        .draw(&mut disp)
+        .draw(&mut fbuf)
         .unwrap();
     // Round body: diameter=7 → top_left=(27,2), center=(30,5), bottom=y=8
     Circle::new(Point::new(27, 2), 7)
         .into_styled(stroke)
-        .draw(&mut disp)
+        .draw(&mut fbuf)
         .unwrap();
     // Clock hand pointing upper-right
     Line::new(Point::new(30, 5), Point::new(32, 3))
         .into_styled(stroke)
-        .draw(&mut disp)
+        .draw(&mut fbuf)
         .unwrap();
 
     if !timer_connected {
         Line::new(Point::new(27, 2), Point::new(33, 8))
             .into_styled(stroke)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
         Line::new(Point::new(33, 2), Point::new(27, 8))
             .into_styled(stroke)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
     }
 
     // ── Horizontal rule ───────────────────────────────────────────────────────────
     Line::new(Point::new(0, 10), Point::new(128, 10))
         .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
-        .draw(&mut disp)
+        .draw(&mut fbuf)
         .unwrap();
 
     // ── Battery % ────────────────────────────────────────────────────────────────
@@ -172,8 +356,8 @@ pub async fn lcd_task(
         .alignment(Alignment::Right)
         .baseline(Baseline::Top)
         .build();
-    Text::with_text_style("69%", Point::new(128, -1), style, text_style)
-        .draw(&mut disp)
+    Text::with_text_style("10%", Point::new(128, -1), style, text_style)
+        .draw(&mut fbuf)
         .unwrap();
 
     // ── Charging bolt (right side, only when charging) ───────────────────────────
@@ -184,59 +368,61 @@ pub async fn lcd_task(
 
         // Row 0: 0001
         Pixel(Point::new(bx + 3, by + 0), BinaryColor::On)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
         // Row 1: 0010
         Pixel(Point::new(bx + 2, by + 1), BinaryColor::On)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
         // Row 2: 0100
         Pixel(Point::new(bx + 1, by + 2), BinaryColor::On)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
         // Row 3: 1111
         Pixel(Point::new(bx + 0, by + 3), BinaryColor::On)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
         Pixel(Point::new(bx + 1, by + 3), BinaryColor::On)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
         Pixel(Point::new(bx + 2, by + 3), BinaryColor::On)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
         Pixel(Point::new(bx + 3, by + 3), BinaryColor::On)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
         // Row 4: 0001
         Pixel(Point::new(bx + 3, by + 4), BinaryColor::On)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
         // Row 5: 1010
         Pixel(Point::new(bx + 0, by + 5), BinaryColor::On)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
         Pixel(Point::new(bx + 2, by + 5), BinaryColor::On)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
         // Row 6: 1100
         Pixel(Point::new(bx + 0, by + 6), BinaryColor::On)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
         Pixel(Point::new(bx + 1, by + 6), BinaryColor::On)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
         // Row 7: 1110
         Pixel(Point::new(bx + 0, by + 7), BinaryColor::On)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
         Pixel(Point::new(bx + 1, by + 7), BinaryColor::On)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
         Pixel(Point::new(bx + 2, by + 7), BinaryColor::On)
-            .draw(&mut disp)
+            .draw(&mut fbuf)
             .unwrap();
     }
+    */
 
+    disp.draw_iter(fbuf.into_iter()).unwrap();
     disp.flush().await.unwrap();
 
     return;

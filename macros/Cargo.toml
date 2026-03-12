@@ -7,9 +7,11 @@ edition = "2021"
 proc-macro = true
 
 [dependencies]
-convert_case = "0.8.0"
-proc-macro2 = "1.0.95"
-quote = "1.0.40"
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.142"
-syn = { version = "2.0.104", features = ["extra-traits", "full"] }
+anyhow = "1.0.102"
+convert_case = "0.11.0"
+image = "0.25.10"
+proc-macro2 = "1.0.106"
+quote = "1.0.45"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+syn = { version = "2.0.117", features = ["extra-traits", "full"] }
