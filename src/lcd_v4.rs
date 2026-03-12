@@ -1,5 +1,5 @@
 use alloc::{format, rc::Rc, string::ToString};
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use display_interface_i2c::I2CInterface;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Delay, Duration, Instant, Timer};
@@ -247,6 +247,17 @@ pub struct OledData<'a> {
     pub disp: GraphicsMode<Ssd1309_128_64, I2CInterface<SharedI2C>>,
 }
 
+impl OledData<'_> {
+    pub async fn flush(&mut self) -> Result<()> {
+        self.disp
+            .draw_iter(self.fbuf.into_iter())
+            .map_err(|e| anyhow!("{e:?}"))?;
+        self.disp.flush().await.map_err(|e| anyhow!("{e:?}"))?;
+
+        Ok(())
+    }
+}
+
 #[embassy_executor::task]
 pub async fn lcd_task(
     i2c: SharedI2C,
@@ -274,6 +285,43 @@ pub async fn lcd_task(
 
     let mut oled = OledData { fbuf, disp };
 
+    global_state.show_battery.wait().await;
+    _ = process_top_bar(
+        &global_state.state.value().await.clone(),
+        &global_state,
+        &mut oled,
+    )
+    .await;
+
+    let style = MonoTextStyle::new(
+        &embedded_graphics::mono_font::ascii::FONT_7X13,
+        BinaryColor::On,
+    );
+    let text_style = TextStyleBuilder::new()
+        .alignment(Alignment::Center)
+        .baseline(Baseline::Middle)
+        .build();
+
+    let text = format!(
+        "S\\N: {:X}\nVER: {}",
+        crate::utils::get_efuse_u32(),
+        crate::version::VERSION
+    );
+    let text = Text::with_text_style(&text, Point::zero(), style, text_style);
+
+    LinearLayout::horizontal(Chain::new(text))
+        .with_alignment(embedded_layout::align::vertical::Center)
+        .arrange()
+        .align_to(
+            &MAIN_RECT,
+            embedded_layout::align::horizontal::Center,
+            embedded_layout::align::vertical::Center,
+        )
+        .draw(&mut oled.fbuf);
+    _ = oled.flush().await;
+
+    Timer::after_millis(2500).await;
+
     let mut last_update;
     loop {
         let current_state = global_state.state.value().await.clone();
@@ -293,9 +341,7 @@ pub async fn lcd_task(
             oled.fbuf.clear(BinaryColor::Off);
             _ = process_top_bar(&current_state, &global_state, &mut oled).await;
             _ = process_main(&current_state, &global_state, &wifi_setup_sig, &mut oled).await;
-
-            oled.disp.draw_iter(oled.fbuf.into_iter()).unwrap();
-            oled.disp.flush().await.unwrap();
+            _ = oled.flush().await;
 
             loop {
                 Timer::after_millis(1000).await;
@@ -333,8 +379,7 @@ pub async fn lcd_task(
                         )
                         .draw(&mut oled.fbuf);
 
-                    oled.disp.draw_iter(oled.fbuf.into_iter()).unwrap();
-                    oled.disp.flush().await.unwrap();
+                    _ = oled.flush().await;
 
                     {
                         global_state.state.lock().await.server_connected = Some(false);
@@ -380,8 +425,7 @@ pub async fn lcd_task(
                         )
                         .draw(&mut oled.fbuf);
 
-                    oled.disp.draw_iter(oled.fbuf.into_iter()).unwrap();
-                    oled.disp.flush().await.unwrap();
+                    _ = oled.flush().await;
 
                     crate::utils::deeper_sleep();
                 }
@@ -472,13 +516,146 @@ async fn process_top_bar(
     Ok(())
 }
 
+pub const MAIN_RECT: Rectangle = Rectangle::new(Point::new(0, 11), Size::new(128, 53));
+
 async fn process_main(
     current_state: &SignaledGlobalStateInner,
     global_state: &GlobalState,
     wifi_setup_sig: &Signal<NoopRawMutex, ()>,
     oled: &mut OledData<'_>,
 ) -> Result<()> {
+    let overwritten = process_main_overwrite(&current_state, global_state, oled).await;
+    if overwritten {
+        return Ok(());
+    }
+
     Ok(())
+}
+
+async fn process_main_overwrite(
+    current_state: &SignaledGlobalStateInner,
+    _global_state: &GlobalState,
+    oled: &mut OledData<'_>,
+) -> bool {
+    if !current_state.scene.can_be_lcd_overwritten() {
+        return false;
+    }
+
+    if current_state.server_connected == Some(false) {
+        if current_state.wifi_connected == Some(false) {
+            let style = MonoTextStyle::new(
+                &embedded_graphics::mono_font::ascii::FONT_7X13,
+                BinaryColor::On,
+            );
+            let text_style = TextStyleBuilder::new()
+                .alignment(Alignment::Center)
+                .baseline(Baseline::Middle)
+                .build();
+
+            let text =
+                Text::with_text_style("Wi-Fi\nConnection lost", Point::zero(), style, text_style);
+
+            LinearLayout::horizontal(Chain::new(text))
+                .with_alignment(embedded_layout::align::vertical::Center)
+                .arrange()
+                .align_to(
+                    &MAIN_RECT,
+                    embedded_layout::align::horizontal::Center,
+                    embedded_layout::align::vertical::Center,
+                )
+                .draw(&mut oled.fbuf);
+
+            oled.disp.draw_iter(oled.fbuf.into_iter()).unwrap();
+            oled.disp.flush().await.unwrap();
+        } else {
+            let style = MonoTextStyle::new(
+                &embedded_graphics::mono_font::ascii::FONT_7X13,
+                BinaryColor::On,
+            );
+            let text_style = TextStyleBuilder::new()
+                .alignment(Alignment::Center)
+                .baseline(Baseline::Middle)
+                .build();
+
+            let text = format!(
+                "{}\n{}",
+                get_translation(TranslationKey::SERVER_DISCONNECTED_HEADER),
+                get_translation(TranslationKey::SERVER_DISCONNECTED_FOOTER)
+            );
+            let text = Text::with_text_style(&text, Point::zero(), style, text_style);
+
+            LinearLayout::horizontal(Chain::new(text))
+                .with_alignment(embedded_layout::align::vertical::Center)
+                .arrange()
+                .align_to(
+                    &MAIN_RECT,
+                    embedded_layout::align::horizontal::Center,
+                    embedded_layout::align::vertical::Center,
+                )
+                .draw(&mut oled.fbuf);
+        }
+    } else if current_state.device_added == Some(false) {
+        #[cfg(not(feature = "e2e"))]
+        let lines = (
+            &get_translation(TranslationKey::DEVICE_NOT_ADDED_HEADER),
+            &get_translation(TranslationKey::DEVICE_NOT_ADDED_FOOTER),
+        );
+
+        #[cfg(feature = "e2e")]
+        let lines = ("Press submit", "To start HIL");
+
+        let style = MonoTextStyle::new(
+            &embedded_graphics::mono_font::ascii::FONT_7X13,
+            BinaryColor::On,
+        );
+        let text_style = TextStyleBuilder::new()
+            .alignment(Alignment::Center)
+            .baseline(Baseline::Middle)
+            .build();
+
+        let text = format!("{}\n{}", lines.0, lines.1);
+        let text = Text::with_text_style(&text, Point::zero(), style, text_style);
+
+        LinearLayout::horizontal(Chain::new(text))
+            .with_alignment(embedded_layout::align::vertical::Center)
+            .arrange()
+            .align_to(
+                &MAIN_RECT,
+                embedded_layout::align::horizontal::Center,
+                embedded_layout::align::vertical::Center,
+            )
+            .draw(&mut oled.fbuf);
+    } else if current_state.stackmat_connected == Some(false) {
+        let style = MonoTextStyle::new(
+            &embedded_graphics::mono_font::ascii::FONT_7X13,
+            BinaryColor::On,
+        );
+        let text_style = TextStyleBuilder::new()
+            .alignment(Alignment::Center)
+            .baseline(Baseline::Middle)
+            .build();
+
+        let text = format!(
+            "{}\n{}",
+            get_translation(TranslationKey::STACKMAT_DISCONNECTED_HEADER),
+            get_translation(TranslationKey::STACKMAT_DISCONNECTED_FOOTER)
+        );
+        let text = Text::with_text_style(&text, Point::zero(), style, text_style);
+
+        LinearLayout::horizontal(Chain::new(text))
+            .with_alignment(embedded_layout::align::vertical::Center)
+            .arrange()
+            .align_to(
+                &MAIN_RECT,
+                embedded_layout::align::horizontal::Center,
+                embedded_layout::align::vertical::Center,
+            )
+            .draw(&mut oled.fbuf);
+    } else {
+        return false;
+    }
+
+    true
 }
 
 /*

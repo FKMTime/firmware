@@ -24,10 +24,9 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
         return;
     };
 
+    let mut startup_sent = false;
     let mut last_sent = Instant::now();
     loop {
-        Timer::after_millis(100).await;
-
         if sleep_state() {
             Timer::after_millis(500).await;
             continue;
@@ -45,6 +44,11 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
             state.battery_status = (soc, ma >= 0)
         }
 
+        if !startup_sent {
+            state.show_battery.signal(soc);
+            startup_sent = true;
+        }
+
         if last_sent.elapsed().as_millis() >= BATTERY_SEND_INTERVAL_MS {
             if state.state.lock().await.server_connected == Some(true) {
                 crate::ws::send_packet(crate::structs::TimerPacket {
@@ -60,6 +64,8 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
             log::info!("Battery {mv}mv {soc}% (avg current: {ma}mA)");
             last_sent = Instant::now();
         }
+
+        Timer::after_millis(100).await;
     }
 }
 

@@ -151,8 +151,6 @@ pub struct GlobalStateInner {
     pub update_progress: Signal<CriticalSectionRawMutex, u8>,
     pub sign_unsign_progress: Signal<CriticalSectionRawMutex, bool>,
     pub ble_sig: Signal<CriticalSectionRawMutex, BleAction>,
-
-    #[cfg(feature = "v3")]
     pub show_battery: Signal<CriticalSectionRawMutex, u8>,
 
     pub nvs: Nvs,
@@ -171,8 +169,6 @@ impl GlobalStateInner {
             update_progress: Signal::new(),
             sign_unsign_progress: Signal::new(),
             ble_sig: Signal::new(),
-
-            #[cfg(feature = "v3")]
             show_battery: Signal::new(),
 
             nvs: nvs.clone(),
