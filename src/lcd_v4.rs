@@ -54,6 +54,11 @@ impl OledData<'_> {
 
         Ok(())
     }
+
+    pub fn clear_main(&mut self) -> Result<()> {
+        self.fbuf.fill_solid(&MAIN_RECT, BinaryColor::Off);
+        Ok(())
+    }
 }
 
 pub const MAIN_RECT: Rectangle = Rectangle::new(Point::new(0, 11), Size::new(128, 53));
@@ -87,6 +92,18 @@ fn center_layout<VG: ViewGroup>(
             embedded_layout::align::horizontal::Center,
             embedded_layout::align::vertical::Center,
         )
+}
+
+fn center_text_layout(
+    text: &str,
+) -> LinearLayout<
+    Horizontal<embedded_layout::align::vertical::Center>,
+    embedded_layout::object_chain::Chain<
+        embedded_graphics::text::Text<'_, MonoTextStyle<'_, BinaryColor>>,
+    >,
+> {
+    let text = Text::with_text_style(&text, Point::zero(), NORMAL_FONT, TEXT_CENTER);
+    center_layout(Chain::new(text))
 }
 
 #[embassy_executor::task]
@@ -151,8 +168,6 @@ pub async fn lcd_task(
         last_update = Instant::now();
 
         if sleep_state() {
-            //lcd.backlight_on();
-
             unsafe {
                 crate::state::SLEEP_STATE = false;
             }
@@ -228,6 +243,34 @@ pub async fn lcd_task(
     }
 }
 
+fn battery_layout<VG: ViewGroup>(
+    content: VG,
+) -> LinearLayout<Horizontal<embedded_layout::align::vertical::Center, FixedMargin>, VG> {
+    LinearLayout::horizontal(content)
+        .with_alignment(embedded_layout::align::vertical::Center)
+        .with_spacing(FixedMargin(1))
+        .arrange()
+        .align_to(
+            &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
+            embedded_layout::align::horizontal::Right,
+            embedded_layout::align::vertical::Center,
+        )
+}
+
+fn topbar_icons_layout<VG: ViewGroup>(
+    content: VG,
+) -> LinearLayout<Horizontal<embedded_layout::align::vertical::Center, FixedMargin>, VG> {
+    LinearLayout::horizontal(content)
+        .with_alignment(embedded_layout::align::vertical::Center)
+        .with_spacing(FixedMargin(2))
+        .arrange()
+        .align_to(
+            &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
+            embedded_layout::align::horizontal::Left,
+            embedded_layout::align::vertical::Center,
+        )
+}
+
 async fn process_top_bar(
     current_state: &SignaledGlobalStateInner,
     _global_state: &GlobalState,
@@ -236,29 +279,12 @@ async fn process_top_bar(
     let text = format!("{}%", current_state.battery_status.0);
     let text = Text::with_text_style(&text, Point::zero(), NORMAL_FONT, TEXT_TOPBAR);
     if current_state.battery_status.1 {
-        LinearLayout::horizontal(Chain::new(Resources::CHARGING).append(text))
-            .with_alignment(embedded_layout::align::vertical::Center)
-            .with_spacing(FixedMargin(1))
-            .arrange()
-            .align_to(
-                &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
-                embedded_layout::align::horizontal::Right,
-                embedded_layout::align::vertical::Center,
-            );
+        battery_layout(Chain::new(Resources::CHARGING).append(text)).draw(&mut oled.fbuf)?;
     } else {
-        LinearLayout::horizontal(Chain::new(text))
-            .with_alignment(embedded_layout::align::vertical::Center)
-            .with_spacing(FixedMargin(1))
-            .arrange()
-            .align_to(
-                &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
-                embedded_layout::align::horizontal::Right,
-                embedded_layout::align::vertical::Center,
-            )
-            .draw(&mut oled.fbuf)?;
+        battery_layout(Chain::new(text)).draw(&mut oled.fbuf)?;
     }
 
-    LinearLayout::horizontal(
+    topbar_icons_layout(
         Chain::new(CrossedIcon::new(
             Resources::WIFI,
             !current_state.wifi_connected.unwrap_or(false),
@@ -275,14 +301,6 @@ async fn process_top_bar(
             9,
         )),
     )
-    .with_alignment(embedded_layout::align::vertical::Center)
-    .with_spacing(FixedMargin(2))
-    .arrange()
-    .align_to(
-        &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
-        embedded_layout::align::horizontal::Left,
-        embedded_layout::align::vertical::Center,
-    )
     .draw(&mut oled.fbuf)?;
 
     Line::new(Point::new(0, 10), Point::new(128, 10))
@@ -298,6 +316,124 @@ async fn process_main(
     wifi_setup_sig: &Signal<NoopRawMutex, ()>,
     oled: &mut OledData<'_>,
 ) -> Result<()> {
+    if let Some(ref error_text) = current_state.error_text {
+        center_text_layout(&format!(
+            "{}\n{}",
+            get_translation(TranslationKey::ERROR_HEADER),
+            error_text
+        ))
+        .draw(&mut oled.fbuf)?;
+
+        return Ok(());
+    }
+
+    // display custom message on top of everything!
+    if let Some((line1, line2)) = &current_state.custom_message {
+        center_text_layout(&format!("{line1}\n{line2}")).draw(&mut oled.fbuf)?;
+        return Ok(());
+    }
+
+    if let Some(sel) = current_state.selected_config_menu {
+        let lt = Text::with_text_style("<", Point::zero(), TIMER_FONT, TEXT_CENTER);
+        let gt = Text::with_text_style(">", Point::zero(), TIMER_FONT, TEXT_CENTER);
+        LinearLayout::horizontal(Chain::new(lt))
+            .with_alignment(embedded_layout::align::vertical::Center)
+            .arrange()
+            .align_to(
+                &MAIN_RECT,
+                embedded_layout::align::horizontal::Left,
+                embedded_layout::align::vertical::Center,
+            )
+            .draw(&mut oled.fbuf)?;
+
+        LinearLayout::horizontal(Chain::new(gt))
+            .with_alignment(embedded_layout::align::vertical::Center)
+            .arrange()
+            .align_to(
+                &MAIN_RECT,
+                embedded_layout::align::horizontal::Right,
+                embedded_layout::align::vertical::Center,
+            )
+            .draw(&mut oled.fbuf)?;
+
+        // TODO: this can be "scrollable" list btw
+        center_text_layout(&format!(
+            "Config Menu\n{}. {}",
+            sel + 1,
+            crate::structs::CONFIG_MENU_ITEMS[sel]
+        ))
+        .draw(&mut oled.fbuf)?;
+
+        return Ok(());
+    }
+
+    match current_state.menu_scene {
+        Some(MenuScene::Signing) | Some(MenuScene::Unsigning) => {
+            let prefix = if current_state.menu_scene == Some(MenuScene::Signing) {
+                "S"
+            } else {
+                "Uns"
+            };
+
+            let main_text = format!("{prefix}igning");
+
+            if global_state.sign_unsign_progress.signaled() {
+                let status = if global_state.sign_unsign_progress.wait().await {
+                    "OK"
+                } else {
+                    "FAIL"
+                };
+
+                center_text_layout(&format!("{main_text}\nOperation: {status}"))
+                    .draw(&mut oled.fbuf)?;
+                oled.flush().await?;
+
+                Timer::after_millis(300).await;
+                oled.clear_main()?;
+                center_text_layout(&format!(
+                    "{main_text}\nScan the card\n\nPress Submit to exit"
+                ))
+                .draw(&mut oled.fbuf)?;
+            } else {
+                center_text_layout(&format!(
+                    "{main_text}\nScan the card\n\nPress Submit to exit"
+                ))
+                .draw(&mut oled.fbuf)?;
+            }
+
+            return Ok(());
+        }
+        Some(crate::state::MenuScene::BtDisplay) => {
+            if current_state.selected_bluetooth_item
+                == current_state.discovered_bluetooth_devices.len()
+            {
+                center_text_layout("BT Display:\nUnpair").draw(&mut oled.fbuf)?;
+            } else if current_state.selected_bluetooth_item
+                == current_state.discovered_bluetooth_devices.len() + 1
+            {
+                center_text_layout("BT Display:\nExit").draw(&mut oled.fbuf)?;
+            } else if current_state.selected_bluetooth_item
+                < current_state.discovered_bluetooth_devices.len()
+            {
+                if let Some(display_dev) = current_state
+                    .discovered_bluetooth_devices
+                    .get(current_state.selected_bluetooth_item)
+                {
+                    center_text_layout(&format!(
+                        "BT Display:\n{} [{:X?}]",
+                        display_dev.name, display_dev.addr
+                    ))
+                    .draw(&mut oled.fbuf)?;
+                }
+            } else {
+                global_state.state.lock().await.selected_bluetooth_item = 0;
+            }
+
+            return Ok(());
+        }
+        None => {}
+    }
+
     let overwritten = process_main_overwrite(&current_state, global_state, oled).await;
     if overwritten {
         return Ok(());
@@ -305,7 +441,7 @@ async fn process_main(
 
     match current_state.scene {
         Scene::Timer => {
-            oled.fbuf.fill_solid(&MAIN_RECT, BinaryColor::Off);
+            oled.clear_main()?;
             let text_rect = Rectangle::new(Point::new(0, 28), Size::new(128, 17));
 
             loop {
