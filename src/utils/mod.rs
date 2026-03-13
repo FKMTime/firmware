@@ -12,6 +12,9 @@ pub mod lcd_abstract;
 #[cfg(feature = "v4")]
 pub mod shared_i2c;
 
+#[cfg(feature = "v4")]
+pub mod lcd_resourcese;
+
 pub fn set_brownout_detection(state: bool) {
     unsafe {
         let rtc_cntl = &*esp32c3::RTC_CNTL::ptr();

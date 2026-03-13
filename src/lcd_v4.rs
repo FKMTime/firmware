@@ -9,16 +9,16 @@ use embedded_graphics::{
     pixelcolor::BinaryColor,
     prelude::*,
     primitives::{Arc, Circle, Line, PrimitiveStyle, Rectangle},
-    text::{Alignment, Baseline, Text, TextStyleBuilder},
+    text::{Alignment, Baseline, Text, TextStyle, TextStyleBuilder},
 };
 use embedded_graphics_framebuf::FrameBuf;
 use embedded_layout::{
-    layout::linear::{FixedMargin, LinearLayout},
+    layout::linear::{FixedMargin, Horizontal, LinearLayout},
     prelude::*,
+    view_group::ViewGroup,
 };
 use esp_hal::gpio::Output;
 use oled_async::{displays::ssd1309::Ssd1309_128_64, mode::GraphicsMode};
-use profont::PROFONT_12_POINT;
 
 use crate::{
     consts::{
@@ -29,214 +29,12 @@ use crate::{
         GlobalState, MenuScene, Scene, SignaledGlobalStateInner, deeper_sleep_state, sleep_state,
     },
     translations::{TranslationKey, get_translation, get_translation_params},
-    utils::{shared_i2c::SharedI2C, stackmat::ms_to_time_str},
+    utils::{
+        lcd_resourcese::{CrossedIcon, Resources},
+        shared_i2c::SharedI2C,
+        stackmat::ms_to_time_str,
+    },
 };
-
-macros::load_lcd_resources!("src/resources");
-
-#[derive(Clone, Copy)]
-pub struct PixelArt {
-    data: &'static [u8], // packed bits, MSB first, row by row
-    width: u32,
-    height: u32,
-    top_left: Point,
-}
-
-impl PixelArt {
-    pub const fn new(data: &'static [u8], width: u32, height: u32) -> Self {
-        Self {
-            data,
-            width,
-            height,
-            top_left: Point::zero(),
-        }
-    }
-
-    fn bytes_per_row(&self) -> u32 {
-        (self.width + 7) / 8
-    }
-}
-
-impl Dimensions for PixelArt {
-    fn bounding_box(&self) -> Rectangle {
-        Rectangle::new(self.top_left, Size::new(self.width, self.height))
-    }
-}
-
-impl Transform for PixelArt {
-    fn translate(&self, by: Point) -> Self {
-        Self {
-            top_left: self.top_left + by,
-            ..*self
-        }
-    }
-    fn translate_mut(&mut self, by: Point) -> &mut Self {
-        self.top_left += by;
-        self
-    }
-}
-
-impl Drawable for PixelArt {
-    type Color = BinaryColor;
-    type Output = ();
-
-    fn draw<D: DrawTarget<Color = BinaryColor>>(&self, target: &mut D) -> Result<(), D::Error> {
-        let origin = self.top_left;
-        let bpr = self.bytes_per_row();
-        let (w, h) = (self.width, self.height);
-        let data = self.data;
-
-        target.draw_iter((0..h).flat_map(move |y| {
-            (0..w).map(move |x| {
-                let byte = data[(y * bpr + x / 8) as usize];
-                let on = byte & (0x80 >> (x % 8)) != 0;
-                Pixel(
-                    origin + Point::new(x as i32, y as i32),
-                    if on {
-                        BinaryColor::On
-                    } else {
-                        BinaryColor::Off
-                    },
-                )
-            })
-        }))
-    }
-}
-
-pub struct Overlay<A, B> {
-    base: A,
-    overlay: B,
-    top_left: Point,
-}
-
-impl<A: Dimensions, B: Dimensions + Transform> Overlay<A, B> {
-    pub fn new(base: A, overlay: B) -> Self {
-        let base_box = base.bounding_box();
-        let overlay_box = overlay.bounding_box();
-
-        // center overlay over base
-        let offset = Point::new(
-            (base_box.size.width as i32 - overlay_box.size.width as i32) / 2,
-            (base_box.size.height as i32 - overlay_box.size.height as i32) / 2,
-        );
-        let overlay = overlay.translate(base_box.top_left + offset);
-
-        Self {
-            top_left: base_box.top_left,
-            base,
-            overlay,
-        }
-    }
-}
-
-impl<A: Dimensions, B> Dimensions for Overlay<A, B> {
-    fn bounding_box(&self) -> Rectangle {
-        Rectangle::new(self.top_left, self.base.bounding_box().size)
-    }
-}
-
-impl<A: Transform, B: Transform> Transform for Overlay<A, B> {
-    fn translate(&self, by: Point) -> Self {
-        Self {
-            top_left: self.top_left + by,
-            base: self.base.translate(by),
-            overlay: self.overlay.translate(by),
-        }
-    }
-    fn translate_mut(&mut self, by: Point) -> &mut Self {
-        self.top_left += by;
-        self.base.translate_mut(by);
-        self.overlay.translate_mut(by);
-        self
-    }
-}
-
-impl<A, B> Drawable for Overlay<A, B>
-where
-    A: Drawable<Color = BinaryColor>,
-    B: Drawable<Color = BinaryColor>,
-{
-    type Color = BinaryColor;
-    type Output = ();
-
-    fn draw<D: DrawTarget<Color = BinaryColor>>(&self, target: &mut D) -> Result<(), D::Error> {
-        self.base.draw(target)?;
-        self.overlay.draw(target)?;
-        Ok(())
-    }
-}
-
-pub struct CrossedIcon<A> {
-    base: A,
-    top_left: Point,
-    crossed: bool,
-    cross_size: u32,
-}
-
-impl<A: Dimensions> CrossedIcon<A> {
-    pub fn new(base: A, crossed: bool, cross_size: u32) -> Self {
-        let base_box = base.bounding_box();
-        Self {
-            base,
-            top_left: base_box.top_left,
-            crossed,
-            cross_size,
-        }
-    }
-}
-
-impl<A: Dimensions> Dimensions for CrossedIcon<A> {
-    fn bounding_box(&self) -> Rectangle {
-        Rectangle::new(self.top_left, self.base.bounding_box().size)
-    }
-}
-
-impl<A: Transform> Transform for CrossedIcon<A> {
-    fn translate(&self, by: Point) -> Self {
-        Self {
-            top_left: self.top_left + by,
-            base: self.base.translate(by),
-            crossed: self.crossed,
-            cross_size: self.cross_size,
-        }
-    }
-    fn translate_mut(&mut self, by: Point) -> &mut Self {
-        self.top_left += by;
-        self.base.translate_mut(by);
-        self
-    }
-}
-
-impl<A> Drawable for CrossedIcon<A>
-where
-    A: Drawable<Color = BinaryColor> + Dimensions,
-{
-    type Color = BinaryColor;
-    type Output = ();
-    fn draw<D: DrawTarget<Color = BinaryColor>>(&self, target: &mut D) -> Result<(), D::Error> {
-        self.base.draw(target)?;
-        if self.crossed {
-            let thin_stroke = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
-            let bb = self.bounding_box();
-
-            // Center the cross over the bounding box
-            let offset = Point::new(
-                (bb.size.width as i32 - self.cross_size as i32) / 2,
-                (bb.size.height as i32 - self.cross_size as i32) / 2,
-            );
-            let tl = bb.top_left + offset;
-            let s = self.cross_size as i32 - 1;
-
-            Line::new(tl, tl + Point::new(s, s))
-                .into_styled(thin_stroke)
-                .draw(target)?;
-            Line::new(tl + Point::new(0, s), tl + Point::new(s, 0))
-                .into_styled(thin_stroke)
-                .draw(target)?;
-        }
-        Ok(())
-    }
-}
 
 pub const FBUF_WIDTH: usize = 128;
 pub const FBUF_HEIGHT: usize = 64;
@@ -258,6 +56,39 @@ impl OledData<'_> {
     }
 }
 
+pub const MAIN_RECT: Rectangle = Rectangle::new(Point::new(0, 11), Size::new(128, 53));
+
+pub const NORMAL_FONT: MonoTextStyle<'_, BinaryColor> = MonoTextStyle::new(
+    &embedded_graphics::mono_font::ascii::FONT_7X13,
+    BinaryColor::On,
+);
+
+pub const TIMER_FONT: MonoTextStyle<'_, BinaryColor> =
+    MonoTextStyle::new(&profont::PROFONT_14_POINT, BinaryColor::On);
+
+pub const TEXT_CENTER: TextStyle = TextStyleBuilder::new()
+    .alignment(Alignment::Center)
+    .baseline(Baseline::Middle)
+    .build();
+
+pub const TEXT_TOPBAR: TextStyle = TextStyleBuilder::new()
+    .alignment(Alignment::Right)
+    .baseline(Baseline::Top)
+    .build();
+
+fn center_layout<VG: ViewGroup>(
+    content: VG,
+) -> LinearLayout<Horizontal<embedded_layout::align::vertical::Center>, VG> {
+    LinearLayout::horizontal(content)
+        .with_alignment(embedded_layout::align::vertical::Center)
+        .arrange()
+        .align_to(
+            &MAIN_RECT,
+            embedded_layout::align::horizontal::Center,
+            embedded_layout::align::vertical::Center,
+        )
+}
+
 #[embassy_executor::task]
 pub async fn lcd_task(
     i2c: SharedI2C,
@@ -274,10 +105,18 @@ pub async fn lcd_task(
     let mut disp: oled_async::mode::GraphicsMode<_, _> = raw_disp.into();
     disp.reset(&mut display_rst, &mut Delay);
 
-    // TODO: remove all these unwraps!
-    disp.init().await.unwrap();
-    disp.clear();
-    disp.flush().await.unwrap();
+    let disp_init = async {
+        disp.init().await?;
+        disp.clear();
+        disp.flush().await?;
+
+        anyhow::Result::<(), display_interface::DisplayError>::Ok(())
+    }
+    .await;
+
+    if let Err(e) = disp_init {
+        log::error!("Disp init error: {e:?} (but continuing i guess)");
+    }
 
     let mut data = alloc::vec![embedded_graphics::pixelcolor::BinaryColor::Off; FBUF_SIZE];
     let data: &mut [BinaryColor; FBUF_SIZE] = data.as_mut_array().unwrap();
@@ -293,31 +132,14 @@ pub async fn lcd_task(
     )
     .await;
 
-    let style = MonoTextStyle::new(
-        &embedded_graphics::mono_font::ascii::FONT_7X13,
-        BinaryColor::On,
-    );
-    let text_style = TextStyleBuilder::new()
-        .alignment(Alignment::Center)
-        .baseline(Baseline::Middle)
-        .build();
-
     let text = format!(
         "S/N: {:X}\nVER: {}",
         crate::utils::get_efuse_u32(),
         crate::version::VERSION
     );
-    let text = Text::with_text_style(&text, Point::zero(), style, text_style);
+    let text = Text::with_text_style(&text, Point::zero(), NORMAL_FONT, TEXT_CENTER);
 
-    LinearLayout::horizontal(Chain::new(text))
-        .with_alignment(embedded_layout::align::vertical::Center)
-        .arrange()
-        .align_to(
-            &MAIN_RECT,
-            embedded_layout::align::horizontal::Center,
-            embedded_layout::align::vertical::Center,
-        )
-        .draw(&mut oled.fbuf);
+    center_layout(Chain::new(text)).draw(&mut oled.fbuf);
     _ = oled.flush().await;
 
     Timer::after_millis(2500).await;
@@ -353,32 +175,14 @@ pub async fn lcd_task(
                 {
                     oled.fbuf.clear(BinaryColor::Off);
 
-                    let style = MonoTextStyle::new(
-                        &embedded_graphics::mono_font::ascii::FONT_7X13,
-                        BinaryColor::On,
-                    );
-                    let text_style = TextStyleBuilder::new()
-                        .alignment(Alignment::Center)
-                        .baseline(Baseline::Middle)
-                        .build();
-
                     let text = Text::with_text_style(
                         "Sleep\nPress any key...",
                         Point::zero(),
-                        style,
-                        text_style,
+                        NORMAL_FONT,
+                        TEXT_CENTER,
                     );
 
-                    LinearLayout::horizontal(Chain::new(text))
-                        .with_alignment(embedded_layout::align::vertical::Center)
-                        .arrange()
-                        .align_to(
-                            &Rectangle::new(Point::new(0, 0), Size::new(128, 64)),
-                            embedded_layout::align::horizontal::Center,
-                            embedded_layout::align::vertical::Center,
-                        )
-                        .draw(&mut oled.fbuf);
-
+                    center_layout(Chain::new(text)).draw(&mut oled.fbuf);
                     _ = oled.flush().await;
 
                     {
@@ -399,32 +203,14 @@ pub async fn lcd_task(
                     && (Instant::now() - last_update).as_millis() > DEEPER_SLEEP_AFTER_MS
                 {
                     oled.fbuf.clear(BinaryColor::Off);
-                    let style = MonoTextStyle::new(
-                        &embedded_graphics::mono_font::ascii::FONT_7X13,
-                        BinaryColor::On,
-                    );
-                    let text_style = TextStyleBuilder::new()
-                        .alignment(Alignment::Center)
-                        .baseline(Baseline::Middle)
-                        .build();
-
                     let text = Text::with_text_style(
                         "Deep Sleep\nPress any key...",
                         Point::zero(),
-                        style,
-                        text_style,
+                        NORMAL_FONT,
+                        TEXT_CENTER,
                     );
 
-                    LinearLayout::horizontal(Chain::new(text))
-                        .with_alignment(embedded_layout::align::vertical::Center)
-                        .arrange()
-                        .align_to(
-                            &Rectangle::new(Point::new(0, 0), Size::new(128, 64)),
-                            embedded_layout::align::horizontal::Center,
-                            embedded_layout::align::vertical::Center,
-                        )
-                        .draw(&mut oled.fbuf);
-
+                    center_layout(Chain::new(text)).draw(&mut oled.fbuf);
                     _ = oled.flush().await;
 
                     crate::utils::deeper_sleep();
@@ -447,17 +233,8 @@ async fn process_top_bar(
     _global_state: &GlobalState,
     oled: &mut OledData<'_>,
 ) -> Result<()> {
-    let style = MonoTextStyle::new(
-        &embedded_graphics::mono_font::ascii::FONT_7X13,
-        BinaryColor::On,
-    );
-    let text_style = TextStyleBuilder::new()
-        .alignment(Alignment::Right)
-        .baseline(Baseline::Top)
-        .build();
-
     let text = format!("{}%", current_state.battery_status.0);
-    let text = Text::with_text_style(&text, Point::zero(), style, text_style);
+    let text = Text::with_text_style(&text, Point::zero(), NORMAL_FONT, TEXT_TOPBAR);
     if current_state.battery_status.1 {
         LinearLayout::horizontal(Chain::new(Resources::CHARGING).append(text))
             .with_alignment(embedded_layout::align::vertical::Center)
@@ -467,8 +244,7 @@ async fn process_top_bar(
                 &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
                 embedded_layout::align::horizontal::Right,
                 embedded_layout::align::vertical::Center,
-            )
-            .draw(&mut oled.fbuf)?;
+            );
     } else {
         LinearLayout::horizontal(Chain::new(text))
             .with_alignment(embedded_layout::align::vertical::Center)
@@ -516,8 +292,6 @@ async fn process_top_bar(
     Ok(())
 }
 
-pub const MAIN_RECT: Rectangle = Rectangle::new(Point::new(0, 11), Size::new(128, 53));
-
 async fn process_main(
     current_state: &SignaledGlobalStateInner,
     global_state: &GlobalState,
@@ -537,14 +311,9 @@ async fn process_main(
             loop {
                 let time = global_state.timer_signal.wait().await;
                 let time_str = ms_to_time_str(time);
-                let style = MonoTextStyle::new(&profont::PROFONT_14_POINT, BinaryColor::On);
-                let text_style = TextStyleBuilder::new()
-                    .alignment(Alignment::Center)
-                    .baseline(Baseline::Middle)
-                    .build();
 
                 _ = oled.disp.fill_solid(&text_rect, BinaryColor::Off);
-                _ = Text::with_text_style(&time_str, Point::new(64, 36), style, text_style)
+                _ = Text::with_text_style(&time_str, Point::new(64, 36), TIMER_FONT, TEXT_CENTER)
                     .draw(&mut oled.disp);
                 _ = oled.disp.flush().await;
             }
@@ -566,53 +335,22 @@ async fn process_main_overwrite(
 
     if current_state.server_connected == Some(false) {
         if current_state.wifi_connected == Some(false) {
-            let style = MonoTextStyle::new(
-                &embedded_graphics::mono_font::ascii::FONT_7X13,
-                BinaryColor::On,
+            let text = Text::with_text_style(
+                "Wi-Fi\nConnection lost",
+                Point::zero(),
+                NORMAL_FONT,
+                TEXT_CENTER,
             );
-            let text_style = TextStyleBuilder::new()
-                .alignment(Alignment::Center)
-                .baseline(Baseline::Middle)
-                .build();
 
-            let text =
-                Text::with_text_style("Wi-Fi\nConnection lost", Point::zero(), style, text_style);
-
-            LinearLayout::horizontal(Chain::new(text))
-                .with_alignment(embedded_layout::align::vertical::Center)
-                .arrange()
-                .align_to(
-                    &MAIN_RECT,
-                    embedded_layout::align::horizontal::Center,
-                    embedded_layout::align::vertical::Center,
-                )
-                .draw(&mut oled.fbuf);
+            center_layout(Chain::new(text)).draw(&mut oled.fbuf);
         } else {
-            let style = MonoTextStyle::new(
-                &embedded_graphics::mono_font::ascii::FONT_7X13,
-                BinaryColor::On,
-            );
-            let text_style = TextStyleBuilder::new()
-                .alignment(Alignment::Center)
-                .baseline(Baseline::Middle)
-                .build();
-
             let text = format!(
                 "{}\n{}",
                 get_translation(TranslationKey::SERVER_DISCONNECTED_HEADER),
                 get_translation(TranslationKey::SERVER_DISCONNECTED_FOOTER)
             );
-            let text = Text::with_text_style(&text, Point::zero(), style, text_style);
-
-            LinearLayout::horizontal(Chain::new(text))
-                .with_alignment(embedded_layout::align::vertical::Center)
-                .arrange()
-                .align_to(
-                    &MAIN_RECT,
-                    embedded_layout::align::horizontal::Center,
-                    embedded_layout::align::vertical::Center,
-                )
-                .draw(&mut oled.fbuf);
+            let text = Text::with_text_style(&text, Point::zero(), NORMAL_FONT, TEXT_CENTER);
+            center_layout(Chain::new(text)).draw(&mut oled.fbuf);
         }
     } else if current_state.device_added == Some(false) {
         #[cfg(not(feature = "e2e"))]
@@ -624,50 +362,17 @@ async fn process_main_overwrite(
         #[cfg(feature = "e2e")]
         let lines = ("Press submit", "To start HIL");
 
-        let style = MonoTextStyle::new(
-            &embedded_graphics::mono_font::ascii::FONT_7X13,
-            BinaryColor::On,
-        );
-        let text_style = TextStyleBuilder::new()
-            .alignment(Alignment::Center)
-            .baseline(Baseline::Middle)
-            .build();
-
         let text = format!("{}\n{}", lines.0, lines.1);
-        let text = Text::with_text_style(&text, Point::zero(), style, text_style);
-
-        LinearLayout::horizontal(Chain::new(text))
-            .with_alignment(embedded_layout::align::vertical::Center)
-            .arrange()
-            .align_to(
-                &MAIN_RECT,
-                embedded_layout::align::horizontal::Center,
-                embedded_layout::align::vertical::Center,
-            )
-            .draw(&mut oled.fbuf);
+        let text = Text::with_text_style(&text, Point::zero(), NORMAL_FONT, TEXT_CENTER);
+        center_layout(Chain::new(text)).draw(&mut oled.fbuf);
     } else if current_state.stackmat_connected == Some(false) {
-        let style = MonoTextStyle::new(&profont::PROFONT_14_POINT, BinaryColor::On);
-        let text_style = TextStyleBuilder::new()
-            .alignment(Alignment::Center)
-            .baseline(Baseline::Middle)
-            .build();
-
         let text = format!(
             "{}\n{}",
             get_translation(TranslationKey::STACKMAT_DISCONNECTED_HEADER),
             get_translation(TranslationKey::STACKMAT_DISCONNECTED_FOOTER)
         );
-        let text = Text::with_text_style(&text, Point::zero(), style, text_style);
-
-        LinearLayout::horizontal(Chain::new(text))
-            .with_alignment(embedded_layout::align::vertical::Center)
-            .arrange()
-            .align_to(
-                &MAIN_RECT,
-                embedded_layout::align::horizontal::Center,
-                embedded_layout::align::vertical::Center,
-            )
-            .draw(&mut oled.fbuf);
+        let text = Text::with_text_style(&text, Point::zero(), NORMAL_FONT, TEXT_CENTER);
+        center_layout(Chain::new(text)).draw(&mut oled.fbuf);
     } else {
         return false;
     }
