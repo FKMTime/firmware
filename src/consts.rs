@@ -16,6 +16,7 @@ pub const LOG_SEND_INTERVAL_MS: u64 = 5000;
 
 pub const BATTERY_SEND_INTERVAL_MS: u64 = 60000;
 
+#[allow(dead_code)]
 pub const SCROLL_TICKER_INVERVAL_MS: u64 = 500;
 pub const LCD_INSPECTION_FRAME_TIME: u64 = 1000 / 30;
 

@@ -2,13 +2,13 @@ use alloc::{format, rc::Rc, string::ToString};
 use anyhow::{Result, anyhow};
 use display_interface_i2c::I2CInterface;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use embassy_time::{Delay, Duration, Instant, Timer};
+use embassy_time::{Delay, Instant, Timer};
 use embedded_graphics::{
-    Drawable, Pixel,
+    Drawable,
     mono_font::MonoTextStyle,
     pixelcolor::BinaryColor,
     prelude::*,
-    primitives::{Arc, Circle, Line, PrimitiveStyle, Rectangle},
+    primitives::{Line, PrimitiveStyle, Rectangle},
     text::{Alignment, Baseline, Text, TextStyle, TextStyleBuilder},
 };
 use embedded_graphics_framebuf::FrameBuf;
@@ -22,8 +22,7 @@ use oled_async::{displays::ssd1309::Ssd1309_128_64, mode::GraphicsMode};
 
 use crate::{
     consts::{
-        DEEPER_SLEEP_AFTER_MS, INSPECTION_TIME_PLUS2, LCD_INSPECTION_FRAME_TIME,
-        SCROLL_TICKER_INVERVAL_MS, SLEEP_AFTER_MS,
+        DEEPER_SLEEP_AFTER_MS, INSPECTION_TIME_PLUS2, LCD_INSPECTION_FRAME_TIME, SLEEP_AFTER_MS,
     },
     state::{
         GlobalState, MenuScene, Scene, SignaledGlobalStateInner, deeper_sleep_state, sleep_state,
@@ -48,7 +47,7 @@ pub struct OledData<'a> {
 impl OledData<'_> {
     pub async fn flush(&mut self) -> Result<()> {
         self.disp
-            .draw_iter(self.fbuf.into_iter())
+            .draw_iter(&self.fbuf)
             .map_err(|e| anyhow!("{e:?}"))?;
         self.disp.flush().await.map_err(|e| anyhow!("{e:?}"))?;
 
@@ -102,7 +101,7 @@ fn center_text_layout(
         embedded_graphics::text::Text<'_, MonoTextStyle<'_, BinaryColor>>,
     >,
 > {
-    let text = Text::with_text_style(&text, Point::zero(), NORMAL_FONT, TEXT_CENTER);
+    let text = Text::with_text_style(text, Point::zero(), NORMAL_FONT, TEXT_CENTER);
     center_layout(Chain::new(text))
 }
 
@@ -136,7 +135,10 @@ pub async fn lcd_task(
     }
 
     let mut data = alloc::vec![embedded_graphics::pixelcolor::BinaryColor::Off; FBUF_SIZE];
-    let data: &mut [BinaryColor; FBUF_SIZE] = data.as_mut_array().unwrap();
+    let Some(data): Option<&mut [BinaryColor; FBUF_SIZE]> = data.as_mut_array() else {
+        log::error!("Disp framebuffer data alloc failed!");
+        return;
+    };
     let fbuf = embedded_graphics_framebuf::FrameBuf::new(data, FBUF_WIDTH, FBUF_HEIGHT);
 
     let mut oled = OledData { fbuf, disp };
@@ -434,12 +436,154 @@ async fn process_main(
         None => {}
     }
 
-    let overwritten = process_main_overwrite(&current_state, global_state, oled).await;
+    let overwritten = process_main_overwrite(current_state, global_state, oled).await;
     if overwritten {
         return Ok(());
     }
 
+    if let Some(time) = current_state.delegate_hold {
+        let delegate_remaining = 3 - time;
+
+        if delegate_remaining == 0 {
+            center_text_layout(&format!(
+                "{}\n{}",
+                get_translation(TranslationKey::WAITING_FOR_DELEGATE_HEADER),
+                get_translation(TranslationKey::WAITING_FOR_DELEGATE_FOOTER)
+            ))
+            .draw(&mut oled.fbuf)?;
+        } else {
+            center_text_layout(&format!(
+                "{}\n{}",
+                get_translation(TranslationKey::WAITING_FOR_DELEGATE_HEADER),
+                get_translation_params(
+                    TranslationKey::CALLING_FOR_DELEGATE_FOOTER,
+                    &[delegate_remaining],
+                )
+            ))
+            .draw(&mut oled.fbuf)?;
+        }
+
+        return Ok(());
+    }
+
     match current_state.scene {
+        Scene::WifiConnect => {
+            center_text_layout(&format!(
+                "{}\n{}",
+                get_translation(TranslationKey::WAITING_FOR_WIFI_HEADER),
+                get_translation(TranslationKey::WAITING_FOR_WIFI_FOOTER)
+            ))
+            .draw(&mut oled.fbuf)?;
+            oled.flush().await?;
+
+            wifi_setup_sig.wait().await;
+            global_state.state.lock().await.scene = Scene::AutoSetupWait;
+        }
+        Scene::AutoSetupWait => {
+            let wifi_ssid = alloc::format!("FKM-{:X}", crate::utils::get_efuse_u32());
+
+            center_text_layout(&format!(
+                "{}\n{wifi_ssid}",
+                get_translation(TranslationKey::WIFI_SETUP_HEADER),
+            ))
+            .draw(&mut oled.fbuf)?;
+        }
+        Scene::MdnsWait => {
+            center_text_layout(&format!(
+                "{}\n{}",
+                get_translation(TranslationKey::WAITING_FOR_MDNS_HEADER),
+                get_translation(TranslationKey::WAITING_FOR_MDNS_FOOTER)
+            ))
+            .draw(&mut oled.fbuf)?;
+        }
+        Scene::GroupSelect => {
+            let lt = Text::with_text_style("<", Point::zero(), TIMER_FONT, TEXT_CENTER);
+            let gt = Text::with_text_style(">", Point::zero(), TIMER_FONT, TEXT_CENTER);
+            LinearLayout::horizontal(Chain::new(lt))
+                .with_alignment(embedded_layout::align::vertical::Center)
+                .arrange()
+                .align_to(
+                    &MAIN_RECT,
+                    embedded_layout::align::horizontal::Left,
+                    embedded_layout::align::vertical::Center,
+                )
+                .draw(&mut oled.fbuf)?;
+
+            LinearLayout::horizontal(Chain::new(gt))
+                .with_alignment(embedded_layout::align::vertical::Center)
+                .arrange()
+                .align_to(
+                    &MAIN_RECT,
+                    embedded_layout::align::horizontal::Right,
+                    embedded_layout::align::vertical::Center,
+                )
+                .draw(&mut oled.fbuf)?;
+
+            center_text_layout(&format!(
+                "{}\n{}",
+                get_translation(TranslationKey::SELECT_GROUP),
+                current_state.possible_groups[current_state.group_selected_idx].secondary_text
+            ))
+            .draw(&mut oled.fbuf)?;
+        }
+        Scene::WaitingForCompetitor => {
+            if let Some(solve_time) = current_state.solve_time {
+                let time_str = ms_to_time_str(solve_time);
+                center_text_layout(&format!(
+                    "{}\n{}",
+                    get_translation(TranslationKey::SCAN_COMPETITOR_CARD_HEADER),
+                    &get_translation_params(
+                        TranslationKey::SCAN_COMPETITOR_CARD_WITH_TIME_FOOTER,
+                        &[time_str],
+                    )
+                ))
+                .draw(&mut oled.fbuf)?;
+            } else {
+                center_text_layout(&format!(
+                    "{}\n{}",
+                    get_translation(TranslationKey::SCAN_COMPETITOR_CARD_HEADER),
+                    get_translation(TranslationKey::SCAN_COMPETITOR_CARD_FOOTER),
+                ))
+                .draw(&mut oled.fbuf)?;
+            }
+        }
+        Scene::CompetitorInfo => {
+            let mut text = current_state
+                .competitor_display
+                .clone()
+                .unwrap_or("------".to_string())
+                .to_string();
+
+            if let Some(ref group) = current_state.solve_group {
+                text += &format!("\n{}", group.secondary_text);
+            }
+
+            center_text_layout(&text).draw(&mut oled.fbuf)?;
+        }
+        Scene::Inspection => {
+            let inspection_start = global_state
+                .state
+                .value()
+                .await
+                .inspection_start
+                .unwrap_or(Instant::now());
+
+            _ = Text::with_text_style("Inspection", Point::new(64, 44), NORMAL_FONT, TEXT_CENTER)
+                .draw(&mut oled.disp);
+
+            let text_rect = Rectangle::new(Point::new(0, 28), Size::new(128, 17));
+            loop {
+                let elapsed = (Instant::now() - inspection_start).as_millis();
+                let time_str = ms_to_time_str(elapsed);
+
+                _ = oled.disp.fill_solid(&text_rect, BinaryColor::Off);
+                _ = Text::with_text_style(&time_str, Point::new(64, 36), TIMER_FONT, TEXT_CENTER)
+                    .draw(&mut oled.disp);
+                oled.flush().await?;
+
+                Timer::after_millis(LCD_INSPECTION_FRAME_TIME).await;
+            }
+        }
         Scene::Timer => {
             oled.clear_main()?;
             let text_rect = Rectangle::new(Point::new(0, 28), Size::new(128, 17));
@@ -451,11 +595,108 @@ async fn process_main(
                 _ = oled.disp.fill_solid(&text_rect, BinaryColor::Off);
                 _ = Text::with_text_style(&time_str, Point::new(64, 36), TIMER_FONT, TEXT_CENTER)
                     .draw(&mut oled.disp);
-                _ = oled.disp.flush().await;
+                oled.flush().await?;
             }
         }
-        _ => {}
+        Scene::Finished => {
+            let solve_time = current_state.solve_time.unwrap_or(0);
+            let time_str = ms_to_time_str(solve_time);
+
+            let inspection_time =
+                match (current_state.inspection_start, current_state.inspection_end) {
+                    (Some(start), Some(end)) => {
+                        Some(end.saturating_duration_since(start).as_millis())
+                    }
+                    _ => None,
+                };
+
+            let time_display = if current_state.use_inspection()
+                && inspection_time.unwrap_or(0) > INSPECTION_TIME_PLUS2
+            {
+                let inspection_seconds = inspection_time.unwrap_or(0) / 1000;
+                alloc::format!("{time_str}+{inspection_seconds}s")
+            } else {
+                alloc::format!("{time_str}")
+            };
+
+            let penalty = current_state.penalty.unwrap_or(0);
+            let penalty_str: alloc::string::String = match penalty {
+                -2 => "DNS".into(),
+                -1 => "DNF".into(),
+                1.. => alloc::format!("+{penalty}"),
+                _ => alloc::string::String::new(),
+            };
+
+            // Time + penalty centered in MAIN_RECT
+            // If there's a penalty, show them as a horizontal chain; otherwise just time
+            if penalty_str.is_empty() {
+                let time_text =
+                    Text::with_text_style(&time_display, Point::zero(), TIMER_FONT, TEXT_CENTER);
+                LinearLayout::horizontal(Chain::new(time_text))
+                    .with_alignment(embedded_layout::align::vertical::Center)
+                    .arrange()
+                    .align_to(
+                        &MAIN_RECT,
+                        embedded_layout::align::horizontal::Center,
+                        embedded_layout::align::vertical::Center,
+                    )
+                    .draw(&mut oled.fbuf)?;
+            } else {
+                let time_text =
+                    Text::with_text_style(&time_display, Point::zero(), TIMER_FONT, TEXT_CENTER);
+                let penalty_text =
+                    Text::with_text_style(&penalty_str, Point::zero(), TIMER_FONT, TEXT_CENTER);
+                LinearLayout::horizontal(Chain::new(time_text).append(penalty_text))
+                    .with_alignment(embedded_layout::align::vertical::Center)
+                    .with_spacing(embedded_layout::layout::linear::spacing::FixedMargin(4))
+                    .arrange()
+                    .align_to(
+                        &MAIN_RECT,
+                        embedded_layout::align::horizontal::Center,
+                        embedded_layout::align::vertical::Center,
+                    )
+                    .draw(&mut oled.fbuf)?;
+            }
+
+            // Status prompt pinned to bottom center
+            let status = if !current_state.time_confirmed {
+                Some(get_translation(TranslationKey::CONFIRM_TIME))
+            } else if current_state.current_judge.is_none() {
+                Some(get_translation(TranslationKey::SCAN_JUDGE_CARD))
+            } else if current_state.current_competitor.is_some()
+                && current_state.current_judge.is_some()
+            {
+                Some(get_translation(TranslationKey::SCAN_COMPETITOR_CARD))
+            } else {
+                None
+            };
+
+            if let Some(status_str) = status {
+                let status_text =
+                    Text::with_text_style(&status_str, Point::zero(), NORMAL_FONT, TEXT_CENTER);
+                LinearLayout::horizontal(Chain::new(status_text))
+                    .with_alignment(embedded_layout::align::vertical::Center)
+                    .arrange()
+                    .align_to(
+                        &MAIN_RECT,
+                        embedded_layout::align::horizontal::Center,
+                        embedded_layout::align::vertical::Bottom,
+                    )
+                    .draw(&mut oled.fbuf)?;
+            }
+        }
+        Scene::Update => loop {
+            let progress = global_state.update_progress.wait().await;
+            oled.clear_main()?;
+            center_text_layout(&format!("Updating\n{progress}%")).draw(&mut oled.fbuf)?;
+            oled.flush().await?;
+        },
     }
+
+    /*
+        match current_state.scene {
+        }
+    */
 
     Ok(())
 }
@@ -515,498 +756,3 @@ async fn process_main_overwrite(
 
     true
 }
-
-/*
-async fn process_lcd(
-    current_state: SignaledGlobalStateInner,
-    global_state: &GlobalState,
-    lcd_driver: &mut LcdAbstract<80, 16, 2, 3>,
-    //lcd: &mut LcdDisplay<T, D>,
-    wifi_setup_sig: &Signal<NoopRawMutex, ()>,
-    //display: &ShifterValueRange,
-    fbuf: &mut FrameBuf<BinaryColor, &mut [BinaryColor; 128 * 64]>,
-    disp: &mut GraphicsMode<Ssd1309_128_64, I2CInterface<SharedI2C>>,
-) -> Option<()> {
-    #[cfg(feature = "bat_dev_lcd")]
-    {
-        let battery_read = current_state.current_bat_read.unwrap_or(-1.0);
-        lcd_driver
-            .print(
-                0,
-                &alloc::format!("BAT: {battery_read}"),
-                PrintAlign::Left,
-                true,
-            )
-            .ok()?;
-
-        if let Some(avg) = current_state.avg_bat_read {
-            lcd_driver
-                .print(1, &alloc::format!("AVG: {avg}"), PrintAlign::Left, true)
-                .ok()?;
-        }
-
-        return Some(());
-    }
-
-    if let Some(error_text) = current_state.error_text {
-        lcd_driver
-            .print(
-                0,
-                &get_translation(TranslationKey::ERROR_HEADER),
-                PrintAlign::Center,
-                true,
-            )
-            .ok()?;
-
-        lcd_driver
-            .print(1, &error_text, PrintAlign::Center, true)
-            .ok()?;
-
-        return Some(());
-    }
-
-    // display custom message on top of everything!
-    if let Some((line1, line2)) = &current_state.custom_message {
-        _ = lcd_driver.print(0, line1, PrintAlign::Center, true);
-        _ = lcd_driver.print(1, line2, PrintAlign::Center, true);
-
-        return Some(());
-    }
-
-    if let Some(sel) = current_state.selected_config_menu {
-        lcd_driver.clear_all().ok()?;
-        lcd_driver.print(0, "<", PrintAlign::Left, false).ok()?;
-        lcd_driver.print(0, ">", PrintAlign::Right, false).ok()?;
-
-        lcd_driver
-            .print(0, "Config Menu", PrintAlign::Center, false)
-            .ok()?;
-
-        lcd_driver
-            .print(
-                1,
-                &alloc::format!("{}. {}", sel + 1, crate::structs::CONFIG_MENU_ITEMS[sel]),
-                PrintAlign::Left,
-                true,
-            )
-            .ok()?;
-
-        return Some(());
-    }
-
-    match current_state.menu_scene {
-        Some(MenuScene::Signing) | Some(MenuScene::Unsigning) => {
-            let prefix = if current_state.menu_scene == Some(MenuScene::Signing) {
-                "S"
-            } else {
-                "Uns"
-            };
-
-            lcd_driver.clear_all().ok()?;
-            lcd_driver
-                .print(
-                    0,
-                    &alloc::format!("{prefix}igning | Submit To Exit"),
-                    PrintAlign::Left,
-                    true,
-                )
-                .ok()?;
-
-            if global_state.sign_unsign_progress.signaled() {
-                let status = if global_state.sign_unsign_progress.wait().await {
-                    "OK"
-                } else {
-                    "FAIL"
-                };
-
-                lcd_driver
-                    .print(
-                        1,
-                        &alloc::format!("Operation {}", status),
-                        PrintAlign::Center,
-                        true,
-                    )
-                    .ok()?;
-                fbuf.clear(BinaryColor::Off);
-                lcd_driver.display_on_oled(fbuf).await;
-                embedded_graphics::prelude::DrawTarget::draw_iter(disp, fbuf.into_iter()).unwrap();
-                disp.flush().await.unwrap();
-
-                Timer::after_millis(300).await;
-                lcd_driver
-                    .print(1, "Scan the card", PrintAlign::Center, true)
-                    .ok()?;
-            } else {
-                lcd_driver
-                    .print(1, "Scan the card", PrintAlign::Center, true)
-                    .ok()?;
-            }
-
-            return Some(());
-        }
-        Some(crate::state::MenuScene::BtDisplay) => {
-            lcd_driver.clear_all().ok()?;
-            if current_state.selected_bluetooth_item
-                == current_state.discovered_bluetooth_devices.len()
-            {
-                lcd_driver
-                    .print(0, "Unpair", PrintAlign::Center, true)
-                    .ok()?;
-            } else if current_state.selected_bluetooth_item
-                == current_state.discovered_bluetooth_devices.len() + 1
-            {
-                lcd_driver.print(0, "Exit", PrintAlign::Center, true).ok()?;
-            } else if current_state.selected_bluetooth_item
-                < current_state.discovered_bluetooth_devices.len()
-            {
-                if let Some(display_dev) = current_state
-                    .discovered_bluetooth_devices
-                    .get(current_state.selected_bluetooth_item)
-                {
-                    lcd_driver
-                        .print(0, &display_dev.name, PrintAlign::Center, true)
-                        .ok()?;
-
-                    lcd_driver
-                        .print(
-                            1,
-                            &alloc::format!("{:x?}", display_dev.addr),
-                            PrintAlign::Center,
-                            true,
-                        )
-                        .ok()?;
-                }
-            } else {
-                global_state.state.lock().await.selected_bluetooth_item = 0;
-            }
-
-            return Some(());
-        }
-        None => {}
-    }
-
-    let overwritten = process_lcd_overwrite(&current_state, global_state, lcd_driver).await;
-    if overwritten {
-        return Some(());
-    }
-
-    lcd_driver.clear_all().ok()?;
-    if let Some(time) = current_state.delegate_hold {
-        let delegate_remaining = 3 - time;
-
-        if delegate_remaining == 0 {
-            lcd_driver
-                .print(
-                    0,
-                    &get_translation(TranslationKey::WAITING_FOR_DELEGATE_HEADER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-
-            lcd_driver
-                .print(
-                    1,
-                    &get_translation(TranslationKey::WAITING_FOR_DELEGATE_FOOTER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-        } else {
-            lcd_driver
-                .print(
-                    0,
-                    &get_translation(TranslationKey::CALLING_FOR_DELEGATE_HEADER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-
-            lcd_driver
-                .print(
-                    1,
-                    &get_translation_params(
-                        TranslationKey::CALLING_FOR_DELEGATE_FOOTER,
-                        &[delegate_remaining],
-                    ),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-        }
-
-        return Some(());
-    }
-
-    match current_state.scene {
-        Scene::WifiConnect => {
-            lcd_driver
-                .print(
-                    0,
-                    &get_translation(TranslationKey::WAITING_FOR_WIFI_HEADER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-
-            lcd_driver
-                .print(
-                    1,
-                    &get_translation(TranslationKey::WAITING_FOR_WIFI_FOOTER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-
-            fbuf.clear(BinaryColor::Off);
-            lcd_driver.display_on_oled(fbuf).await;
-            embedded_graphics::prelude::DrawTarget::draw_iter(disp, fbuf.into_iter()).unwrap();
-            disp.flush().await.unwrap();
-            wifi_setup_sig.wait().await;
-            global_state.state.lock().await.scene = Scene::AutoSetupWait;
-        }
-        Scene::AutoSetupWait => {
-            let wifi_ssid = alloc::format!("FKM-{:X}", crate::utils::get_efuse_u32());
-            lcd_driver
-                .print(
-                    0,
-                    &get_translation(TranslationKey::WIFI_SETUP_HEADER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-
-            lcd_driver
-                .print(1, &wifi_ssid, PrintAlign::Center, true)
-                .ok()?;
-        }
-        Scene::MdnsWait => {
-            lcd_driver
-                .print(
-                    0,
-                    &get_translation(TranslationKey::WAITING_FOR_MDNS_HEADER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-
-            lcd_driver
-                .print(
-                    1,
-                    &get_translation(TranslationKey::WAITING_FOR_MDNS_FOOTER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-        }
-        Scene::GroupSelect => {
-            lcd_driver.clear_all().ok()?;
-            lcd_driver.print(0, "<", PrintAlign::Left, false).ok()?;
-            lcd_driver.print(1, "<", PrintAlign::Left, false).ok()?;
-            lcd_driver.print(0, ">", PrintAlign::Right, false).ok()?;
-            lcd_driver.print(1, ">", PrintAlign::Right, false).ok()?;
-
-            lcd_driver
-                .print(
-                    0,
-                    &get_translation(TranslationKey::SELECT_GROUP),
-                    PrintAlign::Center,
-                    false,
-                )
-                .ok()?;
-
-            lcd_driver
-                .print(
-                    1,
-                    &current_state.possible_groups[current_state.group_selected_idx].secondary_text,
-                    PrintAlign::Center,
-                    false,
-                )
-                .ok()?;
-        }
-        Scene::WaitingForCompetitor => {
-            lcd_driver
-                .print(
-                    0,
-                    &get_translation(TranslationKey::SCAN_COMPETITOR_CARD_HEADER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-
-            if let Some(solve_time) = current_state.solve_time {
-                let time_str = ms_to_time_str(solve_time);
-                lcd_driver
-                    .print(
-                        1,
-                        &get_translation_params(
-                            TranslationKey::SCAN_COMPETITOR_CARD_WITH_TIME_FOOTER,
-                            &[time_str],
-                        ),
-                        PrintAlign::Center,
-                        true,
-                    )
-                    .ok()?;
-            } else {
-                lcd_driver
-                    .print(
-                        1,
-                        &get_translation(TranslationKey::SCAN_COMPETITOR_CARD_FOOTER),
-                        PrintAlign::Center,
-                        true,
-                    )
-                    .ok()?;
-            }
-        }
-        Scene::CompetitorInfo => {
-            lcd_driver
-                .print(
-                    0,
-                    &current_state
-                        .competitor_display
-                        .unwrap_or("??????".to_string()),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-
-            if let Some(group) = current_state.solve_group {
-                lcd_driver
-                    .print(1, &group.secondary_text, PrintAlign::Center, true)
-                    .ok()?;
-            }
-        }
-        Scene::Inspection => {
-            let inspection_start = global_state
-                .state
-                .value()
-                .await
-                .inspection_start
-                .unwrap_or(Instant::now());
-
-            lcd_driver
-                .print(1, "Inspection", PrintAlign::Center, true)
-                .ok()?;
-
-            loop {
-                let elapsed = (Instant::now() - inspection_start).as_millis();
-                let time_str = ms_to_time_str(elapsed);
-
-                lcd_driver
-                    .print(0, &time_str, PrintAlign::Center, true)
-                    .ok()?;
-
-                fbuf.clear(BinaryColor::Off);
-                lcd_driver.display_on_oled(fbuf).await;
-                embedded_graphics::prelude::DrawTarget::draw_iter(disp, fbuf.into_iter()).unwrap();
-                disp.flush().await.unwrap();
-                Timer::after_millis(LCD_INSPECTION_FRAME_TIME).await;
-            }
-        }
-        Scene::Timer => loop {
-            let time = global_state.timer_signal.wait().await;
-            let time_str = ms_to_time_str(time);
-            lcd_driver
-                .print(0, &time_str, PrintAlign::Center, true)
-                .ok()?;
-
-            //display.set_data_raw(&crate::utils::stackmat::time_str_to_display(&time_str));
-            fbuf.clear(BinaryColor::Off);
-            lcd_driver.display_on_oled(fbuf).await;
-            embedded_graphics::prelude::DrawTarget::draw_iter(disp, fbuf.into_iter()).unwrap();
-            disp.flush().await.unwrap();
-        },
-        Scene::Finished => {
-            let solve_time = current_state.solve_time.unwrap_or(0);
-            let time_str = if solve_time > 0 {
-                ms_to_time_str(solve_time)
-            } else {
-                heapless::String::new()
-            };
-
-            let inspection_time =
-                match (current_state.inspection_start, current_state.inspection_end) {
-                    (Some(start), Some(end)) => {
-                        Some(end.saturating_duration_since(start).as_millis())
-                    }
-                    _ => None,
-                };
-
-            if current_state.use_inspection()
-                && inspection_time.unwrap_or(0) > INSPECTION_TIME_PLUS2
-            {
-                let inspections_seconds = inspection_time.unwrap_or(0) / 1000;
-                lcd_driver
-                    .print(
-                        0,
-                        &alloc::format!("{time_str} ({inspections_seconds}s)"),
-                        PrintAlign::Left,
-                        true,
-                    )
-                    .ok()?;
-            } else {
-                lcd_driver
-                    .print(0, &time_str, PrintAlign::Left, true)
-                    .ok()?;
-            }
-
-            let penalty = current_state.penalty.unwrap_or(0);
-            let penalty_str = match penalty {
-                -2 => "DNS",
-                -1 => "DNF",
-                1.. => &alloc::format!("+{penalty}"),
-                _ => "",
-            };
-
-            lcd_driver
-                .print(0, penalty_str, PrintAlign::Right, false)
-                .ok()?;
-
-            if !current_state.time_confirmed {
-                lcd_driver
-                    .print(
-                        1,
-                        &get_translation(TranslationKey::CONFIRM_TIME),
-                        PrintAlign::Right,
-                        true,
-                    )
-                    .ok()?;
-            } else if current_state.current_judge.is_none() {
-                lcd_driver
-                    .print(
-                        1,
-                        &get_translation(TranslationKey::SCAN_JUDGE_CARD),
-                        PrintAlign::Right,
-                        true,
-                    )
-                    .ok()?;
-            } else if current_state.current_competitor.is_some()
-                && current_state.current_judge.is_some()
-            {
-                lcd_driver
-                    .print(
-                        1,
-                        &get_translation(TranslationKey::SCAN_COMPETITOR_CARD),
-                        PrintAlign::Right,
-                        true,
-                    )
-                    .ok()?;
-            }
-        }
-        Scene::Update => {
-            _ = lcd_driver.print(0, "Updating...", PrintAlign::Center, true);
-            loop {
-                let progress = global_state.update_progress.wait().await;
-                _ = lcd_driver.print(1, &alloc::format!("{progress}%"), PrintAlign::Center, true);
-
-                fbuf.clear(BinaryColor::Off);
-                lcd_driver.display_on_oled(fbuf).await;
-                embedded_graphics::prelude::DrawTarget::draw_iter(disp, fbuf.into_iter()).unwrap();
-                disp.flush().await.unwrap();
-            }
-        }
-    }
-
-    Some(())
-}
-*/

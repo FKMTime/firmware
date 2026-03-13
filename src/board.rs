@@ -112,19 +112,23 @@ impl Board {
             InputConfig::default().with_pull(Pull::Down),
         );
 
-        let Ok(i2c) = esp_hal::i2c::master::I2c::new(
+        let i2c = esp_hal::i2c::master::I2c::new(
             peripherals.I2C0,
             esp_hal::i2c::master::Config::default()
                 .with_frequency(esp_hal::time::Rate::from_khz(400)),
-        ) else {
-            log::error!("Rfid task error while creating Spi instance!");
-            panic!()
+        );
+
+        let i2c = match i2c {
+            Ok(i2c) => {
+                let i2c = i2c
+                    .with_sda(peripherals.GPIO8)
+                    .with_scl(peripherals.GPIO9)
+                    .into_async();
+
+                SharedI2C::new(Some(i2c))
+            }
+            Err(_) => SharedI2C::new(None),
         };
-        let i2c = i2c
-            .with_sda(peripherals.GPIO8)
-            .with_scl(peripherals.GPIO9)
-            .into_async();
-        let i2c = SharedI2C::new(i2c);
 
         Board {
             timg0,

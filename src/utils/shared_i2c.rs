@@ -4,7 +4,7 @@ use esp_hal::{Async, i2c::master::I2c};
 
 #[derive(Clone)]
 pub struct SharedI2C {
-    inner: Rc<Mutex<NoopRawMutex, I2c<'static, Async>>>,
+    inner: Option<Rc<Mutex<NoopRawMutex, I2c<'static, Async>>>>,
 }
 
 impl embedded_hal::i2c::ErrorType for SharedI2C {
@@ -17,7 +17,11 @@ impl embedded_hal_async::i2c::I2c for SharedI2C {
         address: u8,
         operations: &mut [embedded_hal::i2c::Operation<'_>],
     ) -> Result<(), Self::Error> {
-        self.inner.lock().await.transaction(
+        let Some(ref i2c) = self.inner else {
+            return Err(esp_hal::i2c::master::Error::Timeout);
+        };
+
+        i2c.lock().await.transaction(
             address,
             operations
                 .iter_mut()
@@ -29,9 +33,12 @@ impl embedded_hal_async::i2c::I2c for SharedI2C {
 }
 
 impl SharedI2C {
-    pub fn new(i2c: I2c<'static, Async>) -> Self {
-        SharedI2C {
-            inner: Rc::new(Mutex::new(i2c)),
+    pub fn new(i2c: Option<I2c<'static, Async>>) -> Self {
+        match i2c {
+            Some(i2c) => SharedI2C {
+                inner: Some(Rc::new(Mutex::new(i2c))),
+            },
+            None => SharedI2C { inner: None },
         }
     }
 }

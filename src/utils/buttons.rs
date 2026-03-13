@@ -107,8 +107,8 @@ impl ButtonsHandler {
 
             #[cfg(feature = "v4")]
             {
-                for i in 0..4 {
-                    if button_inputs[i].is_high() {
+                for (i, btn) in button_inputs.iter().enumerate().take(4) {
+                    if btn.is_high() {
                         out_val |= 1 << i;
                     }
                 }

@@ -25,7 +25,7 @@ impl PixelArt {
     }
 
     fn bytes_per_row(&self) -> u32 {
-        (self.width + 7) / 8
+        self.width.div_ceil(8)
     }
 }
 
