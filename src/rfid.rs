@@ -99,11 +99,11 @@ pub async fn rfid_task(
         if sleep_state() != rfid_sleep {
             rfid_sleep = sleep_state();
 
-            /*
             match rfid_sleep {
                 true => _ = mfrc522.pcd_soft_power_down().await,
                 false => {
                     _ = mfrc522.pcd_soft_power_up().await;
+                    Timer::after_millis(100).await;
                     loop {
                         _ = mfrc522.pcd_init().await;
                         if mfrc522.pcd_is_init().await {
@@ -117,7 +117,6 @@ pub async fn rfid_task(
                     }
                 }
             }
-            */
         }
 
         if rfid_sleep {
