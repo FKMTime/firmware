@@ -28,8 +28,6 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
     let mut last_sent = Instant::now();
     loop {
         if sleep_state() {
-            let ma = gauge.average_current().await.unwrap_or(0);
-            log::info!("avg current: {ma}mA");
             Timer::after_millis(500).await;
             continue;
         }
