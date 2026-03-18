@@ -374,6 +374,8 @@ impl SignaledGlobalStateInner {
     }
 
     pub fn parse_saved_state(&mut self, saved: SavedGlobalState) {
+        log::warn!("Parsed saved state: {saved:?}");
+
         self.session_id = Some(saved.session_id);
         self.penalty = Some(saved.penalty);
         self.solve_time = Some(saved.solve_time);
