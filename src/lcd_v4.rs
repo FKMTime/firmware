@@ -17,6 +17,11 @@ use embedded_layout::{
     prelude::*,
     view_group::ViewGroup,
 };
+use embedded_text::{
+    TextBox,
+    alignment::{HorizontalAlignment, VerticalAlignment},
+    style::TextBoxStyleBuilder,
+};
 use esp_hal::gpio::Output;
 use oled_async::{displays::ssd1309::Ssd1309_128_64, mode::GraphicsMode};
 
@@ -93,16 +98,13 @@ fn center_layout<VG: ViewGroup>(
         )
 }
 
-fn center_text_layout(
-    text: &str,
-) -> LinearLayout<
-    Horizontal<embedded_layout::align::vertical::Center>,
-    embedded_layout::object_chain::Chain<
-        embedded_graphics::text::Text<'_, MonoTextStyle<'_, BinaryColor>>,
-    >,
-> {
-    let text = Text::with_text_style(text, Point::zero(), NORMAL_FONT, TEXT_CENTER);
-    center_layout(Chain::new(text))
+fn center_text_layout(text: &str) -> TextBox<'_, MonoTextStyle<'_, BinaryColor>> {
+    let textbox_style = TextBoxStyleBuilder::new()
+        .alignment(HorizontalAlignment::Center)
+        .vertical_alignment(VerticalAlignment::Middle)
+        .build();
+
+    TextBox::with_textbox_style(text, MAIN_RECT, NORMAL_FONT, textbox_style)
 }
 
 #[embassy_executor::task]
@@ -574,6 +576,8 @@ async fn process_main(
             center_text_layout(&text).draw(&mut oled.fbuf)?;
         }
         Scene::Inspection => {
+            oled.clear_main()?;
+            oled.flush().await?;
             let inspection_start = global_state
                 .state
                 .value()
@@ -581,7 +585,7 @@ async fn process_main(
                 .inspection_start
                 .unwrap_or(Instant::now());
 
-            _ = Text::with_text_style("Inspection", Point::new(64, 44), NORMAL_FONT, TEXT_CENTER)
+            _ = Text::with_text_style("Inspection", Point::new(64, 50), NORMAL_FONT, TEXT_CENTER)
                 .draw(&mut oled.disp);
 
             let text_rect = Rectangle::new(Point::new(0, 28), Size::new(128, 17));
@@ -592,13 +596,14 @@ async fn process_main(
                 _ = oled.disp.fill_solid(&text_rect, BinaryColor::Off);
                 _ = Text::with_text_style(&time_str, Point::new(64, 36), TIMER_FONT, TEXT_CENTER)
                     .draw(&mut oled.disp);
-                oled.flush().await?;
+                _ = oled.disp.flush().await;
 
                 Timer::after_millis(LCD_INSPECTION_FRAME_TIME).await;
             }
         }
         Scene::Timer => {
             oled.clear_main()?;
+            oled.flush().await?;
             let text_rect = Rectangle::new(Point::new(0, 28), Size::new(128, 17));
 
             loop {
@@ -608,7 +613,7 @@ async fn process_main(
                 _ = oled.disp.fill_solid(&text_rect, BinaryColor::Off);
                 _ = Text::with_text_style(&time_str, Point::new(64, 36), TIMER_FONT, TEXT_CENTER)
                     .draw(&mut oled.disp);
-                oled.flush().await?;
+                _ = oled.disp.flush().await;
             }
         }
         Scene::Finished => {
@@ -640,8 +645,6 @@ async fn process_main(
                 _ => alloc::string::String::new(),
             };
 
-            // Time + penalty centered in MAIN_RECT
-            // If there's a penalty, show them as a horizontal chain; otherwise just time
             if penalty_str.is_empty() {
                 let time_text =
                     Text::with_text_style(&time_display, Point::zero(), TIMER_FONT, TEXT_CENTER);
@@ -651,8 +654,9 @@ async fn process_main(
                     .align_to(
                         &MAIN_RECT,
                         embedded_layout::align::horizontal::Center,
-                        embedded_layout::align::vertical::Center,
+                        embedded_layout::align::vertical::Top,
                     )
+                    .translate(Point::new(0, 10))
                     .draw(&mut oled.fbuf)?;
             } else {
                 let time_text =
@@ -666,12 +670,12 @@ async fn process_main(
                     .align_to(
                         &MAIN_RECT,
                         embedded_layout::align::horizontal::Center,
-                        embedded_layout::align::vertical::Center,
+                        embedded_layout::align::vertical::Top,
                     )
+                    .translate(Point::new(0, 10))
                     .draw(&mut oled.fbuf)?;
             }
 
-            // Status prompt pinned to bottom center
             let status = if !current_state.time_confirmed {
                 Some(get_translation(TranslationKey::CONFIRM_TIME))
             } else if current_state.current_judge.is_none() {
@@ -685,16 +689,12 @@ async fn process_main(
             };
 
             if let Some(status_str) = status {
-                let status_text =
-                    Text::with_text_style(&status_str, Point::zero(), NORMAL_FONT, TEXT_CENTER);
-                LinearLayout::horizontal(Chain::new(status_text))
-                    .with_alignment(embedded_layout::align::vertical::Center)
-                    .arrange()
-                    .align_to(
-                        &MAIN_RECT,
-                        embedded_layout::align::horizontal::Center,
-                        embedded_layout::align::vertical::Bottom,
-                    )
+                let textbox_style = TextBoxStyleBuilder::new()
+                    .alignment(HorizontalAlignment::Center)
+                    .vertical_alignment(VerticalAlignment::Bottom)
+                    .build();
+
+                TextBox::with_textbox_style(&status_str, MAIN_RECT, NORMAL_FONT, textbox_style)
                     .draw(&mut oled.fbuf)?;
             }
         }
@@ -725,22 +725,14 @@ async fn process_main_overwrite(
 
     if current_state.server_connected == Some(false) {
         if current_state.wifi_connected == Some(false) {
-            let text = Text::with_text_style(
-                "Wi-Fi\nConnection lost",
-                Point::zero(),
-                NORMAL_FONT,
-                TEXT_CENTER,
-            );
-
-            center_layout(Chain::new(text)).draw(&mut oled.fbuf);
+            _ = center_text_layout("Wi-Fi\nConnection lost").draw(&mut oled.fbuf);
         } else {
             let text = format!(
                 "{}\n{}",
                 get_translation(TranslationKey::SERVER_DISCONNECTED_HEADER),
                 get_translation(TranslationKey::SERVER_DISCONNECTED_FOOTER)
             );
-            let text = Text::with_text_style(&text, Point::zero(), NORMAL_FONT, TEXT_CENTER);
-            center_layout(Chain::new(text)).draw(&mut oled.fbuf);
+            _ = center_text_layout(&text).draw(&mut oled.fbuf);
         }
     } else if current_state.device_added == Some(false) {
         #[cfg(not(feature = "e2e"))]
@@ -753,16 +745,14 @@ async fn process_main_overwrite(
         let lines = ("Press submit", "To start HIL");
 
         let text = format!("{}\n{}", lines.0, lines.1);
-        let text = Text::with_text_style(&text, Point::zero(), NORMAL_FONT, TEXT_CENTER);
-        center_layout(Chain::new(text)).draw(&mut oled.fbuf);
+        _ = center_text_layout(&text).draw(&mut oled.fbuf);
     } else if current_state.stackmat_connected == Some(false) {
         let text = format!(
             "{}\n{}",
             get_translation(TranslationKey::STACKMAT_DISCONNECTED_HEADER),
             get_translation(TranslationKey::STACKMAT_DISCONNECTED_FOOTER)
         );
-        let text = Text::with_text_style(&text, Point::zero(), NORMAL_FONT, TEXT_CENTER);
-        center_layout(Chain::new(text)).draw(&mut oled.fbuf);
+        _ = center_text_layout(&text).draw(&mut oled.fbuf);
     } else {
         return false;
     }
