@@ -521,7 +521,7 @@ async fn process_main(
         } else {
             center_text_layout(&format!(
                 "{}\n{}",
-                get_translation(TranslationKey::WAITING_FOR_DELEGATE_HEADER),
+                get_translation(TranslationKey::CALLING_FOR_DELEGATE_HEADER),
                 get_translation_params(
                     TranslationKey::CALLING_FOR_DELEGATE_FOOTER,
                     &[delegate_remaining],

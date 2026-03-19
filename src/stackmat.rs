@@ -156,6 +156,7 @@ pub async fn stackmat_task(
                             state.scene = Scene::Timer;
                         }
                     } else if parsed.0 == StackmatTimerState::Stopped {
+                        log::info!("Timer stopped: {}ms", parsed.1);
                         let mut state = global_state.state.lock().await;
                         let last_solve_diff = if cfg!(not(any(feature = "e2e", feature = "qa"))) {
                             state.last_solve_time.unwrap_or(0).abs_diff(parsed.1)
