@@ -173,6 +173,7 @@ pub async fn lcd_task(
             unsafe {
                 crate::state::SLEEP_STATE = false;
             }
+            log::warn!("Sleep wakeup!");
         }
 
         let current_scene = current_state.scene.clone();
@@ -215,10 +216,7 @@ pub async fn lcd_task(
                     && !deeper_sleep_state()
                     && (Instant::now() - last_update).as_millis() > DEEPER_SLEEP_AFTER_MS
                 {
-                    use esp_hal::rtc_cntl::{
-                        Rtc,
-                        sleep::{RtcioWakeupSource, WakeSource},
-                    };
+                    use esp_hal::rtc_cntl::{Rtc, sleep::RtcioWakeupSource};
 
                     oled.fbuf.clear(BinaryColor::Off);
                     let text = Text::with_text_style(
@@ -232,32 +230,20 @@ pub async fn lcd_task(
                     _ = oled.flush().await;
 
                     unsafe {
+                        use esp_hal::rtc_cntl::sleep::WakeupLevel;
+
                         let wakeup_pins: &mut [(
                             &mut dyn esp_hal::gpio::RtcPinWithResistors,
                             esp_hal::rtc_cntl::sleep::WakeupLevel,
                         )] = &mut [
-                            (
-                                &mut esp_hal::peripherals::GPIO0::steal(),
-                                esp_hal::rtc_cntl::sleep::WakeupLevel::High,
-                            ),
-                            (
-                                &mut esp_hal::peripherals::GPIO1::steal(),
-                                esp_hal::rtc_cntl::sleep::WakeupLevel::High,
-                            ),
-                            (
-                                &mut esp_hal::peripherals::GPIO2::steal(),
-                                esp_hal::rtc_cntl::sleep::WakeupLevel::High,
-                            ),
-                            (
-                                &mut esp_hal::peripherals::GPIO3::steal(),
-                                esp_hal::rtc_cntl::sleep::WakeupLevel::High,
-                            ),
+                            (&mut esp_hal::peripherals::GPIO0::steal(), WakeupLevel::High),
+                            (&mut esp_hal::peripherals::GPIO1::steal(), WakeupLevel::High),
+                            (&mut esp_hal::peripherals::GPIO2::steal(), WakeupLevel::High),
+                            (&mut esp_hal::peripherals::GPIO3::steal(), WakeupLevel::High),
                         ];
                         let rtcio = RtcioWakeupSource::new(wakeup_pins);
                         Rtc::new(esp_hal::peripherals::LPWR::steal()).sleep_deep(&[&rtcio]);
                     }
-
-                    //crate::utils::deeper_sleep();
                 }
             }
         };

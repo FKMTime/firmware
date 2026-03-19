@@ -24,6 +24,12 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
         return;
     };
 
+    if let Ok(soc) = gauge.state_of_charge().await
+        && soc == 0
+    {
+        log::warn!("Battery was removed before boot!");
+    }
+
     let mut startup_sent = false;
     let mut last_sent = Instant::now();
     loop {

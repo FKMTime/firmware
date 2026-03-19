@@ -113,6 +113,10 @@ async fn main(spawner: Spawner) {
         }
     };
 
+    let reason = esp_hal::rtc_cntl::reset_reason(esp_hal::system::Cpu::ProCpu);
+    let wake_reason = esp_hal::rtc_cntl::wakeup_cause();
+    log::info!("Wake reason: {:?} {:?}", reason, wake_reason);
+
     let global_state = Rc::new(GlobalStateInner::new(&nvs, board.aes));
     let wifi_setup_sig = Rc::new(Signal::new());
     let wifi_conn_sig = Rc::new(Signal::new());

@@ -43,6 +43,7 @@ pub fn get_efuse_u32() -> u32 {
     mac as u32
 }
 
+#[cfg(feature = "v3")]
 /// Sets cpu clock to 10mHz (not reversable)
 pub fn deeper_sleep() {
     esp32c3_set_cpu_freq_10mhz();
@@ -50,6 +51,7 @@ pub fn deeper_sleep() {
     unsafe { crate::state::DEEPER_SLEEP = true };
 }
 
+#[cfg(feature = "v3")]
 #[allow(unused)]
 #[inline(always)]
 fn ets_update_cpu_frequency_rom(ticks_per_us: u32) {
@@ -60,6 +62,7 @@ fn ets_update_cpu_frequency_rom(ticks_per_us: u32) {
     unsafe { ets_update_cpu_frequency(ticks_per_us) };
 }
 
+#[cfg(feature = "v3")]
 fn esp32c3_set_cpu_freq_10mhz() {
     use esp32c3::{RTC_CNTL, SYSTEM};
 
