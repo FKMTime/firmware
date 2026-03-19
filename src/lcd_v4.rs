@@ -65,6 +65,7 @@ impl OledData<'_> {
 }
 
 pub const MAIN_RECT: Rectangle = Rectangle::new(Point::new(0, 11), Size::new(128, 53));
+pub const TOPBAR_RECT: Rectangle = Rectangle::new(Point::new(0, 0), Size::new(128, 10));
 pub const NORMAL_FONT: MonoTextStyle<'_, BinaryColor> = MonoTextStyle::new(
     &embedded_graphics::mono_font::ascii::FONT_7X13,
     BinaryColor::On,
@@ -261,6 +262,14 @@ pub async fn lcd_task(
 
             loop {
                 Timer::after_millis(1000).await;
+                if global_state.show_battery.signaled() {
+                    oled.fbuf.fill_solid(&TOPBAR_RECT, BinaryColor::Off);
+                    let current_state = global_state.state.value().await;
+                    _ = process_top_bar(&current_state, &global_state, &mut oled).await;
+                    _ = oled.flush().await;
+
+                    global_state.show_battery.reset();
+                }
 
                 #[cfg(not(any(feature = "e2e", feature = "qa")))]
                 if !sleep_state()

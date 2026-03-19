@@ -180,7 +180,7 @@ impl GlobalStateInner {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct SignaledGlobalStateInner {
     pub scene: Scene,
     pub menu_scene: Option<MenuScene>,
@@ -468,4 +468,43 @@ impl SavedGlobalState {
     pub async fn to_nvs(&self, _nvs: &Nvs) {}
 
     pub async fn clear_saved_global_state(_nvs: &Nvs) {}
+}
+
+impl PartialEq for SignaledGlobalStateInner {
+    fn eq(&self, other: &Self) -> bool {
+        let result = self.scene == other.scene
+            && self.menu_scene == other.menu_scene
+            && self.inspection_start == other.inspection_start
+            && self.inspection_end == other.inspection_end
+            && self.solve_time == other.solve_time
+            && self.last_solve_time == other.last_solve_time
+            && self.penalty == other.penalty
+            && self.session_id == other.session_id
+            && self.time_confirmed == other.time_confirmed
+            && self.solve_group == other.solve_group
+            && self.error_text == other.error_text
+            && self.possible_groups == other.possible_groups
+            && self.group_selected_idx == other.group_selected_idx
+            && self.selected_config_menu == other.selected_config_menu
+            && self.discovered_bluetooth_devices == other.discovered_bluetooth_devices
+            && self.selected_bluetooth_item == other.selected_bluetooth_item
+            && self.device_added == other.device_added
+            && self.server_connected == other.server_connected
+            && self.wifi_connected == other.wifi_connected
+            && self.stackmat_connected == other.stackmat_connected
+            && self.current_competitor == other.current_competitor
+            && self.current_judge == other.current_judge
+            && self.competitor_display == other.competitor_display
+            && self.delegate_used == other.delegate_used
+            && self.delegate_hold == other.delegate_hold
+            // battery_status intentionally excluded (v4 hw)
+            && self.custom_message == other.custom_message;
+
+        #[cfg(feature = "bat_dev_lcd")]
+        let result = result
+            && self.current_bat_read == other.current_bat_read
+            && self.avg_bat_read == other.avg_bat_read;
+
+        result
+    }
 }
