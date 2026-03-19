@@ -178,6 +178,7 @@ async fn submit_up(
     match state_val.menu_scene {
         Some(MenuScene::Signing) | Some(MenuScene::Unsigning) => {
             state_val.menu_scene = None;
+            state_val.selected_config_menu = Some(0);
             state.state.signal();
             return Ok(true);
         }
@@ -210,6 +211,7 @@ async fn submit_up(
 
             state_val.menu_scene = None;
             state_val.selected_bluetooth_item = 0;
+            state_val.selected_config_menu = Some(0);
             state.state.signal();
             return Ok(true);
         }

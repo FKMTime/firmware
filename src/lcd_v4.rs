@@ -1,3 +1,17 @@
+use crate::{
+    consts::{
+        DEEPER_SLEEP_AFTER_MS, INSPECTION_TIME_PLUS2, LCD_INSPECTION_FRAME_TIME, SLEEP_AFTER_MS,
+    },
+    state::{
+        GlobalState, MenuScene, Scene, SignaledGlobalStateInner, deeper_sleep_state, sleep_state,
+    },
+    translations::{TranslationKey, get_translation, get_translation_params},
+    utils::{
+        lcd_resourcese::{CrossedIcon, Resources},
+        shared_i2c::SharedI2C,
+        stackmat::ms_to_time_str,
+    },
+};
 use alloc::{format, rc::Rc, string::ToString};
 use anyhow::{Result, anyhow};
 use display_interface_i2c::I2CInterface;
@@ -25,21 +39,6 @@ use embedded_text::{
 use esp_hal::gpio::Output;
 use oled_async::{displays::ssd1309::Ssd1309_128_64, mode::GraphicsMode};
 
-use crate::{
-    consts::{
-        DEEPER_SLEEP_AFTER_MS, INSPECTION_TIME_PLUS2, LCD_INSPECTION_FRAME_TIME, SLEEP_AFTER_MS,
-    },
-    state::{
-        GlobalState, MenuScene, Scene, SignaledGlobalStateInner, deeper_sleep_state, sleep_state,
-    },
-    translations::{TranslationKey, get_translation, get_translation_params},
-    utils::{
-        lcd_resourcese::{CrossedIcon, Resources},
-        shared_i2c::SharedI2C,
-        stackmat::ms_to_time_str,
-    },
-};
-
 pub const FBUF_WIDTH: usize = 128;
 pub const FBUF_HEIGHT: usize = 64;
 pub const FBUF_SIZE: usize = FBUF_WIDTH * FBUF_HEIGHT;
@@ -66,12 +65,14 @@ impl OledData<'_> {
 }
 
 pub const MAIN_RECT: Rectangle = Rectangle::new(Point::new(0, 11), Size::new(128, 53));
-
 pub const NORMAL_FONT: MonoTextStyle<'_, BinaryColor> = MonoTextStyle::new(
     &embedded_graphics::mono_font::ascii::FONT_7X13,
     BinaryColor::On,
 );
-
+pub const SMALL_FONT: MonoTextStyle<'_, BinaryColor> = MonoTextStyle::new(
+    &embedded_graphics::mono_font::ascii::FONT_6X9,
+    BinaryColor::On,
+);
 pub const TIMER_FONT: MonoTextStyle<'_, BinaryColor> =
     MonoTextStyle::new(&profont::PROFONT_14_POINT, BinaryColor::On);
 
@@ -79,7 +80,6 @@ pub const TEXT_CENTER: TextStyle = TextStyleBuilder::new()
     .alignment(Alignment::Center)
     .baseline(Baseline::Middle)
     .build();
-
 pub const TEXT_TOPBAR: TextStyle = TextStyleBuilder::new()
     .alignment(Alignment::Right)
     .baseline(Baseline::Top)
@@ -105,6 +105,80 @@ fn center_text_layout(text: &str) -> TextBox<'_, MonoTextStyle<'_, BinaryColor>>
         .build();
 
     TextBox::with_textbox_style(text, MAIN_RECT, NORMAL_FONT, textbox_style)
+}
+
+fn draw_scrollable_menu<D>(target: &mut D, items: &[&str], selected: usize)
+where
+    D: DrawTarget<Color = BinaryColor>,
+{
+    const LINE_HEIGHT: i32 = 10;
+    const VISIBLE: usize = 5;
+    const PADDING_X: i32 = 4;
+
+    let menu_font = MonoTextStyle::new(
+        &embedded_graphics::mono_font::ascii::FONT_6X9,
+        BinaryColor::On,
+    );
+    let menu_font_inv = MonoTextStyle::new(
+        &embedded_graphics::mono_font::ascii::FONT_6X9,
+        BinaryColor::Off,
+    );
+
+    let total = items.len();
+    let scroll_start = if selected + 1 >= VISIBLE {
+        (selected + 1 - VISIBLE).min(total.saturating_sub(VISIBLE))
+    } else {
+        0
+    };
+
+    let start_y = MAIN_RECT.top_left.y;
+
+    for (row, item) in items[scroll_start..].iter().take(VISIBLE).enumerate() {
+        let item_idx = scroll_start + row;
+        let y = start_y + row as i32 * LINE_HEIGHT;
+        let text_y = y + LINE_HEIGHT / 2;
+
+        if item_idx == selected {
+            let bar = Rectangle::new(Point::new(0, y), Size::new(128, LINE_HEIGHT as u32));
+            bar.into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+                .draw(target)
+                .ok();
+            Text::with_text_style(
+                item,
+                Point::new(PADDING_X, text_y),
+                menu_font_inv,
+                TextStyleBuilder::new()
+                    .alignment(Alignment::Left)
+                    .baseline(Baseline::Middle)
+                    .build(),
+            )
+            .draw(target)
+            .ok();
+        } else {
+            Text::with_text_style(
+                item,
+                Point::new(PADDING_X, text_y),
+                menu_font,
+                TextStyleBuilder::new()
+                    .alignment(Alignment::Left)
+                    .baseline(Baseline::Middle)
+                    .build(),
+            )
+            .draw(target)
+            .ok();
+        }
+
+        if scroll_start > 0 && row == 0 {
+            Text::with_text_style("^", Point::new(122, text_y), menu_font, TEXT_CENTER)
+                .draw(target)
+                .ok();
+        }
+        if scroll_start + VISIBLE < total && row == VISIBLE - 1 {
+            Text::with_text_style("v", Point::new(122, text_y), menu_font, TEXT_CENTER)
+                .draw(target)
+                .ok();
+        }
+    }
 }
 
 #[embassy_executor::task]
@@ -320,6 +394,21 @@ async fn process_top_bar(
     )
     .draw(&mut oled.fbuf)?;
 
+    let text = if current_state.selected_config_menu.is_some() {
+        Some("CONFIG")
+    } else {
+        match current_state.menu_scene {
+            Some(MenuScene::Signing) => Some("SIGN"),
+            Some(MenuScene::Unsigning) => Some("UNSIGN"),
+            Some(MenuScene::BtDisplay) => Some("BTDISP"),
+            None => None,
+        }
+    };
+    if let Some(text) = text {
+        Text::with_text_style(text, Point::new(64, 5), SMALL_FONT, TEXT_CENTER)
+            .draw(&mut oled.fbuf)?;
+    }
+
     Line::new(Point::new(0, 10), Point::new(128, 10))
         .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
         .draw(&mut oled.fbuf)?;
@@ -351,36 +440,13 @@ async fn process_main(
     }
 
     if let Some(sel) = current_state.selected_config_menu {
-        let lt = Text::with_text_style("<", Point::zero(), TIMER_FONT, TEXT_CENTER);
-        let gt = Text::with_text_style(">", Point::zero(), TIMER_FONT, TEXT_CENTER);
-        LinearLayout::horizontal(Chain::new(lt))
-            .with_alignment(embedded_layout::align::vertical::Center)
-            .arrange()
-            .align_to(
-                &MAIN_RECT,
-                embedded_layout::align::horizontal::Left,
-                embedded_layout::align::vertical::Center,
-            )
-            .draw(&mut oled.fbuf)?;
-
-        LinearLayout::horizontal(Chain::new(gt))
-            .with_alignment(embedded_layout::align::vertical::Center)
-            .arrange()
-            .align_to(
-                &MAIN_RECT,
-                embedded_layout::align::horizontal::Right,
-                embedded_layout::align::vertical::Center,
-            )
-            .draw(&mut oled.fbuf)?;
-
-        // TODO: this can be "scrollable" list btw
-        center_text_layout(&format!(
-            "Config Menu\n{}. {}",
-            sel + 1,
-            crate::structs::CONFIG_MENU_ITEMS[sel]
-        ))
-        .draw(&mut oled.fbuf)?;
-
+        let items: alloc::vec::Vec<alloc::string::String> = crate::structs::CONFIG_MENU_ITEMS
+            .iter()
+            .enumerate()
+            .map(|(i, name)| alloc::format!("{}. {}", i + 1, name))
+            .collect();
+        let item_refs: alloc::vec::Vec<&str> = items.iter().map(|s| s.as_str()).collect();
+        draw_scrollable_menu(&mut oled.fbuf, &item_refs, sel);
         return Ok(());
     }
 
@@ -407,45 +473,31 @@ async fn process_main(
 
                 Timer::after_millis(300).await;
                 oled.clear_main()?;
-                center_text_layout(&format!(
-                    "{main_text}\nScan the card\n\nPress Submit to exit"
-                ))
-                .draw(&mut oled.fbuf)?;
+                center_text_layout(&format!("{main_text}\nScan the card\n\nSubmit to exit"))
+                    .draw(&mut oled.fbuf)?;
             } else {
-                center_text_layout(&format!(
-                    "{main_text}\nScan the card\n\nPress Submit to exit"
-                ))
-                .draw(&mut oled.fbuf)?;
+                center_text_layout(&format!("{main_text}\nScan the card\n\nSubmit to exit"))
+                    .draw(&mut oled.fbuf)?;
             }
 
             return Ok(());
         }
         Some(crate::state::MenuScene::BtDisplay) => {
-            if current_state.selected_bluetooth_item
-                == current_state.discovered_bluetooth_devices.len()
-            {
-                center_text_layout("BT Display:\nUnpair").draw(&mut oled.fbuf)?;
-            } else if current_state.selected_bluetooth_item
-                == current_state.discovered_bluetooth_devices.len() + 1
-            {
-                center_text_layout("BT Display:\nExit").draw(&mut oled.fbuf)?;
-            } else if current_state.selected_bluetooth_item
-                < current_state.discovered_bluetooth_devices.len()
-            {
-                if let Some(display_dev) = current_state
-                    .discovered_bluetooth_devices
-                    .get(current_state.selected_bluetooth_item)
-                {
-                    center_text_layout(&format!(
-                        "BT Display:\n{} [{:X?}]",
-                        display_dev.name, display_dev.addr
-                    ))
-                    .draw(&mut oled.fbuf)?;
-                }
-            } else {
-                global_state.state.lock().await.selected_bluetooth_item = 0;
-            }
+            let mut items: alloc::vec::Vec<alloc::string::String> = current_state
+                .discovered_bluetooth_devices
+                .iter()
+                .map(|dev| alloc::format!("{} [{:X?}]", dev.name, dev.addr))
+                .collect();
+            items.push("Unpair".into());
+            items.push("Exit".into());
 
+            let sel = current_state.selected_bluetooth_item;
+            if sel >= items.len() {
+                global_state.state.lock().await.selected_bluetooth_item = 0;
+            } else {
+                let item_refs: alloc::vec::Vec<&str> = items.iter().map(|s| s.as_str()).collect();
+                draw_scrollable_menu(&mut oled.fbuf, &item_refs, sel);
+            }
             return Ok(());
         }
         None => {}
@@ -705,11 +757,6 @@ async fn process_main(
             oled.flush().await?;
         },
     }
-
-    /*
-        match current_state.scene {
-        }
-    */
 
     Ok(())
 }
