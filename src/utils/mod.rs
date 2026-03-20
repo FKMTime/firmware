@@ -1,11 +1,19 @@
 pub mod arc;
 pub mod backtrace_store;
 pub mod buttons;
-pub mod lcd_abstract;
 pub mod logger;
 pub mod rolling_average;
 pub mod signaled_mutex;
 pub mod stackmat;
+
+#[cfg(feature = "v3")]
+pub mod lcd_abstract;
+
+#[cfg(feature = "v4")]
+pub mod shared_i2c;
+
+#[cfg(feature = "v4")]
+pub mod lcd_resourcese;
 
 pub fn set_brownout_detection(state: bool) {
     unsafe {
@@ -35,6 +43,7 @@ pub fn get_efuse_u32() -> u32 {
     mac as u32
 }
 
+#[cfg(feature = "v3")]
 /// Sets cpu clock to 10mHz (not reversable)
 pub fn deeper_sleep() {
     esp32c3_set_cpu_freq_10mhz();
@@ -42,6 +51,7 @@ pub fn deeper_sleep() {
     unsafe { crate::state::DEEPER_SLEEP = true };
 }
 
+#[cfg(feature = "v3")]
 #[allow(unused)]
 #[inline(always)]
 fn ets_update_cpu_frequency_rom(ticks_per_us: u32) {
@@ -52,6 +62,7 @@ fn ets_update_cpu_frequency_rom(ticks_per_us: u32) {
     unsafe { ets_update_cpu_frequency(ticks_per_us) };
 }
 
+#[cfg(feature = "v3")]
 fn esp32c3_set_cpu_freq_10mhz() {
     use esp32c3::{RTC_CNTL, SYSTEM};
 

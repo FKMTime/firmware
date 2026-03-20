@@ -148,10 +148,10 @@ pub struct GlobalStateInner {
     pub state: SignaledMutex<CriticalSectionRawMutex, SignaledGlobalStateInner>,
     pub timer_signal: Signal<NoopRawMutex, u64>,
     pub bt_display_signal: Signal<NoopRawMutex, u64>,
-    pub show_battery: Signal<CriticalSectionRawMutex, u8>,
     pub update_progress: Signal<CriticalSectionRawMutex, u8>,
     pub sign_unsign_progress: Signal<CriticalSectionRawMutex, bool>,
     pub ble_sig: Signal<CriticalSectionRawMutex, BleAction>,
+    pub show_battery: Signal<CriticalSectionRawMutex, u8>,
 
     pub nvs: Nvs,
     pub aes: Mutex<NoopRawMutex, Aes<'static>>,
@@ -166,10 +166,10 @@ impl GlobalStateInner {
             state: SignaledMutex::new(SignaledGlobalStateInner::new()),
             timer_signal: Signal::new(),
             bt_display_signal: Signal::new(),
-            show_battery: Signal::new(),
             update_progress: Signal::new(),
             sign_unsign_progress: Signal::new(),
             ble_sig: Signal::new(),
+            show_battery: Signal::new(),
 
             nvs: nvs.clone(),
             aes: Mutex::new(Aes::new(aes)),
@@ -180,7 +180,7 @@ impl GlobalStateInner {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct SignaledGlobalStateInner {
     pub scene: Scene,
     pub menu_scene: Option<MenuScene>,
@@ -205,14 +205,18 @@ pub struct SignaledGlobalStateInner {
 
     pub device_added: Option<bool>,
     pub server_connected: Option<bool>,
-    pub wifi_conn_lost: bool,
+    pub wifi_connected: Option<bool>,
     pub stackmat_connected: Option<bool>,
+
     pub current_competitor: Option<u64>,
     pub current_judge: Option<u64>,
     pub competitor_display: Option<String>,
 
     pub delegate_used: bool,
     pub delegate_hold: Option<u8>,
+
+    #[cfg(feature = "v4")]
+    pub battery_status: (u8, bool),
 
     #[cfg(feature = "bat_dev_lcd")]
     pub current_bat_read: Option<f32>,
@@ -257,7 +261,7 @@ impl SignaledGlobalStateInner {
 
             device_added: None,
             server_connected: None,
-            wifi_conn_lost: false,
+            wifi_connected: None,
             stackmat_connected: None,
             current_competitor: None,
             current_judge: None,
@@ -265,6 +269,9 @@ impl SignaledGlobalStateInner {
 
             delegate_used: false,
             delegate_hold: None,
+
+            #[cfg(feature = "v4")]
+            battery_status: (0, false),
 
             #[cfg(feature = "bat_dev_lcd")]
             current_bat_read: None,
@@ -362,6 +369,8 @@ impl SignaledGlobalStateInner {
     }
 
     pub fn parse_saved_state(&mut self, saved: SavedGlobalState) {
+        log::warn!("Parsed saved state: {saved:?}");
+
         self.session_id = Some(saved.session_id);
         self.penalty = Some(saved.penalty);
         self.solve_time = Some(saved.solve_time);
@@ -454,4 +463,43 @@ impl SavedGlobalState {
     pub async fn to_nvs(&self, _nvs: &Nvs) {}
 
     pub async fn clear_saved_global_state(_nvs: &Nvs) {}
+}
+
+impl PartialEq for SignaledGlobalStateInner {
+    fn eq(&self, other: &Self) -> bool {
+        let result = self.scene == other.scene
+            && self.menu_scene == other.menu_scene
+            && self.inspection_start == other.inspection_start
+            && self.inspection_end == other.inspection_end
+            && self.solve_time == other.solve_time
+            && self.last_solve_time == other.last_solve_time
+            && self.penalty == other.penalty
+            && self.session_id == other.session_id
+            && self.time_confirmed == other.time_confirmed
+            && self.solve_group == other.solve_group
+            && self.error_text == other.error_text
+            && self.possible_groups == other.possible_groups
+            && self.group_selected_idx == other.group_selected_idx
+            && self.selected_config_menu == other.selected_config_menu
+            && self.discovered_bluetooth_devices == other.discovered_bluetooth_devices
+            && self.selected_bluetooth_item == other.selected_bluetooth_item
+            && self.device_added == other.device_added
+            && self.server_connected == other.server_connected
+            && self.wifi_connected == other.wifi_connected
+            && self.stackmat_connected == other.stackmat_connected
+            && self.current_competitor == other.current_competitor
+            && self.current_judge == other.current_judge
+            && self.competitor_display == other.competitor_display
+            && self.delegate_used == other.delegate_used
+            && self.delegate_hold == other.delegate_hold
+            // battery_status intentionally excluded (v4 hw)
+            && self.custom_message == other.custom_message;
+
+        #[cfg(feature = "bat_dev_lcd")]
+        let result = result
+            && self.current_bat_read == other.current_bat_read
+            && self.avg_bat_read == other.avg_bat_read;
+
+        result
+    }
 }

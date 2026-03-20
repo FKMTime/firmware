@@ -1,5 +1,6 @@
 #![feature(proc_macro_span)]
 
+mod pixelart;
 mod translations;
 
 use proc_macro::TokenStream;
@@ -202,6 +203,11 @@ pub fn nb_to_fut(item: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn load_default_translations(args: TokenStream) -> TokenStream {
     translations::load_translations_macro(args)
+}
+
+#[proc_macro]
+pub fn load_lcd_resources(args: TokenStream) -> TokenStream {
+    pixelart::load_lcd_resources(args)
 }
 
 // Maybe not useful, most variables in functions that can fail are owned :(

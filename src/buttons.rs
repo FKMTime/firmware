@@ -15,8 +15,9 @@ macros::generate_button_handler_enum!(triggered: &ButtonTrigger, hold_time: u64,
 #[embassy_executor::task]
 pub async fn buttons_task(
     state: GlobalState,
-    button_input: Input<'static>,
-    button_reg: adv_shift_registers::wrappers::ShifterValue,
+    #[cfg(feature = "v4")] button_inputs: [Input<'static>; 4],
+    #[cfg(feature = "v3")] button_input: Input<'static>,
+    #[cfg(feature = "v3")] button_reg: adv_shift_registers::wrappers::ShifterValue,
 ) {
     let mut handler = ButtonsHandler::new(Some(wakeup_button()));
     handler.add_handler(Button::Third, ButtonTrigger::Up, submit_up());
@@ -55,7 +56,10 @@ pub async fn buttons_task(
     );
     handler.add_handler(Button::Second, ButtonTrigger::Up, delegate_hold());
 
+    #[cfg(feature = "v3")]
     handler.run(&state, &button_input, &button_reg).await;
+    #[cfg(feature = "v4")]
+    handler.run(&state, &button_inputs).await;
 }
 
 #[macros::button_handler]
@@ -174,6 +178,7 @@ async fn submit_up(
     match state_val.menu_scene {
         Some(MenuScene::Signing) | Some(MenuScene::Unsigning) => {
             state_val.menu_scene = None;
+            state_val.selected_config_menu = Some(0);
             state.state.signal();
             return Ok(true);
         }
@@ -206,6 +211,7 @@ async fn submit_up(
 
             state_val.menu_scene = None;
             state_val.selected_bluetooth_item = 0;
+            state_val.selected_config_menu = Some(0);
             state.state.signal();
             return Ok(true);
         }

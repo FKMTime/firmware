@@ -20,12 +20,10 @@ use structs::ConnSettings;
 use utils::{logger::FkmLogger, set_brownout_detection};
 use ws_framer::{WsUrl, WsUrlOwned};
 
-mod battery;
 mod bluetooth;
 mod board;
 mod buttons;
 mod consts;
-mod lcd;
 mod mdns;
 mod rfid;
 mod stackmat;
@@ -35,6 +33,16 @@ mod translations;
 mod utils;
 mod version;
 mod ws;
+
+#[cfg(feature = "v3")]
+mod battery_v3;
+#[cfg(feature = "v3")]
+mod lcd_v3;
+
+#[cfg(feature = "v4")]
+mod battery_v4;
+#[cfg(feature = "v4")]
+mod lcd_v4;
 
 #[cfg(feature = "qa")]
 mod qa;
@@ -105,6 +113,10 @@ async fn main(spawner: Spawner) {
         }
     };
 
+    let reason = esp_hal::rtc_cntl::reset_reason(esp_hal::system::Cpu::ProCpu);
+    let wake_reason = esp_hal::rtc_cntl::wakeup_cause();
+    log::info!("Wake reason: {:?} {:?}", reason, wake_reason);
+
     let global_state = Rc::new(GlobalStateInner::new(&nvs, board.aes));
     let wifi_setup_sig = Rc::new(Signal::new());
     let wifi_conn_sig = Rc::new(Signal::new());
@@ -113,35 +125,63 @@ async fn main(spawner: Spawner) {
         unsafe { crate::state::SIGN_KEY = sign_key };
     }
 
-    spawner.must_spawn(lcd::lcd_task(
+    #[cfg(feature = "v3")]
+    spawner.must_spawn(lcd_v3::lcd_task(
         board.lcd,
         global_state.clone(),
         wifi_setup_sig.clone(),
         board.digits_shifters.clone(),
     ));
+    #[cfg(feature = "v4")]
+    spawner.must_spawn(lcd_v4::lcd_task(
+        board.i2c.clone(),
+        board.display_rst,
+        global_state.clone(),
+        wifi_setup_sig.clone(),
+    ));
 
-    spawner.must_spawn(battery::battery_read_task(
+    #[cfg(feature = "v3")]
+    spawner.must_spawn(battery_v3::battery_read_task(
         board.battery,
         board.adc1,
         global_state.clone(),
     ));
+    #[cfg(feature = "v4")]
+    spawner.must_spawn(battery_v4::battery_read_task(
+        board.i2c.clone(),
+        global_state.clone(),
+    ));
+
     spawner.must_spawn(buttons::buttons_task(
         global_state.clone(),
+        #[cfg(feature = "v4")]
+        board.buttons,
+        #[cfg(feature = "v3")]
         board.button_input,
+        #[cfg(feature = "v3")]
         board.buttons_shifter,
     ));
     spawner.must_spawn(stackmat::stackmat_task(
         board.uart1,
         board.stackmat_rx,
+        #[cfg(feature = "v3")]
         board.digits_shifters,
         global_state.clone(),
     ));
     spawner.must_spawn(rfid::rfid_task(
+        #[cfg(feature = "v4")]
+        board.i2c.clone(),
+        #[cfg(feature = "v3")]
         board.miso,
+        #[cfg(feature = "v3")]
         board.mosi,
+        #[cfg(feature = "v3")]
         board.sck,
+        #[cfg(feature = "v3")]
         board.cs,
+        #[cfg(feature = "v3")]
         board.spi2,
+        #[cfg(feature = "v3")]
         board.spi_dma,
         global_state.clone(),
     ));
@@ -192,6 +232,10 @@ async fn main(spawner: Spawner) {
         Timer::after_millis(1000).await;
         esp_hal::system::software_reset();
     };
+
+    {
+        global_state.state.lock().await.wifi_connected = Some(true);
+    }
 
     #[cfg(feature = "qa")]
     crate::qa::send_qa_resp(crate::qa::QaSignal::WifiSetup);

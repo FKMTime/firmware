@@ -20,11 +20,15 @@ jobs:
       matrix:
         action:
           - command: build
-            args: --no-default-features --target=riscv32imc-unknown-none-elf --release
+            args: --no-default-features --features v3 --target=riscv32imc-unknown-none-elf --release
+          - command: build
+            args: --no-default-features --features v4 --target=riscv32imc-unknown-none-elf --release
           - command: fmt
             args: --all -- --check --color always
           - command: clippy
-            args: --no-default-features --target=riscv32imc-unknown-none-elf --workspace -- -D warnings
+            args: --no-default-features --features v3 --target=riscv32imc-unknown-none-elf --workspace -- -D warnings
+          - command: clippy
+            args: --no-default-features --features v4 --target=riscv32imc-unknown-none-elf --workspace -- -D warnings
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

@@ -1,4 +1,6 @@
+#[cfg(feature = "v3")]
 pub const DEC_DIGITS: [u8; 10] = [215, 132, 203, 206, 156, 94, 95, 196, 223, 222];
+#[cfg(feature = "v3")]
 pub const DOT_MOD: u8 = 32;
 
 pub fn parse_stackmat_data(data: &[u8; 8]) -> Result<(StackmatTimerState, u64), ()> {
@@ -84,6 +86,7 @@ pub fn generate_stackmat_data(state: &StackmatTimerState, time_ms: u64) -> [u8; 
     data
 }
 
+#[cfg(feature = "v3")]
 pub fn time_str_to_display(time: &str) -> [u8; 6] {
     let mut data = [255; 6];
     let mut i = 0;

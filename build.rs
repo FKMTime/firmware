@@ -34,9 +34,14 @@ fn main() {
         format!("D{epoch}")
     };
 
-    // NOTE: change this if something changes in schematic, (but not MCU)
-    // This will enable firmware to be built for multiple hw revisions for example
-    let hw = "v3";
+    let hw = if cfg!(feature = "v4") {
+        "v4"
+    } else if cfg!(feature = "v3") {
+        "v3"
+    } else {
+        "unknown"
+    };
+
     let generated = VERSION_TEMPLATE
         .replace("{version}", &version_str)
         .replace("{hw}", hw)
