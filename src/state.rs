@@ -472,7 +472,6 @@ impl PartialEq for SignaledGlobalStateInner {
             && self.inspection_start == other.inspection_start
             && self.inspection_end == other.inspection_end
             && self.solve_time == other.solve_time
-            && self.last_solve_time == other.last_solve_time
             && self.penalty == other.penalty
             && self.session_id == other.session_id
             && self.time_confirmed == other.time_confirmed
