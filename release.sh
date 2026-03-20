@@ -24,13 +24,16 @@ while [ -z "$RELEASE_VERSION" ]; do
 done
 
 source ~/export-esp.sh
-RELEASE_BUILD="$RELEASE_VERSION" cargo build -r
-
 EPOCH=$(date +%s)
 
+RELEASE_BUILD="$RELEASE_VERSION" cargo build -r --no-default-features --features v3,sleep
 mkdir -p /tmp/fkm-build &> /dev/null
 espflash save-image --chip esp32c3 ./target/riscv32imc-unknown-none-elf/release/fkm-firmware "/tmp/fkm-build/v3_STATION_${RELEASE_VERSION}.bin"
 ./append_metadata.sh "/tmp/fkm-build/v3_STATION_${RELEASE_VERSION}.bin" "$RELEASE_VERSION" "STATION" "v3" "$EPOCH"
+
+RELEASE_BUILD="$RELEASE_VERSION" cargo build -r --no-default-features --features v4,sleep
+espflash save-image --chip esp32c3 ./target/riscv32imc-unknown-none-elf/release/fkm-firmware "/tmp/fkm-build/v4_STATION_${RELEASE_VERSION}.bin"
+./append_metadata.sh "/tmp/fkm-build/v4_STATION_${RELEASE_VERSION}.bin" "$RELEASE_VERSION" "STATION" "v4" "$EPOCH"
 
 cd $SCRIPT_DIR
 echo "Version: $RELEASE_VERSION"
