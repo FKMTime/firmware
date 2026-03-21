@@ -76,6 +76,8 @@ pub const SMALL_FONT: MonoTextStyle<'_, BinaryColor> = MonoTextStyle::new(
 );
 pub const TIMER_FONT: MonoTextStyle<'_, BinaryColor> =
     MonoTextStyle::new(&profont::PROFONT_14_POINT, BinaryColor::On);
+pub const SMALL_TIMER_FONT: MonoTextStyle<'_, BinaryColor> =
+    MonoTextStyle::new(&profont::PROFONT_7_POINT, BinaryColor::On);
 
 pub const TEXT_CENTER: TextStyle = TextStyleBuilder::new()
     .alignment(Alignment::Center)
@@ -675,7 +677,6 @@ async fn process_main(
         Scene::Finished => {
             let solve_time = current_state.solve_time.unwrap_or(0);
             let time_str = ms_to_time_str(solve_time);
-
             let inspection_time =
                 match (current_state.inspection_start, current_state.inspection_end) {
                     (Some(start), Some(end)) => {
@@ -684,15 +685,12 @@ async fn process_main(
                     _ => None,
                 };
 
-            let time_display = if current_state.use_inspection()
-                && inspection_time.unwrap_or(0) > INSPECTION_TIME_PLUS2
-            {
-                let inspection_seconds = inspection_time.unwrap_or(0) / 1000;
-                alloc::format!("{time_str}+{inspection_seconds}s")
-            } else {
-                alloc::format!("{time_str}")
-            };
+            let show_inspection = current_state.use_inspection()
+                && inspection_time.unwrap_or(0) > INSPECTION_TIME_PLUS2;
+            let inspection_display =
+                show_inspection.then(|| ms_to_time_str(inspection_time.unwrap_or(0)));
 
+            let time_display = alloc::format!("{time_str}");
             let penalty = current_state.penalty.unwrap_or(0);
             let penalty_str: alloc::string::String = match penalty {
                 -2 => "DNS".into(),
@@ -701,9 +699,64 @@ async fn process_main(
                 _ => alloc::string::String::new(),
             };
 
-            if penalty_str.is_empty() {
-                let time_text =
-                    Text::with_text_style(&time_display, Point::zero(), TIMER_FONT, TEXT_CENTER);
+            let time_text =
+                Text::with_text_style(&time_display, Point::zero(), TIMER_FONT, TEXT_CENTER);
+
+            if let Some(insp_str) = inspection_display {
+                let insp_text =
+                    Text::with_text_style(&insp_str, Point::zero(), SMALL_TIMER_FONT, TEXT_CENTER);
+
+                if penalty_str.is_empty() {
+                    LinearLayout::vertical(
+                        Chain::new(
+                            LinearLayout::horizontal(Chain::new(time_text))
+                                .with_alignment(embedded_layout::align::vertical::Center)
+                                .arrange(),
+                        )
+                        .append(
+                            LinearLayout::horizontal(Chain::new(insp_text))
+                                .with_alignment(embedded_layout::align::vertical::Center)
+                                .arrange(),
+                        ),
+                    )
+                    .with_alignment(embedded_layout::align::horizontal::Center)
+                    .arrange()
+                    .align_to(
+                        &MAIN_RECT,
+                        embedded_layout::align::horizontal::Center,
+                        embedded_layout::align::vertical::Top,
+                    )
+                    .translate(Point::new(0, 2))
+                    .draw(&mut oled.fbuf)?;
+                } else {
+                    let penalty_text =
+                        Text::with_text_style(&penalty_str, Point::zero(), TIMER_FONT, TEXT_CENTER);
+                    LinearLayout::vertical(
+                        Chain::new(
+                            LinearLayout::horizontal(Chain::new(time_text).append(penalty_text))
+                                .with_alignment(embedded_layout::align::vertical::Center)
+                                .with_spacing(
+                                    embedded_layout::layout::linear::spacing::FixedMargin(4),
+                                )
+                                .arrange(),
+                        )
+                        .append(
+                            LinearLayout::horizontal(Chain::new(insp_text))
+                                .with_alignment(embedded_layout::align::vertical::Center)
+                                .arrange(),
+                        ),
+                    )
+                    .with_alignment(embedded_layout::align::horizontal::Center)
+                    .arrange()
+                    .align_to(
+                        &MAIN_RECT,
+                        embedded_layout::align::horizontal::Center,
+                        embedded_layout::align::vertical::Top,
+                    )
+                    .translate(Point::new(0, 2))
+                    .draw(&mut oled.fbuf)?;
+                }
+            } else if penalty_str.is_empty() {
                 LinearLayout::horizontal(Chain::new(time_text))
                     .with_alignment(embedded_layout::align::vertical::Center)
                     .arrange()
@@ -715,8 +768,6 @@ async fn process_main(
                     .translate(Point::new(0, 10))
                     .draw(&mut oled.fbuf)?;
             } else {
-                let time_text =
-                    Text::with_text_style(&time_display, Point::zero(), TIMER_FONT, TEXT_CENTER);
                 let penalty_text =
                     Text::with_text_style(&penalty_str, Point::zero(), TIMER_FONT, TEXT_CENTER);
                 LinearLayout::horizontal(Chain::new(time_text).append(penalty_text))
@@ -743,13 +794,11 @@ async fn process_main(
             } else {
                 None
             };
-
             if let Some(status_str) = status {
                 let textbox_style = TextBoxStyleBuilder::new()
                     .alignment(HorizontalAlignment::Center)
                     .vertical_alignment(VerticalAlignment::Bottom)
                     .build();
-
                 TextBox::with_textbox_style(&status_str, MAIN_RECT, NORMAL_FONT, textbox_style)
                     .draw(&mut oled.fbuf)?;
             }

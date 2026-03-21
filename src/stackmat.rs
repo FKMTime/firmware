@@ -156,15 +156,18 @@ pub async fn stackmat_task(
                             state.scene = Scene::Timer;
                         }
                     } else if parsed.0 == StackmatTimerState::Stopped {
-                        log::info!("Timer stopped: {}ms", parsed.1);
                         let mut state = global_state.state.lock().await;
-                        if state.solve_time.is_none() {
-                            let inspection_time = state
-                                .inspection_end
-                                .zip(state.inspection_start)
-                                .map(|(end, start)| (end - start).as_millis())
-                                .unwrap_or(0);
+                        let inspection_time = state
+                            .inspection_end
+                            .zip(state.inspection_start)
+                            .map(|(end, start)| (end - start).as_millis())
+                            .unwrap_or(0);
 
+                        log::info!(
+                            "Timer stopped: {}ms (inspection: {inspection_time}ms)",
+                            parsed.1
+                        );
+                        if state.solve_time.is_none() {
                             state.delegate_used = false;
                             state.solve_time = Some(parsed.1);
                             state.penalty = if inspection_time >= INSPECTION_TIME_DNF {

@@ -326,6 +326,7 @@ async fn inspection_start(
     }
 
     if unsafe { CURRENT_TIME } != 0 {
+        log::warn!("Skipping inspection start because current timer time is not 0");
         return Ok(false);
     }
 
