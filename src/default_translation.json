@@ -94,5 +94,9 @@
       {
         "key": "serverDisconnectedFooter",
         "translation": "Disconnected"
+      },
+      {
+        "key": "inspection",
+        "translation": "Inspection"
       }
 ]

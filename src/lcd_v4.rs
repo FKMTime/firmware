@@ -643,8 +643,13 @@ async fn process_main(
                 .inspection_start
                 .unwrap_or(Instant::now());
 
-            _ = Text::with_text_style("Inspection", Point::new(64, 50), NORMAL_FONT, TEXT_CENTER)
-                .draw(&mut oled.disp);
+            _ = Text::with_text_style(
+                &get_translation(TranslationKey::INSPECTION),
+                Point::new(64, 50),
+                NORMAL_FONT,
+                TEXT_CENTER,
+            )
+            .draw(&mut oled.disp);
 
             let text_rect = Rectangle::new(Point::new(0, 28), Size::new(128, 17));
             loop {
@@ -703,6 +708,10 @@ async fn process_main(
                 Text::with_text_style(&time_display, Point::zero(), TIMER_FONT, TEXT_CENTER);
 
             if let Some(insp_str) = inspection_display {
+                let insp_str = format!(
+                    "{}: {insp_str}",
+                    get_translation(TranslationKey::INSPECTION)
+                );
                 let insp_text =
                     Text::with_text_style(&insp_str, Point::zero(), SMALL_TIMER_FONT, TEXT_CENTER);
 
