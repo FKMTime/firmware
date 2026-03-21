@@ -143,6 +143,7 @@ pub async fn rfid_task(
         let Ok(card) = mfrc522.get_card(UidSize::Four).await else {
             continue;
         };
+        #[cfg(not(feature = "e2e"))]
         let card_uid = card.get_number();
         log::info!("Card UID: {card_uid}");
 
@@ -170,6 +171,7 @@ pub async fn rfid_task(
             continue;
         }
 
+        #[cfg(not(feature = "e2e"))]
         if unsafe { !crate::state::TRUST_SERVER } {
             log::error!("Skipping card scan. Server not trusted!");
             global_state.state.lock().await.error_text = Some("Server NOT Trusted!".to_string());
@@ -177,7 +179,9 @@ pub async fn rfid_task(
             continue;
         }
 
+        #[cfg(not(feature = "e2e"))]
         let menu_scene = global_state.state.lock().await.menu_scene.clone();
+        #[cfg(not(feature = "e2e"))]
         match menu_scene {
             Some(MenuScene::Signing) => {
                 let fkm_token = unsafe { crate::state::FKM_TOKEN };
@@ -308,6 +312,7 @@ pub async fn rfid_task(
             _ => {}
         }
 
+        #[cfg(not(feature = "e2e"))]
         if unsafe { crate::state::SECURE_RFID } {
             let fkm_token = unsafe { crate::state::FKM_TOKEN };
             let mut key = [0; 6];
@@ -471,6 +476,7 @@ async fn process_card_info_response(
                     return Ok(());
                 };
 
+                #[cfg(not(feature = "e2e"))]
                 if unsafe { !crate::state::TRUST_SERVER } {
                     log::error!("Skipping solve send. Server not trusted!");
                     return Ok(());
@@ -497,10 +503,15 @@ async fn process_card_info_response(
                     state.reset_solve_state(Some(&global_state.nvs)).await;
 
                     let words: alloc::vec::Vec<&str> = resp.message.split(' ').collect();
-                    let first_line = words[..2].join(" ");
-                    let second_line = words[2..].join(" ");
+                    if words.len() >= 2 {
+                        let first_line = words[..2].join(" ");
+                        let second_line = words[2..].join(" ");
 
-                    state.custom_message = Some((first_line, second_line));
+                        state.custom_message = Some((first_line, second_line));
+                    } else {
+                        state.custom_message = Some(("Solve".to_string(), "sent".to_string()));
+                    }
+
                     drop(state);
                     Timer::after_millis(3000).await;
 

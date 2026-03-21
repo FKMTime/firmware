@@ -239,8 +239,11 @@ async fn ws_loop(
                 unsafe { crate::state::TRUST_SERVER = true };
                 unsafe { crate::state::FKM_TOKEN = fkm_token };
             } else {
-                global_state.state.lock().await.error_text =
-                    Some("Server Not Trusted!".to_string());
+                #[cfg(not(feature = "e2e"))]
+                {
+                    global_state.state.lock().await.error_text =
+                        Some("Server Not Trusted!".to_string());
+                }
             }
         }
 
@@ -435,6 +438,7 @@ async fn ws_rw(
                                     continue;
                                 }
 
+                                #[cfg(not(feature = "e2e"))]
                                 if unsafe { !crate::state::TRUST_SERVER } {
                                     continue;
                                 }
@@ -472,6 +476,7 @@ async fn ws_rw(
                         continue;
                     }
 
+                    #[cfg(not(feature = "e2e"))]
                     if unsafe { !crate::state::TRUST_SERVER } {
                         continue;
                     }
@@ -528,6 +533,11 @@ async fn parse_test_packet(
             send_test_ack(&global_state).await;
         }
         crate::structs::TestPacketData::HardStateReset => {
+            global_state
+                .e2e
+                .stackmat_sig
+                .signal((crate::utils::stackmat::StackmatTimerState::Reset, 0));
+
             global_state.state.lock().await.hard_state_reset().await;
         }
         crate::structs::TestPacketData::ScanCard(uid) => {

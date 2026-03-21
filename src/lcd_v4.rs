@@ -277,9 +277,8 @@ pub async fn lcd_task(
                     && current_scene.can_sleep()
                 {
                     oled.fbuf.clear(BinaryColor::Off);
-
                     let text =
-                        Text::with_text_style("Sleep", Point::zero(), NORMAL_FONT, TEXT_CENTER);
+                        Text::with_text_style("Sleep", Point::zero(), SMALL_FONT, TEXT_CENTER);
 
                     center_layout(Chain::new(text)).draw(&mut oled.fbuf);
                     _ = oled.flush().await;
@@ -304,12 +303,8 @@ pub async fn lcd_task(
                     use esp_hal::rtc_cntl::{Rtc, sleep::RtcioWakeupSource};
 
                     oled.fbuf.clear(BinaryColor::Off);
-                    let text = Text::with_text_style(
-                        "Deep Sleep",
-                        Point::zero(),
-                        NORMAL_FONT,
-                        TEXT_CENTER,
-                    );
+                    let text =
+                        Text::with_text_style("Sleep", Point::zero(), SMALL_FONT, TEXT_CENTER);
 
                     center_layout(Chain::new(text)).draw(&mut oled.fbuf);
                     _ = oled.flush().await;

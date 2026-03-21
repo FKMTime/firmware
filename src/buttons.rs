@@ -500,6 +500,7 @@ async fn delegate_hold(
                 return Ok(false);
             };
 
+            #[cfg(not(feature = "e2e"))]
             if unsafe { !crate::state::TRUST_SERVER } {
                 log::error!("Skipping delegate hold. Server not trusted!");
                 return Ok(false);
