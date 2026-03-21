@@ -347,7 +347,10 @@ async fn logger_task(global_state: GlobalState) {
 
             ws::send_packet(structs::TimerPacket {
                 tag: None,
-                data: structs::TimerPacketInner::Logs { logs: tmp_logs },
+                data: structs::TimerPacketInner::Logs {
+                    current_time: Some(unsafe { crate::stackmat::CURRENT_TIME }),
+                    logs: tmp_logs,
+                },
             })
             .await;
         }
