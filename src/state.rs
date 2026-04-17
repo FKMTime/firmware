@@ -24,6 +24,8 @@ pub static mut SLEEP_STATE: bool = false;
 pub static mut DEEPER_SLEEP: bool = false;
 pub static mut OTA_STATE: bool = false;
 
+pub static BUZZER_VOLUME: u8 = 5;
+
 #[inline(always)]
 pub fn current_epoch() -> u64 {
     unsafe { EPOCH_BASE + Instant::now().as_secs() }

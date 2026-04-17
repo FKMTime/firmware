@@ -20,6 +20,10 @@ use esp_hal::{
 #[embassy_executor::task]
 pub async fn rfid_task(
     #[cfg(feature = "v4")] i2c: crate::utils::shared_i2c::SharedI2C,
+    #[cfg(feature = "v4")] mut buzzer: esp_hal::ledc::channel::Channel<
+        'static,
+        esp_hal::ledc::LowSpeed,
+    >,
     #[cfg(feature = "v3")] miso: AnyPin<'static>,
     #[cfg(feature = "v3")] mosi: AnyPin<'static>,
     #[cfg(feature = "v3")] sck: AnyPin<'static>,
@@ -162,6 +166,8 @@ pub async fn rfid_task(
             continue;
         }
         last_card = (card_uid, Instant::now());
+        #[cfg(feature = "v4")]
+        beep_card_scan(&mut buzzer).await;
 
         #[cfg(feature = "qa")]
         {
@@ -525,4 +531,23 @@ async fn process_card_info_response(
     }
 
     Ok(())
+}
+
+#[cfg(feature = "v4")]
+async fn beep_card_scan(
+    buzzer: &mut esp_hal::ledc::channel::Channel<'static, esp_hal::ledc::LowSpeed>,
+) {
+    use esp_hal::ledc::channel::ChannelIFace;
+    const BEEP_DUTY_PERCENT: u8 = 50;
+    const BEEP_DURATION_MS: u64 = 100;
+
+    let volume: f32 = match crate::state::BUZZER_VOLUME {
+        0 => 0.0,
+        25.. => 1.0,
+        v => 0.55 + (v - 1) as f32 * (0.25 / 23.0),
+    };
+    let volume = volume * volume * volume * volume;
+    _ = buzzer.set_duty((BEEP_DUTY_PERCENT as f32 * volume) as u8);
+    Timer::after_millis(BEEP_DURATION_MS).await;
+    _ = buzzer.set_duty(0);
 }

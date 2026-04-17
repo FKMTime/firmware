@@ -171,6 +171,8 @@ async fn main(spawner: Spawner) {
     spawner.must_spawn(rfid::rfid_task(
         #[cfg(feature = "v4")]
         board.i2c.clone(),
+        #[cfg(feature = "v4")]
+        board.buzzer,
         #[cfg(feature = "v3")]
         board.miso,
         #[cfg(feature = "v3")]

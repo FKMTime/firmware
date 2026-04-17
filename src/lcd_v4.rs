@@ -194,7 +194,7 @@ pub async fn lcd_task(
     let di = display_interface_i2c::I2CInterface::new(i2c, 0x3C, 0x40);
     let raw_disp =
         oled_async::builder::Builder::new(oled_async::displays::ssd1309::Ssd1309_128_64 {})
-            .with_rotation(oled_async::prelude::DisplayRotation::Rotate0)
+            .with_rotation(oled_async::prelude::DisplayRotation::Rotate180)
             .connect(di);
 
     let mut disp: oled_async::mode::GraphicsMode<_, _> = raw_disp.into();

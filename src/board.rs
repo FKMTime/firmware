@@ -43,6 +43,8 @@ pub struct Board {
     pub display_rst: Output<'static>,
     #[cfg(feature = "v4")]
     pub i2c: SharedI2C,
+    #[cfg(feature = "v4")]
+    pub buzzer: esp_hal::ledc::channel::Channel<'static, esp_hal::ledc::LowSpeed>,
 
     pub stackmat_rx: AnyPin<'static>,
 
@@ -91,6 +93,33 @@ impl Board {
             esp_hal::gpio::Level::Low,
             Default::default(),
         );
+
+        let mut ledc = esp_hal::ledc::Ledc::new(peripherals.LEDC);
+        ledc.set_global_slow_clock(esp_hal::ledc::LSGlobalClkSource::APBClk);
+        let mut lstimer0 =
+            ledc.timer::<esp_hal::ledc::LowSpeed>(esp_hal::ledc::timer::Number::Timer0);
+        {
+            use esp_hal::ledc::timer::TimerIFace;
+            _ = lstimer0.configure(esp_hal::ledc::timer::config::Config {
+                duty: esp_hal::ledc::timer::config::Duty::Duty5Bit,
+                clock_source: esp_hal::ledc::timer::LSClockSource::APBClk,
+                frequency: esp_hal::time::Rate::from_hz(2_500),
+            });
+        }
+        let lstimer0: &'static _ = alloc::boxed::Box::leak(alloc::boxed::Box::new(lstimer0));
+        let mut buzzer =
+            ledc.channel::<esp_hal::ledc::LowSpeed>(
+                esp_hal::ledc::channel::Number::Channel0,
+                peripherals.GPIO4,
+            );
+        {
+            use esp_hal::ledc::channel::ChannelIFace;
+            _ = buzzer.configure(esp_hal::ledc::channel::config::Config {
+                timer: lstimer0,
+                duty_pct: 0,
+                drive_mode: esp_hal::gpio::DriveMode::PushPull,
+            });
+        }
 
         let b1 = Input::new(
             peripherals.GPIO0,
@@ -147,6 +176,7 @@ impl Board {
             i2c,
 
             display_rst,
+            buzzer,
             stackmat_rx,
             buttons: [b1, b2, b3, b4],
 
