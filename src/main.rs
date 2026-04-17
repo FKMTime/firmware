@@ -124,6 +124,21 @@ async fn main(spawner: Spawner) {
     if let Ok(sign_key) = nvs.get::<u32>("SIGN_KEY").await {
         unsafe { crate::state::SIGN_KEY = sign_key };
     }
+    #[cfg(feature = "v4")]
+    if let Ok(saved_volume) = nvs.get::<u8>(crate::consts::BUZZER_VOLUME_NVS_KEY).await {
+        if (crate::consts::BUZZER_VOLUME_MIN..=crate::consts::BUZZER_VOLUME_MAX)
+            .contains(&saved_volume)
+        {
+            crate::state::set_buzzer_volume(saved_volume);
+        } else {
+            log::warn!(
+                "Ignoring invalid saved buzzer volume: {} (valid range {}..={})",
+                saved_volume,
+                crate::consts::BUZZER_VOLUME_MIN,
+                crate::consts::BUZZER_VOLUME_MAX
+            );
+        }
+    }
 
     #[cfg(feature = "v3")]
     spawner.must_spawn(lcd_v3::lcd_task(

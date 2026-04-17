@@ -27,3 +27,12 @@ pub const MDNS_RESEND_INTERVAL: u64 = 500;
 
 pub const INSPECTION_TIME_DNF: u64 = 17000;
 pub const INSPECTION_TIME_PLUS2: u64 = 15000;
+
+#[cfg(feature = "v4")]
+pub const BUZZER_VOLUME_NVS_KEY: &str = "BUZZER_VOLUME";
+#[cfg(feature = "v4")]
+pub const BUZZER_VOLUME_MIN: u8 = 0;
+#[cfg(feature = "v4")]
+pub const BUZZER_VOLUME_MAX: u8 = 25;
+#[cfg(feature = "v4")]
+pub const BUZZER_VOLUME_DEFAULT: u8 = 5;

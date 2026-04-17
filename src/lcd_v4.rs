@@ -407,6 +407,7 @@ async fn process_top_bar(
             Some(MenuScene::Signing) => Some("SIGN"),
             Some(MenuScene::Unsigning) => Some("UNSIGN"),
             Some(MenuScene::BtDisplay) => Some("BTDISP"),
+            Some(MenuScene::BuzzerVolume) => Some("BUZZER"),
             None => None,
         }
     };
@@ -457,6 +458,14 @@ async fn process_main(
     }
 
     match current_state.menu_scene {
+        Some(MenuScene::BuzzerVolume) => {
+            center_text_layout(&format!(
+                "Buzzer Volume\n< {} >\nSubmit to save",
+                crate::state::buzzer_volume()
+            ))
+            .draw(&mut oled.fbuf)?;
+            return Ok(());
+        }
         Some(MenuScene::Signing) | Some(MenuScene::Unsigning) => {
             let prefix = if current_state.menu_scene == Some(MenuScene::Signing) {
                 "S"

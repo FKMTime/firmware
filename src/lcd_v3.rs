@@ -316,6 +316,8 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
 
             return Some(());
         }
+        #[cfg(feature = "v4")]
+        Some(crate::state::MenuScene::BuzzerVolume) => {}
         None => {}
     }
 

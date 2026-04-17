@@ -96,8 +96,22 @@ async fn sel_left(
     _hold_time: u64,
     state: &GlobalState,
 ) -> Result<bool, ()> {
-    let mut state = state.state.lock().await;
-    if let Some(sel) = state.selected_config_menu.as_mut() {
+    let mut state_val = state.state.lock().await;
+    #[cfg(feature = "v4")]
+    if state_val.menu_scene == Some(MenuScene::BuzzerVolume) {
+        let old_volume = crate::state::buzzer_volume();
+        if old_volume > crate::consts::BUZZER_VOLUME_MIN {
+            let new_volume = old_volume.saturating_sub(1);
+            crate::state::set_buzzer_volume(new_volume);
+            drop(state_val);
+            state.state.signal();
+            state.buzzer_sound_test.signal(());
+        }
+
+        return Ok(true);
+    }
+
+    if let Some(sel) = state_val.selected_config_menu.as_mut() {
         *sel = sel
             .wrapping_sub(1)
             .min(crate::structs::CONFIG_MENU_ITEMS.len() - 1);
@@ -105,17 +119,17 @@ async fn sel_left(
         return Ok(true);
     }
 
-    if state.menu_scene == Some(MenuScene::BtDisplay) {
-        state.selected_bluetooth_item = state.selected_bluetooth_item.saturating_sub(1);
+    if state_val.menu_scene == Some(MenuScene::BtDisplay) {
+        state_val.selected_bluetooth_item = state_val.selected_bluetooth_item.saturating_sub(1);
 
         return Ok(true);
     }
 
-    if state.scene == Scene::GroupSelect {
-        state.group_selected_idx = state
+    if state_val.scene == Scene::GroupSelect {
+        state_val.group_selected_idx = state_val
             .group_selected_idx
             .wrapping_sub(1)
-            .min(state.possible_groups.len() - 1);
+            .min(state_val.possible_groups.len() - 1);
 
         return Ok(true);
     }
@@ -129,8 +143,22 @@ async fn sel_right(
     _hold_time: u64,
     state: &GlobalState,
 ) -> Result<bool, ()> {
-    let mut state = state.state.lock().await;
-    if let Some(sel) = state.selected_config_menu.as_mut() {
+    let mut state_val = state.state.lock().await;
+    #[cfg(feature = "v4")]
+    if state_val.menu_scene == Some(MenuScene::BuzzerVolume) {
+        let old_volume = crate::state::buzzer_volume();
+        if old_volume < crate::consts::BUZZER_VOLUME_MAX {
+            let new_volume = (old_volume + 1).min(crate::consts::BUZZER_VOLUME_MAX);
+            crate::state::set_buzzer_volume(new_volume);
+            drop(state_val);
+            state.state.signal();
+            state.buzzer_sound_test.signal(());
+        }
+
+        return Ok(true);
+    }
+
+    if let Some(sel) = state_val.selected_config_menu.as_mut() {
         *sel += 1;
         if *sel == crate::structs::CONFIG_MENU_ITEMS.len() {
             *sel = 0;
@@ -139,18 +167,18 @@ async fn sel_right(
         return Ok(true);
     }
 
-    if state.menu_scene == Some(MenuScene::BtDisplay) {
-        if state.selected_bluetooth_item < state.discovered_bluetooth_devices.len() + 1 {
-            state.selected_bluetooth_item += 1;
+    if state_val.menu_scene == Some(MenuScene::BtDisplay) {
+        if state_val.selected_bluetooth_item < state_val.discovered_bluetooth_devices.len() + 1 {
+            state_val.selected_bluetooth_item += 1;
         }
 
         return Ok(true);
     }
 
-    if state.scene == Scene::GroupSelect {
-        state.group_selected_idx += 1;
-        if state.group_selected_idx == state.possible_groups.len() {
-            state.group_selected_idx = 0;
+    if state_val.scene == Scene::GroupSelect {
+        state_val.group_selected_idx += 1;
+        if state_val.group_selected_idx == state_val.possible_groups.len() {
+            state_val.group_selected_idx = 0;
         }
 
         return Ok(true);
@@ -215,45 +243,104 @@ async fn submit_up(
             state.state.signal();
             return Ok(true);
         }
+        #[cfg(feature = "v4")]
+        Some(MenuScene::BuzzerVolume) => {
+            let current_volume = crate::state::buzzer_volume();
+            if let Err(e) = state
+                .nvs
+                .set(crate::consts::BUZZER_VOLUME_NVS_KEY, current_volume)
+                .await
+            {
+                log::error!("Cannot save buzzer volume to NVS: {e:?}");
+            }
+
+            state_val.menu_scene = None;
+            state_val.selected_config_menu = Some(4);
+            state.state.signal();
+            return Ok(true);
+        }
         _ => {}
     }
 
     if let Some(sel) = state_val.selected_config_menu {
-        match sel {
-            0 => {
-                // Reset WiFi
-                _ = state.nvs.delete(esp_hal_wifimanager::WIFI_NVS_KEY).await;
-                _ = state.nvs.delete("SIGN_KEY").await;
-                _ = state.nvs.delete("BONDING_KEY").await;
+        #[cfg(feature = "v3")]
+        {
+            match sel {
+                0 => {
+                    // Reset WiFi
+                    _ = state.nvs.delete(esp_hal_wifimanager::WIFI_NVS_KEY).await;
+                    _ = state.nvs.delete("SIGN_KEY").await;
+                    _ = state.nvs.delete("BONDING_KEY").await;
 
-                Timer::after_millis(250).await;
-                esp_hal::system::software_reset();
-            }
-            1 => {
-                state_val.menu_scene = Some(MenuScene::BtDisplay);
-                state.ble_sig.signal(BleAction::StartScan);
-            }
-            2 => {
-                if unsafe { !crate::state::AUTO_SETUP } {
-                    state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
-                    state.state.signal();
-                    return Ok(true);
+                    Timer::after_millis(250).await;
+                    esp_hal::system::software_reset();
                 }
-
-                state_val.menu_scene = Some(MenuScene::Signing);
-            }
-            3 => {
-                if unsafe { !crate::state::AUTO_SETUP } {
-                    state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
-                    state.state.signal();
-                    return Ok(true);
+                1 => {
+                    state_val.menu_scene = Some(MenuScene::BtDisplay);
+                    state.ble_sig.signal(BleAction::StartScan);
                 }
+                2 => {
+                    if unsafe { !crate::state::AUTO_SETUP } {
+                        state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
+                        state.state.signal();
+                        return Ok(true);
+                    }
 
-                state_val.menu_scene = Some(MenuScene::Unsigning);
+                    state_val.menu_scene = Some(MenuScene::Signing);
+                }
+                3 => {
+                    if unsafe { !crate::state::AUTO_SETUP } {
+                        state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
+                        state.state.signal();
+                        return Ok(true);
+                    }
+
+                    state_val.menu_scene = Some(MenuScene::Unsigning);
+                }
+                4 => {} // Exit
+                _ => {}
             }
-            4 => {} // Exit
-            _ => {
-                state_val.error_text = Some("Not Implemented".to_string());
+        }
+
+        #[cfg(feature = "v4")]
+        {
+            match sel {
+                0 => {
+                    // Reset WiFi
+                    _ = state.nvs.delete(esp_hal_wifimanager::WIFI_NVS_KEY).await;
+                    _ = state.nvs.delete("SIGN_KEY").await;
+                    _ = state.nvs.delete("BONDING_KEY").await;
+
+                    Timer::after_millis(250).await;
+                    esp_hal::system::software_reset();
+                }
+                1 => {
+                    state_val.menu_scene = Some(MenuScene::BtDisplay);
+                    state.ble_sig.signal(BleAction::StartScan);
+                }
+                2 => {
+                    if unsafe { !crate::state::AUTO_SETUP } {
+                        state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
+                        state.state.signal();
+                        return Ok(true);
+                    }
+
+                    state_val.menu_scene = Some(MenuScene::Signing);
+                }
+                3 => {
+                    if unsafe { !crate::state::AUTO_SETUP } {
+                        state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
+                        state.state.signal();
+                        return Ok(true);
+                    }
+
+                    state_val.menu_scene = Some(MenuScene::Unsigning);
+                }
+                4 => {
+                    state_val.menu_scene = Some(MenuScene::BuzzerVolume);
+                }
+                5 => {} // Exit
+                _ => {}
             }
         }
 

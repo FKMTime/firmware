@@ -107,11 +107,10 @@ impl Board {
             });
         }
         let lstimer0: &'static _ = alloc::boxed::Box::leak(alloc::boxed::Box::new(lstimer0));
-        let mut buzzer =
-            ledc.channel::<esp_hal::ledc::LowSpeed>(
-                esp_hal::ledc::channel::Number::Channel0,
-                peripherals.GPIO4,
-            );
+        let mut buzzer = ledc.channel::<esp_hal::ledc::LowSpeed>(
+            esp_hal::ledc::channel::Number::Channel0,
+            peripherals.GPIO4,
+        );
         {
             use esp_hal::ledc::channel::ChannelIFace;
             _ = buzzer.configure(esp_hal::ledc::channel::config::Config {

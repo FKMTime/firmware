@@ -24,7 +24,22 @@ pub static mut SLEEP_STATE: bool = false;
 pub static mut DEEPER_SLEEP: bool = false;
 pub static mut OTA_STATE: bool = false;
 
-pub static BUZZER_VOLUME: u8 = 5;
+#[cfg(feature = "v4")]
+pub static mut BUZZER_VOLUME: u8 = crate::consts::BUZZER_VOLUME_DEFAULT;
+
+#[cfg(feature = "v4")]
+#[inline(always)]
+pub fn buzzer_volume() -> u8 {
+    unsafe { BUZZER_VOLUME }
+}
+
+#[cfg(feature = "v4")]
+#[inline(always)]
+pub fn set_buzzer_volume(volume: u8) {
+    unsafe {
+        BUZZER_VOLUME = volume;
+    }
+}
 
 #[inline(always)]
 pub fn current_epoch() -> u64 {
@@ -73,6 +88,8 @@ pub enum MenuScene {
     Signing,
     Unsigning,
     BtDisplay,
+    #[cfg(feature = "v4")]
+    BuzzerVolume,
 }
 
 impl Scene {
@@ -154,6 +171,8 @@ pub struct GlobalStateInner {
     pub sign_unsign_progress: Signal<CriticalSectionRawMutex, bool>,
     pub ble_sig: Signal<CriticalSectionRawMutex, BleAction>,
     pub show_battery: Signal<CriticalSectionRawMutex, u8>,
+    #[cfg(feature = "v4")]
+    pub buzzer_sound_test: Signal<CriticalSectionRawMutex, ()>,
 
     pub nvs: Nvs,
     pub aes: Mutex<NoopRawMutex, Aes<'static>>,
@@ -172,6 +191,8 @@ impl GlobalStateInner {
             sign_unsign_progress: Signal::new(),
             ble_sig: Signal::new(),
             show_battery: Signal::new(),
+            #[cfg(feature = "v4")]
+            buzzer_sound_test: Signal::new(),
 
             nvs: nvs.clone(),
             aes: Mutex::new(Aes::new(aes)),

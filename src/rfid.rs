@@ -128,6 +128,13 @@ pub async fn rfid_task(
             continue;
         }
 
+        #[cfg(feature = "v4")]
+        if global_state.buzzer_sound_test.signaled() {
+            global_state.buzzer_sound_test.wait().await;
+            beep_card_scan(&mut buzzer).await;
+            continue;
+        }
+
         #[cfg(feature = "e2e")]
         if !global_state.e2e.card_scan_sig.signaled() {
             continue;
@@ -541,9 +548,8 @@ async fn beep_card_scan(
     const BEEP_DUTY_PERCENT: u8 = 50;
     const BEEP_DURATION_MS: u64 = 100;
 
-    let volume: f32 = match crate::state::BUZZER_VOLUME {
+    let volume: f32 = match crate::state::buzzer_volume() {
         0 => 0.0,
-        25.. => 1.0,
         v => 0.55 + (v - 1) as f32 * (0.25 / 23.0),
     };
     let volume = volume * volume * volume * volume;

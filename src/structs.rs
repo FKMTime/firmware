@@ -4,11 +4,21 @@ use alloc::{
 };
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "v3")]
 pub const CONFIG_MENU_ITEMS: [&str; 5] = [
     "Reset WiFi",
     "BT Display",
     "Sign Cards",
     "Un-Sign Cards",
+    "Exit",
+];
+#[cfg(feature = "v4")]
+pub const CONFIG_MENU_ITEMS: [&str; 6] = [
+    "Reset WiFi",
+    "BT Display",
+    "Sign Cards",
+    "Un-Sign Cards",
+    "Buzzer Volume",
     "Exit",
 ];
 
