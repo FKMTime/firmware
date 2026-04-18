@@ -141,70 +141,80 @@ async fn main(spawner: Spawner) {
     }
 
     #[cfg(feature = "v3")]
-    spawner.must_spawn(lcd_v3::lcd_task(
-        board.lcd,
-        global_state.clone(),
-        wifi_setup_sig.clone(),
-        board.digits_shifters.clone(),
-    ));
+    spawner.spawn(
+        lcd_v3::lcd_task(
+            board.lcd,
+            global_state.clone(),
+            wifi_setup_sig.clone(),
+            board.digits_shifters.clone(),
+        )
+        .spawn(),
+    );
     #[cfg(feature = "v4")]
-    spawner.must_spawn(lcd_v4::lcd_task(
-        board.i2c.clone(),
-        board.display_rst,
-        global_state.clone(),
-        wifi_setup_sig.clone(),
-    ));
+    spawner.spawn(
+        lcd_v4::lcd_task(
+            board.i2c.clone(),
+            board.display_rst,
+            global_state.clone(),
+            wifi_setup_sig.clone(),
+        )
+        .unwrap(),
+    );
 
     #[cfg(feature = "v3")]
-    spawner.must_spawn(battery_v3::battery_read_task(
-        board.battery,
-        board.adc1,
-        global_state.clone(),
-    ));
+    spawner.spawn(
+        battery_v3::battery_read_task(board.battery, board.adc1, global_state.clone()).unwrap(),
+    );
     #[cfg(feature = "v4")]
-    spawner.must_spawn(battery_v4::battery_read_task(
-        board.i2c.clone(),
-        global_state.clone(),
-    ));
+    spawner.spawn(battery_v4::battery_read_task(board.i2c.clone(), global_state.clone()).unwrap());
 
-    spawner.must_spawn(buttons::buttons_task(
-        global_state.clone(),
-        #[cfg(feature = "v4")]
-        board.buttons,
-        #[cfg(feature = "v3")]
-        board.button_input,
-        #[cfg(feature = "v3")]
-        board.buttons_shifter,
-    ));
-    spawner.must_spawn(stackmat::stackmat_task(
-        board.uart1,
-        board.stackmat_rx,
-        #[cfg(feature = "v3")]
-        board.digits_shifters,
-        global_state.clone(),
-    ));
-    spawner.must_spawn(rfid::rfid_task(
-        #[cfg(feature = "v4")]
-        board.i2c.clone(),
-        #[cfg(feature = "v4")]
-        board.buzzer,
-        #[cfg(feature = "v3")]
-        board.miso,
-        #[cfg(feature = "v3")]
-        board.mosi,
-        #[cfg(feature = "v3")]
-        board.sck,
-        #[cfg(feature = "v3")]
-        board.cs,
-        #[cfg(feature = "v3")]
-        board.spi2,
-        #[cfg(feature = "v3")]
-        board.spi_dma,
-        global_state.clone(),
-    ));
+    spawner.spawn(
+        buttons::buttons_task(
+            global_state.clone(),
+            #[cfg(feature = "v4")]
+            board.buttons,
+            #[cfg(feature = "v3")]
+            board.button_input,
+            #[cfg(feature = "v3")]
+            board.buttons_shifter,
+        )
+        .unwrap(),
+    );
+    spawner.spawn(
+        stackmat::stackmat_task(
+            board.uart1,
+            board.stackmat_rx,
+            #[cfg(feature = "v3")]
+            board.digits_shifters,
+            global_state.clone(),
+        )
+        .unwrap(),
+    );
+    spawner.spawn(
+        rfid::rfid_task(
+            #[cfg(feature = "v4")]
+            board.i2c.clone(),
+            #[cfg(feature = "v4")]
+            board.buzzer,
+            #[cfg(feature = "v3")]
+            board.miso,
+            #[cfg(feature = "v3")]
+            board.mosi,
+            #[cfg(feature = "v3")]
+            board.sck,
+            #[cfg(feature = "v3")]
+            board.cs,
+            #[cfg(feature = "v3")]
+            board.spi2,
+            #[cfg(feature = "v3")]
+            board.spi_dma,
+            global_state.clone(),
+        )
+        .unwrap(),
+    );
 
     #[cfg(feature = "qa")]
-    spawner.must_spawn(qa::qa_processor(global_state.clone()));
+    spawner.spawn(qa::qa_processor(global_state.clone()).unwrap());
 
     let mut wm_settings = esp_hal_wifimanager::WmSettings {
         wifi_panel: include_str!("panel.html"),
@@ -299,22 +309,23 @@ async fn main(spawner: Spawner) {
     utils::backtrace_store::read_saved_backtrace().await;
 
     let ws_sleep_sig = Rc::new(Signal::new());
-    spawner.must_spawn(ws::ws_task(
-        wifi_res.sta_stack,
-        ws_url,
-        global_state.clone(),
-        ws_sleep_sig.clone(),
-        wifi_conn_sig,
-    ));
-    spawner.must_spawn(logger_task(global_state.clone()));
+    spawner.spawn(
+        ws::ws_task(
+            wifi_res.sta_stack,
+            ws_url,
+            global_state.clone(),
+            ws_sleep_sig.clone(),
+            wifi_conn_sig,
+        )
+        .unwrap(),
+    );
+    spawner.spawn(logger_task(global_state.clone()).unwrap());
 
     let ble_sleep_sig = Rc::new(Signal::new());
-    spawner.must_spawn(bluetooth::bluetooth_timer_task(
-        wifi_res.wifi_init,
-        board.bt,
-        global_state.clone(),
-        ble_sleep_sig.clone(),
-    ));
+    spawner.spawn(
+        bluetooth::bluetooth_timer_task(board.bt, global_state.clone(), ble_sleep_sig.clone())
+            .unwrap(),
+    );
 
     set_brownout_detection(true);
     global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
