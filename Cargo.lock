@@ -1563,7 +1563,7 @@ dependencies = [
 [[package]]
 name = "esp-hal-wifimanager"
 version = "0.2.10"
-source = "git+https://github.com/filipton/esp-hal-wifimanager.git?branch=esp-hal-1.1.0#4acc5e646279beeb11aec219f9f3efdd25967722"
+source = "git+https://github.com/filipton/esp-hal-wifimanager.git?branch=esp-hal-1.1.0#d21460857e59c1c4f6ab676ae7ef2f0646dd1f68"
 dependencies = [
  "embassy-executor",
  "embassy-futures",
@@ -1599,7 +1599,7 @@ checksum = "42c2ee95b945a4780796e4359e72c033aed3b45073880e8029458f538532db8a"
 [[package]]
 name = "esp-nvs"
 version = "0.4.0"
-source = "git+https://github.com/filipton/esp-hal-wifimanager.git?branch=esp-hal-1.1.0#4acc5e646279beeb11aec219f9f3efdd25967722"
+source = "git+https://github.com/filipton/esp-nvs.git#d53720f5e1d19338699bc48e88daeada94c046db"
 dependencies = [
  "embedded-storage",
  "esp-hal",
