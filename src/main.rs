@@ -17,7 +17,7 @@ use esp_hal_wifimanager::{Nvs, WIFI_NVS_KEY};
 use esp_storage::FlashStorage;
 use state::{GlobalState, GlobalStateInner, SavedGlobalState, Scene, ota_state, sleep_state};
 use structs::ConnSettings;
-use utils::{logger::FkmLogger, set_brownout_detection};
+use utils::{logger::FkmLogger, set_brownout_detection, spawn_task};
 use ws_framer::{WsUrl, WsUrlOwned};
 
 mod bluetooth;
@@ -141,34 +141,44 @@ async fn main(spawner: Spawner) {
     }
 
     #[cfg(feature = "v3")]
-    spawner.spawn(
+    spawn_task(
+        &spawner,
+        "lcd_v3::lcd_task",
         lcd_v3::lcd_task(
             board.lcd,
             global_state.clone(),
             wifi_setup_sig.clone(),
             board.digits_shifters.clone(),
-        )
-        .spawn(),
+        ),
     );
     #[cfg(feature = "v4")]
-    spawner.spawn(
+    spawn_task(
+        &spawner,
+        "lcd_v4::lcd_task",
         lcd_v4::lcd_task(
             board.i2c.clone(),
             board.display_rst,
             global_state.clone(),
             wifi_setup_sig.clone(),
-        )
-        .unwrap(),
+        ),
     );
 
     #[cfg(feature = "v3")]
-    spawner.spawn(
-        battery_v3::battery_read_task(board.battery, board.adc1, global_state.clone()).unwrap(),
+    spawn_task(
+        &spawner,
+        "battery_v3::battery_read_task",
+        battery_v3::battery_read_task(board.battery, board.adc1, global_state.clone()),
     );
     #[cfg(feature = "v4")]
-    spawner.spawn(battery_v4::battery_read_task(board.i2c.clone(), global_state.clone()).unwrap());
+    spawn_task(
+        &spawner,
+        "battery_v4::battery_read_task",
+        battery_v4::battery_read_task(board.i2c.clone(), global_state.clone()),
+    );
 
-    spawner.spawn(
+    spawn_task(
+        &spawner,
+        "buttons::buttons_task",
         buttons::buttons_task(
             global_state.clone(),
             #[cfg(feature = "v4")]
@@ -177,20 +187,22 @@ async fn main(spawner: Spawner) {
             board.button_input,
             #[cfg(feature = "v3")]
             board.buttons_shifter,
-        )
-        .unwrap(),
+        ),
     );
-    spawner.spawn(
+    spawn_task(
+        &spawner,
+        "stackmat::stackmat_task",
         stackmat::stackmat_task(
             board.uart1,
             board.stackmat_rx,
             #[cfg(feature = "v3")]
             board.digits_shifters,
             global_state.clone(),
-        )
-        .unwrap(),
+        ),
     );
-    spawner.spawn(
+    spawn_task(
+        &spawner,
+        "rfid::rfid_task",
         rfid::rfid_task(
             #[cfg(feature = "v4")]
             board.i2c.clone(),
@@ -209,12 +221,15 @@ async fn main(spawner: Spawner) {
             #[cfg(feature = "v3")]
             board.spi_dma,
             global_state.clone(),
-        )
-        .unwrap(),
+        ),
     );
 
     #[cfg(feature = "qa")]
-    spawner.spawn(qa::qa_processor(global_state.clone()).unwrap());
+    spawn_task(
+        &spawner,
+        "qa::qa_processor",
+        qa::qa_processor(global_state.clone()),
+    );
 
     let mut wm_settings = esp_hal_wifimanager::WmSettings {
         wifi_panel: include_str!("panel.html"),
@@ -309,22 +324,24 @@ async fn main(spawner: Spawner) {
     utils::backtrace_store::read_saved_backtrace().await;
 
     let ws_sleep_sig = Rc::new(Signal::new());
-    spawner.spawn(
+    spawn_task(
+        &spawner,
+        "ws::ws_task",
         ws::ws_task(
             wifi_res.sta_stack,
             ws_url,
             global_state.clone(),
             ws_sleep_sig.clone(),
             wifi_conn_sig,
-        )
-        .unwrap(),
+        ),
     );
-    spawner.spawn(logger_task(global_state.clone()).unwrap());
+    spawn_task(&spawner, "logger_task", logger_task(global_state.clone()));
 
     let ble_sleep_sig = Rc::new(Signal::new());
-    spawner.spawn(
-        bluetooth::bluetooth_timer_task(board.bt, global_state.clone(), ble_sleep_sig.clone())
-            .unwrap(),
+    spawn_task(
+        &spawner,
+        "bluetooth::bluetooth_timer_task",
+        bluetooth::bluetooth_timer_task(board.bt, global_state.clone(), ble_sleep_sig.clone()),
     );
 
     set_brownout_detection(true);

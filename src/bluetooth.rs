@@ -75,12 +75,13 @@ async fn bluetooth_loop(bt: &esp_hal::peripherals::BT<'static>, state: &GlobalSt
 
         let controller: ExternalController<_, 20> = ExternalController::new(connector);
 
-        let address: Address = Address::random(
-            esp_hal::efuse::base_mac_address()
-                .as_bytes()
-                .try_into()
-                .expect("HOW? bluetooth mac addr"),
-        );
+        let Ok(mac_addr): Result<[u8; 6], _> =
+            esp_hal::efuse::base_mac_address().as_bytes().try_into()
+        else {
+            log::error!("Cannot read bluetooth mac addr");
+            continue;
+        };
+        let address: Address = Address::random(mac_addr);
         log::info!("[ble] address = {address:x?}");
 
         let mut resources: HostResources<DefaultPacketPool, 1, 3> = HostResources::new();
