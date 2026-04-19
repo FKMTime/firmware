@@ -88,6 +88,19 @@ pub const TEXT_TOPBAR: TextStyle = TextStyleBuilder::new()
     .baseline(Baseline::Top)
     .build();
 
+fn center_screen<VG: ViewGroup>(
+    content: VG,
+) -> LinearLayout<Horizontal<embedded_layout::align::vertical::Center>, VG> {
+    LinearLayout::horizontal(content)
+        .with_alignment(embedded_layout::align::vertical::Center)
+        .arrange()
+        .align_to(
+            &Rectangle::new(Point::new(0, 0), Size::new(128, 64)),
+            embedded_layout::align::horizontal::Center,
+            embedded_layout::align::vertical::Center,
+        )
+}
+
 fn center_layout<VG: ViewGroup>(
     content: VG,
 ) -> LinearLayout<Horizontal<embedded_layout::align::vertical::Center>, VG> {
@@ -282,7 +295,7 @@ pub async fn lcd_task(
                     let text =
                         Text::with_text_style("Sleep", Point::zero(), SMALL_FONT, TEXT_CENTER);
 
-                    center_layout(Chain::new(text)).draw(&mut oled.fbuf);
+                    center_screen(Chain::new(text)).draw(&mut oled.fbuf);
                     _ = oled.flush().await;
 
                     {
@@ -310,7 +323,7 @@ pub async fn lcd_task(
                     let text =
                         Text::with_text_style("Sleep", Point::zero(), SMALL_FONT, TEXT_CENTER);
 
-                    center_layout(Chain::new(text)).draw(&mut oled.fbuf);
+                    center_screen(Chain::new(text)).draw(&mut oled.fbuf);
                     _ = oled.flush().await;
 
                     unsafe {
