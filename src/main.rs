@@ -74,7 +74,7 @@ async fn main(spawner: Spawner) {
 
     esp_alloc::heap_allocator!(size: 120 * 1024);
     {
-        const HEAP_SIZE: usize = 60 * 1024;
+        const HEAP_SIZE: usize = 8 * 1024;
 
         #[unsafe(link_section = ".dram2_uninit")]
         static mut HEAP2: core::mem::MaybeUninit<[u8; HEAP_SIZE]> =
