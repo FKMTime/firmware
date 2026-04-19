@@ -286,7 +286,9 @@ pub async fn lcd_task(
                     _ = oled.flush().await;
 
                     {
-                        global_state.state.lock().await.server_connected = Some(false);
+                        let mut state = global_state.state.lock().await;
+                        state.server_connected = Some(false);
+                        state.wifi_connected = Some(false);
                     }
 
                     unsafe {
