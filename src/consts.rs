@@ -12,7 +12,7 @@ pub const BUTTON_DEBOUNCE_TIME: u64 = 25;
 
 #[cfg(not(feature = "release_build"))]
 pub const PRINT_HEAP_INTERVAL_MS: u64 = 30000;
-pub const LOG_SEND_INTERVAL_MS: u64 = 5000;
+pub const LOG_SEND_INTERVAL_MS: u64 = 1000;
 
 pub const BATTERY_SEND_INTERVAL_MS: u64 = 60000;
 

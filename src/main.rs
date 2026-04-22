@@ -4,8 +4,8 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 extern crate alloc;
-use alloc::string::{String, ToString};
-use alloc::{rc::Rc, vec::Vec};
+use alloc::rc::Rc;
+use alloc::string::ToString;
 use board::Board;
 use consts::LOG_SEND_INTERVAL_MS;
 use embassy_executor::Spawner;
@@ -73,6 +73,7 @@ async fn main(spawner: Spawner) {
     });
 
     esp_alloc::heap_allocator!(size: 120 * 1024);
+    /*
     {
         const HEAP_SIZE: usize = 8 * 1024;
 
@@ -89,6 +90,7 @@ async fn main(spawner: Spawner) {
             ));
         }
     }
+    */
 
     set_brownout_detection(false);
     let board = Board::init(peripherals);
@@ -378,27 +380,15 @@ async fn logger_task(global_state: GlobalState) {
     loop {
         Timer::after_millis(LOG_SEND_INTERVAL_MS).await;
 
-        let mut tmp_logs: Vec<String> = Vec::new();
-        while let Ok(msg) = utils::logger::LOGS_CHANNEL.try_receive() {
-            tmp_logs.push(msg);
-        }
-
         if ota_state() || sleep_state() {
             continue;
         }
 
-        if !tmp_logs.is_empty() {
-            tmp_logs.reverse();
-
-            ws::send_packet(structs::TimerPacket {
-                tag: None,
-                data: structs::TimerPacketInner::Logs {
-                    current_time: Some(unsafe { crate::stackmat::CURRENT_TIME }),
-                    logs: tmp_logs,
-                },
-            })
-            .await;
-        }
+        #[allow(static_mut_refs)]
+        let logs_vec = unsafe {
+            crate::utils::logger::LOGS_WRITER.get_vec(Some(crate::stackmat::CURRENT_TIME))
+        };
+        ws::send_frame(ws_framer::WsFrameOwned::Binary(logs_vec)).await;
 
         #[cfg(not(feature = "release_build"))]
         if (Instant::now() - heap_start).as_millis() >= consts::PRINT_HEAP_INTERVAL_MS {

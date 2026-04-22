@@ -595,6 +595,10 @@ pub async fn send_packet(packet: TimerPacket) {
     }
 }
 
+pub async fn send_frame(frame: WsFrameOwned) {
+    FRAME_CHANNEL.send(frame).await;
+}
+
 #[allow(dead_code)]
 pub fn clear_frame_channel() {
     FRAME_CHANNEL.clear();
