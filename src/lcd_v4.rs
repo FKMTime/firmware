@@ -3,7 +3,8 @@ use crate::{
         DEEPER_SLEEP_AFTER_MS, INSPECTION_TIME_PLUS2, LCD_INSPECTION_FRAME_TIME, SLEEP_AFTER_MS,
     },
     state::{
-        GlobalState, MenuScene, Scene, SignaledGlobalStateInner, deeper_sleep_state, sleep_state,
+        ErrorLogEntryStage, GlobalState, MenuScene, Scene, SignaledGlobalStateInner,
+        deeper_sleep_state, sleep_state,
     },
     translations::{TranslationKey, get_translation, get_translation_params},
     utils::{
@@ -12,7 +13,7 @@ use crate::{
         stackmat::ms_to_time_str,
     },
 };
-use alloc::{format, rc::Rc, string::ToString};
+use alloc::{format, rc::Rc, string::String, string::ToString};
 use anyhow::{Result, anyhow};
 use display_interface_i2c::I2CInterface;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -336,9 +337,15 @@ pub async fn lcd_task(
             loop {
                 Timer::after_millis(1000).await;
                 if global_state.show_battery.signaled() {
+                    let state_snapshot = global_state.state.value().await.clone();
+                    let qr_open = state_snapshot.menu_scene == Some(MenuScene::ErrorLog)
+                        && state_snapshot.error_log_entry_stage == Some(ErrorLogEntryStage::Qr);
+                    if qr_open {
+                        continue;
+                    }
+
                     oled.fbuf.fill_solid(&TOPBAR_RECT, BinaryColor::Off);
-                    let current_state = global_state.state.value().await;
-                    _ = process_top_bar(&current_state, &global_state, &mut oled).await;
+                    _ = process_top_bar(&state_snapshot, &global_state, &mut oled).await;
                     _ = oled.flush().await;
 
                     global_state.show_battery.reset();
@@ -480,6 +487,7 @@ async fn process_top_bar(
             Some(MenuScene::Signing) => Some("SIGN"),
             Some(MenuScene::Unsigning) => Some("UNSIGN"),
             Some(MenuScene::BtDisplay) => Some("BTDISP"),
+            Some(MenuScene::ErrorLog) => Some("ERRLOG"),
             Some(MenuScene::BuzzerVolume) => Some("BUZZER"),
             None => None,
         }
@@ -537,6 +545,39 @@ async fn process_main(
                 crate::state::buzzer_volume()
             ))
             .draw(&mut oled.fbuf)?;
+            return Ok(());
+        }
+        Some(MenuScene::ErrorLog) => {
+            if let Some(entry_idx) = current_state.selected_error_log_entry {
+                if let Some(entry) = current_state.error_log_entries.get(entry_idx) {
+                    if current_state.error_log_entry_stage == Some(ErrorLogEntryStage::Qr) {
+                        let payload = format!("error-log-entry:{entry_idx}");
+                        draw_qr_code(&mut oled.fbuf, &payload, 1)?;
+                        return Ok(());
+                    }
+
+                    center_text_layout(&error_log_entry_details_text(entry)).draw(&mut oled.fbuf)?;
+                    return Ok(());
+                }
+
+                center_text_layout("Invalid entry\nSubmit to return").draw(&mut oled.fbuf)?;
+                return Ok(());
+            }
+
+            let mut items: alloc::vec::Vec<alloc::string::String> = current_state
+                .error_log_entries
+                .iter()
+                .map(|entry| entry.list_label_v4())
+                .collect();
+            items.push("Exit".into());
+
+            let sel = current_state.selected_error_log_item;
+            if sel >= items.len() {
+                global_state.state.lock().await.selected_error_log_item = 0;
+            } else {
+                let item_refs: alloc::vec::Vec<&str> = items.iter().map(|s| s.as_str()).collect();
+                draw_scrollable_menu(&mut oled.fbuf, &item_refs, sel);
+            }
             return Ok(());
         }
         Some(MenuScene::Signing) | Some(MenuScene::Unsigning) => {
@@ -903,6 +944,41 @@ async fn process_main(
     }
 
     Ok(())
+}
+
+fn error_log_entry_details_text(entry: &crate::utils::error_log::ErrorLogEntry) -> String {
+    match entry {
+        crate::utils::error_log::ErrorLogEntry::Code { timestamp, code } => format!(
+            "Error E{code}\n{}\nSubmit to return",
+            crate::utils::error_log::format_timestamp_full(*timestamp)
+        ),
+        crate::utils::error_log::ErrorLogEntry::Stacktrace {
+            timestamp,
+            version,
+            addrs,
+        } => {
+            let mut details = format!(
+                "Panic {}\nVER: {}\n",
+                crate::utils::error_log::format_timestamp_compact(*timestamp),
+                version
+            );
+            if addrs.is_empty() {
+                details.push_str("No addrs");
+            } else {
+                for (idx, addr) in addrs.iter().take(3).enumerate() {
+                    if idx > 0 {
+                        details.push('\n');
+                    }
+                    details.push_str(&format!("0x{addr:X}"));
+                }
+                if addrs.len() > 3 {
+                    details.push_str(&format!("\n+{} more", addrs.len() - 3));
+                }
+            }
+            details.push_str("\nSubmit to return");
+            details
+        }
+    }
 }
 
 async fn process_main_overwrite(

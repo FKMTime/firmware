@@ -2,7 +2,8 @@ use crate::{
     consts::{NVS_BONDING_KEY, NVS_ERROR_LOG, NVS_SIGN_KEY},
     stackmat::CURRENT_TIME,
     state::{
-        BleAction, GlobalState, MenuScene, Scene, current_epoch, deeper_sleep_state, sleep_state,
+        BleAction, ErrorLogEntryStage, GlobalState, MenuScene, Scene, current_epoch,
+        deeper_sleep_state, sleep_state,
     },
     structs::DelegateResponsePacket,
     utils::buttons::{Button, ButtonTrigger, ButtonsHandler},
@@ -112,6 +113,22 @@ async fn sel_left(
         return Ok(true);
     }
 
+    if state_val.menu_scene == Some(MenuScene::ErrorLog) {
+        if state_val.selected_error_log_entry.is_some() {
+            return Ok(true);
+        }
+
+        let total_items = state_val.error_log_entries.len() + 1; // + Exit
+        if total_items > 0 {
+            state_val.selected_error_log_item = state_val
+                .selected_error_log_item
+                .wrapping_sub(1)
+                .min(total_items - 1);
+        }
+
+        return Ok(true);
+    }
+
     if let Some(sel) = state_val.selected_config_menu.as_mut() {
         *sel = sel
             .wrapping_sub(1)
@@ -154,6 +171,19 @@ async fn sel_right(
             drop(state_val);
             state.state.signal();
             state.buzzer_sound_test.signal(());
+        }
+
+        return Ok(true);
+    }
+
+    if state_val.menu_scene == Some(MenuScene::ErrorLog) {
+        if state_val.selected_error_log_entry.is_some() {
+            return Ok(true);
+        }
+
+        let total_items = state_val.error_log_entries.len() + 1; // + Exit
+        if total_items > 0 {
+            state_val.selected_error_log_item = (state_val.selected_error_log_item + 1) % total_items;
         }
 
         return Ok(true);
@@ -244,6 +274,50 @@ async fn submit_up(
             state.state.signal();
             return Ok(true);
         }
+        Some(MenuScene::ErrorLog) => {
+            if let Some(_entry_idx) = state_val.selected_error_log_entry {
+                #[cfg(feature = "v4")]
+                if state_val.error_log_entry_stage == Some(ErrorLogEntryStage::Qr) {
+                    state_val.error_log_entry_stage = Some(ErrorLogEntryStage::Details);
+                    state.state.signal();
+                    return Ok(true);
+                }
+
+                state_val.selected_error_log_entry = None;
+                state_val.error_log_entry_stage = None;
+                state.state.signal();
+                return Ok(true);
+            }
+
+            let exit_idx = state_val.error_log_entries.len();
+            if state_val.selected_error_log_item == exit_idx {
+                state_val.menu_scene = None;
+                state_val.selected_error_log_item = 0;
+                state_val.selected_error_log_entry = None;
+                state_val.error_log_entry_stage = None;
+                #[cfg(feature = "v3")]
+                {
+                    state_val.selected_config_menu = Some(4);
+                }
+                #[cfg(feature = "v4")]
+                {
+                    state_val.selected_config_menu = Some(5);
+                }
+            } else {
+                state_val.selected_error_log_entry = Some(state_val.selected_error_log_item);
+                #[cfg(feature = "v3")]
+                {
+                    state_val.error_log_entry_stage = Some(ErrorLogEntryStage::Details);
+                }
+                #[cfg(feature = "v4")]
+                {
+                    state_val.error_log_entry_stage = Some(ErrorLogEntryStage::Qr);
+                }
+            }
+
+            state.state.signal();
+            return Ok(true);
+        }
         #[cfg(feature = "v4")]
         Some(MenuScene::BuzzerVolume) => {
             let current_volume = crate::state::buzzer_volume();
@@ -300,7 +374,18 @@ async fn submit_up(
 
                     state_val.menu_scene = Some(MenuScene::Unsigning);
                 }
-                4 => {} // Exit
+                4 => {
+                    state_val.error_log_entries =
+                        crate::utils::error_log::parse_error_log_entries().unwrap_or_else(|e| {
+                            log::error!("Parse error log failed: {e:?}");
+                            alloc::vec![]
+                        });
+                    state_val.selected_error_log_item = 0;
+                    state_val.selected_error_log_entry = None;
+                    state_val.error_log_entry_stage = None;
+                    state_val.menu_scene = Some(MenuScene::ErrorLog);
+                }
+                5 => {} // Exit
                 _ => {}
             }
         }
@@ -344,7 +429,18 @@ async fn submit_up(
                 4 => {
                     state_val.menu_scene = Some(MenuScene::BuzzerVolume);
                 }
-                5 => {} // Exit
+                5 => {
+                    state_val.error_log_entries =
+                        crate::utils::error_log::parse_error_log_entries().unwrap_or_else(|e| {
+                            log::error!("Parse error log failed: {e:?}");
+                            alloc::vec![]
+                        });
+                    state_val.selected_error_log_item = 0;
+                    state_val.selected_error_log_entry = None;
+                    state_val.error_log_entry_stage = None;
+                    state_val.menu_scene = Some(MenuScene::ErrorLog);
+                }
+                6 => {} // Exit
                 _ => {}
             }
         }

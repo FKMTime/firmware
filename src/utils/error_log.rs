@@ -1,5 +1,6 @@
 use crate::{consts::NVS_ERROR_LOG, state::current_epoch};
 use alloc::{
+    format,
     string::{String, ToString},
     vec::Vec,
 };
@@ -166,7 +167,7 @@ pub fn parse_error_log_entries() -> Result<Vec<ErrorLogEntry>> {
     Ok(tmp)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ErrorLogEntry {
     Code {
         timestamp: u64,
@@ -177,4 +178,56 @@ pub enum ErrorLogEntry {
         version: String,
         addrs: Vec<u32>,
     },
+}
+
+impl ErrorLogEntry {
+    pub fn list_label_v3(&self) -> String {
+        match self {
+            ErrorLogEntry::Code { code, .. } => format!("E{code}"),
+            ErrorLogEntry::Stacktrace { .. } => "Panic".to_string(),
+        }
+    }
+
+    pub fn list_label_v4(&self) -> String {
+        match self {
+            ErrorLogEntry::Code { timestamp, code } => {
+                format!("E{code} {}", format_timestamp_compact(*timestamp))
+            }
+            ErrorLogEntry::Stacktrace { timestamp, .. } => {
+                format!("Panic {}", format_timestamp_compact(*timestamp))
+            }
+        }
+    }
+}
+
+pub fn format_timestamp_compact(timestamp: u64) -> String {
+    let (_year, month, day, hour, minute, _second) = epoch_to_ymdhms(timestamp);
+    format!("{day:02}/{month:02} {hour:02}:{minute:02}")
+}
+
+pub fn format_timestamp_full(timestamp: u64) -> String {
+    let (year, month, day, hour, minute, second) = epoch_to_ymdhms(timestamp);
+    format!("{day:02}/{month:02}/{year:04} {hour:02}:{minute:02}:{second:02}")
+}
+
+fn epoch_to_ymdhms(timestamp: u64) -> (i32, u32, u32, u32, u32, u32) {
+    let days = (timestamp / 86_400) as i64;
+    let sod = (timestamp % 86_400) as u32;
+
+    let hour = sod / 3_600;
+    let minute = (sod % 3_600) / 60;
+    let second = sod % 60;
+
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let mut year = (yoe + era * 400) as i32;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let month = (mp + if mp < 10 { 3 } else { -9 }) as u32;
+    year += if month <= 2 { 1 } else { 0 };
+
+    (year, month, day, hour, minute, second)
 }
