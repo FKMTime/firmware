@@ -1,4 +1,5 @@
 use crate::{
+    consts::{NVS_BONDING_KEY, NVS_SIGN_KEY},
     stackmat::CURRENT_TIME,
     state::{
         BleAction, GlobalState, MenuScene, Scene, current_epoch, deeper_sleep_state, sleep_state,
@@ -217,7 +218,7 @@ async fn submit_up(
                     state_val.discovered_bluetooth_devices[state_val.selected_bluetooth_item]
                 );
 
-                _ = state.nvs.delete("BONDING_KEY").await;
+                _ = state.nvs.delete(NVS_BONDING_KEY).await;
                 state.ble_sig.signal(
                     BleAction::Connect(
                         state_val.discovered_bluetooth_devices[state_val.selected_bluetooth_item]
@@ -229,7 +230,7 @@ async fn submit_up(
                 == state_val.discovered_bluetooth_devices.len()
             {
                 log::debug!("[BtD] Unpair current device");
-                _ = state.nvs.delete("BONDING_KEY").await;
+                _ = state.nvs.delete(NVS_BONDING_KEY).await;
                 state.ble_sig.signal(BleAction::Unpair);
             } else if state_val.selected_bluetooth_item
                 == state_val.discovered_bluetooth_devices.len() + 1
@@ -248,7 +249,7 @@ async fn submit_up(
             let current_volume = crate::state::buzzer_volume();
             if let Err(e) = state
                 .nvs
-                .set(crate::consts::BUZZER_VOLUME_NVS_KEY, current_volume)
+                .set(crate::consts::NVS_BUZZER_VOLUME, current_volume)
                 .await
             {
                 log::error!("Cannot save buzzer volume to NVS: {e:?}");
@@ -269,8 +270,8 @@ async fn submit_up(
                 0 => {
                     // Reset WiFi
                     _ = state.nvs.delete(esp_hal_wifimanager::WIFI_NVS_KEY).await;
-                    _ = state.nvs.delete("SIGN_KEY").await;
-                    _ = state.nvs.delete("BONDING_KEY").await;
+                    _ = state.nvs.delete(NVS_SIGN_KEY).await;
+                    _ = state.nvs.delete(NVS_BONDING_KEY).await;
 
                     Timer::after_millis(250).await;
                     esp_hal::system::software_reset();
@@ -307,9 +308,11 @@ async fn submit_up(
             match sel {
                 0 => {
                     // Reset WiFi
+
+                    use crate::consts::NVS_BONDING_KEY;
                     _ = state.nvs.delete(esp_hal_wifimanager::WIFI_NVS_KEY).await;
-                    _ = state.nvs.delete("SIGN_KEY").await;
-                    _ = state.nvs.delete("BONDING_KEY").await;
+                    _ = state.nvs.delete(NVS_SIGN_KEY).await;
+                    _ = state.nvs.delete(NVS_BONDING_KEY).await;
 
                     Timer::after_millis(250).await;
                     esp_hal::system::software_reset();
@@ -356,8 +359,8 @@ async fn submit_up(
         _ = getrandom::getrandom(&mut sign_key);
         let sign_key = u32::from_be_bytes(sign_key) >> 1;
 
-        _ = state.nvs.delete("SIGN_KEY").await;
-        _ = state.nvs.set("SIGN_KEY", sign_key).await;
+        _ = state.nvs.delete(NVS_SIGN_KEY).await;
+        _ = state.nvs.set(NVS_SIGN_KEY, sign_key).await;
         unsafe { crate::state::SIGN_KEY = sign_key };
         unsafe { crate::state::TRUST_SERVER = true };
 
@@ -409,6 +412,7 @@ async fn inspection_start(
 ) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
     if !state_val.use_inspection() || state_val.should_skip_other_actions() {
+        //panic!("test");
         return Ok(false);
     }
 

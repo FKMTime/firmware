@@ -1,3 +1,4 @@
+use crate::consts::NVS_SAVED_STATE;
 use crate::{
     structs::{BleDisplayDevice, PossibleGroup},
     utils::signaled_mutex::SignaledMutex,
@@ -446,7 +447,7 @@ impl SavedGlobalState {
             Timer::after_millis(5).await;
         }
 
-        let res = nvs.get::<Vec<u8>>("SAVED_STATE").await.ok()?;
+        let res = nvs.get::<Vec<u8>>(NVS_SAVED_STATE).await.ok()?;
         let res: SavedGlobalState = serde_json::from_slice(&res).ok()?;
 
         // 6hours
@@ -461,8 +462,8 @@ impl SavedGlobalState {
     pub async fn to_nvs(&self, nvs: &Nvs) {
         let res = serde_json::to_vec(&self);
         if let Ok(vec) = res {
-            _ = nvs.delete("SAVED_STATE").await;
-            let res = nvs.set("SAVED_STATE", vec.as_slice()).await;
+            _ = nvs.delete(NVS_SAVED_STATE).await;
+            let res = nvs.set(NVS_SAVED_STATE, vec.as_slice()).await;
             if let Err(e) = res {
                 log::error!("{e:?} Faile to write to nvs! (SAVED_STATE {})", vec.len());
             }
@@ -470,7 +471,7 @@ impl SavedGlobalState {
     }
 
     pub async fn clear_saved_global_state(nvs: &Nvs) {
-        let res = nvs.delete("SAVED_STATE").await;
+        let res = nvs.delete(NVS_SAVED_STATE).await;
         if let Err(e) = res {
             log::error!("{e:?} Faile to delete nvs key! (SAVED_STATE)",);
         }

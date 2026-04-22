@@ -209,8 +209,8 @@ where
         _ => qrcodegen_no_heap::Version::new(1),
     };
 
-    let mut outbuffer = [0u8; qrcodegen_no_heap::Version::MAX.buffer_len()];
-    let mut tempbuffer = [0u8; qrcodegen_no_heap::Version::MAX.buffer_len()];
+    let mut outbuffer = [0u8; qrcodegen_no_heap::Version::new(6).buffer_len()];
+    let mut tempbuffer = [0u8; qrcodegen_no_heap::Version::new(6).buffer_len()];
 
     let qr = qrcodegen_no_heap::QrCode::encode_text(
         text,

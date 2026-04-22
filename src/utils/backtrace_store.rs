@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use esp_storage::FlashStorage;
 
 const MAX_BACKTRACE_ADDRESSES: usize = 10;
@@ -37,9 +38,12 @@ pub async fn read_saved_backtrace() {
             return;
         }
 
-        let msg = core::str::from_utf8(&buf[..len as usize]);
-        if let Ok(msg) = msg {
-            log::error!("Last crash info:\n{msg}");
+        log::error!("Last crash info:");
+        for addr in (&buf[..len as usize]).chunks(8) {
+            if let Ok(addr) = addr.try_into() {
+                let addr: u64 = u64::from_be_bytes(addr);
+                log::error!("0x{:X}", addr);
+            }
         }
 
         _ = embedded_storage::Storage::write(
@@ -118,12 +122,9 @@ fn is_valid_ram_address(address: u32) -> bool {
 pub extern "Rust" fn custom_pre_backtrace() {
     let backtrace = backtrace();
 
-    let mut tmp = alloc::string::String::new();
-    if backtrace.iter().filter(|e| e.is_some()).count() == 0 {
-        tmp.push_str("No backtrace available - make sure to force frame-pointers. (see https://crates.io/crates/esp-backtrace)\n");
-    }
+    let mut tmp = Vec::new();
     for addr in backtrace.into_iter().flatten() {
-        tmp.push_str(&alloc::format!("0x{:x}\n", addr - RA_OFFSET));
+        tmp.extend_from_slice(&((addr - RA_OFFSET) as u64).to_be_bytes());
     }
 
     if let Some(nvs_part) = esp_hal_wifimanager::Nvs::read_nvs_partition_offset(unsafe {
@@ -136,11 +137,10 @@ pub extern "Rust" fn custom_pre_backtrace() {
             &(tmp.len() as u16).to_be_bytes(),
         );
 
-        let tmp = tmp.as_bytes();
         _ = embedded_storage::Storage::write(
             &mut flash,
             (nvs_part.0 + nvs_part.1 - 2 - tmp.len()) as u32,
-            tmp,
+            &tmp,
         );
     }
 

@@ -20,6 +20,8 @@ use structs::ConnSettings;
 use utils::{logger::FkmLogger, set_brownout_detection, spawn_task};
 use ws_framer::{WsUrl, WsUrlOwned};
 
+use crate::consts::NVS_SIGN_KEY;
+
 mod bluetooth;
 mod board;
 mod buttons;
@@ -123,11 +125,11 @@ async fn main(spawner: Spawner) {
     let wifi_setup_sig = Rc::new(Signal::new());
     let wifi_conn_sig = Rc::new(Signal::new());
 
-    if let Ok(sign_key) = nvs.get::<u32>("SIGN_KEY").await {
+    if let Ok(sign_key) = nvs.get::<u32>(NVS_SIGN_KEY).await {
         unsafe { crate::state::SIGN_KEY = sign_key };
     }
     #[cfg(feature = "v4")]
-    if let Ok(saved_volume) = nvs.get::<u8>(crate::consts::BUZZER_VOLUME_NVS_KEY).await {
+    if let Ok(saved_volume) = nvs.get::<u8>(crate::consts::NVS_BUZZER_VOLUME).await {
         if (crate::consts::BUZZER_VOLUME_MIN..=crate::consts::BUZZER_VOLUME_MAX)
             .contains(&saved_volume)
         {
