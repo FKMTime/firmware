@@ -47,6 +47,7 @@ rand_core = { version = "0.6.4", features = ["getrandom"] }
 esp-hal-mfrc522 = { version = "0.3.3", features = ["embassy-time"] }
 esp-bootloader-esp-idf = { version = "0.5.0", features = ["log-04", "esp32c3"] }
 trouble-host = { version = "0.6.0", features = ["scan", "security"] }
+qrcodegen-no-heap = "1.8.1"
 
 # v4 only
 display-interface = { version = "0.5.0", optional = true }

@@ -1,8 +1,4 @@
-use crate::{
-    buttons::HandlersDerive,
-    consts::BUTTON_DEBOUNCE_TIME,
-    state::{GlobalState, sleep_state},
-};
+use crate::{buttons::HandlersDerive, state::GlobalState};
 use alloc::vec::Vec;
 use embassy_time::{Instant, Timer};
 use esp_hal::gpio::Input;
@@ -72,8 +68,6 @@ impl ButtonsHandler {
         #[cfg(feature = "v3")] button_input: &Input<'static>,
         #[cfg(feature = "v3")] button_reg: &adv_shift_registers::wrappers::ShifterValue,
     ) {
-        let mut debounce_time = esp_hal::time::Instant::now();
-        let mut old_debounced = i32::MAX;
         let mut old_val = 0;
 
         #[cfg(feature = "e2e")]
@@ -128,48 +122,40 @@ impl ButtonsHandler {
             }
 
             if old_val != out_val {
-                old_val = out_val;
-                debounce_time = esp_hal::time::Instant::now();
-            } else if old_debounced != out_val {
-                let duration = esp_hal::time::Instant::now() - debounce_time;
-                if duration.as_millis() > BUTTON_DEBOUNCE_TIME || sleep_state() {
-                    if old_debounced == 0 {
-                        #[cfg(not(feature = "qa"))]
-                        self.button_down((out_val as u8).into(), state).await;
+                if old_val == 0 {
+                    #[cfg(not(feature = "qa"))]
+                    self.button_down((out_val as u8).into(), state).await;
 
-                        #[cfg(feature = "qa")]
-                        {
-                            crate::qa::send_qa_resp(crate::qa::QaSignal::ButtonDown(out_val as u8));
-                            last_button_down = Some(out_val as u8);
-                            log::warn!("Button pressed down: {out_val}");
-                        }
-                    } else {
-                        #[cfg(not(feature = "qa"))]
-                        self.button_up(state).await;
+                    #[cfg(feature = "qa")]
+                    {
+                        crate::qa::send_qa_resp(crate::qa::QaSignal::ButtonDown(out_val as u8));
+                        last_button_down = Some(out_val as u8);
+                        log::warn!("Button pressed down: {out_val}");
+                    }
+                } else {
+                    #[cfg(not(feature = "qa"))]
+                    self.button_up(state).await;
 
-                        #[cfg(feature = "qa")]
-                        {
-                            if let Some(button) = last_button_down {
-                                crate::qa::send_qa_resp(crate::qa::QaSignal::ButtonUp(button));
-                                last_button_down = None;
-                                log::warn!("Button pressed up: {button}");
-                            }
-                        }
-
-                        #[cfg(feature = "e2e")]
-                        if send_ack {
-                            crate::ws::send_test_ack(&state).await;
-                            send_ack = false;
+                    #[cfg(feature = "qa")]
+                    {
+                        if let Some(button) = last_button_down {
+                            crate::qa::send_qa_resp(crate::qa::QaSignal::ButtonUp(button));
+                            last_button_down = None;
+                            log::warn!("Button pressed up: {button}");
                         }
                     }
 
-                    old_debounced = out_val;
+                    #[cfg(feature = "e2e")]
+                    if send_ack {
+                        crate::ws::send_test_ack(&state).await;
+                        send_ack = false;
+                    }
                 }
-            } else {
-                debounce_time = esp_hal::time::Instant::now();
+
+                old_val = out_val;
             }
 
-            if old_debounced != 0 {
+            if old_val != 0 {
                 #[cfg(not(feature = "qa"))]
                 self.button_hold(state).await;
             }

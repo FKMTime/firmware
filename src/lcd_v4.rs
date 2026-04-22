@@ -197,6 +197,57 @@ where
     }
 }
 
+#[allow(dead_code)]
+pub fn draw_qr_code<D>(display: &mut D, text: &str, module_size: u32) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = BinaryColor>,
+{
+    let max_version = match module_size {
+        1 => qrcodegen_no_heap::Version::new(6),
+        2 => qrcodegen_no_heap::Version::new(3),
+        3 => qrcodegen_no_heap::Version::new(2),
+        _ => qrcodegen_no_heap::Version::new(1),
+    };
+
+    let mut outbuffer = [0u8; qrcodegen_no_heap::Version::MAX.buffer_len()];
+    let mut tempbuffer = [0u8; qrcodegen_no_heap::Version::MAX.buffer_len()];
+
+    let qr = qrcodegen_no_heap::QrCode::encode_text(
+        text,
+        &mut tempbuffer,
+        &mut outbuffer,
+        qrcodegen_no_heap::QrCodeEcc::Quartile,
+        qrcodegen_no_heap::Version::MIN,
+        max_version,
+        None,
+        true,
+    );
+
+    if let Ok(qr) = qr {
+        let filled = PrimitiveStyle::with_fill(BinaryColor::On);
+
+        let qr_pixel_size = qr.size() as u32 * module_size;
+        let origin = Point::new(
+            ((128 - qr_pixel_size) / 2) as i32,
+            ((64 - qr_pixel_size) / 2) as i32,
+        );
+
+        for y in 0..qr.size() {
+            for x in 0..qr.size() {
+                if qr.get_module(x, y) {
+                    let top_left =
+                        origin + Point::new(x * module_size as i32, y * module_size as i32);
+                    Rectangle::new(top_left, Size::new(module_size, module_size))
+                        .into_styled(filled)
+                        .draw(display)?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[embassy_executor::task]
 pub async fn lcd_task(
     i2c: SharedI2C,
@@ -234,6 +285,13 @@ pub async fn lcd_task(
     let fbuf = embedded_graphics_framebuf::FrameBuf::new(data, FBUF_WIDTH, FBUF_HEIGHT);
 
     let mut oled = OledData { fbuf, disp };
+
+    /*
+    draw_qr_code(&mut oled.fbuf, "DSADSADSDSADSADSDSADSADSDSADSADSDSADSADSDSADSADS 42 DSADSADSDSADSADSDSADSADSDSADSADSDSADSADSDSADSADSDSADSADS", 1).unwrap();
+    _ = oled.flush().await;
+
+    Timer::after_millis(25000).await;
+    */
 
     global_state.show_battery.wait().await;
     _ = process_top_bar(
