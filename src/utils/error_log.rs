@@ -1,4 +1,4 @@
-use crate::{consts::NVS_ERROR_LOG, state::current_epoch, version::VERSION};
+use crate::{consts::NVS_ERROR_LOG, state::current_epoch};
 use alloc::{
     string::{String, ToString},
     vec::Vec,
@@ -35,13 +35,15 @@ pub async fn add_error(code: u8) {
     }
 }
 
-pub async fn add_stacktrace(addrs: &[u32]) {
+pub async fn add_stacktrace(addrs: &[u32], version: &str) {
     unsafe {
         #[allow(static_mut_refs)]
         let error_log_buf = &mut (*ERROR_LOG_BUF.as_mut_ptr());
 
         let mut version_buf = [0; 16];
-        version_buf[..VERSION.len()].copy_from_slice(VERSION.as_bytes());
+        let version_bytes = version.as_bytes();
+        let version_len = core::cmp::min(version_bytes.len(), version_buf.len());
+        version_buf[..version_len].copy_from_slice(&version_bytes[..version_len]);
 
         error_log_buf[OFFSET] = b'S';
         error_log_buf[OFFSET + 1..OFFSET + 1 + 8].copy_from_slice(&current_epoch().to_be_bytes());
@@ -139,7 +141,7 @@ pub fn parse_error_log_entries() -> Result<Vec<ErrorLogEntry>> {
                 let size = error_log_buf[offset + 1 + 8 + 16];
                 let mut tmp_addrs = Vec::new();
                 for addr in (error_log_buf
-                    [offset + 1 + 8 + 16..offset + 1 + 8 + 16 + size as usize * 4])
+                    [offset + 1 + 8 + 16 + 1..offset + 1 + 8 + 16 + 1 + size as usize * 4])
                     .chunks(4)
                 {
                     tmp_addrs.push(u32::from_be_bytes(addr.try_into()?));
@@ -153,7 +155,7 @@ pub fn parse_error_log_entries() -> Result<Vec<ErrorLogEntry>> {
                     addrs: tmp_addrs,
                 });
 
-                offset += 1 + 8 + 1 + size as usize * 4;
+                offset += 1 + 8 + 16 + 1 + size as usize * 4;
             }
             _ => {
                 break;

@@ -3,6 +3,7 @@ use esp_storage::FlashStorage;
 
 const MAX_BACKTRACE_ADDRESSES: usize = 10;
 const RA_OFFSET: usize = 4;
+const SAVED_VERSION_LEN: usize = 16;
 
 pub async fn read_saved_backtrace() {
     if let Some(nvs_part) = esp_hal_wifimanager::Nvs::read_nvs_partition_offset(unsafe {
@@ -38,9 +39,23 @@ pub async fn read_saved_backtrace() {
             return;
         }
 
+        let (saved_version, addr_data) = if len as usize >= SAVED_VERSION_LEN
+            && (len as usize - SAVED_VERSION_LEN).is_multiple_of(4)
+        {
+            let version_raw = &buf[..SAVED_VERSION_LEN];
+            let version = if let Ok(version) = core::str::from_utf8(version_raw) {
+                version.trim_end_matches('\0')
+            } else {
+                crate::version::VERSION
+            };
+            (version, &buf[SAVED_VERSION_LEN..len as usize])
+        } else {
+            (crate::version::VERSION, &buf[..len as usize])
+        };
+
         log::error!("Last crash info:");
         let mut addrs = Vec::new();
-        for addr in buf[..len as usize].chunks(4) {
+        for addr in addr_data.chunks(4) {
             if let Ok(addr) = addr.try_into() {
                 let addr: u32 = u32::from_be_bytes(addr);
                 addrs.push(addr);
@@ -54,7 +69,7 @@ pub async fn read_saved_backtrace() {
             &[0x00, 0x00],
         );
 
-        crate::utils::error_log::add_stacktrace(&addrs).await;
+        crate::utils::error_log::add_stacktrace(&addrs, saved_version).await;
     }
 }
 
@@ -127,6 +142,11 @@ pub extern "Rust" fn custom_pre_backtrace() {
     let backtrace = backtrace();
 
     let mut tmp = Vec::new();
+    let mut version = [0; SAVED_VERSION_LEN];
+    let version_bytes = crate::version::VERSION.as_bytes();
+    let version_len = core::cmp::min(version_bytes.len(), SAVED_VERSION_LEN);
+    version[..version_len].copy_from_slice(&version_bytes[..version_len]);
+    tmp.extend_from_slice(&version);
     for addr in backtrace.into_iter().flatten() {
         tmp.extend_from_slice(&((addr - RA_OFFSET) as u32).to_be_bytes());
     }
