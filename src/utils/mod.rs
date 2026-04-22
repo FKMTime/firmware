@@ -3,6 +3,7 @@ use embassy_executor::{SpawnError, SpawnToken, Spawner};
 pub mod arc;
 pub mod backtrace_store;
 pub mod buttons;
+pub mod error_log;
 pub mod logger;
 pub mod rolling_average;
 pub mod signaled_mutex;

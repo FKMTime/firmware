@@ -121,6 +121,8 @@ async fn main(spawner: Spawner) {
     let wake_reason = esp_hal::rtc_cntl::wakeup_cause();
     log::info!("Wake reason: {:?} {:?}", reason, wake_reason);
 
+    utils::error_log::load_error_log(&nvs).await;
+
     let global_state = Rc::new(GlobalStateInner::new(&nvs, board.aes));
     let wifi_setup_sig = Rc::new(Signal::new());
     let wifi_conn_sig = Rc::new(Signal::new());
@@ -358,9 +360,18 @@ async fn main(spawner: Spawner) {
             .parse_saved_state(saved_state);
     }
 
+    if let Ok(v) = crate::utils::error_log::parse_error_log_entries() {
+        log::info!("{v:?}");
+    }
+
     let mut last_sleep = false;
     loop {
         Timer::after_millis(100).await;
+        if utils::error_log::is_save_ready() {
+            utils::error_log::save_error_log(&nvs).await;
+            utils::error_log::clear_save_ready();
+        }
+
         if sleep_state() != last_sleep {
             last_sleep = sleep_state();
             ws_sleep_sig.signal(last_sleep);

@@ -38,3 +38,4 @@ pub const BUZZER_VOLUME_DEFAULT: u8 = 5;
 pub const NVS_BONDING_KEY: &str = "BONDING_KEY";
 pub const NVS_SIGN_KEY: &str = "SIGN_KEY";
 pub const NVS_SAVED_STATE: &str = "SAVED_STATE";
+pub const NVS_ERROR_LOG: &str = "ERROR_LOG";

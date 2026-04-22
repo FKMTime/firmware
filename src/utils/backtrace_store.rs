@@ -39,9 +39,11 @@ pub async fn read_saved_backtrace() {
         }
 
         log::error!("Last crash info:");
-        for addr in (&buf[..len as usize]).chunks(8) {
+        let mut addrs = Vec::new();
+        for addr in buf[..len as usize].chunks(4) {
             if let Ok(addr) = addr.try_into() {
-                let addr: u64 = u64::from_be_bytes(addr);
+                let addr: u32 = u32::from_be_bytes(addr);
+                addrs.push(addr);
                 log::error!("0x{:X}", addr);
             }
         }
@@ -51,6 +53,8 @@ pub async fn read_saved_backtrace() {
             (nvs_part.0 + nvs_part.1 - 2) as u32,
             &[0x00, 0x00],
         );
+
+        crate::utils::error_log::add_stacktrace(&addrs).await;
     }
 }
 
@@ -124,7 +128,7 @@ pub extern "Rust" fn custom_pre_backtrace() {
 
     let mut tmp = Vec::new();
     for addr in backtrace.into_iter().flatten() {
-        tmp.extend_from_slice(&((addr - RA_OFFSET) as u64).to_be_bytes());
+        tmp.extend_from_slice(&((addr - RA_OFFSET) as u32).to_be_bytes());
     }
 
     if let Some(nvs_part) = esp_hal_wifimanager::Nvs::read_nvs_partition_offset(unsafe {
