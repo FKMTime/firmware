@@ -1,5 +1,8 @@
-use crate::{consts::NVS_ERROR_LOG, state::current_epoch};
-use alloc::vec::Vec;
+use crate::{consts::NVS_ERROR_LOG, state::current_epoch, version::VERSION};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use anyhow::Result;
 use esp_hal_wifimanager::Nvs;
 
@@ -37,17 +40,21 @@ pub async fn add_stacktrace(addrs: &[u32]) {
         #[allow(static_mut_refs)]
         let error_log_buf = &mut (*ERROR_LOG_BUF.as_mut_ptr());
 
+        let mut version_buf = [0; 16];
+        version_buf[..VERSION.len()].copy_from_slice(VERSION.as_bytes());
+
         error_log_buf[OFFSET] = b'S';
         error_log_buf[OFFSET + 1..OFFSET + 1 + 8].copy_from_slice(&current_epoch().to_be_bytes());
-        error_log_buf[OFFSET + 1 + 8] = addrs.len() as u8;
+        error_log_buf[OFFSET + 1 + 8..OFFSET + 1 + 8 + 16].copy_from_slice(&version_buf);
+        error_log_buf[OFFSET + 1 + 8 + 16] = addrs.len() as u8;
 
         for (i, &addr) in addrs.iter().enumerate() {
-            let start = OFFSET + 1 + 8 + 1 + i * 4;
+            let start = OFFSET + 1 + 8 + 16 + 1 + i * 4;
             let end = start + 4;
             error_log_buf[start..end].copy_from_slice(&addr.to_be_bytes());
         }
 
-        OFFSET += 1 + 8 + 1 + addrs.len() * 4;
+        OFFSET += 1 + 8 + 16 + 1 + addrs.len() * 4;
         SAVE_READY = true;
     }
 }
@@ -57,26 +64,25 @@ pub async fn load_error_log(nvs: &Nvs) {
         return;
     };
 
+    let loaded_len = buf.len();
+
     #[allow(static_mut_refs)]
     let error_log_buf = unsafe { &mut (*ERROR_LOG_BUF.as_mut_ptr()) };
     error_log_buf[..buf.len()].copy_from_slice(&buf);
-    log::info!("{buf:?}");
     drop(buf);
 
     let mut offset = 0;
-    while offset < error_log_buf.len() {
+    while offset < loaded_len {
         let log_type = error_log_buf[offset];
         match log_type {
             b'N' => {
                 // u64 + u8
                 offset += 1 + 8 + 1;
-                log::warn!("NORMAL");
             }
             b'S' => {
-                // u64 + u8 (size) + size * u32
-                let size = error_log_buf[offset + 8];
-                offset += 1 + 8 + 1 + size as usize * 4;
-                log::warn!("STACKTRACE WITH SIZE: {size}");
+                // u64 + 16 * u8 + u8 (size) + size * u32
+                let size = error_log_buf[offset + 1 + 8 + 16];
+                offset += 1 + 8 + 16 + 1 + size as usize * 4;
             }
             _ => {
                 break;
@@ -107,9 +113,10 @@ pub fn parse_error_log_entries() -> Result<Vec<ErrorLogEntry>> {
 
     #[allow(static_mut_refs)]
     let error_log_buf = unsafe { &mut (*ERROR_LOG_BUF.as_mut_ptr()) };
+    let max_offset = unsafe { OFFSET };
 
     let mut offset = 0;
-    while offset < error_log_buf.len() {
+    while offset < max_offset {
         let log_type = error_log_buf[offset];
         match log_type {
             b'N' => {
@@ -123,11 +130,17 @@ pub fn parse_error_log_entries() -> Result<Vec<ErrorLogEntry>> {
                 offset += 1 + 8 + 1;
             }
             b'S' => {
-                // u64 + u8 (size) + size * u32
-                let size = error_log_buf[offset + 8];
+                // u64 + 16 * u8 + u8 (size) + size * u32
+
+                let version_str =
+                    core::str::from_utf8(&error_log_buf[offset + 1 + 8..offset + 1 + 8 + 16])?;
+                let version_str = version_str.trim_end_matches('\0');
+
+                let size = error_log_buf[offset + 1 + 8 + 16];
                 let mut tmp_addrs = Vec::new();
-                for addr in
-                    (error_log_buf[offset + 1 + 8..offset + 1 + 8 + size as usize * 4]).chunks(4)
+                for addr in (error_log_buf
+                    [offset + 1 + 8 + 16..offset + 1 + 8 + 16 + size as usize * 4])
+                    .chunks(4)
                 {
                     tmp_addrs.push(u32::from_be_bytes(addr.try_into()?));
                 }
@@ -136,8 +149,10 @@ pub fn parse_error_log_entries() -> Result<Vec<ErrorLogEntry>> {
                     timestamp: u64::from_be_bytes(
                         error_log_buf[offset + 1..offset + 1 + 8].try_into()?,
                     ),
+                    version: version_str.to_string(),
                     addrs: tmp_addrs,
                 });
+
                 offset += 1 + 8 + 1 + size as usize * 4;
             }
             _ => {
@@ -151,6 +166,13 @@ pub fn parse_error_log_entries() -> Result<Vec<ErrorLogEntry>> {
 
 #[derive(Debug)]
 pub enum ErrorLogEntry {
-    Code { timestamp: u64, code: u8 },
-    Stacktrace { timestamp: u64, addrs: Vec<u32> },
+    Code {
+        timestamp: u64,
+        code: u8,
+    },
+    Stacktrace {
+        timestamp: u64,
+        version: String,
+        addrs: Vec<u32>,
+    },
 }

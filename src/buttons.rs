@@ -1,5 +1,5 @@
 use crate::{
-    consts::{NVS_BONDING_KEY, NVS_SIGN_KEY},
+    consts::{NVS_BONDING_KEY, NVS_ERROR_LOG, NVS_SIGN_KEY},
     stackmat::CURRENT_TIME,
     state::{
         BleAction, GlobalState, MenuScene, Scene, current_epoch, deeper_sleep_state, sleep_state,
@@ -268,10 +268,12 @@ async fn submit_up(
         {
             match sel {
                 0 => {
-                    // Reset WiFi
+                    // Reset settings
+
                     _ = state.nvs.delete(esp_hal_wifimanager::WIFI_NVS_KEY).await;
                     _ = state.nvs.delete(NVS_SIGN_KEY).await;
                     _ = state.nvs.delete(NVS_BONDING_KEY).await;
+                    _ = state.nvs.delete(NVS_ERROR_LOG).await;
 
                     Timer::after_millis(250).await;
                     esp_hal::system::software_reset();
@@ -307,12 +309,12 @@ async fn submit_up(
         {
             match sel {
                 0 => {
-                    // Reset WiFi
+                    // Reset settings
 
-                    use crate::consts::NVS_BONDING_KEY;
                     _ = state.nvs.delete(esp_hal_wifimanager::WIFI_NVS_KEY).await;
                     _ = state.nvs.delete(NVS_SIGN_KEY).await;
                     _ = state.nvs.delete(NVS_BONDING_KEY).await;
+                    _ = state.nvs.delete(NVS_ERROR_LOG).await;
 
                     Timer::after_millis(250).await;
                     esp_hal::system::software_reset();
@@ -412,7 +414,7 @@ async fn inspection_start(
 ) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
     if !state_val.use_inspection() || state_val.should_skip_other_actions() {
-        //panic!("test");
+        panic!("test");
         return Ok(false);
     }
 
@@ -562,6 +564,7 @@ async fn delegate_hold(
 ) -> Result<bool, ()> {
     match triggered {
         ButtonTrigger::Up => {
+            crate::utils::error_log::add_error(69).await;
             state.state.lock().await.delegate_hold = None;
         }
         ButtonTrigger::HoldTimed(_, _) => {
