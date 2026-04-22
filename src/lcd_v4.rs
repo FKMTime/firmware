@@ -351,6 +351,28 @@ pub async fn lcd_task(
                     global_state.show_battery.reset();
                 }
 
+                // Advance text scroll when showing error-log details
+                let in_details = current_state.menu_scene == Some(MenuScene::ErrorLog)
+                    && current_state.error_log_entry_stage
+                        == Some(ErrorLogEntryStage::Details)
+                    && current_state.selected_error_log_entry.is_some();
+                if in_details {
+                    if let Some(entry_idx) = current_state.selected_error_log_entry {
+                        if let Some(entry) = current_state.error_log_entries.get(entry_idx) {
+                            const VISIBLE_LINES: usize = 5;
+                            let text = error_log_entry_details_text(entry);
+                            let line_count = text.split('\n').count();
+                            if line_count > VISIBLE_LINES {
+                                let mut state = global_state.state.lock().await;
+                                let current = state.error_log_details_scroll;
+                                let max_scroll = line_count.saturating_sub(VISIBLE_LINES);
+                                state.error_log_details_scroll =
+                                    if current >= max_scroll { 0 } else { current + 1 };
+                            }
+                        }
+                    }
+                }
+
                 #[cfg(not(any(feature = "e2e", feature = "qa")))]
                 if !sleep_state()
                     && (Instant::now() - last_update).as_millis() > SLEEP_AFTER_MS
@@ -556,8 +578,11 @@ async fn process_main(
                         return Ok(());
                     }
 
-                    center_text_layout(&error_log_entry_details_text(entry))
-                        .draw(&mut oled.fbuf)?;
+                    draw_scrollable_details_text(
+                        &mut oled.fbuf,
+                        &error_log_entry_details_text(entry),
+                        current_state.error_log_details_scroll,
+                    );
                     return Ok(());
                 }
 

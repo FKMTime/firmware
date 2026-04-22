@@ -287,12 +287,14 @@ async fn submit_up(
                 #[cfg(feature = "v4")]
                 if state_val.error_log_entry_stage == Some(ErrorLogEntryStage::Qr) {
                     state_val.error_log_entry_stage = Some(ErrorLogEntryStage::Details);
+                    state_val.error_log_details_scroll = 0;
                     state.state.signal();
                     return Ok(true);
                 }
 
                 state_val.selected_error_log_entry = None;
                 state_val.error_log_entry_stage = None;
+                state_val.error_log_details_scroll = 0;
                 state.state.signal();
                 return Ok(true);
             }
@@ -303,9 +305,11 @@ async fn submit_up(
                 state_val.selected_error_log_item = 0;
                 state_val.selected_error_log_entry = None;
                 state_val.error_log_entry_stage = None;
+                state_val.error_log_details_scroll = 0;
                 state_val.selected_config_menu = Some(CONFIG_MENU_ERROR_LOG_IDX);
             } else {
                 state_val.selected_error_log_entry = Some(state_val.selected_error_log_item);
+                state_val.error_log_details_scroll = 0;
                 #[cfg(feature = "v3")]
                 {
                     state_val.error_log_entry_stage = Some(ErrorLogEntryStage::Details);

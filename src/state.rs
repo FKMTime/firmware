@@ -237,6 +237,7 @@ pub struct SignaledGlobalStateInner {
     pub selected_error_log_item: usize,
     pub selected_error_log_entry: Option<usize>,
     pub error_log_entry_stage: Option<ErrorLogEntryStage>,
+    pub error_log_details_scroll: usize,
 
     pub discovered_bluetooth_devices: Vec<BleDisplayDevice>,
     pub selected_bluetooth_item: usize,
@@ -298,6 +299,7 @@ impl SignaledGlobalStateInner {
             selected_error_log_item: 0,
             selected_error_log_entry: None,
             error_log_entry_stage: None,
+            error_log_details_scroll: 0,
             selected_bluetooth_item: 0,
             discovered_bluetooth_devices: Vec::new(),
 
@@ -526,6 +528,7 @@ impl PartialEq for SignaledGlobalStateInner {
             && self.selected_error_log_item == other.selected_error_log_item
             && self.selected_error_log_entry == other.selected_error_log_entry
             && self.error_log_entry_stage == other.error_log_entry_stage
+            && self.error_log_details_scroll == other.error_log_details_scroll
             && self.discovered_bluetooth_devices == other.discovered_bluetooth_devices
             && self.selected_bluetooth_item == other.selected_bluetooth_item
             && self.device_added == other.device_added
