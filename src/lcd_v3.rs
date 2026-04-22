@@ -348,7 +348,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                                     .iter()
                                     .map(|addr| alloc::format!("0x{addr:X}"))
                                     .collect::<alloc::vec::Vec<_>>()
-                                    .join(",");
+                                    .join(", ");
                                 lcd_driver
                                     .print(1, &addresses, PrintAlign::Left, true)
                                     .ok()?;

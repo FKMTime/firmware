@@ -99,6 +99,7 @@ pub enum MenuScene {
 pub enum ErrorLogEntryStage {
     #[cfg(feature = "v4")]
     Qr,
+    // Shared stage used on both variants for post-selection detail view.
     Details,
 }
 

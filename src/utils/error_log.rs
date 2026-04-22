@@ -181,6 +181,7 @@ pub enum ErrorLogEntry {
 }
 
 impl ErrorLogEntry {
+    #[cfg(feature = "v3")]
     pub fn list_label_v3(&self) -> String {
         match self {
             ErrorLogEntry::Code { code, .. } => format!("E{code}"),
@@ -188,6 +189,7 @@ impl ErrorLogEntry {
         }
     }
 
+    #[cfg(feature = "v4")]
     pub fn list_label_v4(&self) -> String {
         match self {
             ErrorLogEntry::Code { timestamp, code } => {
@@ -200,6 +202,7 @@ impl ErrorLogEntry {
     }
 }
 
+#[cfg(feature = "v4")]
 pub fn format_timestamp_compact(timestamp: u64) -> String {
     let (_year, month, day, hour, minute, _second) = epoch_to_ymdhms(timestamp);
     format!("{day:02}/{month:02} {hour:02}:{minute:02}")

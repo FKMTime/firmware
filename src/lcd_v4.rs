@@ -556,7 +556,8 @@ async fn process_main(
                         return Ok(());
                     }
 
-                    center_text_layout(&error_log_entry_details_text(entry)).draw(&mut oled.fbuf)?;
+                    center_text_layout(&error_log_entry_details_text(entry))
+                        .draw(&mut oled.fbuf)?;
                     return Ok(());
                 }
 
@@ -564,18 +565,21 @@ async fn process_main(
                 return Ok(());
             }
 
-            let mut items: alloc::vec::Vec<alloc::string::String> = current_state
+            let mut items = current_state
                 .error_log_entries
                 .iter()
                 .map(|entry| entry.list_label_v4())
-                .collect();
+                .collect::<alloc::vec::Vec<_>>();
             items.push("Exit".into());
 
             let sel = current_state.selected_error_log_item;
             if sel >= items.len() {
                 global_state.state.lock().await.selected_error_log_item = 0;
             } else {
-                let item_refs: alloc::vec::Vec<&str> = items.iter().map(|s| s.as_str()).collect();
+                let item_refs = items
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<alloc::vec::Vec<_>>();
                 draw_scrollable_menu(&mut oled.fbuf, &item_refs, sel);
             }
             return Ok(());

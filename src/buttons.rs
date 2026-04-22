@@ -14,6 +14,18 @@ use esp_hal::gpio::Input;
 
 macros::generate_button_handler_enum!(triggered: &ButtonTrigger, hold_time: u64, state: &GlobalState);
 
+#[cfg(feature = "v3")]
+const CONFIG_MENU_ERROR_LOG_IDX: usize = 4;
+#[cfg(feature = "v3")]
+const CONFIG_MENU_EXIT_IDX: usize = 5;
+
+#[cfg(feature = "v4")]
+const CONFIG_MENU_BUZZER_IDX: usize = 4;
+#[cfg(feature = "v4")]
+const CONFIG_MENU_ERROR_LOG_IDX: usize = 5;
+#[cfg(feature = "v4")]
+const CONFIG_MENU_EXIT_IDX: usize = 6;
+
 #[embassy_executor::task]
 pub async fn buttons_task(
     state: GlobalState,
@@ -119,12 +131,10 @@ async fn sel_left(
         }
 
         let total_items = state_val.error_log_entries.len() + 1; // + Exit
-        if total_items > 0 {
-            state_val.selected_error_log_item = state_val
-                .selected_error_log_item
-                .wrapping_sub(1)
-                .min(total_items - 1);
-        }
+        state_val.selected_error_log_item = state_val
+            .selected_error_log_item
+            .wrapping_sub(1)
+            .min(total_items - 1);
 
         return Ok(true);
     }
@@ -182,9 +192,7 @@ async fn sel_right(
         }
 
         let total_items = state_val.error_log_entries.len() + 1; // + Exit
-        if total_items > 0 {
-            state_val.selected_error_log_item = (state_val.selected_error_log_item + 1) % total_items;
-        }
+        state_val.selected_error_log_item = (state_val.selected_error_log_item + 1) % total_items;
 
         return Ok(true);
     }
@@ -295,14 +303,7 @@ async fn submit_up(
                 state_val.selected_error_log_item = 0;
                 state_val.selected_error_log_entry = None;
                 state_val.error_log_entry_stage = None;
-                #[cfg(feature = "v3")]
-                {
-                    state_val.selected_config_menu = Some(4);
-                }
-                #[cfg(feature = "v4")]
-                {
-                    state_val.selected_config_menu = Some(5);
-                }
+                state_val.selected_config_menu = Some(CONFIG_MENU_ERROR_LOG_IDX);
             } else {
                 state_val.selected_error_log_entry = Some(state_val.selected_error_log_item);
                 #[cfg(feature = "v3")]
@@ -330,7 +331,7 @@ async fn submit_up(
             }
 
             state_val.menu_scene = None;
-            state_val.selected_config_menu = Some(4);
+            state_val.selected_config_menu = Some(CONFIG_MENU_BUZZER_IDX);
             state.state.signal();
             return Ok(true);
         }
@@ -374,7 +375,7 @@ async fn submit_up(
 
                     state_val.menu_scene = Some(MenuScene::Unsigning);
                 }
-                4 => {
+                CONFIG_MENU_ERROR_LOG_IDX => {
                     state_val.error_log_entries =
                         crate::utils::error_log::parse_error_log_entries().unwrap_or_else(|e| {
                             log::error!("Parse error log failed: {e:?}");
@@ -385,7 +386,7 @@ async fn submit_up(
                     state_val.error_log_entry_stage = None;
                     state_val.menu_scene = Some(MenuScene::ErrorLog);
                 }
-                5 => {} // Exit
+                CONFIG_MENU_EXIT_IDX => {} // Exit
                 _ => {}
             }
         }
@@ -429,7 +430,7 @@ async fn submit_up(
                 4 => {
                     state_val.menu_scene = Some(MenuScene::BuzzerVolume);
                 }
-                5 => {
+                CONFIG_MENU_ERROR_LOG_IDX => {
                     state_val.error_log_entries =
                         crate::utils::error_log::parse_error_log_entries().unwrap_or_else(|e| {
                             log::error!("Parse error log failed: {e:?}");
@@ -440,7 +441,7 @@ async fn submit_up(
                     state_val.error_log_entry_stage = None;
                     state_val.menu_scene = Some(MenuScene::ErrorLog);
                 }
-                6 => {} // Exit
+                CONFIG_MENU_EXIT_IDX => {} // Exit
                 _ => {}
             }
         }
