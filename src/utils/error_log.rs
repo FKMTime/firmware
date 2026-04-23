@@ -36,7 +36,7 @@ pub async fn add_error(code: u8) {
     }
 }
 
-pub async fn add_stacktrace(addrs: &[u32], version: &str) {
+pub async fn add_stacktrace(addrs: &[u32], version: &str, timestamp: u64) {
     unsafe {
         #[allow(static_mut_refs)]
         let error_log_buf = &mut (*ERROR_LOG_BUF.as_mut_ptr());
@@ -47,7 +47,7 @@ pub async fn add_stacktrace(addrs: &[u32], version: &str) {
         version_buf[..version_len].copy_from_slice(&version_bytes[..version_len]);
 
         error_log_buf[OFFSET] = b'S';
-        error_log_buf[OFFSET + 1..OFFSET + 1 + 8].copy_from_slice(&current_epoch().to_be_bytes());
+        error_log_buf[OFFSET + 1..OFFSET + 1 + 8].copy_from_slice(&timestamp.to_be_bytes());
         error_log_buf[OFFSET + 1 + 8..OFFSET + 1 + 8 + 16].copy_from_slice(&version_buf);
         error_log_buf[OFFSET + 1 + 8 + 16] = addrs.len() as u8;
 

@@ -4,6 +4,7 @@ use esp_storage::FlashStorage;
 const MAX_BACKTRACE_ADDRESSES: usize = 10;
 const RA_OFFSET: usize = 4;
 const SAVED_VERSION_LEN: usize = 16;
+const SAVED_TIMESTAMP_LEN: usize = 8;
 
 pub async fn read_saved_backtrace() {
     if let Some(nvs_part) = esp_hal_wifimanager::Nvs::read_nvs_partition_offset(unsafe {
@@ -39,19 +40,44 @@ pub async fn read_saved_backtrace() {
             return;
         }
 
-        let (saved_version, addr_data) = if len as usize >= SAVED_VERSION_LEN
-            && (len as usize - SAVED_VERSION_LEN).is_multiple_of(4)
-        {
-            let version_raw = &buf[..SAVED_VERSION_LEN];
-            let version = if let Ok(version) = core::str::from_utf8(version_raw) {
-                version.trim_end_matches('\0')
+        const NEW_HEADER_LEN: usize = SAVED_VERSION_LEN + SAVED_TIMESTAMP_LEN;
+        let (saved_version, saved_timestamp, addr_data) =
+            if len as usize >= NEW_HEADER_LEN && (len as usize - NEW_HEADER_LEN).is_multiple_of(4)
+            {
+                let version_raw = &buf[..SAVED_VERSION_LEN];
+                let version = if let Ok(version) = core::str::from_utf8(version_raw) {
+                    version.trim_end_matches('\0')
+                } else {
+                    crate::version::VERSION
+                };
+                let timestamp = u64::from_be_bytes(
+                    buf[SAVED_VERSION_LEN..NEW_HEADER_LEN]
+                        .try_into()
+                        .unwrap_or([0; 8]),
+                );
+                (version, timestamp, &buf[NEW_HEADER_LEN..len as usize])
+            } else if len as usize >= SAVED_VERSION_LEN
+                && (len as usize - SAVED_VERSION_LEN).is_multiple_of(4)
+            {
+                // Old format without timestamp
+                let version_raw = &buf[..SAVED_VERSION_LEN];
+                let version = if let Ok(version) = core::str::from_utf8(version_raw) {
+                    version.trim_end_matches('\0')
+                } else {
+                    crate::version::VERSION
+                };
+                (
+                    version,
+                    crate::state::current_epoch(),
+                    &buf[SAVED_VERSION_LEN..len as usize],
+                )
             } else {
-                crate::version::VERSION
+                (
+                    crate::version::VERSION,
+                    crate::state::current_epoch(),
+                    &buf[..len as usize],
+                )
             };
-            (version, &buf[SAVED_VERSION_LEN..len as usize])
-        } else {
-            (crate::version::VERSION, &buf[..len as usize])
-        };
 
         log::error!("Last crash info:");
         let mut addrs = Vec::new();
@@ -69,7 +95,7 @@ pub async fn read_saved_backtrace() {
             &[0x00, 0x00],
         );
 
-        crate::utils::error_log::add_stacktrace(&addrs, saved_version).await;
+        crate::utils::error_log::add_stacktrace(&addrs, saved_version, saved_timestamp).await;
     }
 }
 
@@ -147,6 +173,7 @@ pub extern "Rust" fn custom_pre_backtrace() {
     let version_len = core::cmp::min(version_bytes.len(), SAVED_VERSION_LEN);
     version[..version_len].copy_from_slice(&version_bytes[..version_len]);
     tmp.extend_from_slice(&version);
+    tmp.extend_from_slice(&crate::state::current_epoch().to_be_bytes());
     for addr in backtrace.into_iter().flatten() {
         tmp.extend_from_slice(&((addr - RA_OFFSET) as u32).to_be_bytes());
     }
