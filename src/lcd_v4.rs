@@ -13,7 +13,12 @@ use crate::{
         stackmat::ms_to_time_str,
     },
 };
-use alloc::{format, rc::Rc, string::String, string::ToString};
+use alloc::{
+    format,
+    rc::Rc,
+    string::{String, ToString},
+    vec::Vec,
+};
 use anyhow::{Result, anyhow};
 use display_interface_i2c::I2CInterface;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -250,8 +255,17 @@ where
     }
 }
 
+enum QrCodeData<'a> {
+    Text(&'a str),
+    Binary(&'a [u8]),
+}
+
 #[allow(dead_code)]
-pub fn draw_qr_code<D>(display: &mut D, text: &str, module_size: u32) -> Result<(), D::Error>
+pub fn draw_qr_code<D>(
+    display: &mut D,
+    data: QrCodeData<'_>,
+    module_size: u32,
+) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = BinaryColor>,
 {
@@ -265,16 +279,31 @@ where
     let mut outbuffer = [0u8; qrcodegen_no_heap::Version::new(6).buffer_len()];
     let mut tempbuffer = [0u8; qrcodegen_no_heap::Version::new(6).buffer_len()];
 
-    let qr = qrcodegen_no_heap::QrCode::encode_text(
-        text,
-        &mut tempbuffer,
-        &mut outbuffer,
-        qrcodegen_no_heap::QrCodeEcc::Quartile,
-        qrcodegen_no_heap::Version::MIN,
-        max_version,
-        None,
-        true,
-    );
+    let qr = match data {
+        QrCodeData::Text(text) => qrcodegen_no_heap::QrCode::encode_text(
+            text,
+            &mut tempbuffer,
+            &mut outbuffer,
+            qrcodegen_no_heap::QrCodeEcc::Quartile,
+            qrcodegen_no_heap::Version::MIN,
+            max_version,
+            None,
+            true,
+        ),
+        QrCodeData::Binary(data) => {
+            tempbuffer[..data.len()].copy_from_slice(data);
+            qrcodegen_no_heap::QrCode::encode_binary(
+                &mut tempbuffer,
+                data.len(),
+                &mut outbuffer,
+                qrcodegen_no_heap::QrCodeEcc::Quartile,
+                qrcodegen_no_heap::Version::MIN,
+                max_version,
+                None,
+                true,
+            )
+        }
+    };
 
     if let Ok(qr) = qr {
         let filled = PrimitiveStyle::with_fill(BinaryColor::On);
@@ -338,13 +367,6 @@ pub async fn lcd_task(
     let fbuf = embedded_graphics_framebuf::FrameBuf::new(data, FBUF_WIDTH, FBUF_HEIGHT);
 
     let mut oled = OledData { fbuf, disp };
-
-    /*
-    draw_qr_code(&mut oled.fbuf, "DSADSADSDSADSADSDSADSADSDSADSADSDSADSADSDSADSADS 42 DSADSADSDSADSADSDSADSADSDSADSADSDSADSADSDSADSADSDSADSADS", 1).unwrap();
-    _ = oled.flush().await;
-
-    Timer::after_millis(25000).await;
-    */
 
     global_state.show_battery.wait().await;
     _ = process_top_bar(
@@ -603,8 +625,27 @@ async fn process_main(
             if let Some(entry_idx) = current_state.selected_error_log_entry {
                 if let Some(entry) = current_state.error_log_entries.get(entry_idx) {
                     if current_state.error_log_entry_stage == Some(ErrorLogEntryStage::Qr) {
-                        let payload = format!("error-log-entry:{entry_idx}");
-                        draw_qr_code(&mut oled.fbuf, &payload, 1)?;
+                        match entry {
+                            crate::utils::error_log::ErrorLogEntry::Code { timestamp: _, code } => {
+                                let url = format!("https://docs.fkmtime.com/debugging/e{}", code);
+                                draw_qr_code(&mut oled.fbuf, QrCodeData::Text(&url), 1)?;
+                            }
+                            crate::utils::error_log::ErrorLogEntry::Stacktrace {
+                                timestamp: _,
+                                version,
+                                addrs,
+                            } => {
+                                let mut tmp = Vec::new();
+                                tmp.push(version.len() as u8);
+                                tmp.extend_from_slice(version.as_bytes());
+                                for addr in addrs {
+                                    tmp.extend_from_slice(&addr.to_be_bytes());
+                                }
+
+                                draw_qr_code(&mut oled.fbuf, QrCodeData::Binary(&tmp), 1)?;
+                            }
+                        };
+
                         return Ok(());
                     }
 

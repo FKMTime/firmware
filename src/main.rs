@@ -360,10 +360,6 @@ async fn main(spawner: Spawner) {
             .parse_saved_state(saved_state);
     }
 
-    if let Ok(v) = crate::utils::error_log::parse_error_log_entries() {
-        log::info!("{v:?}");
-    }
-
     let mut last_sleep = false;
     loop {
         Timer::after_millis(100).await;

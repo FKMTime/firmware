@@ -118,18 +118,29 @@ pub fn parse_error_log_entries() -> Result<Vec<ErrorLogEntry>> {
     let error_log_buf = unsafe { &mut (*ERROR_LOG_BUF.as_mut_ptr()) };
     let max_offset = unsafe { OFFSET };
 
+    log::warn!("ERROR LOG:");
     let mut offset = 0;
     while offset < max_offset {
         let log_type = error_log_buf[offset];
         match log_type {
             b'N' => {
                 // u64 + u8
-                tmp.push(ErrorLogEntry::Code {
+                let entry = ErrorLogEntry::Code {
                     timestamp: u64::from_be_bytes(
                         error_log_buf[offset + 1..offset + 1 + 8].try_into()?,
                     ),
                     code: error_log_buf[offset + 1 + 8],
-                });
+                };
+
+                if let ErrorLogEntry::Code { timestamp, code } = entry {
+                    log::warn!(
+                        "Error {} at {}",
+                        code,
+                        crate::utils::error_log::format_timestamp_full(timestamp)
+                    );
+                }
+
+                tmp.push(entry);
                 offset += 1 + 8 + 1;
             }
             b'S' => {
@@ -147,15 +158,26 @@ pub fn parse_error_log_entries() -> Result<Vec<ErrorLogEntry>> {
                 {
                     tmp_addrs.push(u32::from_be_bytes(addr.try_into()?));
                 }
-
-                tmp.push(ErrorLogEntry::Stacktrace {
+                let entry = ErrorLogEntry::Stacktrace {
                     timestamp: u64::from_be_bytes(
                         error_log_buf[offset + 1..offset + 1 + 8].try_into()?,
                     ),
                     version: version_str.to_string(),
                     addrs: tmp_addrs,
-                });
+                };
+                if let ErrorLogEntry::Stacktrace {
+                    timestamp,
+                    ref version,
+                    ref addrs,
+                } = entry
+                {
+                    log::warn!(
+                        "Panic of ver {version} at {}. Addrs: {addrs:X?}",
+                        crate::utils::error_log::format_timestamp_full(timestamp)
+                    );
+                }
 
+                tmp.push(entry);
                 offset += 1 + 8 + 16 + 1 + size as usize * 4;
             }
             _ => {
