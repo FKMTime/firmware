@@ -260,12 +260,7 @@ enum QrCodeData<'a> {
     Binary(&'a [u8]),
 }
 
-#[allow(dead_code)]
-pub fn draw_qr_code<D>(
-    display: &mut D,
-    data: QrCodeData<'_>,
-    module_size: u32,
-) -> Result<(), D::Error>
+fn draw_qr_code<D>(display: &mut D, data: QrCodeData<'_>, module_size: u32) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = BinaryColor>,
 {

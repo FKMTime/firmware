@@ -197,17 +197,17 @@ async fn sel_right(
     if state_val.menu_scene == Some(MenuScene::ErrorLog) {
         #[cfg(feature = "v4")]
         if state_val.error_log_entry_stage == Some(ErrorLogEntryStage::Details) {
-            if let Some(entry_idx) = state_val.selected_error_log_entry {
-                if let Some(entry) = state_val.error_log_entries.get(entry_idx) {
-                    let text = crate::lcd_v4::error_log_entry_details_text(entry);
-                    let max_scroll = text
-                        .split('\n')
-                        .count()
-                        .saturating_sub(crate::lcd_v4::DETAILS_VISIBLE_LINES);
-                    if state_val.error_log_details_scroll < max_scroll {
-                        state_val.error_log_details_scroll += 1;
-                        state.state.signal();
-                    }
+            if let Some(entry_idx) = state_val.selected_error_log_entry
+                && let Some(entry) = state_val.error_log_entries.get(entry_idx)
+            {
+                let text = crate::lcd_v4::error_log_entry_details_text(entry);
+                let max_scroll = text
+                    .split('\n')
+                    .count()
+                    .saturating_sub(crate::lcd_v4::DETAILS_VISIBLE_LINES);
+                if state_val.error_log_details_scroll < max_scroll {
+                    state_val.error_log_details_scroll += 1;
+                    state.state.signal();
                 }
             }
             return Ok(true);
@@ -309,7 +309,7 @@ async fn submit_up(
             return Ok(true);
         }
         Some(MenuScene::ErrorLog) => {
-            if let Some(_) = state_val.selected_error_log_entry {
+            if state_val.selected_error_log_entry.is_some() {
                 #[cfg(feature = "v4")]
                 if state_val.error_log_entry_stage == Some(ErrorLogEntryStage::Qr) {
                     state_val.error_log_entry_stage = Some(ErrorLogEntryStage::Details);
@@ -542,7 +542,6 @@ async fn inspection_start(
 ) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
     if !state_val.use_inspection() || state_val.should_skip_other_actions() {
-        panic!("test");
         return Ok(false);
     }
 
@@ -692,7 +691,6 @@ async fn delegate_hold(
 ) -> Result<bool, ()> {
     match triggered {
         ButtonTrigger::Up => {
-            crate::utils::error_log::add_error(69).await;
             state.state.lock().await.delegate_hold = None;
         }
         ButtonTrigger::HoldTimed(_, _) => {

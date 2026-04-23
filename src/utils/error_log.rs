@@ -22,6 +22,7 @@ pub fn clear_save_ready() {
     unsafe { SAVE_READY = false };
 }
 
+#[allow(dead_code)]
 pub async fn add_error(code: u8) {
     unsafe {
         #[allow(static_mut_refs)]
