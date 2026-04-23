@@ -238,7 +238,7 @@ async fn main(spawner: Spawner) {
     );
 
     let mut wm_settings = esp_hal_wifimanager::WmSettings {
-        wifi_panel: include_str!("panel.html"),
+        wifi_panel: esp_hal_wifimanager::include_minified!("src/panel.html"),
         wifi_conn_signal: Some(wifi_conn_sig.clone()),
         ..Default::default()
     };

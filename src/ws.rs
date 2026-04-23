@@ -514,7 +514,6 @@ async fn ws_rw(
                         .send(WsFrameOwned::Binary(alloc::vec::Vec::new()))
                         .await;
                 }
-                WsFrame::Close(_, _) => todo!(),
                 WsFrame::Ping(_) => {
                     _ = FRAME_CHANNEL.try_send(WsFrameOwned::Pong(alloc::vec::Vec::new()));
                 }
