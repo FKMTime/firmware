@@ -198,6 +198,57 @@ where
     }
 }
 
+fn draw_scrollable_details_text<D>(target: &mut D, text: &str, scroll: usize)
+where
+    D: DrawTarget<Color = BinaryColor>,
+{
+    const LINE_HEIGHT: i32 = 10;
+    const VISIBLE: usize = 5;
+    const PADDING_X: i32 = 2;
+
+    let font = MonoTextStyle::new(
+        &embedded_graphics::mono_font::ascii::FONT_6X9,
+        BinaryColor::On,
+    );
+
+    let lines: alloc::vec::Vec<&str> = text.split('\n').collect();
+    let total = lines.len();
+    let start_y = MAIN_RECT.top_left.y;
+
+    for (row, line) in lines.iter().skip(scroll).take(VISIBLE).enumerate() {
+        let y = start_y + row as i32 * LINE_HEIGHT;
+        let text_y = y + LINE_HEIGHT / 2;
+        Text::with_text_style(
+            line,
+            Point::new(PADDING_X, text_y),
+            font,
+            TextStyleBuilder::new()
+                .alignment(Alignment::Left)
+                .baseline(Baseline::Middle)
+                .build(),
+        )
+        .draw(target)
+        .ok();
+    }
+
+    if scroll > 0 {
+        Text::with_text_style(
+            "^",
+            Point::new(122, start_y + LINE_HEIGHT / 2),
+            font,
+            TEXT_CENTER,
+        )
+        .draw(target)
+        .ok();
+    }
+    if scroll + VISIBLE < total {
+        let last_row_y = start_y + (VISIBLE as i32 - 1) * LINE_HEIGHT + LINE_HEIGHT / 2;
+        Text::with_text_style("v", Point::new(122, last_row_y), font, TEXT_CENTER)
+            .draw(target)
+            .ok();
+    }
+}
+
 #[allow(dead_code)]
 pub fn draw_qr_code<D>(display: &mut D, text: &str, module_size: u32) -> Result<(), D::Error>
 where
@@ -349,28 +400,6 @@ pub async fn lcd_task(
                     _ = oled.flush().await;
 
                     global_state.show_battery.reset();
-                }
-
-                // Advance text scroll when showing error-log details
-                let in_details = current_state.menu_scene == Some(MenuScene::ErrorLog)
-                    && current_state.error_log_entry_stage
-                        == Some(ErrorLogEntryStage::Details)
-                    && current_state.selected_error_log_entry.is_some();
-                if in_details {
-                    if let Some(entry_idx) = current_state.selected_error_log_entry {
-                        if let Some(entry) = current_state.error_log_entries.get(entry_idx) {
-                            const VISIBLE_LINES: usize = 5;
-                            let text = error_log_entry_details_text(entry);
-                            let line_count = text.split('\n').count();
-                            if line_count > VISIBLE_LINES {
-                                let mut state = global_state.state.lock().await;
-                                let current = state.error_log_details_scroll;
-                                let max_scroll = line_count.saturating_sub(VISIBLE_LINES);
-                                state.error_log_details_scroll =
-                                    if current >= max_scroll { 0 } else { current + 1 };
-                            }
-                        }
-                    }
                 }
 
                 #[cfg(not(any(feature = "e2e", feature = "qa")))]
@@ -975,7 +1004,7 @@ async fn process_main(
     Ok(())
 }
 
-fn error_log_entry_details_text(entry: &crate::utils::error_log::ErrorLogEntry) -> String {
+pub fn error_log_entry_details_text(entry: &crate::utils::error_log::ErrorLogEntry) -> String {
     match entry {
         crate::utils::error_log::ErrorLogEntry::Code { timestamp, code } => format!(
             "Error E{code}\n{}\nSubmit to return",

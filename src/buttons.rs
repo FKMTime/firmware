@@ -126,6 +126,14 @@ async fn sel_left(
     }
 
     if state_val.menu_scene == Some(MenuScene::ErrorLog) {
+        #[cfg(feature = "v4")]
+        if state_val.error_log_entry_stage == Some(ErrorLogEntryStage::Details) {
+            state_val.error_log_details_scroll =
+                state_val.error_log_details_scroll.saturating_sub(1);
+            state.state.signal();
+            return Ok(true);
+        }
+
         if state_val.selected_error_log_entry.is_some() {
             return Ok(true);
         }
@@ -187,6 +195,23 @@ async fn sel_right(
     }
 
     if state_val.menu_scene == Some(MenuScene::ErrorLog) {
+        #[cfg(feature = "v4")]
+        if state_val.error_log_entry_stage == Some(ErrorLogEntryStage::Details) {
+            if let Some(entry_idx) = state_val.selected_error_log_entry {
+                if let Some(entry) = state_val.error_log_entries.get(entry_idx) {
+                    const VISIBLE_LINES: usize = 5;
+                    let text = crate::lcd_v4::error_log_entry_details_text(entry);
+                    let line_count = text.split('\n').count();
+                    let max_scroll = line_count.saturating_sub(VISIBLE_LINES);
+                    if state_val.error_log_details_scroll < max_scroll {
+                        state_val.error_log_details_scroll += 1;
+                        state.state.signal();
+                    }
+                }
+            }
+            return Ok(true);
+        }
+
         if state_val.selected_error_log_entry.is_some() {
             return Ok(true);
         }
