@@ -316,6 +316,80 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
 
             return Some(());
         }
+        Some(MenuScene::ErrorLog) => {
+            lcd_driver.clear_all().ok()?;
+
+            if let Some(entry_idx) = current_state.selected_error_log_entry {
+                if let Some(entry) = current_state.error_log_entries.get(entry_idx) {
+                    match entry {
+                        crate::utils::error_log::ErrorLogEntry::Code { timestamp, code } => {
+                            lcd_driver
+                                .print(0, &alloc::format!("Error E{code}"), PrintAlign::Left, true)
+                                .ok()?;
+                            lcd_driver
+                                .print(
+                                    1,
+                                    &crate::utils::error_log::format_timestamp_full(*timestamp),
+                                    PrintAlign::Left,
+                                    true,
+                                )
+                                .ok()?;
+                        }
+                        crate::utils::error_log::ErrorLogEntry::Stacktrace { addrs, .. } => {
+                            lcd_driver
+                                .print(0, "Panic addresses", PrintAlign::Left, true)
+                                .ok()?;
+                            if addrs.is_empty() {
+                                lcd_driver
+                                    .print(1, "No addresses", PrintAlign::Left, true)
+                                    .ok()?;
+                            } else {
+                                let addresses = addrs
+                                    .iter()
+                                    .map(|addr| alloc::format!("0x{addr:X}"))
+                                    .collect::<alloc::vec::Vec<_>>()
+                                    .join(", ");
+                                lcd_driver
+                                    .print(1, &addresses, PrintAlign::Left, true)
+                                    .ok()?;
+                            }
+                        }
+                    }
+                } else {
+                    lcd_driver
+                        .print(0, "Invalid log entry", PrintAlign::Center, true)
+                        .ok()?;
+                    lcd_driver
+                        .print(1, "Submit to return", PrintAlign::Center, true)
+                        .ok()?;
+                }
+            } else {
+                let exit_idx = current_state.error_log_entries.len();
+                if current_state.selected_error_log_item == exit_idx {
+                    lcd_driver.print(0, "Exit", PrintAlign::Center, true).ok()?;
+                    lcd_driver
+                        .print(1, "Submit to return", PrintAlign::Center, true)
+                        .ok()?;
+                } else if let Some(entry) = current_state
+                    .error_log_entries
+                    .get(current_state.selected_error_log_item)
+                {
+                    lcd_driver
+                        .print(0, &entry.list_label_v3(), PrintAlign::Center, true)
+                        .ok()?;
+                    lcd_driver
+                        .print(1, "Submit for details", PrintAlign::Center, true)
+                        .ok()?;
+                } else {
+                    lcd_driver
+                        .print(0, "No entries", PrintAlign::Center, true)
+                        .ok()?;
+                    lcd_driver.print(1, "Exit", PrintAlign::Center, true).ok()?;
+                }
+            }
+
+            return Some(());
+        }
         #[cfg(feature = "v4")]
         Some(crate::state::MenuScene::BuzzerVolume) => {}
         None => {}

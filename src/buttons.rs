@@ -2,7 +2,8 @@ use crate::{
     consts::{NVS_BONDING_KEY, NVS_ERROR_LOG, NVS_SIGN_KEY},
     stackmat::CURRENT_TIME,
     state::{
-        BleAction, GlobalState, MenuScene, Scene, current_epoch, deeper_sleep_state, sleep_state,
+        BleAction, ErrorLogEntryStage, GlobalState, MenuScene, Scene, current_epoch,
+        deeper_sleep_state, sleep_state,
     },
     structs::DelegateResponsePacket,
     utils::buttons::{Button, ButtonTrigger, ButtonsHandler},
@@ -12,6 +13,18 @@ use embassy_time::{Instant, Timer};
 use esp_hal::gpio::Input;
 
 macros::generate_button_handler_enum!(triggered: &ButtonTrigger, hold_time: u64, state: &GlobalState);
+
+#[cfg(feature = "v3")]
+const CONFIG_MENU_ERROR_LOG_IDX: usize = 4;
+#[cfg(feature = "v3")]
+const CONFIG_MENU_EXIT_IDX: usize = 5;
+
+#[cfg(feature = "v4")]
+const CONFIG_MENU_BUZZER_IDX: usize = 4;
+#[cfg(feature = "v4")]
+const CONFIG_MENU_ERROR_LOG_IDX: usize = 5;
+#[cfg(feature = "v4")]
+const CONFIG_MENU_EXIT_IDX: usize = 6;
 
 #[embassy_executor::task]
 pub async fn buttons_task(
@@ -112,6 +125,28 @@ async fn sel_left(
         return Ok(true);
     }
 
+    if state_val.menu_scene == Some(MenuScene::ErrorLog) {
+        #[cfg(feature = "v4")]
+        if state_val.error_log_entry_stage == Some(ErrorLogEntryStage::Details) {
+            state_val.error_log_details_scroll =
+                state_val.error_log_details_scroll.saturating_sub(1);
+            state.state.signal();
+            return Ok(true);
+        }
+
+        if state_val.selected_error_log_entry.is_some() {
+            return Ok(true);
+        }
+
+        let total_items = state_val.error_log_entries.len() + 1; // + Exit
+        state_val.selected_error_log_item = state_val
+            .selected_error_log_item
+            .wrapping_sub(1)
+            .min(total_items - 1);
+
+        return Ok(true);
+    }
+
     if let Some(sel) = state_val.selected_config_menu.as_mut() {
         *sel = sel
             .wrapping_sub(1)
@@ -155,6 +190,35 @@ async fn sel_right(
             state.state.signal();
             state.buzzer_sound_test.signal(());
         }
+
+        return Ok(true);
+    }
+
+    if state_val.menu_scene == Some(MenuScene::ErrorLog) {
+        #[cfg(feature = "v4")]
+        if state_val.error_log_entry_stage == Some(ErrorLogEntryStage::Details) {
+            if let Some(entry_idx) = state_val.selected_error_log_entry
+                && let Some(entry) = state_val.error_log_entries.get(entry_idx)
+            {
+                let text = crate::lcd_v4::error_log_entry_details_text(entry);
+                let max_scroll = text
+                    .split('\n')
+                    .count()
+                    .saturating_sub(crate::lcd_v4::DETAILS_VISIBLE_LINES);
+                if state_val.error_log_details_scroll < max_scroll {
+                    state_val.error_log_details_scroll += 1;
+                    state.state.signal();
+                }
+            }
+            return Ok(true);
+        }
+
+        if state_val.selected_error_log_entry.is_some() {
+            return Ok(true);
+        }
+
+        let total_items = state_val.error_log_entries.len() + 1; // + Exit
+        state_val.selected_error_log_item = (state_val.selected_error_log_item + 1) % total_items;
 
         return Ok(true);
     }
@@ -244,6 +308,48 @@ async fn submit_up(
             state.state.signal();
             return Ok(true);
         }
+        Some(MenuScene::ErrorLog) => {
+            if state_val.selected_error_log_entry.is_some() {
+                #[cfg(feature = "v4")]
+                if state_val.error_log_entry_stage == Some(ErrorLogEntryStage::Qr) {
+                    state_val.error_log_entry_stage = Some(ErrorLogEntryStage::Details);
+                    state_val.error_log_details_scroll = 0;
+                    state.state.signal();
+                    return Ok(true);
+                }
+
+                state_val.selected_error_log_entry = None;
+                state_val.error_log_entry_stage = None;
+                state_val.error_log_details_scroll = 0;
+                state.state.signal();
+                return Ok(true);
+            }
+
+            let exit_idx = state_val.error_log_entries.len();
+            if state_val.selected_error_log_item == exit_idx {
+                state_val.menu_scene = None;
+                state_val.selected_error_log_item = 0;
+                state_val.selected_error_log_entry = None;
+                state_val.error_log_entry_stage = None;
+                state_val.error_log_details_scroll = 0;
+                state_val.selected_config_menu = Some(CONFIG_MENU_ERROR_LOG_IDX);
+                state_val.error_log_entries.clear();
+            } else {
+                state_val.selected_error_log_entry = Some(state_val.selected_error_log_item);
+                state_val.error_log_details_scroll = 0;
+                #[cfg(feature = "v3")]
+                {
+                    state_val.error_log_entry_stage = Some(ErrorLogEntryStage::Details);
+                }
+                #[cfg(feature = "v4")]
+                {
+                    state_val.error_log_entry_stage = Some(ErrorLogEntryStage::Qr);
+                }
+            }
+
+            state.state.signal();
+            return Ok(true);
+        }
         #[cfg(feature = "v4")]
         Some(MenuScene::BuzzerVolume) => {
             let current_volume = crate::state::buzzer_volume();
@@ -256,7 +362,7 @@ async fn submit_up(
             }
 
             state_val.menu_scene = None;
-            state_val.selected_config_menu = Some(4);
+            state_val.selected_config_menu = Some(CONFIG_MENU_BUZZER_IDX);
             state.state.signal();
             return Ok(true);
         }
@@ -300,7 +406,18 @@ async fn submit_up(
 
                     state_val.menu_scene = Some(MenuScene::Unsigning);
                 }
-                4 => {} // Exit
+                CONFIG_MENU_ERROR_LOG_IDX => {
+                    state_val.error_log_entries =
+                        crate::utils::error_log::parse_error_log_entries().unwrap_or_else(|e| {
+                            log::error!("Parse error log failed: {e:?}");
+                            alloc::vec![]
+                        });
+                    state_val.selected_error_log_item = 0;
+                    state_val.selected_error_log_entry = None;
+                    state_val.error_log_entry_stage = None;
+                    state_val.menu_scene = Some(MenuScene::ErrorLog);
+                }
+                CONFIG_MENU_EXIT_IDX => {} // Exit
                 _ => {}
             }
         }
@@ -344,7 +461,18 @@ async fn submit_up(
                 4 => {
                     state_val.menu_scene = Some(MenuScene::BuzzerVolume);
                 }
-                5 => {} // Exit
+                CONFIG_MENU_ERROR_LOG_IDX => {
+                    state_val.error_log_entries =
+                        crate::utils::error_log::parse_error_log_entries().unwrap_or_else(|e| {
+                            log::error!("Parse error log failed: {e:?}");
+                            alloc::vec![]
+                        });
+                    state_val.selected_error_log_item = 0;
+                    state_val.selected_error_log_entry = None;
+                    state_val.error_log_entry_stage = None;
+                    state_val.menu_scene = Some(MenuScene::ErrorLog);
+                }
+                CONFIG_MENU_EXIT_IDX => {} // Exit
                 _ => {}
             }
         }
@@ -414,7 +542,6 @@ async fn inspection_start(
 ) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
     if !state_val.use_inspection() || state_val.should_skip_other_actions() {
-        panic!("test");
         return Ok(false);
     }
 
@@ -564,7 +691,6 @@ async fn delegate_hold(
 ) -> Result<bool, ()> {
     match triggered {
         ButtonTrigger::Up => {
-            crate::utils::error_log::add_error(69).await;
             state.state.lock().await.delegate_hold = None;
         }
         ButtonTrigger::HoldTimed(_, _) => {
