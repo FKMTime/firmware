@@ -1024,14 +1024,11 @@ pub fn error_log_entry_details_text(entry: &crate::utils::error_log::ErrorLogEnt
             if addrs.is_empty() {
                 details.push_str("No addrs");
             } else {
-                for (idx, addr) in addrs.iter().take(3).enumerate() {
+                for (idx, addr) in addrs.iter().enumerate() {
                     if idx > 0 {
                         details.push('\n');
                     }
                     details.push_str(&format!("0x{addr:X}"));
-                }
-                if addrs.len() > 3 {
-                    details.push_str(&format!("\n+{} more", addrs.len() - 3));
                 }
             }
             details.push_str("\nSubmit to return");
