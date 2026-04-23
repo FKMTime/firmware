@@ -40,29 +40,22 @@ pub async fn read_saved_backtrace() {
             return;
         }
 
-        const NEW_HEADER_LEN: usize = SAVED_VERSION_LEN + SAVED_TIMESTAMP_LEN;
-        let (saved_version, saved_timestamp, addr_data) = if len as usize >= NEW_HEADER_LEN
-            && (len as usize - NEW_HEADER_LEN).is_multiple_of(4)
-        {
-            let version_raw = &buf[..SAVED_VERSION_LEN];
-            let version = if let Ok(version) = core::str::from_utf8(version_raw) {
-                version.trim_end_matches('\0')
-            } else {
-                crate::version::VERSION
-            };
-            let timestamp = u64::from_be_bytes(
-                buf[SAVED_VERSION_LEN..NEW_HEADER_LEN]
-                    .try_into()
-                    .unwrap_or([0; 8]),
-            );
-            (version, timestamp, &buf[NEW_HEADER_LEN..len as usize])
-        } else {
-            (
-                crate::version::VERSION,
-                crate::state::current_epoch(),
-                &buf[..len as usize],
-            )
-        };
+        const HEADER_LEN: usize = SAVED_VERSION_LEN + SAVED_TIMESTAMP_LEN;
+        let len = len as usize;
+        if len < HEADER_LEN || !(len - HEADER_LEN).is_multiple_of(4) {
+            return;
+        }
+
+        let version_raw = &buf[..SAVED_VERSION_LEN];
+        let saved_version = core::str::from_utf8(version_raw)
+            .unwrap_or(crate::version::VERSION)
+            .trim_end_matches('\0');
+        let saved_timestamp = u64::from_be_bytes(
+            buf[SAVED_VERSION_LEN..HEADER_LEN]
+                .try_into()
+                .unwrap_or([0; 8]),
+        );
+        let addr_data = &buf[HEADER_LEN..len];
 
         log::error!("Last crash info:");
         let mut addrs = Vec::new();
