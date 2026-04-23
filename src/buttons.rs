@@ -199,10 +199,8 @@ async fn sel_right(
         if state_val.error_log_entry_stage == Some(ErrorLogEntryStage::Details) {
             if let Some(entry_idx) = state_val.selected_error_log_entry {
                 if let Some(entry) = state_val.error_log_entries.get(entry_idx) {
-                    const VISIBLE_LINES: usize = 5;
                     let text = crate::lcd_v4::error_log_entry_details_text(entry);
-                    let line_count = text.split('\n').count();
-                    let max_scroll = line_count.saturating_sub(VISIBLE_LINES);
+                    let max_scroll = text.split('\n').count().saturating_sub(crate::lcd_v4::DETAILS_VISIBLE_LINES);
                     if state_val.error_log_details_scroll < max_scroll {
                         state_val.error_log_details_scroll += 1;
                         state.state.signal();
@@ -308,7 +306,7 @@ async fn submit_up(
             return Ok(true);
         }
         Some(MenuScene::ErrorLog) => {
-            if let Some(_entry_idx) = state_val.selected_error_log_entry {
+            if let Some(_) = state_val.selected_error_log_entry {
                 #[cfg(feature = "v4")]
                 if state_val.error_log_entry_stage == Some(ErrorLogEntryStage::Qr) {
                     state_val.error_log_entry_stage = Some(ErrorLogEntryStage::Details);

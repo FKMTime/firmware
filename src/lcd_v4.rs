@@ -67,6 +67,7 @@ impl OledData<'_> {
 
 pub const MAIN_RECT: Rectangle = Rectangle::new(Point::new(0, 11), Size::new(128, 53));
 pub const TOPBAR_RECT: Rectangle = Rectangle::new(Point::new(0, 0), Size::new(128, 10));
+pub const DETAILS_VISIBLE_LINES: usize = 5;
 pub const NORMAL_FONT: MonoTextStyle<'_, BinaryColor> = MonoTextStyle::new(
     &embedded_graphics::mono_font::ascii::FONT_7X13,
     BinaryColor::On,
@@ -203,7 +204,7 @@ where
     D: DrawTarget<Color = BinaryColor>,
 {
     const LINE_HEIGHT: i32 = 10;
-    const VISIBLE: usize = 5;
+    const VISIBLE: usize = DETAILS_VISIBLE_LINES;
     const PADDING_X: i32 = 2;
 
     let font = MonoTextStyle::new(
