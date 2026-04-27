@@ -24,6 +24,17 @@ static TAGGED_RETURN: PubSubChannel<CriticalSectionRawMutex, (u64, TimerPacket),
 const WS_BUF_SIZE: usize = 8192;
 const TLS_BUF_SIZE: usize = 16640;
 
+#[unsafe(link_section = ".dram2_uninit")]
+static mut WS_RX_BUF: core::mem::MaybeUninit<[u8; WS_BUF_SIZE]> = core::mem::MaybeUninit::uninit();
+#[unsafe(link_section = ".dram2_uninit")]
+static mut WS_TX_BUF: core::mem::MaybeUninit<[u8; WS_BUF_SIZE]> = core::mem::MaybeUninit::uninit();
+#[unsafe(link_section = ".dram2_uninit")]
+static mut TLS_RX_BUF: core::mem::MaybeUninit<[u8; TLS_BUF_SIZE]> =
+    core::mem::MaybeUninit::uninit();
+#[unsafe(link_section = ".dram2_uninit")]
+static mut TLS_TX_BUF: core::mem::MaybeUninit<[u8; TLS_BUF_SIZE]> =
+    core::mem::MaybeUninit::uninit();
+
 #[embassy_executor::task]
 pub async fn ws_task(
     stack: Stack<'static>,
@@ -36,17 +47,21 @@ pub async fn ws_task(
 
     let mut rx_buf = [0; WS_BUF_SIZE];
     let mut tx_buf = [0; WS_BUF_SIZE];
-    let mut ws_rx_buf = alloc::vec![0; WS_BUF_SIZE];
-    let mut ws_tx_buf = alloc::vec![0; WS_BUF_SIZE];
 
-    // tls buffers
-    let mut ssl_rx_buf = alloc::vec::Vec::new();
-    let mut ssl_tx_buf = alloc::vec::Vec::new();
-
-    if ws_url.secure {
-        ssl_rx_buf.resize(TLS_BUF_SIZE, 0);
-        ssl_tx_buf.resize(TLS_BUF_SIZE, 0);
-    }
+    #[allow(static_mut_refs)]
+    let (ws_rx_buf, ws_tx_buf, ssl_rx_buf, ssl_tx_buf): (
+        &mut [u8],
+        &mut [u8],
+        &mut [u8],
+        &mut [u8],
+    ) = unsafe {
+        (
+            &mut *WS_RX_BUF.as_mut_ptr(),
+            &mut *WS_TX_BUF.as_mut_ptr(),
+            &mut *TLS_RX_BUF.as_mut_ptr(),
+            &mut *TLS_TX_BUF.as_mut_ptr(),
+        )
+    };
 
     loop {
         unsafe { crate::state::TRUST_SERVER = false };
@@ -60,10 +75,10 @@ pub async fn ws_task(
             stack,
             &mut rx_buf,
             &mut tx_buf,
-            &mut ws_rx_buf,
-            &mut ws_tx_buf,
-            &mut ssl_rx_buf,
-            &mut ssl_tx_buf,
+            &mut *ws_rx_buf,
+            &mut *ws_tx_buf,
+            &mut *ssl_rx_buf,
+            &mut *ssl_tx_buf,
             &wifi_conn_sig,
         );
 
@@ -499,7 +514,6 @@ async fn ws_rw(
                         .send(WsFrameOwned::Binary(alloc::vec::Vec::new()))
                         .await;
                 }
-                WsFrame::Close(_, _) => todo!(),
                 WsFrame::Ping(_) => {
                     _ = FRAME_CHANNEL.try_send(WsFrameOwned::Pong(alloc::vec::Vec::new()));
                 }
@@ -578,6 +592,10 @@ pub async fn send_packet(packet: TimerPacket) {
             log::error!("send_packet json to_string failed: {e:?}");
         }
     }
+}
+
+pub async fn send_frame(frame: WsFrameOwned) {
+    FRAME_CHANNEL.send(frame).await;
 }
 
 #[allow(dead_code)]

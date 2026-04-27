@@ -4,8 +4,9 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 extern crate alloc;
-use alloc::string::{String, ToString};
-use alloc::{rc::Rc, vec::Vec};
+use crate::consts::NVS_SIGN_KEY;
+use alloc::rc::Rc;
+use alloc::string::ToString;
 use board::Board;
 use consts::LOG_SEND_INTERVAL_MS;
 use embassy_executor::Spawner;
@@ -17,7 +18,7 @@ use esp_hal_wifimanager::{Nvs, WIFI_NVS_KEY};
 use esp_storage::FlashStorage;
 use state::{GlobalState, GlobalStateInner, SavedGlobalState, Scene, ota_state, sleep_state};
 use structs::ConnSettings;
-use utils::{logger::FkmLogger, set_brownout_detection};
+use utils::{logger::FkmLogger, set_brownout_detection, spawn_task};
 use ws_framer::{WsUrl, WsUrlOwned};
 
 mod bluetooth;
@@ -73,8 +74,9 @@ async fn main(spawner: Spawner) {
     });
 
     esp_alloc::heap_allocator!(size: 120 * 1024);
+    /*
     {
-        const HEAP_SIZE: usize = 60 * 1024;
+        const HEAP_SIZE: usize = 8 * 1024;
 
         #[unsafe(link_section = ".dram2_uninit")]
         static mut HEAP2: core::mem::MaybeUninit<[u8; HEAP_SIZE]> =
@@ -89,6 +91,7 @@ async fn main(spawner: Spawner) {
             ));
         }
     }
+    */
 
     set_brownout_detection(false);
     let board = Board::init(peripherals);
@@ -106,6 +109,9 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "qa")]
     log::info!("This firmware is in QA mode!");
 
+    #[cfg(feature = "release_build")]
+    crate::utils::backtrace_store::verify_panic_flag();
+
     let Ok(nvs) = Nvs::new_from_part_table(unsafe { board.flash.clone_unchecked() }) else {
         loop {
             log::error!("Wrong partition table! Re-flash firmware with espflash!");
@@ -117,15 +123,17 @@ async fn main(spawner: Spawner) {
     let wake_reason = esp_hal::rtc_cntl::wakeup_cause();
     log::info!("Wake reason: {:?} {:?}", reason, wake_reason);
 
+    utils::error_log::load_error_log(&nvs).await;
+
     let global_state = Rc::new(GlobalStateInner::new(&nvs, board.aes));
     let wifi_setup_sig = Rc::new(Signal::new());
     let wifi_conn_sig = Rc::new(Signal::new());
 
-    if let Ok(sign_key) = nvs.get::<u32>("SIGN_KEY").await {
+    if let Ok(sign_key) = nvs.get::<u32>(NVS_SIGN_KEY).await {
         unsafe { crate::state::SIGN_KEY = sign_key };
     }
     #[cfg(feature = "v4")]
-    if let Ok(saved_volume) = nvs.get::<u8>(crate::consts::BUZZER_VOLUME_NVS_KEY).await {
+    if let Ok(saved_volume) = nvs.get::<u8>(crate::consts::NVS_BUZZER_VOLUME).await {
         if (crate::consts::BUZZER_VOLUME_MIN..=crate::consts::BUZZER_VOLUME_MAX)
             .contains(&saved_volume)
         {
@@ -141,73 +149,98 @@ async fn main(spawner: Spawner) {
     }
 
     #[cfg(feature = "v3")]
-    spawner.must_spawn(lcd_v3::lcd_task(
-        board.lcd,
-        global_state.clone(),
-        wifi_setup_sig.clone(),
-        board.digits_shifters.clone(),
-    ));
+    spawn_task(
+        &spawner,
+        "lcd_v3::lcd_task",
+        lcd_v3::lcd_task(
+            board.lcd,
+            global_state.clone(),
+            wifi_setup_sig.clone(),
+            board.digits_shifters.clone(),
+        ),
+    );
     #[cfg(feature = "v4")]
-    spawner.must_spawn(lcd_v4::lcd_task(
-        board.i2c.clone(),
-        board.display_rst,
-        global_state.clone(),
-        wifi_setup_sig.clone(),
-    ));
+    spawn_task(
+        &spawner,
+        "lcd_v4::lcd_task",
+        lcd_v4::lcd_task(
+            board.i2c.clone(),
+            board.display_rst,
+            global_state.clone(),
+            wifi_setup_sig.clone(),
+        ),
+    );
 
     #[cfg(feature = "v3")]
-    spawner.must_spawn(battery_v3::battery_read_task(
-        board.battery,
-        board.adc1,
-        global_state.clone(),
-    ));
+    spawn_task(
+        &spawner,
+        "battery_v3::battery_read_task",
+        battery_v3::battery_read_task(board.battery, board.adc1, global_state.clone()),
+    );
     #[cfg(feature = "v4")]
-    spawner.must_spawn(battery_v4::battery_read_task(
-        board.i2c.clone(),
-        global_state.clone(),
-    ));
+    spawn_task(
+        &spawner,
+        "battery_v4::battery_read_task",
+        battery_v4::battery_read_task(board.i2c.clone(), global_state.clone()),
+    );
 
-    spawner.must_spawn(buttons::buttons_task(
-        global_state.clone(),
-        #[cfg(feature = "v4")]
-        board.buttons,
-        #[cfg(feature = "v3")]
-        board.button_input,
-        #[cfg(feature = "v3")]
-        board.buttons_shifter,
-    ));
-    spawner.must_spawn(stackmat::stackmat_task(
-        board.uart1,
-        board.stackmat_rx,
-        #[cfg(feature = "v3")]
-        board.digits_shifters,
-        global_state.clone(),
-    ));
-    spawner.must_spawn(rfid::rfid_task(
-        #[cfg(feature = "v4")]
-        board.i2c.clone(),
-        #[cfg(feature = "v4")]
-        board.buzzer,
-        #[cfg(feature = "v3")]
-        board.miso,
-        #[cfg(feature = "v3")]
-        board.mosi,
-        #[cfg(feature = "v3")]
-        board.sck,
-        #[cfg(feature = "v3")]
-        board.cs,
-        #[cfg(feature = "v3")]
-        board.spi2,
-        #[cfg(feature = "v3")]
-        board.spi_dma,
-        global_state.clone(),
-    ));
+    spawn_task(
+        &spawner,
+        "buttons::buttons_task",
+        buttons::buttons_task(
+            global_state.clone(),
+            #[cfg(feature = "v4")]
+            board.buttons,
+            #[cfg(feature = "v3")]
+            board.button_input,
+            #[cfg(feature = "v3")]
+            board.buttons_shifter,
+        ),
+    );
+    spawn_task(
+        &spawner,
+        "stackmat::stackmat_task",
+        stackmat::stackmat_task(
+            board.uart1,
+            board.stackmat_rx,
+            #[cfg(feature = "v3")]
+            board.digits_shifters,
+            global_state.clone(),
+        ),
+    );
+    spawn_task(
+        &spawner,
+        "rfid::rfid_task",
+        rfid::rfid_task(
+            #[cfg(feature = "v4")]
+            board.i2c.clone(),
+            #[cfg(feature = "v4")]
+            board.buzzer,
+            #[cfg(feature = "v3")]
+            board.miso,
+            #[cfg(feature = "v3")]
+            board.mosi,
+            #[cfg(feature = "v3")]
+            board.sck,
+            #[cfg(feature = "v3")]
+            board.cs,
+            #[cfg(feature = "v3")]
+            board.spi2,
+            #[cfg(feature = "v3")]
+            board.spi_dma,
+            global_state.clone(),
+        ),
+    );
 
     #[cfg(feature = "qa")]
-    spawner.must_spawn(qa::qa_processor(global_state.clone()));
+    spawn_task(
+        &spawner,
+        "qa::qa_processor",
+        qa::qa_processor(global_state.clone()),
+    );
 
     let mut wm_settings = esp_hal_wifimanager::WmSettings {
-        wifi_panel: include_str!("panel.html"),
+        wifi_panel: esp_hal_wifimanager::include_minified!("src/panel.html"),
         wifi_conn_signal: Some(wifi_conn_sig.clone()),
         ..Default::default()
     };
@@ -299,22 +332,25 @@ async fn main(spawner: Spawner) {
     utils::backtrace_store::read_saved_backtrace().await;
 
     let ws_sleep_sig = Rc::new(Signal::new());
-    spawner.must_spawn(ws::ws_task(
-        wifi_res.sta_stack,
-        ws_url,
-        global_state.clone(),
-        ws_sleep_sig.clone(),
-        wifi_conn_sig,
-    ));
-    spawner.must_spawn(logger_task(global_state.clone()));
+    spawn_task(
+        &spawner,
+        "ws::ws_task",
+        ws::ws_task(
+            wifi_res.sta_stack,
+            ws_url,
+            global_state.clone(),
+            ws_sleep_sig.clone(),
+            wifi_conn_sig,
+        ),
+    );
+    spawn_task(&spawner, "logger_task", logger_task(global_state.clone()));
 
     let ble_sleep_sig = Rc::new(Signal::new());
-    spawner.must_spawn(bluetooth::bluetooth_timer_task(
-        wifi_res.wifi_init,
-        board.bt,
-        global_state.clone(),
-        ble_sleep_sig.clone(),
-    ));
+    spawn_task(
+        &spawner,
+        "bluetooth::bluetooth_timer_task",
+        bluetooth::bluetooth_timer_task(board.bt, global_state.clone(), ble_sleep_sig.clone()),
+    );
 
     set_brownout_detection(true);
     global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
@@ -329,6 +365,11 @@ async fn main(spawner: Spawner) {
     let mut last_sleep = false;
     loop {
         Timer::after_millis(100).await;
+        if utils::error_log::is_save_ready() {
+            utils::error_log::save_error_log(&nvs).await;
+            utils::error_log::clear_save_ready();
+        }
+
         if sleep_state() != last_sleep {
             last_sleep = sleep_state();
             ws_sleep_sig.signal(last_sleep);
@@ -350,26 +391,17 @@ async fn logger_task(global_state: GlobalState) {
     loop {
         Timer::after_millis(LOG_SEND_INTERVAL_MS).await;
 
-        let mut tmp_logs: Vec<String> = Vec::new();
-        while let Ok(msg) = utils::logger::LOGS_CHANNEL.try_receive() {
-            tmp_logs.push(msg);
-        }
-
         if ota_state() || sleep_state() {
             continue;
         }
 
-        if !tmp_logs.is_empty() {
-            tmp_logs.reverse();
+        #[allow(static_mut_refs)]
+        let logs_vec = unsafe {
+            crate::utils::logger::LOGS_WRITER.get_vec(Some(crate::stackmat::CURRENT_TIME))
+        };
 
-            ws::send_packet(structs::TimerPacket {
-                tag: None,
-                data: structs::TimerPacketInner::Logs {
-                    current_time: Some(unsafe { crate::stackmat::CURRENT_TIME }),
-                    logs: tmp_logs,
-                },
-            })
-            .await;
+        if !logs_vec.is_empty() {
+            ws::send_frame(ws_framer::WsFrameOwned::Binary(logs_vec)).await;
         }
 
         #[cfg(not(feature = "release_build"))]

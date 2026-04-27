@@ -1,5 +1,7 @@
+use crate::consts::NVS_SAVED_STATE;
 use crate::{
     structs::{BleDisplayDevice, PossibleGroup},
+    utils::error_log::ErrorLogEntry,
     utils::signaled_mutex::SignaledMutex,
 };
 use alloc::{rc::Rc, string::String, vec::Vec};
@@ -88,8 +90,17 @@ pub enum MenuScene {
     Signing,
     Unsigning,
     BtDisplay,
+    ErrorLog,
     #[cfg(feature = "v4")]
     BuzzerVolume,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum ErrorLogEntryStage {
+    #[cfg(feature = "v4")]
+    Qr,
+    // Shared stage used on both variants for post-selection detail view.
+    Details,
 }
 
 impl Scene {
@@ -222,6 +233,11 @@ pub struct SignaledGlobalStateInner {
     pub group_selected_idx: usize,
 
     pub selected_config_menu: Option<usize>,
+    pub error_log_entries: Vec<ErrorLogEntry>,
+    pub selected_error_log_item: usize,
+    pub selected_error_log_entry: Option<usize>,
+    pub error_log_entry_stage: Option<ErrorLogEntryStage>,
+    pub error_log_details_scroll: usize,
 
     pub discovered_bluetooth_devices: Vec<BleDisplayDevice>,
     pub selected_bluetooth_item: usize,
@@ -279,6 +295,11 @@ impl SignaledGlobalStateInner {
             possible_groups: Vec::new(),
             group_selected_idx: 0,
             selected_config_menu: None,
+            error_log_entries: Vec::new(),
+            selected_error_log_item: 0,
+            selected_error_log_entry: None,
+            error_log_entry_stage: None,
+            error_log_details_scroll: 0,
             selected_bluetooth_item: 0,
             discovered_bluetooth_devices: Vec::new(),
 
@@ -446,7 +467,7 @@ impl SavedGlobalState {
             Timer::after_millis(5).await;
         }
 
-        let res = nvs.get::<Vec<u8>>("SAVED_STATE").await.ok()?;
+        let res = nvs.get::<Vec<u8>>(NVS_SAVED_STATE).await.ok()?;
         let res: SavedGlobalState = serde_json::from_slice(&res).ok()?;
 
         // 6hours
@@ -461,8 +482,8 @@ impl SavedGlobalState {
     pub async fn to_nvs(&self, nvs: &Nvs) {
         let res = serde_json::to_vec(&self);
         if let Ok(vec) = res {
-            _ = nvs.delete("SAVED_STATE").await;
-            let res = nvs.set("SAVED_STATE", vec.as_slice()).await;
+            _ = nvs.delete(NVS_SAVED_STATE).await;
+            let res = nvs.set(NVS_SAVED_STATE, vec.as_slice()).await;
             if let Err(e) = res {
                 log::error!("{e:?} Faile to write to nvs! (SAVED_STATE {})", vec.len());
             }
@@ -470,7 +491,7 @@ impl SavedGlobalState {
     }
 
     pub async fn clear_saved_global_state(nvs: &Nvs) {
-        let res = nvs.delete("SAVED_STATE").await;
+        let res = nvs.delete(NVS_SAVED_STATE).await;
         if let Err(e) = res {
             log::error!("{e:?} Faile to delete nvs key! (SAVED_STATE)",);
         }
@@ -503,6 +524,11 @@ impl PartialEq for SignaledGlobalStateInner {
             && self.possible_groups == other.possible_groups
             && self.group_selected_idx == other.group_selected_idx
             && self.selected_config_menu == other.selected_config_menu
+            && self.error_log_entries == other.error_log_entries
+            && self.selected_error_log_item == other.selected_error_log_item
+            && self.selected_error_log_entry == other.selected_error_log_entry
+            && self.error_log_entry_stage == other.error_log_entry_stage
+            && self.error_log_details_scroll == other.error_log_details_scroll
             && self.discovered_bluetooth_devices == other.discovered_bluetooth_devices
             && self.selected_bluetooth_item == other.selected_bluetooth_item
             && self.device_added == other.device_added

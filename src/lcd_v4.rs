@@ -3,7 +3,8 @@ use crate::{
         DEEPER_SLEEP_AFTER_MS, INSPECTION_TIME_PLUS2, LCD_INSPECTION_FRAME_TIME, SLEEP_AFTER_MS,
     },
     state::{
-        GlobalState, MenuScene, Scene, SignaledGlobalStateInner, deeper_sleep_state, sleep_state,
+        ErrorLogEntryStage, GlobalState, MenuScene, Scene, SignaledGlobalStateInner,
+        deeper_sleep_state, sleep_state,
     },
     translations::{TranslationKey, get_translation, get_translation_params},
     utils::{
@@ -12,7 +13,12 @@ use crate::{
         stackmat::ms_to_time_str,
     },
 };
-use alloc::{format, rc::Rc, string::ToString};
+use alloc::{
+    format,
+    rc::Rc,
+    string::{String, ToString},
+    vec::Vec,
+};
 use anyhow::{Result, anyhow};
 use display_interface_i2c::I2CInterface;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -66,6 +72,7 @@ impl OledData<'_> {
 
 pub const MAIN_RECT: Rectangle = Rectangle::new(Point::new(0, 11), Size::new(128, 53));
 pub const TOPBAR_RECT: Rectangle = Rectangle::new(Point::new(0, 0), Size::new(128, 10));
+pub const DETAILS_VISIBLE_LINES: usize = 5;
 pub const NORMAL_FONT: MonoTextStyle<'_, BinaryColor> = MonoTextStyle::new(
     &embedded_graphics::mono_font::ascii::FONT_7X13,
     BinaryColor::On,
@@ -87,6 +94,19 @@ pub const TEXT_TOPBAR: TextStyle = TextStyleBuilder::new()
     .alignment(Alignment::Right)
     .baseline(Baseline::Top)
     .build();
+
+fn center_screen<VG: ViewGroup>(
+    content: VG,
+) -> LinearLayout<Horizontal<embedded_layout::align::vertical::Center>, VG> {
+    LinearLayout::horizontal(content)
+        .with_alignment(embedded_layout::align::vertical::Center)
+        .arrange()
+        .align_to(
+            &Rectangle::new(Point::new(0, 0), Size::new(128, 64)),
+            embedded_layout::align::horizontal::Center,
+            embedded_layout::align::vertical::Center,
+        )
+}
 
 fn center_layout<VG: ViewGroup>(
     content: VG,
@@ -184,6 +204,127 @@ where
     }
 }
 
+fn draw_scrollable_details_text<D>(target: &mut D, text: &str, scroll: usize)
+where
+    D: DrawTarget<Color = BinaryColor>,
+{
+    const LINE_HEIGHT: i32 = 10;
+    const VISIBLE: usize = DETAILS_VISIBLE_LINES;
+    const PADDING_X: i32 = 2;
+
+    let font = MonoTextStyle::new(
+        &embedded_graphics::mono_font::ascii::FONT_6X9,
+        BinaryColor::On,
+    );
+
+    let lines: alloc::vec::Vec<&str> = text.split('\n').collect();
+    let total = lines.len();
+    let start_y = MAIN_RECT.top_left.y;
+
+    for (row, line) in lines.iter().skip(scroll).take(VISIBLE).enumerate() {
+        let y = start_y + row as i32 * LINE_HEIGHT;
+        let text_y = y + LINE_HEIGHT / 2;
+        Text::with_text_style(
+            line,
+            Point::new(PADDING_X, text_y),
+            font,
+            TextStyleBuilder::new()
+                .alignment(Alignment::Left)
+                .baseline(Baseline::Middle)
+                .build(),
+        )
+        .draw(target)
+        .ok();
+    }
+
+    if scroll > 0 {
+        Text::with_text_style(
+            "^",
+            Point::new(122, start_y + LINE_HEIGHT / 2),
+            font,
+            TEXT_CENTER,
+        )
+        .draw(target)
+        .ok();
+    }
+    if scroll + VISIBLE < total {
+        let last_row_y = start_y + (VISIBLE as i32 - 1) * LINE_HEIGHT + LINE_HEIGHT / 2;
+        Text::with_text_style("v", Point::new(122, last_row_y), font, TEXT_CENTER)
+            .draw(target)
+            .ok();
+    }
+}
+
+enum QrCodeData<'a> {
+    Text(&'a str),
+    Binary(&'a [u8]),
+}
+
+fn draw_qr_code<D>(display: &mut D, data: QrCodeData<'_>, module_size: u32) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = BinaryColor>,
+{
+    let max_version = match module_size {
+        1 => qrcodegen_no_heap::Version::new(6),
+        2 => qrcodegen_no_heap::Version::new(3),
+        3 => qrcodegen_no_heap::Version::new(2),
+        _ => qrcodegen_no_heap::Version::new(1),
+    };
+
+    let mut outbuffer = [0u8; qrcodegen_no_heap::Version::new(6).buffer_len()];
+    let mut tempbuffer = [0u8; qrcodegen_no_heap::Version::new(6).buffer_len()];
+
+    let qr = match data {
+        QrCodeData::Text(text) => qrcodegen_no_heap::QrCode::encode_text(
+            text,
+            &mut tempbuffer,
+            &mut outbuffer,
+            qrcodegen_no_heap::QrCodeEcc::Quartile,
+            qrcodegen_no_heap::Version::MIN,
+            max_version,
+            None,
+            true,
+        ),
+        QrCodeData::Binary(data) => {
+            tempbuffer[..data.len()].copy_from_slice(data);
+            qrcodegen_no_heap::QrCode::encode_binary(
+                &mut tempbuffer,
+                data.len(),
+                &mut outbuffer,
+                qrcodegen_no_heap::QrCodeEcc::Quartile,
+                qrcodegen_no_heap::Version::MIN,
+                max_version,
+                None,
+                true,
+            )
+        }
+    };
+
+    if let Ok(qr) = qr {
+        let filled = PrimitiveStyle::with_fill(BinaryColor::On);
+
+        let qr_pixel_size = qr.size() as u32 * module_size;
+        let origin = Point::new(
+            ((128 - qr_pixel_size) / 2) as i32,
+            ((64 - qr_pixel_size) / 2) as i32,
+        );
+
+        for y in 0..qr.size() {
+            for x in 0..qr.size() {
+                if qr.get_module(x, y) {
+                    let top_left =
+                        origin + Point::new(x * module_size as i32, y * module_size as i32);
+                    Rectangle::new(top_left, Size::new(module_size, module_size))
+                        .into_styled(filled)
+                        .draw(display)?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[embassy_executor::task]
 pub async fn lcd_task(
     i2c: SharedI2C,
@@ -265,9 +406,15 @@ pub async fn lcd_task(
             loop {
                 Timer::after_millis(1000).await;
                 if global_state.show_battery.signaled() {
+                    let state_snapshot = global_state.state.value().await.clone();
+                    let qr_open = state_snapshot.menu_scene == Some(MenuScene::ErrorLog)
+                        && state_snapshot.error_log_entry_stage == Some(ErrorLogEntryStage::Qr);
+                    if qr_open {
+                        continue;
+                    }
+
                     oled.fbuf.fill_solid(&TOPBAR_RECT, BinaryColor::Off);
-                    let current_state = global_state.state.value().await;
-                    _ = process_top_bar(&current_state, &global_state, &mut oled).await;
+                    _ = process_top_bar(&state_snapshot, &global_state, &mut oled).await;
                     _ = oled.flush().await;
 
                     global_state.show_battery.reset();
@@ -282,11 +429,13 @@ pub async fn lcd_task(
                     let text =
                         Text::with_text_style("Sleep", Point::zero(), SMALL_FONT, TEXT_CENTER);
 
-                    center_layout(Chain::new(text)).draw(&mut oled.fbuf);
+                    center_screen(Chain::new(text)).draw(&mut oled.fbuf);
                     _ = oled.flush().await;
 
                     {
-                        global_state.state.lock().await.server_connected = Some(false);
+                        let mut state = global_state.state.lock().await;
+                        state.server_connected = Some(false);
+                        state.wifi_connected = Some(false);
                     }
 
                     unsafe {
@@ -308,7 +457,7 @@ pub async fn lcd_task(
                     let text =
                         Text::with_text_style("Sleep", Point::zero(), SMALL_FONT, TEXT_CENTER);
 
-                    center_layout(Chain::new(text)).draw(&mut oled.fbuf);
+                    center_screen(Chain::new(text)).draw(&mut oled.fbuf);
                     _ = oled.flush().await;
 
                     unsafe {
@@ -407,6 +556,7 @@ async fn process_top_bar(
             Some(MenuScene::Signing) => Some("SIGN"),
             Some(MenuScene::Unsigning) => Some("UNSIGN"),
             Some(MenuScene::BtDisplay) => Some("BTDISP"),
+            Some(MenuScene::ErrorLog) => Some("ERRLOG"),
             Some(MenuScene::BuzzerVolume) => Some("BUZZER"),
             None => None,
         }
@@ -464,6 +614,65 @@ async fn process_main(
                 crate::state::buzzer_volume()
             ))
             .draw(&mut oled.fbuf)?;
+            return Ok(());
+        }
+        Some(MenuScene::ErrorLog) => {
+            if let Some(entry_idx) = current_state.selected_error_log_entry {
+                if let Some(entry) = current_state.error_log_entries.get(entry_idx) {
+                    if current_state.error_log_entry_stage == Some(ErrorLogEntryStage::Qr) {
+                        match entry {
+                            crate::utils::error_log::ErrorLogEntry::Code { timestamp: _, code } => {
+                                let url = format!("https://docs.fkmtime.com/debugging/e{}", code);
+                                draw_qr_code(&mut oled.fbuf, QrCodeData::Text(&url), 1)?;
+                            }
+                            crate::utils::error_log::ErrorLogEntry::Stacktrace {
+                                timestamp: _,
+                                version,
+                                addrs,
+                            } => {
+                                let mut tmp = Vec::new();
+                                tmp.push(version.len() as u8);
+                                tmp.extend_from_slice(version.as_bytes());
+                                for addr in addrs {
+                                    tmp.extend_from_slice(&addr.to_be_bytes());
+                                }
+
+                                draw_qr_code(&mut oled.fbuf, QrCodeData::Binary(&tmp), 1)?;
+                            }
+                        };
+
+                        return Ok(());
+                    }
+
+                    draw_scrollable_details_text(
+                        &mut oled.fbuf,
+                        &error_log_entry_details_text(entry),
+                        current_state.error_log_details_scroll,
+                    );
+                    return Ok(());
+                }
+
+                center_text_layout("Invalid entry\nSubmit to return").draw(&mut oled.fbuf)?;
+                return Ok(());
+            }
+
+            let mut items = current_state
+                .error_log_entries
+                .iter()
+                .map(|entry| entry.list_label_v4())
+                .collect::<alloc::vec::Vec<_>>();
+            items.push("Exit".into());
+
+            let sel = current_state.selected_error_log_item;
+            if sel >= items.len() {
+                global_state.state.lock().await.selected_error_log_item = 0;
+            } else {
+                let item_refs = items
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<alloc::vec::Vec<_>>();
+                draw_scrollable_menu(&mut oled.fbuf, &item_refs, sel);
+            }
             return Ok(());
         }
         Some(MenuScene::Signing) | Some(MenuScene::Unsigning) => {
@@ -830,6 +1039,38 @@ async fn process_main(
     }
 
     Ok(())
+}
+
+pub fn error_log_entry_details_text(entry: &crate::utils::error_log::ErrorLogEntry) -> String {
+    match entry {
+        crate::utils::error_log::ErrorLogEntry::Code { timestamp, code } => format!(
+            "Error E{code}\n{}\nSubmit to return",
+            crate::utils::error_log::format_timestamp_full(*timestamp)
+        ),
+        crate::utils::error_log::ErrorLogEntry::Stacktrace {
+            timestamp,
+            version,
+            addrs,
+        } => {
+            let mut details = format!(
+                "Panic {}\nVER: {}\n",
+                crate::utils::error_log::format_timestamp_compact(*timestamp),
+                version
+            );
+            if addrs.is_empty() {
+                details.push_str("No addrs");
+            } else {
+                for (idx, addr) in addrs.iter().enumerate() {
+                    if idx > 0 {
+                        details.push('\n');
+                    }
+                    details.push_str(&format!("0x{addr:X}"));
+                }
+            }
+            details.push_str("\nSubmit to return");
+            details
+        }
+    }
 }
 
 async fn process_main_overwrite(

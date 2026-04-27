@@ -1,10 +1,53 @@
 use crate::state::{ota_state, sleep_state};
-use alloc::string::String;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
+use alloc::vec::Vec;
 
-const MAX_LOGS_SIZE: usize = 100;
-const MIN_HEAP_REMEANING: usize = 10240;
-pub static LOGS_CHANNEL: Channel<CriticalSectionRawMutex, String, MAX_LOGS_SIZE> = Channel::new();
+#[unsafe(link_section = ".dram2_uninit")]
+static mut LOGS_BUF: core::mem::MaybeUninit<[u8; 8 * 1024]> = core::mem::MaybeUninit::uninit();
+
+pub struct LogsBufWriter {
+    buf: &'static mut [u8],
+    pos: usize,
+}
+
+#[allow(static_mut_refs)]
+pub static mut LOGS_WRITER: LogsBufWriter = LogsBufWriter {
+    buf: unsafe { &mut *LOGS_BUF.as_mut_ptr() },
+    pos: 0,
+};
+
+impl LogsBufWriter {
+    pub fn get_vec(&mut self, current_time: Option<u64>) -> Vec<u8> {
+        if let Some(current_time) = current_time {
+            self.buf[2..10].copy_from_slice(&current_time.to_be_bytes());
+        }
+
+        let tmp = self.buf[0..self.pos].to_vec();
+        self.pos = 0;
+
+        tmp
+    }
+
+    fn mark_truncated(&mut self) {
+        self.buf[1] = 0x01;
+    }
+
+    fn write_raw(&mut self, bytes: &[u8]) {
+        if self.pos >= self.buf.len() {
+            return;
+        }
+
+        let len = bytes.len().min(self.buf.len() - self.pos);
+        self.buf[self.pos..self.pos + len].copy_from_slice(&bytes[..len]);
+        self.pos += len;
+    }
+}
+
+impl core::fmt::Write for LogsBufWriter {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        self.write_raw(s.as_bytes());
+        Ok(())
+    }
+}
 
 #[cfg(feature = "release_build")]
 pub const FILTER_MAX: log::LevelFilter = log::LevelFilter::Info;
@@ -59,19 +102,35 @@ impl log::Log for FkmLogger {
 
         #[cfg(not(any(feature = "bat_dev_lcd", feature = "qa")))]
         if !ota_state() && !sleep_state() {
-            if LOGS_CHANNEL.is_full() {
-                _ = LOGS_CHANNEL.try_receive();
-            }
+            let level: &str = match record.level() {
+                log::Level::Error => "E ",
+                log::Level::Warn => "W ",
+                log::Level::Info => "I ",
+                log::Level::Debug => "D ",
+                log::Level::Trace => "T ",
+            };
 
-            let msg = alloc::format!("{}{} - {}{}", color, record.level(), record.args(), reset);
+            unsafe {
+                #[allow(clippy::deref_addrof)]
+                let w = &mut *(&raw mut LOGS_WRITER);
+                if w.pos == 0 {
+                    w.buf[0] = b'L';
+                    w.buf[1] = 0x00;
+                    w.pos = 10;
+                }
 
-            // Do not send log msg to channel if heap space is too low!
-            // maybe not performent but thats ok
-            if esp_alloc::HEAP.free() > MIN_HEAP_REMEANING {
-                _ = LOGS_CHANNEL.try_send(msg);
-            } else {
-                // clear logs channel if heap space is too low
-                LOGS_CHANNEL.clear();
+                if w.pos + 3 > w.buf.len() {
+                    w.mark_truncated();
+                    return;
+                }
+
+                let line_start = w.pos;
+                w.pos += 2;
+                w.write_raw(level.as_bytes());
+
+                _ = core::fmt::write(w, *record.args());
+                let line_len = w.pos - line_start - 2;
+                w.buf[line_start..line_start + 2].copy_from_slice(&(line_len as u16).to_be_bytes());
             }
         }
     }

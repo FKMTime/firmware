@@ -8,11 +8,9 @@ pub const SLEEP_AFTER_MS: u64 = 60000 * 9999;
 #[cfg(not(feature = "sleep"))]
 pub const DEEPER_SLEEP_AFTER_MS: u64 = 60000 * 99999;
 
-pub const BUTTON_DEBOUNCE_TIME: u64 = 25;
-
 #[cfg(not(feature = "release_build"))]
 pub const PRINT_HEAP_INTERVAL_MS: u64 = 30000;
-pub const LOG_SEND_INTERVAL_MS: u64 = 5000;
+pub const LOG_SEND_INTERVAL_MS: u64 = 1000;
 
 pub const BATTERY_SEND_INTERVAL_MS: u64 = 60000;
 
@@ -29,10 +27,15 @@ pub const INSPECTION_TIME_DNF: u64 = 17000;
 pub const INSPECTION_TIME_PLUS2: u64 = 15000;
 
 #[cfg(feature = "v4")]
-pub const BUZZER_VOLUME_NVS_KEY: &str = "BUZZER_VOLUME";
+pub const NVS_BUZZER_VOLUME: &str = "BUZZER_VOLUME";
 #[cfg(feature = "v4")]
 pub const BUZZER_VOLUME_MIN: u8 = 0;
 #[cfg(feature = "v4")]
 pub const BUZZER_VOLUME_MAX: u8 = 25;
 #[cfg(feature = "v4")]
 pub const BUZZER_VOLUME_DEFAULT: u8 = 5;
+
+pub const NVS_BONDING_KEY: &str = "BONDING_KEY";
+pub const NVS_SIGN_KEY: &str = "SIGN_KEY";
+pub const NVS_SAVED_STATE: &str = "SAVED_STATE";
+pub const NVS_ERROR_LOG: &str = "ERROR_LOG";

@@ -1,10 +1,28 @@
+use embassy_executor::{SpawnError, SpawnToken, Spawner};
+
 pub mod arc;
 pub mod backtrace_store;
 pub mod buttons;
+pub mod error_log;
 pub mod logger;
 pub mod rolling_average;
 pub mod signaled_mutex;
 pub mod stackmat;
+
+pub fn spawn_task<T>(
+    spawner: &Spawner,
+    task_name: &str,
+    token_res: Result<SpawnToken<T>, SpawnError>,
+) {
+    match token_res {
+        Ok(token) => {
+            spawner.spawn(token);
+        }
+        Err(e) => {
+            log::error!("Cannot create task {task_name}: {e:?}");
+        }
+    }
+}
 
 #[cfg(feature = "v3")]
 pub mod lcd_abstract;

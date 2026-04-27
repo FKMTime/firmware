@@ -1,7 +1,53 @@
+use alloc::vec::Vec;
 use esp_storage::FlashStorage;
+
+#[esp_hal::ram(unstable(rtc_fast, persistent))]
+static mut NVS_PANIC_FLAG: u32 = 0;
+
+const NVS_PANIC_MAGIC_1: u32 = 0x1A1A_1A1A;
+const NVS_PANIC_MAGIC_2: u32 = 0xDEAD_BEEF;
 
 const MAX_BACKTRACE_ADDRESSES: usize = 10;
 const RA_OFFSET: usize = 4;
+const SAVED_VERSION_LEN: usize = 16;
+const SAVED_TIMESTAMP_LEN: usize = 8;
+
+#[cfg(feature = "release_build")]
+pub fn verify_panic_flag() {
+    use embedded_storage::nor_flash::NorFlash;
+
+    const NVS_OFFSET: u32 = 0x9000;
+    const NVS_SIZE: u32 = 0x4000;
+
+    if unsafe { NVS_PANIC_FLAG == NVS_PANIC_MAGIC_2 } {
+        log::error!("Two panics in a row! Self recovery...");
+
+        let mut flash = FlashStorage::new(unsafe { esp_hal::peripherals::FLASH::steal() });
+        let mut buf = [0; 1024];
+        let res = embedded_storage::ReadStorage::read(
+            &mut flash,
+            (NVS_OFFSET + NVS_SIZE - 2) as u32,
+            &mut buf[..2],
+        );
+
+        if let Err(e) = res {
+            log::error!("read_len_err: {e:?}");
+        }
+
+        let mut len = u16::from_be_bytes([buf[0], buf[1]]);
+        if len > 1024 || len == 0xff {
+            len = 0;
+        }
+
+        if len == 0 {
+            _ = flash.erase(NVS_OFFSET, NVS_OFFSET + NVS_SIZE);
+        } else {
+            _ = flash.erase(NVS_OFFSET, NVS_OFFSET + NVS_SIZE - 2 - len as u32);
+        }
+
+        unsafe { NVS_PANIC_FLAG = 0 };
+    }
+}
 
 pub async fn read_saved_backtrace() {
     if let Some(nvs_part) = esp_hal_wifimanager::Nvs::read_nvs_partition_offset(unsafe {
@@ -37,9 +83,31 @@ pub async fn read_saved_backtrace() {
             return;
         }
 
-        let msg = core::str::from_utf8(&buf[..len as usize]);
-        if let Ok(msg) = msg {
-            log::error!("Last crash info:\n{msg}");
+        const HEADER_LEN: usize = SAVED_VERSION_LEN + SAVED_TIMESTAMP_LEN;
+        let len = len as usize;
+        if len < HEADER_LEN || !(len - HEADER_LEN).is_multiple_of(4) {
+            return;
+        }
+
+        let version_raw = &buf[..SAVED_VERSION_LEN];
+        let saved_version = core::str::from_utf8(version_raw)
+            .unwrap_or(crate::version::VERSION)
+            .trim_end_matches('\0');
+        let saved_timestamp = u64::from_be_bytes(
+            buf[SAVED_VERSION_LEN..HEADER_LEN]
+                .try_into()
+                .unwrap_or([0; 8]),
+        );
+        let addr_data = &buf[HEADER_LEN..len];
+
+        log::error!("Last crash info:");
+        let mut addrs = Vec::new();
+        for addr in addr_data.chunks(4) {
+            if let Ok(addr) = addr.try_into() {
+                let addr: u32 = u32::from_be_bytes(addr);
+                addrs.push(addr);
+                log::error!("0x{:X}", addr);
+            }
         }
 
         _ = embedded_storage::Storage::write(
@@ -47,6 +115,8 @@ pub async fn read_saved_backtrace() {
             (nvs_part.0 + nvs_part.1 - 2) as u32,
             &[0x00, 0x00],
         );
+
+        crate::utils::error_log::add_stacktrace(&addrs, saved_version, saved_timestamp).await;
     }
 }
 
@@ -117,13 +187,23 @@ fn is_valid_ram_address(address: u32) -> bool {
 #[unsafe(no_mangle)]
 pub extern "Rust" fn custom_pre_backtrace() {
     let backtrace = backtrace();
-
-    let mut tmp = alloc::string::String::new();
-    if backtrace.iter().filter(|e| e.is_some()).count() == 0 {
-        tmp.push_str("No backtrace available - make sure to force frame-pointers. (see https://crates.io/crates/esp-backtrace)\n");
+    unsafe {
+        if NVS_PANIC_FLAG != NVS_PANIC_MAGIC_1 && NVS_PANIC_FLAG != NVS_PANIC_MAGIC_2 {
+            NVS_PANIC_FLAG = NVS_PANIC_MAGIC_1;
+        } else if NVS_PANIC_FLAG == NVS_PANIC_MAGIC_1 {
+            NVS_PANIC_FLAG = NVS_PANIC_MAGIC_2;
+        }
     }
+
+    let mut tmp = Vec::new();
+    let mut version = [0; SAVED_VERSION_LEN];
+    let version_bytes = crate::version::VERSION.as_bytes();
+    let version_len = core::cmp::min(version_bytes.len(), SAVED_VERSION_LEN);
+    version[..version_len].copy_from_slice(&version_bytes[..version_len]);
+    tmp.extend_from_slice(&version);
+    tmp.extend_from_slice(&crate::state::current_epoch().to_be_bytes());
     for addr in backtrace.into_iter().flatten() {
-        tmp.push_str(&alloc::format!("0x{:x}\n", addr - RA_OFFSET));
+        tmp.extend_from_slice(&((addr - RA_OFFSET) as u32).to_be_bytes());
     }
 
     if let Some(nvs_part) = esp_hal_wifimanager::Nvs::read_nvs_partition_offset(unsafe {
@@ -136,11 +216,10 @@ pub extern "Rust" fn custom_pre_backtrace() {
             &(tmp.len() as u16).to_be_bytes(),
         );
 
-        let tmp = tmp.as_bytes();
         _ = embedded_storage::Storage::write(
             &mut flash,
             (nvs_part.0 + nvs_part.1 - 2 - tmp.len()) as u32,
-            tmp,
+            &tmp,
         );
     }
 
