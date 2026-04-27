@@ -23,7 +23,27 @@ pub fn verify_panic_flag() {
         log::error!("Two panics in a row! Self recovery...");
 
         let mut flash = FlashStorage::new(unsafe { esp_hal::peripherals::FLASH::steal() });
-        _ = flash.erase(NVS_OFFSET, NVS_OFFSET + NVS_SIZE);
+        let mut buf = [0; 1024];
+        let res = embedded_storage::ReadStorage::read(
+            &mut flash,
+            (NVS_OFFSET + NVS_SIZE - 2) as u32,
+            &mut buf[..2],
+        );
+
+        if let Err(e) = res {
+            log::error!("read_len_err: {e:?}");
+        }
+
+        let mut len = u16::from_be_bytes([buf[0], buf[1]]);
+        if len > 1024 || len == 0xff {
+            len = 0;
+        }
+
+        if len == 0 {
+            _ = flash.erase(NVS_OFFSET, NVS_OFFSET + NVS_SIZE);
+        } else {
+            _ = flash.erase(NVS_OFFSET, NVS_OFFSET + NVS_SIZE - 2 - len as u32);
+        }
 
         unsafe { NVS_PANIC_FLAG = 0 };
     }

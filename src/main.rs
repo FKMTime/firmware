@@ -399,7 +399,9 @@ async fn logger_task(global_state: GlobalState) {
         let logs_vec = unsafe {
             crate::utils::logger::LOGS_WRITER.get_vec(Some(crate::stackmat::CURRENT_TIME))
         };
-        ws::send_frame(ws_framer::WsFrameOwned::Binary(logs_vec)).await;
+        if logs_vec.len() > 0 {
+            ws::send_frame(ws_framer::WsFrameOwned::Binary(logs_vec)).await;
+        }
 
         #[cfg(not(feature = "release_build"))]
         if (Instant::now() - heap_start).as_millis() >= consts::PRINT_HEAP_INTERVAL_MS {
