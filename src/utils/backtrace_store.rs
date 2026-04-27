@@ -1,10 +1,33 @@
 use alloc::vec::Vec;
 use esp_storage::FlashStorage;
 
+#[esp_hal::ram(unstable(rtc_fast, persistent))]
+static mut NVS_PANIC_FLAG: u32 = 0;
+
+const NVS_PANIC_MAGIC_1: u32 = 0x1A1A_1A1A;
+const NVS_PANIC_MAGIC_2: u32 = 0xDEAD_BEEF;
+
 const MAX_BACKTRACE_ADDRESSES: usize = 10;
 const RA_OFFSET: usize = 4;
 const SAVED_VERSION_LEN: usize = 16;
 const SAVED_TIMESTAMP_LEN: usize = 8;
+
+#[cfg(feature = "release_build")]
+pub fn verify_panic_flag() {
+    use embedded_storage::nor_flash::NorFlash;
+
+    const NVS_OFFSET: u32 = 0x9000;
+    const NVS_SIZE: u32 = 0x4000;
+
+    if unsafe { NVS_PANIC_FLAG == NVS_PANIC_MAGIC_2 } {
+        log::error!("Two panics in a row! Self recovery...");
+
+        let mut flash = FlashStorage::new(unsafe { esp_hal::peripherals::FLASH::steal() });
+        _ = flash.erase(NVS_OFFSET, NVS_OFFSET + NVS_SIZE);
+
+        unsafe { NVS_PANIC_FLAG = 0 };
+    }
+}
 
 pub async fn read_saved_backtrace() {
     if let Some(nvs_part) = esp_hal_wifimanager::Nvs::read_nvs_partition_offset(unsafe {
@@ -144,6 +167,13 @@ fn is_valid_ram_address(address: u32) -> bool {
 #[unsafe(no_mangle)]
 pub extern "Rust" fn custom_pre_backtrace() {
     let backtrace = backtrace();
+    unsafe {
+        if NVS_PANIC_FLAG != NVS_PANIC_MAGIC_1 && NVS_PANIC_FLAG != NVS_PANIC_MAGIC_2 {
+            NVS_PANIC_FLAG = NVS_PANIC_MAGIC_1;
+        } else if NVS_PANIC_FLAG == NVS_PANIC_MAGIC_1 {
+            NVS_PANIC_FLAG = NVS_PANIC_MAGIC_2;
+        }
+    }
 
     let mut tmp = Vec::new();
     let mut version = [0; SAVED_VERSION_LEN];

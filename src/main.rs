@@ -4,6 +4,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 extern crate alloc;
+use crate::consts::NVS_SIGN_KEY;
 use alloc::rc::Rc;
 use alloc::string::ToString;
 use board::Board;
@@ -19,8 +20,6 @@ use state::{GlobalState, GlobalStateInner, SavedGlobalState, Scene, ota_state, s
 use structs::ConnSettings;
 use utils::{logger::FkmLogger, set_brownout_detection, spawn_task};
 use ws_framer::{WsUrl, WsUrlOwned};
-
-use crate::consts::NVS_SIGN_KEY;
 
 mod bluetooth;
 mod board;
@@ -109,6 +108,9 @@ async fn main(spawner: Spawner) {
 
     #[cfg(feature = "qa")]
     log::info!("This firmware is in QA mode!");
+
+    #[cfg(feature = "release_build")]
+    crate::utils::backtrace_store::verify_panic_flag();
 
     let Ok(nvs) = Nvs::new_from_part_table(unsafe { board.flash.clone_unchecked() }) else {
         loop {
