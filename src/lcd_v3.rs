@@ -335,24 +335,21 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                                 )
                                 .ok()?;
                         }
-                        crate::utils::error_log::ErrorLogEntry::Stacktrace { addrs, .. } => {
+                        crate::utils::error_log::ErrorLogEntry::Stacktrace {
+                            timestamp, ..
+                        } => {
                             lcd_driver
-                                .print(0, "Panic addresses", PrintAlign::Left, true)
+                                .print(0, "Panic (view logs for details)", PrintAlign::Left, true)
                                 .ok()?;
-                            if addrs.is_empty() {
-                                lcd_driver
-                                    .print(1, "No addresses", PrintAlign::Left, true)
-                                    .ok()?;
-                            } else {
-                                let addresses = addrs
-                                    .iter()
-                                    .map(|addr| alloc::format!("0x{addr:X}"))
-                                    .collect::<alloc::vec::Vec<_>>()
-                                    .join(", ");
-                                lcd_driver
-                                    .print(1, &addresses, PrintAlign::Left, true)
-                                    .ok()?;
-                            }
+
+                            lcd_driver
+                                .print(
+                                    1,
+                                    &crate::utils::error_log::format_timestamp_full(*timestamp),
+                                    PrintAlign::Left,
+                                    true,
+                                )
+                                .ok()?;
                         }
                     }
                 } else {
