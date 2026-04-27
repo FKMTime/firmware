@@ -399,7 +399,8 @@ async fn logger_task(global_state: GlobalState) {
         let logs_vec = unsafe {
             crate::utils::logger::LOGS_WRITER.get_vec(Some(crate::stackmat::CURRENT_TIME))
         };
-        if logs_vec.len() > 0 {
+
+        if !logs_vec.is_empty() {
             ws::send_frame(ws_framer::WsFrameOwned::Binary(logs_vec)).await;
         }
 
