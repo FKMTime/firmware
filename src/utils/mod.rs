@@ -20,6 +20,9 @@ pub fn spawn_task<T>(
         }
         Err(e) => {
             log::error!("Cannot create task {task_name}: {e:?}");
+            embassy_futures::block_on(crate::utils::error_log::add_error(
+                crate::utils::error_log::codes::TASK_SPAWN_FAILED,
+            ));
         }
     }
 }

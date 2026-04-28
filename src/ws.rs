@@ -21,6 +21,16 @@ static FRAME_CHANNEL: Channel<CriticalSectionRawMutex, WsFrameOwned, 32> = Chann
 static TAGGED_RETURN: PubSubChannel<CriticalSectionRawMutex, (u64, TimerPacket), 20, 20, 4> =
     PubSubChannel::new();
 
+static DNS_EMPTY_LOGGED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+static HTTP_UPGRADE_LOGGED: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
+static PACKET_PARSE_LOGGED: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
+static PACKET_SERIALIZE_LOGGED: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
+static TAGGED_SUBSCRIBER_LOGGED: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
+
 const WS_BUF_SIZE: usize = 8192;
 const TLS_BUF_SIZE: usize = 16640;
 
@@ -144,6 +154,14 @@ async fn ws_loop(
 
             let Some(IpAddress::Ipv4(addr)) = res.first() else {
                 log::error!("[WS]Dns resolver empty vec");
+                if !DNS_EMPTY_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
+                    crate::utils::error_log::add_error(
+                        crate::utils::error_log::codes::WS_DNS_RESOLVE_EMPTY,
+                    )
+                    .await;
+
+                    DNS_EMPTY_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
+                }
                 Timer::after_millis(1000).await;
                 continue;
             };
@@ -217,6 +235,14 @@ async fn ws_loop(
             let n = socket.read(rx_framer.mut_buf()).await.map_err(|_| ())?;
             if n == 0 {
                 log::error!("error while reading http response");
+                if !HTTP_UPGRADE_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
+                    crate::utils::error_log::add_error(
+                        crate::utils::error_log::codes::WS_HTTP_UPGRADE_READ_FAILED,
+                    )
+                    .await;
+
+                    HTTP_UPGRADE_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
+                }
                 return Err(());
             }
 
@@ -296,6 +322,13 @@ async fn ws_loop(
 
             if let Err(e) = res {
                 if ota_state() {
+                    log::error!("Connection lost during OTA update: {e:?}");
+                    crate::utils::error_log::add_error(
+                        crate::utils::error_log::codes::WS_CONNECTION_LOST_DURING_OTA,
+                    )
+                    .await;
+                    crate::utils::error_log::save_error_log(&global_state.nvs).await;
+
                     global_state.state.lock().await.custom_message =
                         Some(("Connection lost".to_string(), "during update".to_string()));
 
@@ -484,6 +517,15 @@ async fn ws_rw(
                     }
                     Err(e) => {
                         log::error!("timer_packet_fail: {e:?}\nTried to parse:\n{text}\n\n");
+                        if !PACKET_PARSE_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
+                            crate::utils::error_log::add_error(
+                                crate::utils::error_log::codes::WS_PACKET_PARSE_FAILED,
+                            )
+                            .await;
+
+                            PACKET_PARSE_LOGGED
+                                .store(true, core::sync::atomic::Ordering::Relaxed);
+                        }
                     }
                 },
                 WsFrame::Binary(data) => {
@@ -504,6 +546,10 @@ async fn ws_rw(
                             esp_hal::system::software_reset();
                         } else {
                             log::error!("OTA flash verify failed!");
+                            crate::utils::error_log::add_error(
+                                crate::utils::error_log::codes::OTA_VERIFY_FAILED,
+                            )
+                            .await;
                         }
                     }
 
@@ -590,6 +636,14 @@ pub async fn send_packet(packet: TimerPacket) {
         }
         Err(e) => {
             log::error!("send_packet json to_string failed: {e:?}");
+            if !PACKET_SERIALIZE_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
+                crate::utils::error_log::add_error(
+                    crate::utils::error_log::codes::WS_PACKET_SERIALIZE_FAILED,
+                )
+                .await;
+
+                PACKET_SERIALIZE_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
+            }
         }
     }
 }
@@ -661,6 +715,15 @@ async fn wait_for_tagged_response(tag: u64) -> TimerPacket {
             },
             Err(_) => {
                 log::error!("failed to get TAGGED_RETURN subscriber! Retry!");
+                if !TAGGED_SUBSCRIBER_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
+                    crate::utils::error_log::add_error(
+                        crate::utils::error_log::codes::WS_TAGGED_SUBSCRIBER_FAILED,
+                    )
+                    .await;
+
+                    TAGGED_SUBSCRIBER_LOGGED
+                        .store(true, core::sync::atomic::Ordering::Relaxed);
+                }
                 Timer::after_millis(500).await;
             }
         }

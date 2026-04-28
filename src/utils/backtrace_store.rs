@@ -21,6 +21,9 @@ pub fn verify_panic_flag() {
 
     if unsafe { NVS_PANIC_FLAG == NVS_PANIC_MAGIC_2 } {
         log::error!("Two panics in a row! Self recovery...");
+        embassy_futures::block_on(crate::utils::error_log::add_error(
+            crate::utils::error_log::codes::DOUBLE_PANIC_RECOVERY,
+        ));
 
         let mut flash = FlashStorage::new(unsafe { esp_hal::peripherals::FLASH::steal() });
         let mut buf = [0; 1024];
@@ -32,6 +35,9 @@ pub fn verify_panic_flag() {
 
         if let Err(e) = res {
             log::error!("read_len_err: {e:?}");
+            embassy_futures::block_on(crate::utils::error_log::add_error(
+                crate::utils::error_log::codes::BACKTRACE_READ_FAILED,
+            ));
         }
 
         let mut len = u16::from_be_bytes([buf[0], buf[1]]);
@@ -64,6 +70,10 @@ pub async fn read_saved_backtrace() {
 
         if let Err(e) = res {
             log::error!("read_len_err: {e:?}");
+            crate::utils::error_log::add_error(
+                crate::utils::error_log::codes::BACKTRACE_READ_FAILED,
+            )
+            .await;
             return;
         }
 
@@ -80,6 +90,10 @@ pub async fn read_saved_backtrace() {
 
         if let Err(e) = res {
             log::error!("read_msg_err: {e:?}");
+            crate::utils::error_log::add_error(
+                crate::utils::error_log::codes::BACKTRACE_READ_FAILED,
+            )
+            .await;
             return;
         }
 

@@ -44,11 +44,15 @@ pub async fn rfid_task(
     #[cfg(feature = "v3")]
     let Ok(dma_tx_buf) = DmaTxBuf::new(tx_descriptors, tx_buffer) else {
         log::error!("Dma tx buf failed");
+        crate::utils::error_log::add_error(crate::utils::error_log::codes::RFID_DMA_TX_INIT_FAILED)
+            .await;
         return;
     };
     #[cfg(feature = "v3")]
     let Ok(dma_rx_buf) = DmaRxBuf::new(rx_descriptors, rx_buffer) else {
         log::error!("Dma rx buf failed");
+        crate::utils::error_log::add_error(crate::utils::error_log::codes::RFID_DMA_RX_INIT_FAILED)
+            .await;
         return;
     };
 
@@ -68,6 +72,8 @@ pub async fn rfid_task(
             .into_async()
     }) else {
         log::error!("Rfid task error while creating Spi instance!");
+        crate::utils::error_log::add_error(crate::utils::error_log::codes::RFID_SPI_CREATE_FAILED)
+            .await;
         return;
     };
 
@@ -76,6 +82,10 @@ pub async fn rfid_task(
         let Ok(spi) = embedded_hal_bus::spi::ExclusiveDevice::new(spi, cs_pin, embassy_time::Delay)
         else {
             log::error!("Spi bus init failed (cs set high failed)");
+            crate::utils::error_log::add_error(
+                crate::utils::error_log::codes::RFID_SPI_BUS_INIT_FAILED,
+            )
+            .await;
             return;
         };
 
@@ -83,14 +93,24 @@ pub async fn rfid_task(
     };
 
     #[cfg(not(feature = "e2e"))]
-    loop {
-        _ = mfrc522.pcd_init().await;
-        if mfrc522.pcd_is_init().await {
-            break;
-        }
+    {
+        let mut error_logged = false;
+        loop {
+            _ = mfrc522.pcd_init().await;
+            if mfrc522.pcd_is_init().await {
+                break;
+            }
 
-        log::error!("MFRC522 init failed! Try to power cycle to module! Retrying...");
-        Timer::after(Duration::from_millis(RFID_RETRY_INIT_MS)).await;
+            log::error!("MFRC522 init failed! Try to power cycle to module! Retrying...");
+            if !error_logged {
+                crate::utils::error_log::add_error(
+                    crate::utils::error_log::codes::RFID_INIT_FAILED,
+                )
+                .await;
+                error_logged = true;
+            }
+            Timer::after(Duration::from_millis(RFID_RETRY_INIT_MS)).await;
+        }
     }
 
     #[cfg(not(feature = "e2e"))]
@@ -108,6 +128,7 @@ pub async fn rfid_task(
                 false => {
                     _ = mfrc522.pcd_soft_power_up().await;
                     Timer::after_millis(100).await;
+                    let mut error_logged = false;
                     loop {
                         _ = mfrc522.pcd_init().await;
                         if mfrc522.pcd_is_init().await {
@@ -117,6 +138,13 @@ pub async fn rfid_task(
                         log::error!(
                             "MFRC522 init failed! Try to power cycle to module! Retrying..."
                         );
+                        if !error_logged {
+                            crate::utils::error_log::add_error(
+                                crate::utils::error_log::codes::RFID_INIT_FAILED,
+                            )
+                            .await;
+                            error_logged = true;
+                        }
                         Timer::after(Duration::from_millis(RFID_RETRY_INIT_MS)).await;
                     }
                 }
@@ -486,6 +514,16 @@ async fn process_card_info_response(
 
                 let Some(ref solve_group) = state.solve_group else {
                     log::error!("Solve group is none! (How would that happen?)");
+                    static LOGGED: core::sync::atomic::AtomicBool =
+                        core::sync::atomic::AtomicBool::new(false);
+                    if !LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
+                        crate::utils::error_log::add_error(
+                            crate::utils::error_log::codes::RFID_SOLVE_GROUP_MISSING,
+                        )
+                        .await;
+
+                        LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
+                    }
                     return Ok(());
                 };
 

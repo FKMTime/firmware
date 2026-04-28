@@ -22,7 +22,76 @@ pub fn clear_save_ready() {
     unsafe { SAVE_READY = false };
 }
 
-#[allow(dead_code)]
+pub mod codes {
+    // RFID (1-9)
+    pub const RFID_INIT_FAILED: u8 = 1;
+    #[cfg(feature = "v3")]
+    pub const RFID_SPI_CREATE_FAILED: u8 = 2;
+    #[cfg(feature = "v3")]
+    pub const RFID_SPI_BUS_INIT_FAILED: u8 = 3;
+    #[cfg(feature = "v3")]
+    pub const RFID_DMA_TX_INIT_FAILED: u8 = 4;
+    #[cfg(feature = "v3")]
+    pub const RFID_DMA_RX_INIT_FAILED: u8 = 5;
+    pub const RFID_SOLVE_GROUP_MISSING: u8 = 6;
+
+    // Battery (10-19)
+    #[cfg(feature = "v4")]
+    pub const BATTERY_INIT_FAILED: u8 = 10;
+
+    // LCD / Display (20-29)
+    #[cfg(feature = "v4")]
+    pub const LCD_INIT_FAILED: u8 = 20;
+    #[cfg(feature = "v4")]
+    pub const LCD_FRAMEBUFFER_ALLOC_FAILED: u8 = 21;
+
+    // Stackmat (30-39)
+    pub const STACKMAT_UART_INIT_FAILED: u8 = 30;
+
+    // Firmware / OTA (40-49)
+    pub const WRONG_PARTITION_TABLE: u8 = 40;
+    pub const OTA_MARK_VALID_FAILED: u8 = 41;
+    pub const OTA_VERIFY_FAILED: u8 = 42;
+    pub const WS_CONNECTION_LOST_DURING_OTA: u8 = 43;
+
+    // BLE (50-59)
+    pub const BLE_INIT_FAILED: u8 = 50;
+    pub const BLE_MAC_READ_FAILED: u8 = 51;
+    pub const BLE_BOND_ADD_FAILED: u8 = 52;
+    pub const BLE_SCAN_START_FAILED: u8 = 53;
+    pub const BLE_BONDABLE_FAILED: u8 = 54;
+    pub const BLE_REQUEST_SECURITY_FAILED: u8 = 55;
+    pub const BLE_PAIRING_FAILED: u8 = 56;
+    pub const BLE_GATT_CLIENT_FAILED: u8 = 57;
+    pub const BLE_SERVICE_NOT_FOUND: u8 = 58;
+    pub const BLE_CHARACTERISTIC_NOT_FOUND: u8 = 59;
+
+    // Wifi / mDNS / Websocket (60-69)
+    pub const WIFI_MANAGER_FAILED: u8 = 60;
+    pub const MDNS_WS_URL_PARSE_FAILED: u8 = 61;
+    pub const WS_DNS_RESOLVE_EMPTY: u8 = 62;
+    pub const WS_HTTP_UPGRADE_READ_FAILED: u8 = 63;
+    pub const WS_PACKET_PARSE_FAILED: u8 = 64;
+    pub const WS_PACKET_SERIALIZE_FAILED: u8 = 65;
+    pub const WS_TAGGED_SUBSCRIBER_FAILED: u8 = 66;
+
+    // NVS persistence (70-79)
+    pub const NVS_SAVED_STATE_WRITE_FAILED: u8 = 70;
+    pub const NVS_BONDING_KEY_WRITE_FAILED: u8 = 71;
+    #[cfg(feature = "v4")]
+    pub const NVS_BUZZER_VOLUME_WRITE_FAILED: u8 = 72;
+    pub const ERROR_LOG_PARSE_FAILED: u8 = 73;
+    pub const NVS_SAVED_STATE_DELETE_FAILED: u8 = 74;
+
+    // Tasks / runtime (80-89)
+    pub const TASK_SPAWN_FAILED: u8 = 80;
+
+    // Crash recovery (90-99)
+    #[cfg(feature = "release_build")]
+    pub const DOUBLE_PANIC_RECOVERY: u8 = 90;
+    pub const BACKTRACE_READ_FAILED: u8 = 91;
+}
+
 pub async fn add_error(code: u8) {
     unsafe {
         #[allow(static_mut_refs)]

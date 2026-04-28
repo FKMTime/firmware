@@ -14,6 +14,9 @@ use esp_hal::gpio::Input;
 
 macros::generate_button_handler_enum!(triggered: &ButtonTrigger, hold_time: u64, state: &GlobalState);
 
+static ERROR_LOG_PARSE_FAILED_LOGGED: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
+
 #[cfg(feature = "v3")]
 const CONFIG_MENU_ERROR_LOG_IDX: usize = 4;
 #[cfg(feature = "v3")]
@@ -359,6 +362,16 @@ async fn submit_up(
                 .await
             {
                 log::error!("Cannot save buzzer volume to NVS: {e:?}");
+                static LOGGED: core::sync::atomic::AtomicBool =
+                    core::sync::atomic::AtomicBool::new(false);
+                if !LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
+                    crate::utils::error_log::add_error(
+                        crate::utils::error_log::codes::NVS_BUZZER_VOLUME_WRITE_FAILED,
+                    )
+                    .await;
+
+                    LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
+                }
             }
 
             state_val.menu_scene = None;
@@ -408,10 +421,24 @@ async fn submit_up(
                 }
                 CONFIG_MENU_ERROR_LOG_IDX => {
                     state_val.error_log_entries =
-                        crate::utils::error_log::parse_error_log_entries().unwrap_or_else(|e| {
-                            log::error!("Parse error log failed: {e:?}");
-                            alloc::vec![]
-                        });
+                        match crate::utils::error_log::parse_error_log_entries() {
+                            Ok(entries) => entries,
+                            Err(e) => {
+                                log::error!("Parse error log failed: {e:?}");
+                                if !ERROR_LOG_PARSE_FAILED_LOGGED
+                                    .load(core::sync::atomic::Ordering::Relaxed)
+                                {
+                                    crate::utils::error_log::add_error(
+                                        crate::utils::error_log::codes::ERROR_LOG_PARSE_FAILED,
+                                    )
+                                    .await;
+
+                                    ERROR_LOG_PARSE_FAILED_LOGGED
+                                        .store(true, core::sync::atomic::Ordering::Relaxed);
+                                }
+                                alloc::vec![]
+                            }
+                        };
                     state_val.selected_error_log_item = 0;
                     state_val.selected_error_log_entry = None;
                     state_val.error_log_entry_stage = None;
@@ -463,10 +490,24 @@ async fn submit_up(
                 }
                 CONFIG_MENU_ERROR_LOG_IDX => {
                     state_val.error_log_entries =
-                        crate::utils::error_log::parse_error_log_entries().unwrap_or_else(|e| {
-                            log::error!("Parse error log failed: {e:?}");
-                            alloc::vec![]
-                        });
+                        match crate::utils::error_log::parse_error_log_entries() {
+                            Ok(entries) => entries,
+                            Err(e) => {
+                                log::error!("Parse error log failed: {e:?}");
+                                if !ERROR_LOG_PARSE_FAILED_LOGGED
+                                    .load(core::sync::atomic::Ordering::Relaxed)
+                                {
+                                    crate::utils::error_log::add_error(
+                                        crate::utils::error_log::codes::ERROR_LOG_PARSE_FAILED,
+                                    )
+                                    .await;
+
+                                    ERROR_LOG_PARSE_FAILED_LOGGED
+                                        .store(true, core::sync::atomic::Ordering::Relaxed);
+                                }
+                                alloc::vec![]
+                            }
+                        };
                     state_val.selected_error_log_item = 0;
                     state_val.selected_error_log_entry = None;
                     state_val.error_log_entry_stage = None;

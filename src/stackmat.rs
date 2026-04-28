@@ -19,6 +19,10 @@ pub async fn stackmat_task(
     let serial_config = esp_hal::uart::Config::default().with_baudrate(1200);
     let Ok(mut uart) = UartRx::new(uart, serial_config).map(|u| u.with_rx(uart_pin)) else {
         log::error!("Stackmat task error while creating UartRx instance!");
+        crate::utils::error_log::add_error(
+            crate::utils::error_log::codes::STACKMAT_UART_INIT_FAILED,
+        )
+        .await;
         return;
     };
 

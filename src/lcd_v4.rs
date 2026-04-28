@@ -352,11 +352,16 @@ pub async fn lcd_task(
 
     if let Err(e) = disp_init {
         log::error!("Disp init error: {e:?} (but continuing i guess)");
+        crate::utils::error_log::add_error(crate::utils::error_log::codes::LCD_INIT_FAILED).await;
     }
 
     let mut data = alloc::vec![embedded_graphics::pixelcolor::BinaryColor::Off; FBUF_SIZE];
     let Some(data): Option<&mut [BinaryColor; FBUF_SIZE]> = data.as_mut_array() else {
         log::error!("Disp framebuffer data alloc failed!");
+        crate::utils::error_log::add_error(
+            crate::utils::error_log::codes::LCD_FRAMEBUFFER_ALLOC_FAILED,
+        )
+        .await;
         return;
     };
     let fbuf = embedded_graphics_framebuf::FrameBuf::new(data, FBUF_WIDTH, FBUF_HEIGHT);

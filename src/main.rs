@@ -113,8 +113,13 @@ async fn main(spawner: Spawner) {
     crate::utils::backtrace_store::verify_panic_flag();
 
     let Ok(nvs) = Nvs::new_from_part_table(unsafe { board.flash.clone_unchecked() }) else {
+        let mut error_logged = false;
         loop {
             log::error!("Wrong partition table! Re-flash firmware with espflash!");
+            if !error_logged {
+                utils::error_log::add_error(utils::error_log::codes::WRONG_PARTITION_TABLE).await;
+                error_logged = true;
+            }
             Timer::after_millis(1000).await;
         }
     };
@@ -259,6 +264,7 @@ async fn main(spawner: Spawner) {
             let res = ota.ota_mark_app_valid();
             if let Err(e) = res {
                 log::error!("Ota mark app valid failed: {e:?}");
+                utils::error_log::add_error(utils::error_log::codes::OTA_MARK_VALID_FAILED).await;
             }
         }
     }
@@ -279,6 +285,8 @@ async fn main(spawner: Spawner) {
 
     let Ok(mut wifi_res) = wifi_res else {
         log::error!("WifiManager failed!!! Restarting in 1s!");
+        utils::error_log::add_error(utils::error_log::codes::WIFI_MANAGER_FAILED).await;
+        utils::error_log::save_error_log(&nvs).await;
         Timer::after_millis(1000).await;
         esp_hal::system::software_reset();
     };
@@ -318,6 +326,9 @@ async fn main(spawner: Spawner) {
                 Timer::after_millis(1000).await;
                 if parse_retry_count > 3 {
                     log::error!("Cannot parse wsurl! Reseting wifi configuration!");
+                    utils::error_log::add_error(utils::error_log::codes::MDNS_WS_URL_PARSE_FAILED)
+                        .await;
+                    utils::error_log::save_error_log(&nvs).await;
                     _ = nvs.delete(WIFI_NVS_KEY).await;
                     Timer::after_millis(1000).await;
 
