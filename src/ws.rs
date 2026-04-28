@@ -21,7 +21,8 @@ static FRAME_CHANNEL: Channel<CriticalSectionRawMutex, WsFrameOwned, 32> = Chann
 static TAGGED_RETURN: PubSubChannel<CriticalSectionRawMutex, (u64, TimerPacket), 20, 20, 4> =
     PubSubChannel::new();
 
-static DNS_EMPTY_LOGGED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+static DNS_EMPTY_LOGGED: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
 static HTTP_UPGRADE_LOGGED: core::sync::atomic::AtomicBool =
     core::sync::atomic::AtomicBool::new(false);
 static PACKET_PARSE_LOGGED: core::sync::atomic::AtomicBool =
@@ -523,8 +524,7 @@ async fn ws_rw(
                             )
                             .await;
 
-                            PACKET_PARSE_LOGGED
-                                .store(true, core::sync::atomic::Ordering::Relaxed);
+                            PACKET_PARSE_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
                         }
                     }
                 },
@@ -721,8 +721,7 @@ async fn wait_for_tagged_response(tag: u64) -> TimerPacket {
                     )
                     .await;
 
-                    TAGGED_SUBSCRIBER_LOGGED
-                        .store(true, core::sync::atomic::Ordering::Relaxed);
+                    TAGGED_SUBSCRIBER_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
                 }
                 Timer::after_millis(500).await;
             }

@@ -415,8 +415,7 @@ async fn bluetooth_loop(bt: &esp_hal::peripherals::BT<'static>, state: &GlobalSt
                                 )
                                 .await;
 
-                                BLE_CHARACTERISTIC_NOT_FOUND_LOGGED
-                                    .store(true, Ordering::Relaxed);
+                                BLE_CHARACTERISTIC_NOT_FOUND_LOGGED.store(true, Ordering::Relaxed);
                             }
                             return;
                         };
