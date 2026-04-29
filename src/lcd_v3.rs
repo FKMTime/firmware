@@ -21,6 +21,40 @@ use crate::{
     },
 };
 
+pub async fn lcd_show_critical_code(
+    lcd_shifter: adv_shift_registers::wrappers::ShifterValue,
+    code: u8,
+) {
+    let mut lcd = {
+        let bl_pin = lcd_shifter.get_pin_mut(1, true);
+        let rs_pin = lcd_shifter.get_pin_mut(2, true);
+        let en_pin = lcd_shifter.get_pin_mut(3, true);
+        let d4_pin = lcd_shifter.get_pin_mut(4, false);
+        let d5_pin = lcd_shifter.get_pin_mut(5, false);
+        let d6_pin = lcd_shifter.get_pin_mut(6, false);
+        let d7_pin = lcd_shifter.get_pin_mut(7, false);
+        LcdDisplay::new(rs_pin, en_pin, Delay)
+            .with_display(ag_lcd_async::Display::On)
+            .with_blink(ag_lcd_async::Blink::Off)
+            .with_cursor(ag_lcd_async::Cursor::Off)
+            .with_size(ag_lcd_async::Size::Dots5x8)
+            .with_cols(16)
+            .with_lines(ag_lcd_async::Lines::TwoLines)
+            .with_half_bus(d4_pin, d5_pin, d6_pin, d7_pin)
+            .with_backlight(bl_pin)
+            .build()
+            .await
+    };
+
+    lcd.clear().await;
+    lcd.backlight_on();
+
+    lcd.set_position(0, 0).await;
+    lcd.print(" CRITICAL ERROR ").await;
+    lcd.set_position(0, 1).await;
+    lcd.print(&alloc::format!("       E{code}")).await;
+}
+
 #[embassy_executor::task]
 pub async fn lcd_task(
     lcd_shifter: adv_shift_registers::wrappers::ShifterValue,

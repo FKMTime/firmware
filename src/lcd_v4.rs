@@ -325,6 +325,37 @@ where
     Ok(())
 }
 
+pub async fn lcd_show_critical_code(i2c: SharedI2C, mut display_rst: Output<'static>, code: u8) {
+    let di = display_interface_i2c::I2CInterface::new(i2c, 0x3C, 0x40);
+    let raw_disp =
+        oled_async::builder::Builder::new(oled_async::displays::ssd1309::Ssd1309_128_64 {})
+            .with_rotation(oled_async::prelude::DisplayRotation::Rotate180)
+            .connect(di);
+
+    let mut disp: oled_async::mode::GraphicsMode<_, _> = raw_disp.into();
+    disp.reset(&mut display_rst, &mut Delay);
+
+    let disp_init = async {
+        disp.init().await?;
+        disp.clear();
+        disp.flush().await?;
+
+        anyhow::Result::<(), display_interface::DisplayError>::Ok(())
+    }
+    .await;
+
+    if let Err(e) = disp_init {
+        log::error!("Disp init error: {e:?} (but continuing i guess)");
+        crate::utils::error_log::add_error(crate::utils::error_log::codes::LCD_INIT_FAILED).await;
+    }
+
+    let text = format!("CRITICAL ERROR\nCODE: {code}",);
+    let text = Text::with_text_style(&text, Point::zero(), NORMAL_FONT, TEXT_CENTER);
+
+    _ = center_layout(Chain::new(text)).draw(&mut disp);
+    _ = disp.flush().await;
+}
+
 #[embassy_executor::task]
 pub async fn lcd_task(
     i2c: SharedI2C,

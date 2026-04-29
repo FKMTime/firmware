@@ -113,13 +113,21 @@ async fn main(spawner: Spawner) {
     crate::utils::backtrace_store::verify_panic_flag();
 
     let Ok(nvs) = Nvs::new_from_part_table(unsafe { board.flash.clone_unchecked() }) else {
-        let mut error_logged = false;
+        utils::error_log::add_error(utils::error_log::codes::WRONG_PARTITION_TABLE).await;
+        #[cfg(feature = "v3")]
+        lcd_v3::lcd_show_critical_code(board.lcd, utils::error_log::codes::WRONG_PARTITION_TABLE)
+            .await;
+
+        #[cfg(feature = "v4")]
+        lcd_v4::lcd_show_critical_code(
+            board.i2c,
+            board.display_rst,
+            utils::error_log::codes::WRONG_PARTITION_TABLE,
+        )
+        .await;
+
         loop {
             log::error!("Wrong partition table! Re-flash firmware with espflash!");
-            if !error_logged {
-                utils::error_log::add_error(utils::error_log::codes::WRONG_PARTITION_TABLE).await;
-                error_logged = true;
-            }
             Timer::after_millis(1000).await;
         }
     };
