@@ -26,14 +26,20 @@ done
 source ~/export-esp.sh
 EPOCH=$(date +%s)
 
+mkdir -p ./dist
+
 RELEASE_BUILD="$RELEASE_VERSION" cargo build -r --no-default-features --features v3,sleep
 mkdir -p /tmp/fkm-build &> /dev/null
 espflash save-image --chip esp32c3 ./target/riscv32imc-unknown-none-elf/release/fkm-firmware "/tmp/fkm-build/v3_STATION_${RELEASE_VERSION}.bin"
 ./append_metadata.sh "/tmp/fkm-build/v3_STATION_${RELEASE_VERSION}.bin" "$RELEASE_VERSION" "STATION" "v3" "$EPOCH"
+cp ./target/riscv32imc-unknown-none-elf/release/fkm-firmware /tmp/fkm-build/"v3_STATION_${RELEASE_VERSION}"
+espflash save-image --chip esp32c3 --merge --flash-size 4mb --partition-table partitions.csv target/riscv32imc-unknown-none-elf/release/fkm-firmware dist/"v3_STATION_${RELEASE_VERSION}_MERGED.bin"
 
 RELEASE_BUILD="$RELEASE_VERSION" cargo build -r --no-default-features --features v4,sleep
 espflash save-image --chip esp32c3 ./target/riscv32imc-unknown-none-elf/release/fkm-firmware "/tmp/fkm-build/v4_STATION_${RELEASE_VERSION}.bin"
 ./append_metadata.sh "/tmp/fkm-build/v4_STATION_${RELEASE_VERSION}.bin" "$RELEASE_VERSION" "STATION" "v4" "$EPOCH"
+cp ./target/riscv32imc-unknown-none-elf/release/fkm-firmware /tmp/fkm-build/"v4_STATION_${RELEASE_VERSION}"
+espflash save-image --chip esp32c3 --merge --flash-size 4mb --partition-table partitions.csv target/riscv32imc-unknown-none-elf/release/fkm-firmware dist/"v4_STATION_${RELEASE_VERSION}_MERGED.bin"
 
 cd $SCRIPT_DIR
 echo "Version: $RELEASE_VERSION"
