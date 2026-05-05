@@ -859,7 +859,7 @@ async fn process_main(
                 center_text_layout(&format!(
                     "{}\n{}",
                     get_translation(TranslationKey::SCAN_COMPETITOR_CARD_HEADER),
-                    &get_translation_params(
+                    get_translation_params(
                         TranslationKey::SCAN_COMPETITOR_CARD_WITH_TIME_FOOTER,
                         &[time_str],
                     )

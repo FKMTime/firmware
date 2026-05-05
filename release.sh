@@ -50,7 +50,7 @@ if gh release view "$RELEASE_VERSION" ; then
 fi
 
 
-BUILD_FILES=$(ls /tmp/fkm-build/*_"$RELEASE_VERSION".bin)
+BUILD_FILES=$(ls /tmp/fkm-build/*_"$RELEASE_VERSION".bin /tmp/fkm-build/*_"$RELEASE_VERSION")
 if [ -z "$BUILD_FILES" ]; then
     echo "No build files found"
     exit
