@@ -41,7 +41,16 @@ espflash save-image --chip esp32c3 ./target/riscv32imc-unknown-none-elf/release/
 cp ./target/riscv32imc-unknown-none-elf/release/fkm-firmware /tmp/fkm-build/"v4_STATION_${RELEASE_VERSION}"
 espflash save-image --chip esp32c3 --merge --flash-size 4mb --partition-table partitions.csv target/riscv32imc-unknown-none-elf/release/fkm-firmware dist/"v4_STATION_${RELEASE_VERSION}_MERGED.bin"
 
+gh repo clone https://github.com/FKMTime/docs /tmp/fkmdocs
+cp dist/"v3_STATION_${RELEASE_VERSION}_MERGED.bin" dist/"v4_STATION_${RELEASE_VERSION}_MERGED.bin" /tmp/fkmdocs/static/firmware
+cd /tmp/fkmdocs
+git add .
+git commit -am "firmware upload"
+git push
+
 cd $SCRIPT_DIR
+rm -rf /tmp/fkmdocs
+
 echo "Version: $RELEASE_VERSION"
 
 if gh release view "$RELEASE_VERSION" ; then
