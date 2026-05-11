@@ -1030,6 +1030,20 @@ async fn process_main(
                     )
                     .translate(Point::new(0, 10))
                     .draw(&mut oled.fbuf)?;
+            } else if solve_time == 0 {
+                let penalty_text =
+                    Text::with_text_style(&penalty_str, Point::zero(), TIMER_FONT, TEXT_CENTER);
+                LinearLayout::horizontal(Chain::new(penalty_text))
+                    .with_alignment(embedded_layout::align::vertical::Center)
+                    .with_spacing(embedded_layout::layout::linear::spacing::FixedMargin(4))
+                    .arrange()
+                    .align_to(
+                        &MAIN_RECT,
+                        embedded_layout::align::horizontal::Center,
+                        embedded_layout::align::vertical::Top,
+                    )
+                    .translate(Point::new(0, 10))
+                    .draw(&mut oled.fbuf)?;
             } else {
                 let penalty_text =
                     Text::with_text_style(&penalty_str, Point::zero(), TIMER_FONT, TEXT_CENTER);
