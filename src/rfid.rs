@@ -159,7 +159,7 @@ pub async fn rfid_task(
         #[cfg(feature = "v4")]
         if global_state.buzzer_sound_test.signaled() {
             global_state.buzzer_sound_test.wait().await;
-            beep_card_scan(&mut buzzer).await;
+            beep_card_scan(&mut buzzer, &global_state, true).await;
             continue;
         }
 
@@ -202,7 +202,7 @@ pub async fn rfid_task(
         }
         last_card = (card_uid, Instant::now());
         #[cfg(feature = "v4")]
-        beep_card_scan(&mut buzzer).await;
+        beep_card_scan(&mut buzzer, &global_state, false).await;
 
         #[cfg(feature = "qa")]
         {
@@ -581,17 +581,21 @@ async fn process_card_info_response(
 #[cfg(feature = "v4")]
 async fn beep_card_scan(
     buzzer: &mut esp_hal::ledc::channel::Channel<'static, esp_hal::ledc::LowSpeed>,
+    global_state: &GlobalState,
+    sound_test: bool,
 ) {
-    use esp_hal::ledc::channel::ChannelIFace;
-    const BEEP_DUTY_PERCENT: u8 = 50;
-    const BEEP_DURATION_MS: u64 = 100;
+    if global_state.state.value().await.use_inspection() || sound_test {
+        use esp_hal::ledc::channel::ChannelIFace;
+        const BEEP_DUTY_PERCENT: u8 = 50;
+        const BEEP_DURATION_MS: u64 = 100;
 
-    let volume: f32 = match crate::state::buzzer_volume() {
-        0 => 0.0,
-        v => 0.55 + (v - 1) as f32 * (0.25 / 23.0),
-    };
-    let volume = volume * volume * volume * volume;
-    _ = buzzer.set_duty((BEEP_DUTY_PERCENT as f32 * volume) as u8);
-    Timer::after_millis(BEEP_DURATION_MS).await;
-    _ = buzzer.set_duty(0);
+        let volume: f32 = match crate::state::buzzer_volume() {
+            0 => 0.0,
+            v => 0.55 + (v - 1) as f32 * (0.25 / 23.0),
+        };
+        let volume = volume * volume * volume * volume;
+        _ = buzzer.set_duty((BEEP_DUTY_PERCENT as f32 * volume) as u8);
+        Timer::after_millis(BEEP_DURATION_MS).await;
+        _ = buzzer.set_duty(0);
+    }
 }
