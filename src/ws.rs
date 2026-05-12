@@ -442,9 +442,11 @@ async fn ws_rw(
                                 fkm_token,
                                 secure_rfid,
                                 auto_setup,
+                                sound_enabled,
                             } => {
                                 let mut state = global_state.state.lock().await;
                                 state.device_added = Some(added);
+                                state.sound_enabled = sound_enabled;
                                 crate::translations::clear_locales();
 
                                 for locale in locales {

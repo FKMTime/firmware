@@ -100,6 +100,7 @@ pub enum TimerPacketInner {
         fkm_token: i32,
         secure_rfid: bool,
         auto_setup: bool,
+        sound_enabled: bool,
     },
     Battery {
         level: Option<f64>,

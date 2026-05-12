@@ -605,7 +605,7 @@ async fn beep_card_scan(
     global_state: &GlobalState,
     sound_test: bool,
 ) {
-    if global_state.state.value().await.use_inspection() || sound_test {
+    if global_state.state.value().await.sound_enabled || sound_test {
         use esp_hal::ledc::channel::ChannelIFace;
         const BEEP_DUTY_PERCENT: u8 = 50;
         const BEEP_DURATION_MS: u64 = 100;

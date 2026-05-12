@@ -242,6 +242,7 @@ pub struct SignaledGlobalStateInner {
     pub discovered_bluetooth_devices: Vec<BleDisplayDevice>,
     pub selected_bluetooth_item: usize,
 
+    pub sound_enabled: bool,
     pub device_added: Option<bool>,
     pub server_connected: Option<bool>,
     pub wifi_connected: Option<bool>,
@@ -303,6 +304,7 @@ impl SignaledGlobalStateInner {
             selected_bluetooth_item: 0,
             discovered_bluetooth_devices: Vec::new(),
 
+            sound_enabled: true,
             device_added: None,
             server_connected: None,
             wifi_connected: None,
