@@ -113,6 +113,9 @@ pub enum TimerPacketInner {
     EpochTime {
         current_epoch: u64,
     },
+    SetDeviceSettings {
+        volume: Option<u8>,
+    },
     // packet for end to end testing
     #[cfg(feature = "e2e")]
     TestPacket(TestPacketData),

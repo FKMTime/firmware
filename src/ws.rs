@@ -511,6 +511,42 @@ async fn ws_rw(
                                     .await;
                             }
 
+                            #[allow(clippy::collapsible_match)]
+                            TimerPacketInner::SetDeviceSettings { volume } => {
+                                #[cfg(feature = "v4")]
+                                if let Some(volume) = volume {
+                                    let volume = volume.clamp(
+                                        crate::consts::BUZZER_VOLUME_MIN,
+                                        crate::consts::BUZZER_VOLUME_MAX,
+                                    );
+                                    crate::state::set_buzzer_volume(volume);
+
+                                    if let Err(e) = global_state
+                                        .nvs
+                                        .set(crate::consts::NVS_BUZZER_VOLUME, volume)
+                                        .await
+                                    {
+                                        log::error!("Cannot save buzzer volume to NVS: {e:?}");
+                                        static LOGGED: core::sync::atomic::AtomicBool =
+                                            core::sync::atomic::AtomicBool::new(false);
+                                        if !LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
+                                            crate::utils::error_log::add_error(
+                        crate::utils::error_log::codes::NVS_BUZZER_VOLUME_WRITE_FAILED,
+                    )
+                    .await;
+
+                                            LOGGED
+                                                .store(true, core::sync::atomic::Ordering::Relaxed);
+                                        }
+                                    }
+                                }
+
+                                #[cfg(feature = "v3")]
+                                {
+                                    _ = volume;
+                                }
+                            }
+
                             #[cfg(feature = "e2e")]
                             TimerPacketInner::TestPacket(test_packet) => {
                                 parse_test_packet(test_packet, &global_state).await;
