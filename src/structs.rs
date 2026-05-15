@@ -116,6 +116,8 @@ pub enum TimerPacketInner {
     SetDeviceSettings {
         volume: Option<u8>,
     },
+    DumpCrashLog,
+
     // packet for end to end testing
     #[cfg(feature = "e2e")]
     TestPacket(TestPacketData),

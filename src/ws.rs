@@ -3,7 +3,7 @@ use crate::{
     state::{GlobalState, Scene, ota_state},
     structs::{ApiError, FromPacket, TimerPacket, TimerPacketInner},
 };
-use alloc::{boxed::Box, rc::Rc, string::ToString};
+use alloc::{boxed::Box, rc::Rc, string::ToString, vec::Vec};
 use core::str::FromStr;
 use embassy_net::{IpAddress, Stack, tcp::TcpSocket};
 use embassy_sync::{
@@ -555,6 +555,17 @@ async fn ws_rw(
                                 #[cfg(feature = "v3")]
                                 {
                                     _ = volume;
+                                }
+                            }
+                            TimerPacketInner::DumpCrashLog => {
+                                if let Ok(dumped) =
+                                    crate::utils::error_log::dump_error_log(&global_state.nvs).await
+                                {
+                                    let mut tmp = Vec::new();
+                                    tmp.push(b'C');
+                                    tmp.extend(dumped);
+
+                                    send_frame(ws_framer::WsFrameOwned::Binary(tmp)).await;
                                 }
                             }
 
