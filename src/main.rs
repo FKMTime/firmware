@@ -382,7 +382,7 @@ async fn main(spawner: Spawner) {
     }
 
     let mut last_sleep = false;
-    loop {
+    'outer: loop {
         Timer::after_millis(100).await;
         if utils::error_log::is_save_ready() {
             utils::error_log::save_error_log(&nvs).await;
@@ -392,14 +392,30 @@ async fn main(spawner: Spawner) {
         if sleep_state() != last_sleep {
             last_sleep = sleep_state();
             ble_sleep_sig.signal(last_sleep);
-            ws::send_frame(ws_framer::WsFrameOwned::Close(
-                4000,
-                "Going into sleep mode".to_string(),
-            ))
-            .await;
+            if last_sleep {
+                log::warn!("Entering sleep mode!");
+                ws::send_frame(ws_framer::WsFrameOwned::Close(
+                    4000,
+                    "Going into sleep mode".to_string(),
+                ))
+                .await;
 
-            // stop radio after 15s to make sure ws close packet is sent
-            Timer::after_millis(15000).await;
+                // only wait that 15s when going into sleep mode (to make sure close is sent and to
+                // debounce sleeps)
+                let start = Instant::now();
+                while start.elapsed().as_millis() < 15000 {
+                    if sleep_state() != last_sleep {
+                        // send sleep to ws to make sure clean state of
+                        // ws is reached in next outer loop iteration
+                        ws_sleep_sig.signal(true);
+
+                        continue 'outer;
+                    }
+
+                    Timer::after_millis(100).await;
+                }
+            }
+
             ws_sleep_sig.signal(last_sleep);
             match last_sleep {
                 true => wifi_res.stop_radio(),
