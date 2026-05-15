@@ -387,12 +387,23 @@ async fn ws_rw(
                 let frame_ref = write_frame.into_ref();
 
                 loop {
-                    let (data, finish) = framer_tx.partial_frame(&frame_ref, &mut offset);
+                    let (data, splitted) = framer_tx.partial_frame(&frame_ref, &mut offset);
                     socket
                         .write_all(data)
                         .await
                         .map_err(|_| WsRwError::SocketWriteError)?;
-                    if !finish {
+
+                    // if frame not splitted, break from loop
+                    if !splitted {
+                        if let WsFrameOwned::Close(code, _) = write_frame
+                            && code == 4000
+                        {
+                            // going into sleep mode, so sleep for 30s (in 15s from that frame
+                            // radio should disable and this task will be stopped
+
+                            Timer::after_millis(30000).await;
+                        }
+
                         break;
                     }
 

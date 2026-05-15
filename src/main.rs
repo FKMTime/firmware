@@ -391,9 +391,16 @@ async fn main(spawner: Spawner) {
 
         if sleep_state() != last_sleep {
             last_sleep = sleep_state();
-            ws_sleep_sig.signal(last_sleep);
             ble_sleep_sig.signal(last_sleep);
+            ws::send_frame(ws_framer::WsFrameOwned::Close(
+                4000,
+                "Going into sleep mode".to_string(),
+            ))
+            .await;
 
+            // stop radio after 15s to make sure ws close packet is sent
+            Timer::after_millis(15000).await;
+            ws_sleep_sig.signal(last_sleep);
             match last_sleep {
                 true => wifi_res.stop_radio(),
                 false => wifi_res.restart_radio(),

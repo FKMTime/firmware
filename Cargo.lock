@@ -399,7 +399,7 @@ dependencies = [
  "embedded-io 0.7.1",
  "embedded-io-async 0.7.0",
  "futures-intrusive",
- "heapless 0.9.2",
+ "heapless 0.9.3",
 ]
 
 [[package]]
@@ -1116,7 +1116,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e0b32c831ced877a78378312fe0b6f7cdd5759f3ba272578f582ff9bba5291d"
 dependencies = [
  "edge-raw",
- "heapless 0.9.2",
+ "heapless 0.9.3",
  "num_enum",
  "rand_core 0.9.5",
 ]
@@ -1226,7 +1226,7 @@ dependencies = [
  "embassy-time",
  "embedded-io-async 0.7.0",
  "embedded-nal-async",
- "heapless 0.9.2",
+ "heapless 0.9.3",
  "managed",
  "smoltcp",
 ]
@@ -1276,7 +1276,7 @@ dependencies = [
  "embedded-io-async 0.7.0",
  "futures-core",
  "futures-sink",
- "heapless 0.9.2",
+ "heapless 0.9.3",
 ]
 
 [[package]]
@@ -1311,7 +1311,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "168297bf80aaf114b3c9ad589bf38b01b3009b9af7f97cd18086c5bbf96f5693"
 dependencies = [
  "embassy-executor-timer-queue",
- "heapless 0.9.2",
+ "heapless 0.9.3",
 ]
 
 [[package]]
@@ -1528,7 +1528,7 @@ dependencies = [
  "embedded-io-async 0.7.0",
  "generic-array 0.14.7",
  "heapless 0.6.1",
- "heapless 0.9.2",
+ "heapless 0.9.3",
  "hkdf",
  "hmac",
  "log",
@@ -1623,7 +1623,7 @@ dependencies = [
  "esp-config",
  "esp-metadata-generated",
  "esp-println",
- "heapless 0.9.2",
+ "heapless 0.9.3",
  "riscv",
  "xtensa-lx",
 ]
@@ -1661,9 +1661,9 @@ dependencies = [
 
 [[package]]
 name = "esp-hal"
-version = "1.1.0"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6af8fa8216bc126941bd43b5a200a50eab16e43881ccd0dd0b6792f4a82805f0"
+checksum = "2bfcf2a0842903717f4663f6a08512c32b0f6b2d7fb7db3c8a6895d2e6d49f72"
 dependencies = [
  "bitfield",
  "bitflags 2.11.1",
@@ -1723,7 +1723,7 @@ dependencies = [
  "embassy-net",
  "embassy-sync 0.8.0",
  "embassy-time",
- "heapless 0.9.2",
+ "heapless 0.9.3",
  "log",
 ]
 
@@ -1734,7 +1734,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2e7417c98ac86e107c76488f752a8872e04628a5981bd214bdce7c5268e9a94"
 dependencies = [
  "dns-protocol",
- "heapless 0.9.2",
+ "heapless 0.9.3",
  "log",
 ]
 
@@ -1746,7 +1746,7 @@ checksum = "60cb9b21a888cca9d719cde04541e6f8a0a383097e2986cf2ca99931e6f136d1"
 dependencies = [
  "embassy-time",
  "embedded-hal-async",
- "heapless 0.9.2",
+ "heapless 0.9.3",
  "log",
 ]
 
@@ -1795,7 +1795,7 @@ dependencies = [
  "esp-rtos",
  "esp-storage",
  "getrandom 0.2.15",
- "heapless 0.9.2",
+ "heapless 0.9.3",
  "include-minifier",
  "log",
  "portable-atomic",
@@ -1882,7 +1882,7 @@ dependencies = [
  "esp-sync",
  "esp-wifi-sys-esp32c3",
  "esp32c3",
- "heapless 0.9.2",
+ "heapless 0.9.3",
  "instability",
  "num-derive",
  "num-traits",
@@ -2157,7 +2157,7 @@ dependencies = [
  "esp-storage",
  "esp32c3",
  "getrandom 0.2.15",
- "heapless 0.9.2",
+ "heapless 0.9.3",
  "log",
  "macros",
  "nb 1.1.0",
@@ -2483,9 +2483,9 @@ dependencies = [
 
 [[package]]
 name = "heapless"
-version = "0.9.2"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2af2455f757db2b292a9b1768c4b70186d443bcb3b316252d6b540aec1cd89ed"
+checksum = "25ba4bd83f9415b58b4ed8dc5714c76e626a105be4646c02630ad730ad3b5aa4"
 dependencies = [
  "hash32 0.3.1",
  "stable_deref_trait",
@@ -4393,7 +4393,7 @@ dependencies = [
  "bitflags 1.3.2",
  "byteorder",
  "cfg-if",
- "heapless 0.9.2",
+ "heapless 0.9.3",
  "managed",
 ]
 
@@ -4732,7 +4732,7 @@ dependencies = [
  "embassy-time",
  "embedded-io 0.7.1",
  "futures",
- "heapless 0.9.2",
+ "heapless 0.9.3",
  "p256",
  "rand 0.8.6",
  "rand_chacha 0.3.1",
@@ -5001,9 +5001,9 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "ws-framer"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75a918023503304dc681e5f014fc291f68fcdcc886993f9cc6fffc0a0cef329e"
+checksum = "bacd6cff21323641597fe251e294f823e04292202a6e3c9721a1e8b82bea57bf"
 dependencies = [
  "getrandom 0.2.15",
  "httparse",
