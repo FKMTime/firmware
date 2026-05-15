@@ -132,10 +132,11 @@ pub async fn add_stacktrace(addrs: &[u32], version: &str, timestamp: u64) {
     }
 }
 
-pub async fn dump_error_log(nvs: &Nvs) -> Result<Vec<u8>> {
-    nvs.get::<Vec<u8>>(NVS_ERROR_LOG)
-        .await
-        .map_err(|e| anyhow::anyhow!("Nvs error: {e:?}"))
+pub fn dump_error_log() -> &'static [u8] {
+    #[allow(static_mut_refs)]
+    unsafe {
+        &(&*ERROR_LOG_BUF.as_ptr())[..OFFSET]
+    }
 }
 
 pub async fn load_error_log(nvs: &Nvs) {

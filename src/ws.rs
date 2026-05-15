@@ -558,15 +558,11 @@ async fn ws_rw(
                                 }
                             }
                             TimerPacketInner::DumpCrashLog => {
-                                if let Ok(dumped) =
-                                    crate::utils::error_log::dump_error_log(&global_state.nvs).await
-                                {
-                                    let mut tmp = Vec::new();
-                                    tmp.push(b'C');
-                                    tmp.extend(dumped);
+                                let mut tmp = Vec::new();
+                                tmp.push(b'C');
+                                tmp.extend_from_slice(crate::utils::error_log::dump_error_log());
 
-                                    send_frame(ws_framer::WsFrameOwned::Binary(tmp)).await;
-                                }
+                                send_frame(ws_framer::WsFrameOwned::Binary(tmp)).await;
                             }
 
                             #[cfg(feature = "e2e")]
