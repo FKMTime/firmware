@@ -97,5 +97,11 @@ opt-level = 3
 [profile.release.package.esp-radio]
 opt-level = 3
 
+[profile.dev.package.esp-hal]
+opt-level = 3
+
+[profile.release.package.esp-hal]
+opt-level = 3
+
 [build-dependencies]
 dotenvy = "0.15.7"
