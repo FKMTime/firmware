@@ -574,23 +574,13 @@ async fn process_card_info_response(
                 && state.current_judge.is_none()
                 && state.time_confirmed
             {
-                let text = get_translation(TranslationKey::SCAN_JUDGE_CARD);
-                let words: alloc::vec::Vec<&str> = text.split(' ').collect();
-                if words.len() >= 2 {
-                    let first_line = words[..2].join(" ");
-                    let second_line = words[2..].join(" ");
-
-                    state.custom_message = Some((first_line, second_line));
-                } else {
-                    state.custom_message = Some((text.to_string(), "".to_string()));
-                }
-
+                state.custom_message = Some((
+                    get_translation(TranslationKey::CARDS_CANNOT_BE_THE_SAME_HEADER),
+                    get_translation(TranslationKey::CARDS_CANNOT_BE_THE_SAME_FOOTER),
+                ));
                 drop(state);
-                Timer::after_millis(3000).await;
-
-                {
-                    global_state.state.lock().await.custom_message = None;
-                }
+                Timer::after_millis(8000).await;
+                global_state.state.lock().await.custom_message = None;
             }
         }
         _ => {}

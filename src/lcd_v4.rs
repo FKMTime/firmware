@@ -587,15 +587,20 @@ async fn process_top_bar(
 
     let text = if current_state.selected_config_menu.is_some() {
         Some("CONFIG")
-    } else {
-        match current_state.menu_scene {
-            Some(MenuScene::Signing) => Some("SIGN"),
-            Some(MenuScene::Unsigning) => Some("UNSIGN"),
-            Some(MenuScene::BtDisplay) => Some("BTDISP"),
-            Some(MenuScene::ErrorLog) => Some("ERRLOG"),
-            Some(MenuScene::BuzzerVolume) => Some("BUZZER"),
-            None => None,
+    } else if let Some(ref menu_scene) = current_state.menu_scene {
+        match menu_scene {
+            MenuScene::Signing => Some("SIGN"),
+            MenuScene::Unsigning => Some("UNSIGN"),
+            MenuScene::BtDisplay => Some("BTDISP"),
+            MenuScene::ErrorLog => Some("ERRLOG"),
+            MenuScene::BuzzerVolume => Some("BUZZER"),
         }
+    } else if let Some(ref group) = current_state.solve_group
+        && current_state.scene == Scene::CompetitorInfo
+    {
+        Some(group.name.as_str())
+    } else {
+        None
     };
     if let Some(text) = text {
         Text::with_text_style(text, Point::new(64, 5), SMALL_FONT, TEXT_CENTER)
@@ -849,7 +854,7 @@ async fn process_main(
             center_text_layout(&format!(
                 "{}\n{}",
                 get_translation(TranslationKey::SELECT_GROUP),
-                current_state.possible_groups[current_state.group_selected_idx].secondary_text
+                current_state.possible_groups[current_state.group_selected_idx].name
             ))
             .draw(&mut oled.fbuf)?;
         }
@@ -881,8 +886,10 @@ async fn process_main(
                 .unwrap_or("------".to_string())
                 .to_string();
 
-            if let Some(ref group) = current_state.solve_group {
-                text += &format!("\n{}", group.secondary_text);
+            if let Some(ref group) = current_state.solve_group
+                && let Some(ref secondary_text) = group.secondary_text
+            {
+                text += &format!("\n{}", secondary_text);
             }
 
             center_text_layout(&text).draw(&mut oled.fbuf)?;

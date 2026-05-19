@@ -556,7 +556,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
             lcd_driver
                 .print(
                     1,
-                    &current_state.possible_groups[current_state.group_selected_idx].secondary_text,
+                    &current_state.possible_groups[current_state.group_selected_idx].name,
                     PrintAlign::Center,
                     false,
                 )
@@ -610,7 +610,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
 
             if let Some(group) = current_state.solve_group {
                 lcd_driver
-                    .print(1, &group.secondary_text, PrintAlign::Center, true)
+                    .print(1, &group.name, PrintAlign::Center, true)
                     .ok()?;
             }
         }

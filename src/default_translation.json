@@ -98,5 +98,13 @@
       {
         "key": "inspection",
         "translation": "Inspection"
+      },
+      {
+        "key": "cardsCannotBeTheSameHeader",
+        "translation": "Competitor's card and judge's card"
+      },
+      {
+        "key": "cardsCannotBeTheSameFooter",
+        "translation": "cannot be the same"
       }
 ]

@@ -177,7 +177,8 @@ pub struct CardInfoResponsePacket {
 #[serde(rename_all = "camelCase")]
 pub struct PossibleGroup {
     pub group_id: String,
-    pub secondary_text: String,
+    pub name: String,
+    pub secondary_text: Option<String>,
     pub use_inspection: bool,
 }
 
