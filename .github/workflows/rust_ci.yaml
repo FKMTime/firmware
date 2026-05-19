@@ -31,9 +31,9 @@ jobs:
             args: --no-default-features --features v4 --target=riscv32imc-unknown-none-elf --workspace -- -D warnings
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup Rust (riscv)
-        uses: dtolnay/rust-toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           target: riscv32imc-unknown-none-elf
           toolchain: nightly
