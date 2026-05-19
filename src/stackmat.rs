@@ -79,7 +79,7 @@ pub async fn stackmat_task(
                 unsafe {
                     CURRENT_TIME = limit;
                 }
-                time_end(limit, &mut last_time, &global_state).await;
+                time_end(limit, true, &mut last_time, &global_state).await;
             } else {
                 global_state.timer_signal.signal(time_interpolated);
                 global_state.bt_display_signal.signal(time_interpolated);
@@ -88,7 +88,7 @@ pub async fn stackmat_task(
                 }
 
                 if global_state.timer_stop_signal.signaled() {
-                    time_end(time_interpolated, &mut last_time, &global_state).await;
+                    time_end(time_interpolated, false, &mut last_time, &global_state).await;
                 }
             }
         }
@@ -175,6 +175,17 @@ pub async fn stackmat_task(
                 unsafe {
                     CURRENT_TIME = parsed.1;
                 }
+
+                let time_limit = unsafe { crate::state::GROUP_LIMIT };
+                if let Some(limit) = time_limit
+                    && parsed.1 > limit
+                {
+                    time_end(limit, true, &mut last_time, &global_state).await;
+                    unsafe {
+                        crate::state::GROUP_LIMIT = None;
+                    }
+                    continue;
+                }
                 last_time = Some((Instant::now(), parsed.1));
 
                 if parsed.0 != last_stackmat_state && parsed.0 != StackmatTimerState::Unknown {
@@ -189,7 +200,7 @@ pub async fn stackmat_task(
                             global_state.timer_stop_signal.reset();
                         }
                     } else if parsed.0 == StackmatTimerState::Stopped {
-                        time_end(parsed.1, &mut last_time, &global_state).await;
+                        time_end(parsed.1, false, &mut last_time, &global_state).await;
                     } else if parsed.0 == StackmatTimerState::Reset {
                         let mut state = global_state.state.lock().await;
                         if state.current_competitor.is_none()
@@ -202,6 +213,7 @@ pub async fn stackmat_task(
                             state.penalty = None;
                             state.inspection_start = None;
                             state.inspection_end = None;
+                            last_time = None;
                         } else if state.current_competitor.is_some() && state.scene == Scene::Timer
                         {
                             state.scene = Scene::Finished;
@@ -213,10 +225,8 @@ pub async fn stackmat_task(
                             }
 
                             state.time_confirmed = true;
+                            last_time = None;
                         }
-
-                        last_time = None;
-                        global_state.timer_stop_signal.reset();
                     }
 
                     last_stackmat_state = parsed.0;
@@ -236,7 +246,12 @@ pub async fn stackmat_task(
     }
 }
 
-async fn time_end(time: u64, last_time: &mut Option<(Instant, u64)>, global_state: &GlobalState) {
+async fn time_end(
+    time: u64,
+    dnf: bool,
+    last_time: &mut Option<(Instant, u64)>,
+    global_state: &GlobalState,
+) {
     let mut state = global_state.state.lock().await;
     let inspection_time = state
         .inspection_end
@@ -251,7 +266,7 @@ async fn time_end(time: u64, last_time: &mut Option<(Instant, u64)>, global_stat
     if state.solve_time.is_none() {
         state.delegate_used = false;
         state.solve_time = Some(time);
-        state.penalty = if inspection_time >= INSPECTION_TIME_DNF {
+        state.penalty = if inspection_time >= INSPECTION_TIME_DNF || dnf {
             Some(-1)
         } else if inspection_time >= INSPECTION_TIME_PLUS2 {
             Some(2)
