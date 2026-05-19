@@ -21,6 +21,8 @@ pub static mut FKM_TOKEN: i32 = 0;
 pub static mut SECURE_RFID: bool = false;
 pub static mut AUTO_SETUP: bool = false;
 
+pub static mut GROUP_LIMIT: Option<u64> = None;
+
 pub static mut EPOCH_BASE: u64 = 0;
 pub static mut SLEEP_STATE: bool = false;
 pub static mut DEEPER_SLEEP: bool = false;
@@ -177,6 +179,7 @@ pub type GlobalState = Rc<GlobalStateInner>;
 pub struct GlobalStateInner {
     pub state: SignaledMutex<CriticalSectionRawMutex, SignaledGlobalStateInner>,
     pub timer_signal: Signal<NoopRawMutex, u64>,
+    pub timer_stop_signal: Signal<NoopRawMutex, ()>,
     pub bt_display_signal: Signal<NoopRawMutex, u64>,
     pub update_progress: Signal<CriticalSectionRawMutex, u8>,
     pub sign_unsign_progress: Signal<CriticalSectionRawMutex, bool>,
@@ -197,6 +200,7 @@ impl GlobalStateInner {
         Self {
             state: SignaledMutex::new(SignaledGlobalStateInner::new()),
             timer_signal: Signal::new(),
+            timer_stop_signal: Signal::new(),
             bt_display_signal: Signal::new(),
             update_progress: Signal::new(),
             sign_unsign_progress: Signal::new(),
@@ -352,6 +356,9 @@ impl SignaledGlobalStateInner {
     }
 
     pub async fn reset_solve_state(&mut self, save_nvs: Option<&Nvs>) {
+        unsafe {
+            GROUP_LIMIT = None;
+        }
         self.solve_time = None;
         self.penalty = None;
         self.inspection_start = None;
@@ -378,6 +385,9 @@ impl SignaledGlobalStateInner {
 
     #[allow(dead_code)]
     pub async fn hard_state_reset(&mut self) {
+        unsafe {
+            GROUP_LIMIT = None;
+        }
         self.scene = Scene::WaitingForCompetitor;
         self.inspection_start = None;
         self.inspection_end = None;

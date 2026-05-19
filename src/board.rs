@@ -7,9 +7,6 @@ use esp_hal::{
     timer::timg::TimerGroup,
 };
 
-#[cfg(feature = "v3")]
-use crate::utils::stackmat::{DEC_DIGITS, DOT_MOD};
-
 #[cfg(feature = "v4")]
 use crate::utils::shared_i2c::SharedI2C;
 
@@ -55,8 +52,6 @@ pub struct Board {
     pub battery: esp_hal::peripherals::GPIO2<'static>,
     #[cfg(feature = "v3")]
     pub button_input: Input<'static>,
-    #[cfg(feature = "v3")]
-    pub digits_shifters: adv_shift_registers::wrappers::ShifterValueRange,
 
     #[cfg(feature = "v3")]
     pub buttons_shifter: adv_shift_registers::wrappers::ShifterValue,
@@ -221,7 +216,7 @@ impl Board {
         let shifter_latch_pin = Output::new(peripherals.GPIO1, Level::Low, Default::default());
         let shifter_clk_pin = Output::new(peripherals.GPIO21, Level::Low, Default::default());
 
-        let adv_shift_reg = adv_shift_registers::AdvancedShiftRegister::<8, _>::new(
+        let adv_shift_reg = adv_shift_registers::AdvancedShiftRegister::<2, _>::new(
             shifter_data_pin,
             shifter_clk_pin,
             shifter_latch_pin,
@@ -235,8 +230,6 @@ impl Board {
 
         let buttons_shifter = adv_shift_reg.get_shifter_mut(0);
         let lcd = adv_shift_reg.get_shifter_mut(1);
-        let digits_shifters = adv_shift_reg.get_shifter_range_mut(2..8);
-        digits_shifters.set_data(&[!DEC_DIGITS[8] ^ DOT_MOD; 6]);
 
         let mut cs = adv_shift_reg.get_pin_mut(1, 0, true);
         _ = cs.set_high();
@@ -265,7 +258,6 @@ impl Board {
             button_input,
 
             buttons_shifter,
-            digits_shifters,
             lcd,
             usb_dp,
             usb_dm,

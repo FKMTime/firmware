@@ -13,7 +13,6 @@ pub static mut CURRENT_TIME: u64 = 0;
 pub async fn stackmat_task(
     uart: UART1<'static>,
     uart_pin: AnyPin<'static>,
-    #[cfg(feature = "v3")] display: adv_shift_registers::wrappers::ShifterValueRange,
     global_state: GlobalState,
 ) {
     let serial_config = esp_hal::uart::Config::default().with_baudrate(1200);
@@ -32,6 +31,7 @@ pub async fn stackmat_task(
     let mut buf = [0; 8];
     let mut read_buf = [0; 8];
     let mut last_read = esp_hal::time::Instant::now();
+    let mut last_time: Option<(Instant, u64)> = None;
     let mut last_state = None;
     let mut last_stackmat_state = StackmatTimerState::Unknown;
     loop {
@@ -51,17 +51,44 @@ pub async fn stackmat_task(
             && last_state != Some(false)
         {
             last_state = Some(false);
-            #[cfg(feature = "v3")]
-            display.set_data(&[255; 6]);
+            global_state.timer_stop_signal.reset();
+            if last_time.is_none() {
+                let mut state = global_state.state.lock().await;
+                state.stackmat_connected = Some(false);
 
-            let mut state = global_state.state.lock().await;
-            state.stackmat_connected = Some(false);
+                if state.scene == Scene::Timer {
+                    if state.current_competitor.is_some() {
+                        state.scene = Scene::CompetitorInfo;
+                    } else {
+                        state.scene = Scene::WaitingForCompetitor;
+                    }
+                }
+            }
+        }
 
-            if state.scene == Scene::Timer {
-                if state.current_competitor.is_some() {
-                    state.scene = Scene::CompetitorInfo;
-                } else {
-                    state.scene = Scene::WaitingForCompetitor;
+        if last_state == Some(false)
+            && let Some((last_at, last_ms)) = last_time
+        {
+            let time_interpolated = last_ms + last_at.elapsed().as_millis();
+            let time_limit = unsafe { crate::state::GROUP_LIMIT };
+            if let Some(limit) = time_limit
+                && time_interpolated > limit
+            {
+                global_state.timer_signal.signal(limit);
+                global_state.bt_display_signal.signal(limit);
+                unsafe {
+                    CURRENT_TIME = limit;
+                }
+                time_end(limit, &mut last_time, &global_state).await;
+            } else {
+                global_state.timer_signal.signal(time_interpolated);
+                global_state.bt_display_signal.signal(time_interpolated);
+                unsafe {
+                    CURRENT_TIME = time_interpolated;
+                }
+
+                if global_state.timer_stop_signal.signaled() {
+                    time_end(time_interpolated, &mut last_time, &global_state).await;
                 }
             }
         }
@@ -148,6 +175,7 @@ pub async fn stackmat_task(
                 unsafe {
                     CURRENT_TIME = parsed.1;
                 }
+                last_time = Some((Instant::now(), parsed.1));
 
                 if parsed.0 != last_stackmat_state && parsed.0 != StackmatTimerState::Unknown {
                     if parsed.0 == StackmatTimerState::Running {
@@ -158,62 +186,10 @@ pub async fn stackmat_task(
                             }
 
                             state.scene = Scene::Timer;
+                            global_state.timer_stop_signal.reset();
                         }
                     } else if parsed.0 == StackmatTimerState::Stopped {
-                        let mut state = global_state.state.lock().await;
-                        let inspection_time = state
-                            .inspection_end
-                            .zip(state.inspection_start)
-                            .map(|(end, start)| (end - start).as_millis())
-                            .unwrap_or(0);
-
-                        log::info!(
-                            "Timer stopped: {}ms (inspection: {inspection_time}ms)",
-                            parsed.1
-                        );
-                        if state.solve_time.is_none() {
-                            state.delegate_used = false;
-                            state.solve_time = Some(parsed.1);
-                            state.penalty = if inspection_time >= INSPECTION_TIME_DNF {
-                                Some(-1)
-                            } else if inspection_time >= INSPECTION_TIME_PLUS2 {
-                                Some(2)
-                            } else {
-                                None
-                            };
-
-                            if state.session_id.is_none() {
-                                state.session_id = Some(uuid::Uuid::new_v4().to_string());
-                            }
-
-                            if state.current_competitor.is_some() {
-                                if state.possible_groups.len() > 1 && state.solve_group.is_none() {
-                                    state.scene = Scene::GroupSelect;
-                                } else {
-                                    state.scene = Scene::Finished;
-                                }
-                            } else if state.scene >= Scene::WaitingForCompetitor {
-                                state.scene = Scene::WaitingForCompetitor;
-                            }
-
-                            #[cfg(not(feature = "qa"))]
-                            if let Some(saved_state) = state.to_saved_global_state() {
-                                saved_state.to_nvs(&global_state.nvs).await;
-                            }
-
-                            #[cfg(feature = "v3")]
-                            {
-                                let time_str = crate::utils::stackmat::ms_to_time_str(parsed.1);
-                                display.set_data(&crate::utils::stackmat::time_str_to_display(
-                                    &time_str,
-                                ));
-                            }
-
-                            #[cfg(feature = "qa")]
-                            crate::qa::send_qa_resp(crate::qa::QaSignal::Stackmat(parsed.1));
-                        } else if state.scene == Scene::Timer {
-                            state.scene = Scene::WaitingForCompetitor;
-                        }
+                        time_end(parsed.1, &mut last_time, &global_state).await;
                     } else if parsed.0 == StackmatTimerState::Reset {
                         let mut state = global_state.state.lock().await;
                         if state.current_competitor.is_none()
@@ -239,8 +215,8 @@ pub async fn stackmat_task(
                             state.time_confirmed = true;
                         }
 
-                        #[cfg(feature = "v3")]
-                        display.set_data(&[255; 6]);
+                        last_time = None;
+                        global_state.timer_stop_signal.reset();
                     }
 
                     last_stackmat_state = parsed.0;
@@ -258,4 +234,55 @@ pub async fn stackmat_task(
 
         last_read = esp_hal::time::Instant::now();
     }
+}
+
+async fn time_end(time: u64, last_time: &mut Option<(Instant, u64)>, global_state: &GlobalState) {
+    let mut state = global_state.state.lock().await;
+    let inspection_time = state
+        .inspection_end
+        .zip(state.inspection_start)
+        .map(|(end, start)| (end - start).as_millis())
+        .unwrap_or(0);
+
+    log::info!(
+        "Timer stopped: {}ms (inspection: {inspection_time}ms)",
+        time
+    );
+    if state.solve_time.is_none() {
+        state.delegate_used = false;
+        state.solve_time = Some(time);
+        state.penalty = if inspection_time >= INSPECTION_TIME_DNF {
+            Some(-1)
+        } else if inspection_time >= INSPECTION_TIME_PLUS2 {
+            Some(2)
+        } else {
+            None
+        };
+
+        if state.session_id.is_none() {
+            state.session_id = Some(uuid::Uuid::new_v4().to_string());
+        }
+
+        if state.current_competitor.is_some() {
+            if state.possible_groups.len() > 1 && state.solve_group.is_none() {
+                state.scene = Scene::GroupSelect;
+            } else {
+                state.scene = Scene::Finished;
+            }
+        } else if state.scene >= Scene::WaitingForCompetitor {
+            state.scene = Scene::WaitingForCompetitor;
+        }
+
+        #[cfg(not(feature = "qa"))]
+        if let Some(saved_state) = state.to_saved_global_state() {
+            saved_state.to_nvs(&global_state.nvs).await;
+        }
+
+        #[cfg(feature = "qa")]
+        crate::qa::send_qa_resp(crate::qa::QaSignal::Stackmat(time));
+    } else if state.scene == Scene::Timer {
+        state.scene = Scene::WaitingForCompetitor;
+    }
+
+    *last_time = None;
 }

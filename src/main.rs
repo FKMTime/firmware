@@ -165,12 +165,7 @@ async fn main(spawner: Spawner) {
     spawn_task(
         &spawner,
         "lcd_v3::lcd_task",
-        lcd_v3::lcd_task(
-            board.lcd,
-            global_state.clone(),
-            wifi_setup_sig.clone(),
-            board.digits_shifters.clone(),
-        ),
+        lcd_v3::lcd_task(board.lcd, global_state.clone(), wifi_setup_sig.clone()),
     );
     #[cfg(feature = "v4")]
     spawn_task(
@@ -213,13 +208,7 @@ async fn main(spawner: Spawner) {
     spawn_task(
         &spawner,
         "stackmat::stackmat_task",
-        stackmat::stackmat_task(
-            board.uart1,
-            board.stackmat_rx,
-            #[cfg(feature = "v3")]
-            board.digits_shifters,
-            global_state.clone(),
-        ),
+        stackmat::stackmat_task(board.uart1, board.stackmat_rx, global_state.clone()),
     );
     spawn_task(
         &spawner,

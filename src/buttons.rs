@@ -560,9 +560,16 @@ async fn submit_up(
             state_val.scene = crate::state::Scene::CompetitorInfo;
         }
 
+        unsafe {
+            crate::state::GROUP_LIMIT =
+                state_val.possible_groups[state_val.group_selected_idx].limit;
+        }
+
         state.state.signal();
 
         return Ok(false);
+    } else if state_val.scene == Scene::Timer {
+        state.timer_stop_signal.signal(());
     }
 
     if state_val.scene == Scene::Finished && !state_val.time_confirmed {

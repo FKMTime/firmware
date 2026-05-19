@@ -180,6 +180,7 @@ pub struct PossibleGroup {
     pub name: String,
     pub secondary_text: Option<String>,
     pub use_inspection: bool,
+    pub limit: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

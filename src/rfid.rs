@@ -471,6 +471,9 @@ async fn process_card_info_response(
             match resp.possible_groups.len() {
                 1 => {
                     state.solve_group = Some(resp.possible_groups[0].clone());
+                    unsafe {
+                        crate::state::GROUP_LIMIT = resp.possible_groups[0].limit;
+                    }
 
                     if state.solve_time.is_some() {
                         state.scene = crate::state::Scene::Finished;
