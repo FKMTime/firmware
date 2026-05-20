@@ -41,12 +41,28 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
             continue;
         }
 
-        let mut soc = gauge.state_of_charge().await.unwrap_or(0) as u8;
-        let mv = gauge.voltage().await.unwrap_or(0) as f64;
+        let mut soc = embassy_time::with_timeout(
+            embassy_time::Duration::from_millis(1500),
+            gauge.state_of_charge(),
+        )
+        .await
+        .unwrap_or(Ok(0))
+        .unwrap_or(0) as u8;
+        let mv =
+            embassy_time::with_timeout(embassy_time::Duration::from_millis(1500), gauge.voltage())
+                .await
+                .unwrap_or(Ok(0))
+                .unwrap_or(0) as f64;
         if soc == 0 {
             soc = bat_percentage(calculate(mv));
         }
-        let ma = gauge.average_current().await.unwrap_or(0);
+        let ma = embassy_time::with_timeout(
+            embassy_time::Duration::from_millis(1500),
+            gauge.average_current(),
+        )
+        .await
+        .unwrap_or(Ok(0))
+        .unwrap_or(0);
         let charging = ma >= 0;
 
         if last_soc != soc || last_charging != charging {

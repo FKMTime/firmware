@@ -437,7 +437,12 @@ pub async fn lcd_task(
             oled.fbuf.clear(BinaryColor::Off);
             _ = process_top_bar(&current_state, &global_state, &mut oled).await;
             _ = process_main(&current_state, &global_state, &wifi_setup_sig, &mut oled).await;
-            _ = oled.flush().await;
+            if let Err(_) =
+                embassy_time::with_timeout(embassy_time::Duration::from_millis(1500), oled.flush())
+                    .await
+            {
+                log::error!("OLED FLUSH TIMEOUT");
+            }
 
             loop {
                 Timer::after_millis(1000).await;
@@ -451,7 +456,14 @@ pub async fn lcd_task(
 
                     oled.fbuf.fill_solid(&TOPBAR_RECT, BinaryColor::Off);
                     _ = process_top_bar(&state_snapshot, &global_state, &mut oled).await;
-                    _ = oled.flush().await;
+                    if let Err(_) = embassy_time::with_timeout(
+                        embassy_time::Duration::from_millis(1500),
+                        oled.flush(),
+                    )
+                    .await
+                    {
+                        log::error!("OLED FLUSH TIMEOUT");
+                    }
 
                     global_state.show_battery.reset();
                 }
@@ -466,7 +478,14 @@ pub async fn lcd_task(
                         Text::with_text_style("Sleep", Point::zero(), SMALL_FONT, TEXT_CENTER);
 
                     center_screen(Chain::new(text)).draw(&mut oled.fbuf);
-                    _ = oled.flush().await;
+                    if let Err(_) = embassy_time::with_timeout(
+                        embassy_time::Duration::from_millis(1500),
+                        oled.flush(),
+                    )
+                    .await
+                    {
+                        log::error!("OLED FLUSH TIMEOUT");
+                    }
 
                     {
                         let mut state = global_state.state.lock().await;

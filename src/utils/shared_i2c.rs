@@ -21,14 +21,13 @@ impl embedded_hal_async::i2c::I2c for SharedI2C {
             return Err(esp_hal::i2c::master::Error::Timeout);
         };
 
-        i2c.lock().await.transaction(
-            address,
-            operations
-                .iter_mut()
-                .map(esp_hal::i2c::master::Operation::from)
-                .collect::<Vec<_>>()
-                .iter_mut(),
-        )
+        let mut guard = i2c.lock().await;
+        let fut = embedded_hal_async::i2c::I2c::transaction(&mut *guard, address, operations);
+
+        match embassy_time::with_timeout(embassy_time::Duration::from_millis(1500), fut).await {
+            Ok(res) => res,
+            Err(_) => Err(esp_hal::i2c::master::Error::Timeout),
+        }
     }
 }
 
