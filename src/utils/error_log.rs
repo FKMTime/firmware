@@ -22,6 +22,7 @@ pub fn clear_save_ready() {
     unsafe { SAVE_READY = false };
 }
 
+#[allow(dead_code)]
 pub mod codes {
     // RFID (1-9)
     pub const RFID_INIT_FAILED: u8 = 1;

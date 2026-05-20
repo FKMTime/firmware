@@ -208,7 +208,13 @@ async fn main(spawner: Spawner) {
     spawn_task(
         &spawner,
         "stackmat::stackmat_task",
-        stackmat::stackmat_task(board.uart1, board.stackmat_rx, global_state.clone()),
+        stackmat::stackmat_task(
+            #[cfg(not(feature = "timer-func"))]
+            board.uart1,
+            #[cfg(not(feature = "timer-func"))]
+            board.stackmat_rx,
+            global_state.clone(),
+        ),
     );
     spawn_task(
         &spawner,

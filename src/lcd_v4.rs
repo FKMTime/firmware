@@ -566,24 +566,25 @@ async fn process_top_bar(
         battery_layout(Chain::new(text)).draw(&mut oled.fbuf)?;
     }
 
-    topbar_icons_layout(
-        Chain::new(CrossedIcon::new(
-            Resources::WIFI,
-            !current_state.wifi_connected.unwrap_or(false),
-            9,
-        ))
-        .append(CrossedIcon::new(
-            Resources::SERVER,
-            !current_state.server_connected.unwrap_or(false),
-            9,
-        ))
-        .append(CrossedIcon::new(
-            Resources::TIMER,
-            !current_state.stackmat_connected.unwrap_or(false),
-            9,
-        )),
-    )
-    .draw(&mut oled.fbuf)?;
+    let topbar_chain = Chain::new(CrossedIcon::new(
+        Resources::WIFI,
+        !current_state.wifi_connected.unwrap_or(false),
+        9,
+    ))
+    .append(CrossedIcon::new(
+        Resources::SERVER,
+        !current_state.server_connected.unwrap_or(false),
+        9,
+    ));
+
+    #[cfg(not(feature = "timer-func"))]
+    let topbar_chain = topbar_chain.append(CrossedIcon::new(
+        Resources::TIMER,
+        !current_state.stackmat_connected.unwrap_or(false),
+        9,
+    ));
+
+    topbar_icons_layout(topbar_chain).draw(&mut oled.fbuf)?;
 
     let text = if current_state.selected_config_menu.is_some() {
         Some("CONFIG")

@@ -1,20 +1,78 @@
 use crate::{
     consts::{INSPECTION_TIME_DNF, INSPECTION_TIME_PLUS2},
-    state::{GlobalState, Scene, sleep_state},
-    utils::stackmat::{StackmatTimerState, parse_stackmat_data},
+    state::{GlobalState, Scene},
 };
 use alloc::string::ToString;
 use embassy_time::{Instant, Timer};
-use esp_hal::{gpio::AnyPin, peripherals::UART1, uart::UartRx};
 
 pub static mut CURRENT_TIME: u64 = 0;
 
+#[cfg(feature = "timer-func")]
+#[embassy_executor::task]
+pub async fn stackmat_task(global_state: GlobalState) {
+    {
+        let mut state = global_state.state.lock().await;
+        state.stackmat_connected = Some(true);
+    }
+
+    loop {
+        if global_state.timer_stop_signal.signaled() {
+            global_state.timer_stop_signal.reset();
+
+            let mut state = global_state.state.lock().await;
+            if state.scene <= Scene::Inspection && state.solve_time.is_none() {
+                if state.use_inspection() {
+                    state.inspection_end = Some(Instant::now());
+                }
+
+                state.scene = Scene::Timer;
+
+                let timer_start = Instant::now();
+                while !global_state.timer_stop_signal.signaled() {
+                    let time = timer_start.elapsed().as_millis();
+
+                    let time_limit = unsafe { crate::state::GROUP_LIMIT };
+                    if let Some(limit) = time_limit
+                        && time > limit
+                    {
+                        global_state.timer_signal.signal(limit);
+                        global_state.bt_display_signal.signal(limit);
+                        unsafe {
+                            CURRENT_TIME = limit;
+                        }
+                        time_end(limit, true, &mut None, &global_state).await;
+                    } else {
+                        global_state.timer_signal.signal(time);
+                        global_state.bt_display_signal.signal(time);
+                        unsafe {
+                            CURRENT_TIME = time;
+                        }
+
+                        if global_state.timer_stop_signal.signaled() {
+                            time_end(time, false, &mut None, &global_state).await;
+                        }
+                    }
+
+                    Timer::after_millis(1000 / 30).await;
+                }
+            }
+        }
+    }
+}
+
+#[cfg(not(feature = "timer-func"))]
 #[embassy_executor::task]
 pub async fn stackmat_task(
-    uart: UART1<'static>,
-    uart_pin: AnyPin<'static>,
+    uart: esp_hal::peripherals::UART1<'static>,
+    uart_pin: esp_hal::gpio::AnyPin<'static>,
     global_state: GlobalState,
 ) {
+    use crate::{
+        state::sleep_state,
+        utils::stackmat::{StackmatTimerState, parse_stackmat_data},
+    };
+    use esp_hal::uart::UartRx;
+
     let serial_config = esp_hal::uart::Config::default().with_baudrate(1200);
     let Ok(mut uart) = UartRx::new(uart, serial_config).map(|u| u.with_rx(uart_pin)) else {
         log::error!("Stackmat task error while creating UartRx instance!");

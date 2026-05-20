@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 pub fn parse_stackmat_data(data: &[u8; 8]) -> Result<(StackmatTimerState, u64), ()> {
     let mut state = StackmatTimerState::from_u8(data[0]);
 
@@ -19,6 +20,7 @@ pub fn parse_stackmat_data(data: &[u8; 8]) -> Result<(StackmatTimerState, u64), 
     Ok((state, total_ms))
 }
 
+#[allow(dead_code)]
 fn parse_time_str(data: &[u8]) -> Option<u16> {
     data.iter().try_fold(0u16, |acc, &x| {
         let digit = x.checked_sub(b'0')?;

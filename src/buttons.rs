@@ -572,6 +572,9 @@ async fn submit_up(
         state.timer_stop_signal.signal(());
     }
 
+    #[cfg(feature = "timer-func")]
+    state.timer_stop_signal.signal(());
+
     if state_val.scene == Scene::Finished && !state_val.time_confirmed {
         state_val.time_confirmed = true;
         state.state.signal();
@@ -706,14 +709,19 @@ async fn penalty_button(
 async fn submit_reset_competitor(
     _triggered: &ButtonTrigger,
     _hold_time: u64,
-    state: &GlobalState,
+    global_state: &GlobalState,
 ) -> Result<bool, ()> {
-    let mut state = state.state.lock().await;
+    let mut state = global_state.state.lock().await;
     if state.should_skip_other_actions() {
         return Ok(false);
     }
 
     state.reset_solve_state(None).await;
+
+    #[cfg(feature = "timer-func")]
+    if state.scene == Scene::Timer {
+        global_state.timer_stop_signal.signal(());
+    }
     Ok(false)
 }
 
