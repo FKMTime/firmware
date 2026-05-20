@@ -990,17 +990,24 @@ async fn process_main(
             let inspection_display =
                 show_inspection.then(|| ms_to_time_str(inspection_time.unwrap_or(0)));
 
-            let time_display = alloc::format!("{time_str}");
             let penalty = current_state.penalty.unwrap_or(0);
-            let penalty_str: alloc::string::String = match penalty {
-                -2 => "DNS".into(),
-                -1 => "DNF".into(),
-                1.. => alloc::format!("+{penalty}"),
-                _ => alloc::string::String::new(),
+            let main_time_display: String = match penalty {
+                -2 if solve_time == 0 => "DNS".into(),
+                -2 => format!("DNS ({time_str})"),
+                -1 if solve_time == 0 => "DNF".into(),
+                -1 => format!("DNF ({time_str})"),
+                1.. => format!("{time_str} +{penalty}"),
+                _ => time_str.to_string(),
             };
 
-            let time_text =
-                Text::with_text_style(&time_display, Point::zero(), TIMER_FONT, TEXT_CENTER);
+            let font = if main_time_display.len() > 13 {
+                NORMAL_FONT
+            } else {
+                TIMER_FONT
+            };
+
+            let main_time_text =
+                Text::with_text_style(&main_time_display, Point::zero(), font, TEXT_CENTER);
 
             if let Some(insp_str) = inspection_display {
                 let insp_str = format!(
@@ -1010,87 +1017,30 @@ async fn process_main(
                 let insp_text =
                     Text::with_text_style(&insp_str, Point::zero(), SMALL_TIMER_FONT, TEXT_CENTER);
 
-                if penalty_str.is_empty() {
-                    LinearLayout::vertical(
-                        Chain::new(
-                            LinearLayout::horizontal(Chain::new(time_text))
-                                .with_alignment(embedded_layout::align::vertical::Center)
-                                .arrange(),
-                        )
-                        .append(
-                            LinearLayout::horizontal(Chain::new(insp_text))
-                                .with_alignment(embedded_layout::align::vertical::Center)
-                                .arrange(),
-                        ),
+                LinearLayout::vertical(
+                    Chain::new(
+                        LinearLayout::horizontal(Chain::new(main_time_text))
+                            .with_alignment(embedded_layout::align::vertical::Center)
+                            .arrange(),
                     )
-                    .with_alignment(embedded_layout::align::horizontal::Center)
-                    .arrange()
-                    .align_to(
-                        &MAIN_RECT,
-                        embedded_layout::align::horizontal::Center,
-                        embedded_layout::align::vertical::Top,
-                    )
-                    .translate(Point::new(0, 2))
-                    .draw(&mut oled.fbuf)?;
-                } else {
-                    let penalty_text =
-                        Text::with_text_style(&penalty_str, Point::zero(), TIMER_FONT, TEXT_CENTER);
-                    LinearLayout::vertical(
-                        Chain::new(
-                            LinearLayout::horizontal(Chain::new(time_text).append(penalty_text))
-                                .with_alignment(embedded_layout::align::vertical::Center)
-                                .with_spacing(
-                                    embedded_layout::layout::linear::spacing::FixedMargin(4),
-                                )
-                                .arrange(),
-                        )
-                        .append(
-                            LinearLayout::horizontal(Chain::new(insp_text))
-                                .with_alignment(embedded_layout::align::vertical::Center)
-                                .arrange(),
-                        ),
-                    )
-                    .with_alignment(embedded_layout::align::horizontal::Center)
-                    .arrange()
-                    .align_to(
-                        &MAIN_RECT,
-                        embedded_layout::align::horizontal::Center,
-                        embedded_layout::align::vertical::Top,
-                    )
-                    .translate(Point::new(0, 2))
-                    .draw(&mut oled.fbuf)?;
-                }
-            } else if penalty_str.is_empty() {
-                LinearLayout::horizontal(Chain::new(time_text))
-                    .with_alignment(embedded_layout::align::vertical::Center)
-                    .arrange()
-                    .align_to(
-                        &MAIN_RECT,
-                        embedded_layout::align::horizontal::Center,
-                        embedded_layout::align::vertical::Top,
-                    )
-                    .translate(Point::new(0, 10))
-                    .draw(&mut oled.fbuf)?;
-            } else if solve_time == 0 {
-                let penalty_text =
-                    Text::with_text_style(&penalty_str, Point::zero(), TIMER_FONT, TEXT_CENTER);
-                LinearLayout::horizontal(Chain::new(penalty_text))
-                    .with_alignment(embedded_layout::align::vertical::Center)
-                    .with_spacing(embedded_layout::layout::linear::spacing::FixedMargin(4))
-                    .arrange()
-                    .align_to(
-                        &MAIN_RECT,
-                        embedded_layout::align::horizontal::Center,
-                        embedded_layout::align::vertical::Top,
-                    )
-                    .translate(Point::new(0, 10))
-                    .draw(&mut oled.fbuf)?;
+                    .append(
+                        LinearLayout::horizontal(Chain::new(insp_text))
+                            .with_alignment(embedded_layout::align::vertical::Center)
+                            .arrange(),
+                    ),
+                )
+                .with_alignment(embedded_layout::align::horizontal::Center)
+                .arrange()
+                .align_to(
+                    &MAIN_RECT,
+                    embedded_layout::align::horizontal::Center,
+                    embedded_layout::align::vertical::Top,
+                )
+                .translate(Point::new(0, 2))
+                .draw(&mut oled.fbuf)?;
             } else {
-                let penalty_text =
-                    Text::with_text_style(&penalty_str, Point::zero(), TIMER_FONT, TEXT_CENTER);
-                LinearLayout::horizontal(Chain::new(time_text).append(penalty_text))
+                LinearLayout::horizontal(Chain::new(main_time_text))
                     .with_alignment(embedded_layout::align::vertical::Center)
-                    .with_spacing(embedded_layout::layout::linear::spacing::FixedMargin(4))
                     .arrange()
                     .align_to(
                         &MAIN_RECT,
