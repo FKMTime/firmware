@@ -39,12 +39,16 @@ pub mod codes {
     // Battery (10-19)
     #[cfg(feature = "v4")]
     pub const BATTERY_INIT_FAILED: u8 = 10;
+    #[cfg(feature = "v4")]
+    pub const BATTERY_I2C_TIMEOUT: u8 = 11;
 
     // LCD / Display (20-29)
     #[cfg(feature = "v4")]
     pub const LCD_INIT_FAILED: u8 = 20;
     #[cfg(feature = "v4")]
     pub const LCD_FRAMEBUFFER_ALLOC_FAILED: u8 = 21;
+    #[cfg(feature = "v4")]
+    pub const LCD_FLUSH_TIMEOUT: u8 = 22;
 
     // Stackmat (30-39)
     pub const STACKMAT_UART_INIT_FAILED: u8 = 30;
@@ -86,6 +90,7 @@ pub mod codes {
 
     // Tasks / runtime (80-89)
     pub const TASK_SPAWN_FAILED: u8 = 80;
+    pub const SHARED_I2C_TIMEOUT: u8 = 81;
 
     // Crash recovery (90-99)
     #[cfg(feature = "release_build")]

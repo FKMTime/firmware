@@ -32,8 +32,10 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
         log::warn!("Battery was removed before boot!");
     }
 
-    let mut last_soc = 101;
+    let mut last_soc = 0;
     let mut last_charging = true;
+    let mut last_mv = 0.0;
+    let mut last_ma = 0;
     let mut last_sent = Instant::now();
     loop {
         if sleep_state() {
@@ -41,28 +43,51 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
             continue;
         }
 
-        let mut soc = embassy_time::with_timeout(
+        let mut soc = last_soc;
+        match embassy_time::with_timeout(
             embassy_time::Duration::from_millis(1500),
             gauge.state_of_charge(),
         )
         .await
-        .unwrap_or(Ok(0))
-        .unwrap_or(0) as u8;
-        let mv =
-            embassy_time::with_timeout(embassy_time::Duration::from_millis(1500), gauge.voltage())
-                .await
-                .unwrap_or(Ok(0))
-                .unwrap_or(0) as f64;
+        {
+            Ok(Ok(val)) => soc = val as u8,
+            _ => {
+                crate::utils::error_log::add_error(
+                    crate::utils::error_log::codes::BATTERY_I2C_TIMEOUT,
+                )
+                .await;
+            }
+        };
+        let mut mv = last_mv;
+        match embassy_time::with_timeout(embassy_time::Duration::from_millis(1500), gauge.voltage())
+            .await
+        {
+            Ok(Ok(val)) => mv = val as f64,
+            _ => {
+                crate::utils::error_log::add_error(
+                    crate::utils::error_log::codes::BATTERY_I2C_TIMEOUT,
+                )
+                .await;
+            }
+        };
         if soc == 0 {
             soc = bat_percentage(calculate(mv));
         }
-        let ma = embassy_time::with_timeout(
+        let mut ma = last_ma;
+        match embassy_time::with_timeout(
             embassy_time::Duration::from_millis(1500),
             gauge.average_current(),
         )
         .await
-        .unwrap_or(Ok(0))
-        .unwrap_or(0);
+        {
+            Ok(Ok(val)) => ma = val,
+            _ => {
+                crate::utils::error_log::add_error(
+                    crate::utils::error_log::codes::BATTERY_I2C_TIMEOUT,
+                )
+                .await;
+            }
+        };
         let charging = ma >= 0;
 
         if last_soc != soc || last_charging != charging {
@@ -91,6 +116,9 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
             log::info!("Battery {mv}mv {soc}% (avg current: {ma}mA)");
             last_sent = Instant::now();
         }
+
+        last_mv = mv;
+        last_ma = ma;
 
         Timer::after_millis(100).await;
     }

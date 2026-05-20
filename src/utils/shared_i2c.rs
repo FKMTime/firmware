@@ -1,4 +1,4 @@
-use alloc::{rc::Rc, vec::Vec};
+use alloc::rc::Rc;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use esp_hal::{Async, i2c::master::I2c};
 
@@ -26,7 +26,13 @@ impl embedded_hal_async::i2c::I2c for SharedI2C {
 
         match embassy_time::with_timeout(embassy_time::Duration::from_millis(1500), fut).await {
             Ok(res) => res,
-            Err(_) => Err(esp_hal::i2c::master::Error::Timeout),
+            Err(_) => {
+                crate::utils::error_log::add_error(
+                    crate::utils::error_log::codes::SHARED_I2C_TIMEOUT,
+                )
+                .await;
+                Err(esp_hal::i2c::master::Error::Timeout)
+            }
         }
     }
 }
