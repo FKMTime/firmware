@@ -438,8 +438,8 @@ pub async fn lcd_task(
             _ = process_top_bar(&current_state, &global_state, &mut oled).await;
             _ = process_main(&current_state, &global_state, &wifi_setup_sig, &mut oled).await;
             if embassy_time::with_timeout(embassy_time::Duration::from_millis(1500), oled.flush())
-                    .await
-                    .is_err()
+                .await
+                .is_err()
             {
                 log::error!("OLED FLUSH TIMEOUT");
                 crate::utils::error_log::add_error(
