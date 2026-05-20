@@ -26,9 +26,10 @@ pub async fn stackmat_task(global_state: GlobalState) {
                 }
 
                 state.scene = Scene::Timer;
+                drop(state);
 
                 let timer_start = Instant::now();
-                while !global_state.timer_stop_signal.signaled() {
+                loop {
                     let time = timer_start.elapsed().as_millis();
 
                     let time_limit = unsafe { crate::state::GROUP_LIMIT };
@@ -41,6 +42,8 @@ pub async fn stackmat_task(global_state: GlobalState) {
                             CURRENT_TIME = limit;
                         }
                         time_end(limit, true, &mut None, &global_state).await;
+                        global_state.timer_stop_signal.reset();
+                        break;
                     } else {
                         global_state.timer_signal.signal(time);
                         global_state.bt_display_signal.signal(time);
@@ -50,13 +53,19 @@ pub async fn stackmat_task(global_state: GlobalState) {
 
                         if global_state.timer_stop_signal.signaled() {
                             time_end(time, false, &mut None, &global_state).await;
+                            global_state.timer_stop_signal.reset();
+                            break;
                         }
                     }
 
                     Timer::after_millis(1000 / 30).await;
                 }
+            } else {
+                drop(state);
             }
         }
+
+        Timer::after_millis(10).await;
     }
 }
 
