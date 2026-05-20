@@ -89,10 +89,11 @@ pub fn ms_to_time_str(ms: u64) -> heapless::String<12> {
     let ms: u16 = (ms % 1000) as u16;
 
     let mut time_str = heapless::String::<12>::new();
+    let ms2 = ms / 10;
     if minutes > 0 {
-        _ = time_str.push_str(&alloc::format!("{minutes}:{seconds:02}.{ms:03}"));
+        _ = time_str.push_str(&alloc::format!("{minutes}:{seconds:02}.{ms2:02}"));
     } else {
-        _ = time_str.push_str(&alloc::format!("{seconds:01}.{ms:03}"));
+        _ = time_str.push_str(&alloc::format!("{seconds:01}.{ms2:02}"));
     }
 
     time_str
