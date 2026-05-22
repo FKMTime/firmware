@@ -1,7 +1,7 @@
 #[cfg(feature = "sleep")]
-pub const SLEEP_AFTER_MS: u64 = 60000 * 5;
+pub const SLEEP_AFTER_MS: u64 = 60000 * 100;
 #[cfg(feature = "sleep")]
-pub const DEEPER_SLEEP_AFTER_MS: u64 = 60000 * 15;
+pub const DEEPER_SLEEP_AFTER_MS: u64 = 60000 * 200;
 
 #[cfg(not(feature = "sleep"))]
 pub const SLEEP_AFTER_MS: u64 = 60000 * 9999;

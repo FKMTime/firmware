@@ -48,6 +48,9 @@ pub struct Board {
     #[cfg(feature = "v4")]
     pub buttons: [Input<'static>; 4],
 
+    #[cfg(all(feature = "v4", feature = "timer-func"))]
+    pub pads: (Input<'static>, Input<'static>),
+
     #[cfg(feature = "v3")]
     pub battery: esp_hal::peripherals::GPIO2<'static>,
     #[cfg(feature = "v3")]
@@ -135,6 +138,18 @@ impl Board {
             InputConfig::default().with_pull(Pull::Down),
         );
 
+        #[cfg(feature = "timer-func")]
+        let pad1 = Input::new(
+            peripherals.GPIO5,
+            InputConfig::default().with_pull(Pull::Down),
+        );
+
+        #[cfg(feature = "timer-func")]
+        let pad2 = Input::new(
+            peripherals.GPIO6,
+            InputConfig::default().with_pull(Pull::Down),
+        );
+
         let i2c = esp_hal::i2c::master::I2c::new(
             peripherals.I2C0,
             esp_hal::i2c::master::Config::default()
@@ -173,6 +188,9 @@ impl Board {
             buzzer,
             stackmat_rx,
             buttons: [b1, b2, b3, b4],
+
+            #[cfg(feature = "timer-func")]
+            pads: (pad1, pad2),
 
             usb_dp,
             usb_dm,

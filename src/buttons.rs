@@ -569,11 +569,9 @@ async fn submit_up(
 
         return Ok(false);
     } else if state_val.scene == Scene::Timer {
+        #[cfg(not(feature = "timer-func"))]
         state.timer_stop_signal.signal(());
     }
-
-    #[cfg(feature = "timer-func")]
-    state.timer_stop_signal.signal(());
 
     if state_val.scene == Scene::Finished && !state_val.time_confirmed {
         state_val.time_confirmed = true;
@@ -716,12 +714,8 @@ async fn submit_reset_competitor(
         return Ok(false);
     }
 
+    global_state.timer_stop_signal.signal(());
     state.reset_solve_state(None).await;
-
-    #[cfg(feature = "timer-func")]
-    if state.scene == Scene::Timer {
-        global_state.timer_stop_signal.signal(());
-    }
     Ok(false)
 }
 

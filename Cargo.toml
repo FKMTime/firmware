@@ -22,7 +22,7 @@ esp-alloc = "0.10.0"
 #esp-hal-wifimanager = { version = "0.2.10", default-features = false, features = ["ap", "ble", "esp32c3", "ota", "custom_panel"] }
 esp-hal-wifimanager = { git = "https://github.com/filipton/esp-hal-wifimanager.git", default-features = false, features = ["ap", "ble", "esp32c3", "ota", "custom_panel"] }
 serde = { version = "1.0.228", features = ["alloc", "derive"], default-features = false }
-serde_json = { version = "1.0.149", default-features = false, features = ["alloc"] }
+serde_json = { version = "1.0.150", default-features = false, features = ["alloc"] }
 adv-shift-registers = "0.2.5"
 embedded-hal = "1.0.0"
 esp-hal-mdns = "0.1.4"
@@ -54,7 +54,7 @@ display-interface = { version = "0.5.0", optional = true }
 display-interface-i2c = { version = "0.5.0", optional = true }
 embedded-graphics = { version = "0.8.2", optional = true }
 embedded-graphics-framebuf = { version = "0.5.0", optional = true }
-oled_async = { version = "0.2.0", features = ["i2c"], optional = true }
+oled_async = { version = "0.2.1", features = ["i2c"], optional = true }
 bq27441 = { version = "0.1.0", features = ["async", "embassy"], optional = true }
 profont = { version = "0.7.0", optional = true }
 embedded-layout = { version = "0.4.2", optional = true }
@@ -68,7 +68,7 @@ ag-lcd-async = { git = "https://github.com/filipton/ag-lcd-async", features = []
 elliptic-curve = { git = "https://github.com/filipton/rust-crypto-traits.git" }
 
 [features]
-default = ["sleep", "v4"]
+default = ["sleep", "v4", "timer-func"]
 gen_version = []
 bat_dev_lcd = []
 release_build = ["sleep"]

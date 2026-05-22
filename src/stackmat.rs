@@ -1,3 +1,6 @@
+#[cfg(all(feature = "v3", feature = "timer-func"))]
+compile_error!("feature `timer-func` is not supported in v3");
+
 use crate::{
     consts::{INSPECTION_TIME_DNF, INSPECTION_TIME_PLUS2},
     state::{GlobalState, Scene},
@@ -9,14 +12,19 @@ pub static mut CURRENT_TIME: u64 = 0;
 
 #[cfg(feature = "timer-func")]
 #[embassy_executor::task]
-pub async fn stackmat_task(global_state: GlobalState) {
+pub async fn stackmat_task(
+    global_state: GlobalState,
+    mut pads: (esp_hal::gpio::Input<'static>, esp_hal::gpio::Input<'static>),
+) {
     {
         let mut state = global_state.state.lock().await;
         state.stackmat_connected = Some(true);
     }
 
     loop {
-        if global_state.timer_stop_signal.signaled() {
+        if pads.0.is_high() && pads.1.is_high() {
+            embassy_futures::select::select(pads.0.wait_for_low(), pads.1.wait_for_low()).await;
+            let timer_start = Instant::now();
             global_state.timer_stop_signal.reset();
 
             let mut state = global_state.state.lock().await;
@@ -28,9 +36,13 @@ pub async fn stackmat_task(global_state: GlobalState) {
                 state.scene = Scene::Timer;
                 drop(state);
 
-                let timer_start = Instant::now();
                 loop {
                     let time = timer_start.elapsed().as_millis();
+
+                    if global_state.timer_stop_signal.signaled() {
+                        global_state.timer_stop_signal.wait().await;
+                        break;
+                    }
 
                     let time_limit = unsafe { crate::state::GROUP_LIMIT };
                     if let Some(limit) = time_limit
@@ -42,7 +54,6 @@ pub async fn stackmat_task(global_state: GlobalState) {
                             CURRENT_TIME = limit;
                         }
                         time_end(limit, true, &mut None, &global_state).await;
-                        global_state.timer_stop_signal.reset();
                         break;
                     } else {
                         global_state.timer_signal.signal(time);
@@ -51,9 +62,14 @@ pub async fn stackmat_task(global_state: GlobalState) {
                             CURRENT_TIME = time;
                         }
 
-                        if global_state.timer_stop_signal.signaled() {
+                        if pads.0.is_high() && pads.1.is_high() {
                             time_end(time, false, &mut None, &global_state).await;
-                            global_state.timer_stop_signal.reset();
+                            embassy_futures::select::select(
+                                pads.0.wait_for_low(),
+                                pads.1.wait_for_low(),
+                            )
+                            .await;
+
                             break;
                         }
                     }

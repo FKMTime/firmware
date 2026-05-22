@@ -214,6 +214,8 @@ async fn main(spawner: Spawner) {
             #[cfg(not(feature = "timer-func"))]
             board.stackmat_rx,
             global_state.clone(),
+            #[cfg(feature = "timer-func")]
+            board.pads,
         ),
     );
     spawn_task(
