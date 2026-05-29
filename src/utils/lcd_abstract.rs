@@ -141,6 +141,7 @@ impl<const LINE_SIZE: usize, const X: usize, const Y: usize, const SCROLLER_WT: 
 
         self.lines[line][..X].fill(b' ');
         self.sizes[line] = 0;
+        self.old_display[line].fill(0xFF);
         Ok(())
     }
 
@@ -156,6 +157,8 @@ impl<const LINE_SIZE: usize, const X: usize, const Y: usize, const SCROLLER_WT: 
         let display_data = self.display_data();
         for (y, line) in display_data.0.iter().enumerate() {
             if line.1 {
+                display_data.1[y].fill(0xFF);
+
                 lcd.set_position(0, y as u8).await;
                 lcd.print(unsafe { core::str::from_utf8_unchecked(line.0) })
                     .await;
