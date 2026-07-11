@@ -37,9 +37,9 @@ portable-atomic = { version = "1.13.1", default-features = false }
 critical-section = "1.2.0"
 getrandom = { version = "=0.2.15", features = ["custom"] }
 uuid = { version = "=1.12.1", default-features = false, features = ["v4"] }
-esp-hal-ota = { version = "0.5.0", features = ["esp32c3"] }
+esp-hal-ota = { version = "0.5.7", features = ["esp32c3"] }
 esp32c3 = { version = "0.32.2" }
-anyhow = { version = "1.0.102", default-features = false }
+anyhow = { version = "1.0.103", default-features = false }
 embedded-hal-bus = { version = "0.3.0", features = ["async"] }
 #embedded-tls = { git = "https://github.com/drogue-iot/embedded-tls.git", default-features = false, features = ["alloc", "embedded-io-adapters", "log"] }
 embedded-tls = { git = "https://github.com/filipton/embedded-tls", default-features = false, features = ["alloc", "embedded-io-adapters", "log"] }
@@ -47,7 +47,6 @@ rand_core = { version = "0.6.4", features = ["getrandom"] }
 esp-hal-mfrc522 = { version = "0.3.3", features = ["embassy-time"] }
 esp-bootloader-esp-idf = { version = "0.5.0", features = ["log-04", "esp32c3"] }
 trouble-host = { version = "0.6.0", features = ["scan", "security"] }
-qrcodegen-no-heap = "1.8.1"
 
 # v4 only
 display-interface = { version = "0.5.0", optional = true }
@@ -59,6 +58,7 @@ bq27441 = { version = "0.1.0", features = ["async", "embassy"], optional = true 
 profont = { version = "0.7.0", optional = true }
 embedded-layout = { version = "0.4.2", optional = true }
 embedded-text = { version = "0.7.3", optional = true }
+qrcodegen-no-heap = { version = "1.8.1", optional = true }
 
 #v3 only
 dyn-smooth = { version = "0.2.0", optional = true }
@@ -75,7 +75,7 @@ timer-func = []
 sleep = []
 auto_add = []
 v3 = ["dep:dyn-smooth", "dep:ag-lcd-async"]
-v4 = ["dep:display-interface", "dep:display-interface-i2c", "dep:embedded-graphics", "dep:embedded-graphics-framebuf", "dep:oled_async", "dep:bq27441", "dep:profont", "dep:embedded-layout", "dep:embedded-text"]
+v4 = ["dep:display-interface", "dep:display-interface-i2c", "dep:embedded-graphics", "dep:embedded-graphics-framebuf", "dep:oled_async", "dep:bq27441", "dep:profont", "dep:embedded-layout", "dep:embedded-text", "dep:qrcodegen-no-heap"]
 
 [profile.dev]
 opt-level = 3
