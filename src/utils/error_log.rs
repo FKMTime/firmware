@@ -98,16 +98,49 @@ pub mod codes {
     pub const BACKTRACE_READ_FAILED: u8 = 91;
 }
 
+/// Size of the log entry at `offset` in `buf`, or None if malformed/truncated.
+fn entry_size(buf: &[u8], offset: usize) -> Option<usize> {
+    match *buf.get(offset)? {
+        b'N' => Some(1 + 8 + 1),
+        b'S' => {
+            let size = *buf.get(offset + 1 + 8 + 16)? as usize;
+            Some(1 + 8 + 16 + 1 + size * 4)
+        }
+        _ => None,
+    }
+}
+
+/// Ensures there is room for `needed` bytes at `offset`, dropping the oldest
+/// entries when the buffer is full. Returns false if the entry can never fit.
+fn ensure_space(buf: &mut [u8], offset: &mut usize, needed: usize) -> bool {
+    while *offset + needed > buf.len() {
+        match entry_size(buf, 0) {
+            Some(size) if size <= *offset => {
+                buf.copy_within(size..*offset, 0);
+                *offset -= size;
+            }
+            _ => return false,
+        }
+    }
+
+    true
+}
+
 pub async fn add_error(code: u8) {
     unsafe {
         #[allow(static_mut_refs)]
         let error_log_buf = &mut (*ERROR_LOG_BUF.as_mut_ptr());
 
-        error_log_buf[OFFSET] = b'N';
-        error_log_buf[OFFSET + 1..OFFSET + 1 + 8].copy_from_slice(&current_epoch().to_be_bytes());
-        error_log_buf[OFFSET + 1 + 8] = code;
+        let mut offset = OFFSET;
+        if !ensure_space(error_log_buf, &mut offset, 1 + 8 + 1) {
+            return;
+        }
 
-        OFFSET += 1 + 8 + 1;
+        error_log_buf[offset] = b'N';
+        error_log_buf[offset + 1..offset + 1 + 8].copy_from_slice(&current_epoch().to_be_bytes());
+        error_log_buf[offset + 1 + 8] = code;
+
+        OFFSET = offset + 1 + 8 + 1;
         SAVE_READY = true;
     }
 }
@@ -117,23 +150,28 @@ pub async fn add_stacktrace(addrs: &[u32], version: &str, timestamp: u64) {
         #[allow(static_mut_refs)]
         let error_log_buf = &mut (*ERROR_LOG_BUF.as_mut_ptr());
 
+        let mut offset = OFFSET;
+        if !ensure_space(error_log_buf, &mut offset, 1 + 8 + 16 + 1 + addrs.len() * 4) {
+            return;
+        }
+
         let mut version_buf = [0; 16];
         let version_bytes = version.as_bytes();
         let version_len = core::cmp::min(version_bytes.len(), version_buf.len());
         version_buf[..version_len].copy_from_slice(&version_bytes[..version_len]);
 
-        error_log_buf[OFFSET] = b'S';
-        error_log_buf[OFFSET + 1..OFFSET + 1 + 8].copy_from_slice(&timestamp.to_be_bytes());
-        error_log_buf[OFFSET + 1 + 8..OFFSET + 1 + 8 + 16].copy_from_slice(&version_buf);
-        error_log_buf[OFFSET + 1 + 8 + 16] = addrs.len() as u8;
+        error_log_buf[offset] = b'S';
+        error_log_buf[offset + 1..offset + 1 + 8].copy_from_slice(&timestamp.to_be_bytes());
+        error_log_buf[offset + 1 + 8..offset + 1 + 8 + 16].copy_from_slice(&version_buf);
+        error_log_buf[offset + 1 + 8 + 16] = addrs.len() as u8;
 
         for (i, &addr) in addrs.iter().enumerate() {
-            let start = OFFSET + 1 + 8 + 16 + 1 + i * 4;
+            let start = offset + 1 + 8 + 16 + 1 + i * 4;
             let end = start + 4;
             error_log_buf[start..end].copy_from_slice(&addr.to_be_bytes());
         }
 
-        OFFSET += 1 + 8 + 16 + 1 + addrs.len() * 4;
+        OFFSET = offset + 1 + 8 + 16 + 1 + addrs.len() * 4;
         SAVE_READY = true;
     }
 }
@@ -150,29 +188,27 @@ pub async fn load_error_log(nvs: &Nvs) {
         return;
     };
 
-    let loaded_len = buf.len();
-
     #[allow(static_mut_refs)]
     let error_log_buf = unsafe { &mut (*ERROR_LOG_BUF.as_mut_ptr()) };
-    error_log_buf[..buf.len()].copy_from_slice(&buf);
+
+    if buf.len() > error_log_buf.len() {
+        // stored log is oversized/corrupt - start fresh instead of panicking
+        unsafe { OFFSET = 0 };
+        return;
+    }
+
+    let loaded_len = buf.len();
+    error_log_buf[..loaded_len].copy_from_slice(&buf);
     drop(buf);
 
+    // validate structure, truncate at the first malformed entry
     let mut offset = 0;
     while offset < loaded_len {
-        let log_type = error_log_buf[offset];
-        match log_type {
-            b'N' => {
-                // u64 + u8
-                offset += 1 + 8 + 1;
+        match entry_size(error_log_buf, offset) {
+            Some(size) if offset + size <= loaded_len => {
+                offset += size;
             }
-            b'S' => {
-                // u64 + 16 * u8 + u8 (size) + size * u32
-                let size = error_log_buf[offset + 1 + 8 + 16];
-                offset += 1 + 8 + 16 + 1 + size as usize * 4;
-            }
-            _ => {
-                break;
-            }
+            _ => break,
         }
     }
 
