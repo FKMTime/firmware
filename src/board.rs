@@ -1,7 +1,7 @@
 use esp_hal::{
     gpio::{AnyPin, Input, InputConfig, Output, Pin, Pull},
     peripherals::{
-        ADC1, AES, BT, FLASH, Peripherals, SPI2, SW_INTERRUPT, TIMG0, TIMG1, UART1, WIFI,
+        ADC1, AES, BT, FLASH, Peripherals, SHA, SPI2, SW_INTERRUPT, TIMG0, TIMG1, UART1, WIFI,
     },
     rng::Rng,
     timer::timg::TimerGroup,
@@ -23,6 +23,7 @@ pub struct Board {
     pub bt: BT<'static>,
     pub spi_dma: esp_hal::peripherals::DMA_CH0<'static>,
     pub aes: AES<'static>,
+    pub sha: SHA<'static>,
     pub flash: FLASH<'static>,
     pub sw_interrupt: SW_INTERRUPT<'static>,
 
@@ -79,6 +80,7 @@ impl Board {
         let wifi = peripherals.WIFI;
         let bt = peripherals.BT;
         let aes = peripherals.AES;
+        let sha = peripherals.SHA;
         let flash = peripherals.FLASH;
         let sw_interrupt = peripherals.SW_INTERRUPT;
 
@@ -179,6 +181,7 @@ impl Board {
             wifi,
             bt,
             aes,
+            sha,
             flash,
             sw_interrupt,
 
@@ -214,6 +217,7 @@ impl Board {
         let wifi = peripherals.WIFI;
         let bt = peripherals.BT;
         let aes = peripherals.AES;
+        let sha = peripherals.SHA;
         let flash = peripherals.FLASH;
         let sw_interrupt = peripherals.SW_INTERRUPT;
 
@@ -263,6 +267,7 @@ impl Board {
             wifi,
             bt,
             aes,
+            sha,
             flash,
             sw_interrupt,
 

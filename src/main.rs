@@ -138,12 +138,27 @@ async fn main(spawner: Spawner) {
 
     utils::error_log::load_error_log(&nvs).await;
 
-    let global_state = Rc::new(GlobalStateInner::new(&nvs, board.aes));
+    let global_state = Rc::new(GlobalStateInner::new(&nvs, board.aes, board.sha));
     let wifi_setup_sig = Rc::new(Signal::new());
     let wifi_conn_sig = Rc::new(Signal::new());
 
-    if let Ok(sign_key) = nvs.get::<u32>(NVS_SIGN_KEY).await {
-        unsafe { crate::state::SIGN_KEY = sign_key };
+    if let Ok(sign_key) = nvs.get::<alloc::vec::Vec<u8>>(NVS_SIGN_KEY).await {
+        if sign_key.len() == 32 {
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&sign_key);
+            crate::state::set_sign_key(key);
+        } else {
+            log::warn!("Ignoring SIGN_KEY of unexpected length {}", sign_key.len());
+        }
+    }
+    if let Ok(pin) = nvs.get::<alloc::vec::Vec<u8>>(crate::consts::NVS_TLS_PIN).await {
+        if pin.len() == 32 {
+            let mut fp = [0u8; 32];
+            fp.copy_from_slice(&pin);
+            crate::state::set_tls_pin(fp);
+        } else {
+            log::warn!("Ignoring TLS_PIN of unexpected length {}", pin.len());
+        }
     }
     #[cfg(feature = "v4")]
     if let Ok(saved_volume) = nvs.get::<u8>(crate::consts::NVS_BUZZER_VOLUME).await {

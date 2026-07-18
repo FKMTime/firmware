@@ -12,14 +12,76 @@ use embassy_sync::{
 };
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal::aes::Aes;
+use esp_hal::sha::Sha;
 use esp_hal_wifimanager::Nvs;
 use serde::{Deserialize, Serialize};
 
-pub static mut SIGN_KEY: u32 = 0;
+/// 256-bit device secret (HMAC key). Zero = unset.
+pub static mut SIGN_KEY: [u8; 32] = [0u8; 32];
+/// True when TLS pin matches (or was just set on Add for this session's peer).
 pub static mut TRUST_SERVER: bool = false;
+/// SHA-256 of last successful TLS peer end-entity cert (for pin-on-Add).
+pub static mut LAST_PEER_CERT_FP: [u8; 32] = [0u8; 32];
+pub static mut HAS_LAST_PEER_CERT_FP: bool = false;
+/// Pinned TLS fingerprint from NVS (empty / all-zero = not pinned yet).
+pub static mut TLS_PIN: [u8; 32] = [0u8; 32];
+pub static mut HAS_TLS_PIN: bool = false;
 pub static mut FKM_TOKEN: i32 = 0;
 pub static mut SECURE_RFID: bool = false;
 pub static mut AUTO_SETUP: bool = false;
+
+#[inline]
+pub fn sign_key_bytes() -> [u8; 32] {
+    unsafe { *(&raw const SIGN_KEY) }
+}
+
+#[inline]
+pub fn sign_key_is_set() -> bool {
+    sign_key_bytes().iter().any(|&b| b != 0)
+}
+
+/// Hex (lowercase) of SIGN_KEY for Add / wire format.
+pub fn sign_key_hex() -> alloc::string::String {
+    let mut out = alloc::string::String::with_capacity(64);
+    for b in sign_key_bytes() {
+        use core::fmt::Write;
+        let _ = write!(out, "{b:02x}");
+    }
+    out
+}
+
+#[inline]
+pub fn set_sign_key(key: [u8; 32]) {
+    unsafe {
+        *(&raw mut SIGN_KEY) = key;
+    }
+}
+
+#[inline]
+pub fn tls_pin_bytes() -> [u8; 32] {
+    unsafe { *(&raw const TLS_PIN) }
+}
+
+#[inline]
+pub fn set_tls_pin(pin: [u8; 32]) {
+    unsafe {
+        *(&raw mut TLS_PIN) = pin;
+        HAS_TLS_PIN = true;
+    }
+}
+
+#[inline]
+pub fn last_peer_cert_fp() -> [u8; 32] {
+    unsafe { *(&raw const LAST_PEER_CERT_FP) }
+}
+
+#[inline]
+pub fn set_last_peer_cert_fp(fp: [u8; 32]) {
+    unsafe {
+        *(&raw mut LAST_PEER_CERT_FP) = fp;
+        HAS_LAST_PEER_CERT_FP = true;
+    }
+}
 
 pub static mut GROUP_LIMIT: Option<u64> = None;
 
@@ -190,13 +252,19 @@ pub struct GlobalStateInner {
 
     pub nvs: Nvs,
     pub aes: Mutex<NoopRawMutex, Aes<'static>>,
+    /// Hardware SHA accelerator (ESP32-C3). Used for TLS cert pinning hashes.
+    pub sha: Mutex<NoopRawMutex, Sha<'static>>,
 
     #[cfg(feature = "e2e")]
     pub e2e: End2End,
 }
 
 impl GlobalStateInner {
-    pub fn new(nvs: &Nvs, aes: esp_hal::peripherals::AES<'static>) -> Self {
+    pub fn new(
+        nvs: &Nvs,
+        aes: esp_hal::peripherals::AES<'static>,
+        sha: esp_hal::peripherals::SHA<'static>,
+    ) -> Self {
         Self {
             state: SignaledMutex::new(SignaledGlobalStateInner::new()),
             timer_signal: Signal::new(),
@@ -211,12 +279,14 @@ impl GlobalStateInner {
 
             nvs: nvs.clone(),
             aes: Mutex::new(Aes::new(aes)),
+            sha: Mutex::new(Sha::new(sha)),
 
             #[cfg(feature = "e2e")]
             e2e: End2End::new(),
         }
     }
-}
+
+    }
 
 #[derive(Debug, Clone)]
 pub struct SignaledGlobalStateInner {

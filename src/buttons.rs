@@ -391,6 +391,7 @@ async fn submit_up(
 
                     _ = state.nvs.delete(esp_hal_wifimanager::WIFI_NVS_KEY).await;
                     _ = state.nvs.delete(NVS_SIGN_KEY).await;
+                    _ = state.nvs.delete(crate::consts::NVS_TLS_PIN).await;
                     _ = state.nvs.delete(NVS_BONDING_KEY).await;
                     _ = state.nvs.delete(NVS_ERROR_LOG).await;
 
@@ -457,6 +458,7 @@ async fn submit_up(
 
                     _ = state.nvs.delete(esp_hal_wifimanager::WIFI_NVS_KEY).await;
                     _ = state.nvs.delete(NVS_SIGN_KEY).await;
+                    _ = state.nvs.delete(crate::consts::NVS_TLS_PIN).await;
                     _ = state.nvs.delete(NVS_BONDING_KEY).await;
                     _ = state.nvs.delete(NVS_ERROR_LOG).await;
 
@@ -524,22 +526,39 @@ async fn submit_up(
         return Ok(true);
     }
 
-    // Device add
+    // Device add: pin current TLS peer cert + enroll 256-bit secret
     if !state_val.device_added.unwrap_or(false) {
-        let mut sign_key = [0; 4];
+        // Require a TLS peer cert fingerprint from the current session
+        if unsafe { !crate::state::HAS_LAST_PEER_CERT_FP } {
+            state_val.error_text =
+                Some(alloc::string::String::from("No TLS cert to pin!"));
+            state.state.signal();
+            return Ok(true);
+        }
+
+        let mut sign_key = [0u8; 32];
         _ = getrandom::getrandom(&mut sign_key);
-        let sign_key = u32::from_be_bytes(sign_key) >> 1;
 
         _ = state.nvs.delete(NVS_SIGN_KEY).await;
-        _ = state.nvs.set(NVS_SIGN_KEY, sign_key).await;
-        unsafe { crate::state::SIGN_KEY = sign_key };
-        unsafe { crate::state::TRUST_SERVER = true };
+        _ = state.nvs.set(NVS_SIGN_KEY, sign_key.as_slice()).await;
+        crate::state::set_sign_key(sign_key);
+        // Pin the peer we are currently talking to
+        let peer_fp = crate::state::last_peer_cert_fp();
+        crate::state::set_tls_pin(peer_fp);
+        unsafe {
+            crate::state::TRUST_SERVER = true;
+        }
+        _ = state.nvs.delete(crate::consts::NVS_TLS_PIN).await;
+        _ = state
+            .nvs
+            .set(crate::consts::NVS_TLS_PIN, peer_fp.as_slice())
+            .await;
 
         crate::ws::send_packet(crate::structs::TimerPacket {
             tag: None,
             data: crate::structs::TimerPacketInner::Add {
                 firmware: alloc::string::ToString::to_string(crate::version::FIRMWARE),
-                sign_key: unsafe { crate::state::SIGN_KEY },
+                sign_key: crate::state::sign_key_hex(),
             },
         })
         .await;
@@ -805,7 +824,6 @@ async fn delegate_hold(
                 delegate: true,
                 inspection_time,
                 group_id: solve_group,
-                sign_key: unsafe { crate::state::SIGN_KEY },
             };
 
             state_val.delegate_hold = Some(3);

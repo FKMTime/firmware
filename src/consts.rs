@@ -36,6 +36,9 @@ pub const BUZZER_VOLUME_MAX: u8 = 25;
 pub const BUZZER_VOLUME_DEFAULT: u8 = 5;
 
 pub const NVS_BONDING_KEY: &str = "BONDING_KEY";
+/// 32-byte device secret (HMAC key). Stored as raw bytes in NVS.
 pub const NVS_SIGN_KEY: &str = "SIGN_KEY";
+/// SHA-256 of pinned micro-connector TLS end-entity cert (32 bytes).
+pub const NVS_TLS_PIN: &str = "TLS_PIN";
 pub const NVS_SAVED_STATE: &str = "SAVED_STATE";
 pub const NVS_ERROR_LOG: &str = "ERROR_LOG";

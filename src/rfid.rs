@@ -406,7 +406,6 @@ pub async fn rfid_task(
                 card_id: card_uid as u64,
                 is_competitor,
                 attendance_device: None,
-                sign_key: unsafe { crate::state::SIGN_KEY },
             },
         )
         .await;
@@ -547,7 +546,6 @@ async fn process_card_info_response(
                         delegate: false,
                         inspection_time,
                         group_id: solve_group.group_id.clone(),
-                        sign_key: unsafe { crate::state::SIGN_KEY },
                     },
                 )
                 .await;

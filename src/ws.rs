@@ -11,11 +11,19 @@ use embassy_sync::{
     signal::Signal,
 };
 use embassy_time::{Duration, Instant, Timer, WithTimeout};
-use embedded_tls::{Aes128GcmSha256, NoVerify, TlsConfig, TlsConnection, TlsContext};
+use embedded_tls::{
+    Aes128GcmSha256, CertificateEntryRef, CertificateRef, TlsConfig, TlsConnection, TlsContext,
+    TlsError, TlsVerifier,
+};
 use esp_hal_ota::Ota;
 use esp_storage::FlashStorage;
+use esp_hal::sha::Sha;
+use hmac::{Hmac, Mac};
 use rand_core::OsRng;
+use sha2::Sha256;
 use ws_framer::{WsFrame, WsFrameOwned, WsRxFramer, WsTxFramer, WsUrl, WsUrlOwned};
+
+type HmacSha256 = Hmac<Sha256>;
 
 static FRAME_CHANNEL: Channel<CriticalSectionRawMutex, WsFrameOwned, 32> = Channel::new();
 static TAGGED_RETURN: PubSubChannel<CriticalSectionRawMutex, (u64, TimerPacket), 20, 20, 4> =
@@ -185,26 +193,62 @@ async fn ws_loop(
             continue;
         }
 
-        let mut socket = if ws_url.secure {
-            let mut tls = TlsConnection::new(socket, ssl_rx_buf, ssl_tx_buf);
+        // TLS is mandatory — cleartext WS is no longer supported.
+        if !ws_url.secure {
+            log::error!("Refusing cleartext ws:// connection; use wss://");
+            Timer::after_millis(WS_RETRY_MS).await;
+            continue;
+        }
 
-            let config = TlsConfig::new().enable_rsa_signatures();
-            tls.open(TlsContext::new(
+        let mut tls = TlsConnection::new(socket, ssl_rx_buf, ssl_tx_buf);
+        let config = TlsConfig::new().enable_rsa_signatures();
+        let mut peer_fp = [0u8; 32];
+        let mut has_peer_fp = false;
+        // Hold HW SHA for the handshake so the verifier can hash the peer cert.
+        let mut sha_guard = global_state.sha.lock().await;
+        let open_res = tls
+            .open(TlsContext::new(
                 &config,
                 Provider {
                     rng: OsRng,
-                    verifier: NoVerify {},
+                    verifier: FingerprintCaptureVerifier {
+                        peer_fp: &mut peer_fp,
+                        has_peer_fp: &mut has_peer_fp,
+                        sha: &mut sha_guard,
+                    },
                 },
             ))
-            .await
-            .map_err(|e| {
-                log::error!("tls open error: {e:?}");
-            })?;
+            .await;
+        drop(sha_guard);
+        if let Err(e) = open_res {
+            log::error!("tls open error: {e:?}");
+            Timer::after_millis(WS_RETRY_MS).await;
+            continue;
+        }
 
-            WsSocket::Tls(Box::new(tls))
+        if has_peer_fp {
+            crate::state::set_last_peer_cert_fp(peer_fp);
+            // TRUST_SERVER only when pinned fingerprint matches this peer.
+            let trusted = unsafe { crate::state::HAS_TLS_PIN }
+                && crate::state::tls_pin_bytes() == peer_fp;
+            unsafe { crate::state::TRUST_SERVER = trusted };
+            if !trusted {
+                log::warn!("TLS peer cert not pinned / mismatch — untrusted session");
+                #[cfg(not(feature = "e2e"))]
+                if unsafe { crate::state::HAS_TLS_PIN } {
+                    global_state.state.lock().await.error_text =
+                        Some("Server Not Trusted!".to_string());
+                }
+            } else {
+                log::info!("TLS peer cert pin matched — trusted session");
+            }
         } else {
-            WsSocket::Raw(socket)
-        };
+            log::error!("TLS completed without capturing peer cert fingerprint");
+            Timer::after_millis(WS_RETRY_MS).await;
+            continue;
+        }
+
+        let mut socket = WsSocket::Tls(Box::new(tls));
 
         {
             let mut state = global_state.state.lock().await;
@@ -216,15 +260,13 @@ async fn ws_loop(
         let mut tx_framer = WsTxFramer::new(true, ws_tx_buf);
         let mut rx_framer = WsRxFramer::new(ws_rx_buf);
 
-        let random = crate::utils::get_random_u64();
         let path = alloc::format!(
-            "{}?id={}&ver={}&hw={}&firmware={}&random={}",
+            "{}?id={}&ver={}&hw={}&firmware={}",
             ws_url.path,
             crate::utils::get_efuse_u32(),
             crate::version::VERSION,
             crate::version::HW_VER,
             crate::version::FIRMWARE,
-            random
         );
 
         socket
@@ -232,7 +274,7 @@ async fn ws_loop(
             .await
             .map_err(|_| ())?;
 
-        let headers = loop {
+        loop {
             let n = socket.read(rx_framer.mut_buf()).await.map_err(|_| ())?;
             if n == 0 {
                 log::error!("error while reading http response");
@@ -250,42 +292,7 @@ async fn ws_loop(
             let res = rx_framer.process_http_response(n);
             if let Some(resp) = res {
                 log::info!("http_resp_code: {}", resp.status_code);
-                break resp.headers;
-            }
-        };
-
-        if let Some(Ok(random_signed)) = headers
-            .iter()
-            .find(|h| h.name.to_lowercase() == "randomsigned")
-            .map(|h| h.value.parse::<u128>())
-        {
-            let mut key = [0; 16];
-            key[..4].copy_from_slice(&unsafe { crate::state::SIGN_KEY.to_be_bytes() });
-
-            let mut block = [0; 16];
-            block.copy_from_slice(&random_signed.to_be_bytes());
-
-            global_state
-                .aes
-                .lock()
-                .await
-                .decrypt(&mut block, esp_hal::aes::Key::Key128(key));
-
-            let recv_random = u64::from_be_bytes(block[..8].try_into().unwrap_or_default());
-            let fkm_token = i32::from_be_bytes(block[8..12].try_into().unwrap_or_default());
-
-            log::debug!(
-                "[trust] random: {random}, recv_random: {recv_random} | fkm_token: {fkm_token}"
-            );
-            if random == recv_random {
-                unsafe { crate::state::TRUST_SERVER = true };
-                unsafe { crate::state::FKM_TOKEN = fkm_token };
-            } else {
-                #[cfg(not(feature = "e2e"))]
-                {
-                    global_state.state.lock().await.error_text =
-                        Some("Server Not Trusted!".to_string());
-                }
+                break;
             }
         }
 
@@ -299,12 +306,21 @@ async fn ws_loop(
                 .await
                 .device_added
                 .unwrap_or(false)
+                && unsafe { crate::state::HAS_LAST_PEER_CERT_FP }
             {
+                // auto_add still pins + enroll secret like button path
+                let mut sign_key = [0u8; 32];
+                _ = getrandom::getrandom(&mut sign_key);
+                crate::state::set_sign_key(sign_key);
+                crate::state::set_tls_pin(crate::state::last_peer_cert_fp());
+                unsafe {
+                    crate::state::TRUST_SERVER = true;
+                }
                 crate::ws::send_packet(crate::structs::TimerPacket {
                     tag: None,
                     data: crate::structs::TimerPacketInner::Add {
                         firmware: alloc::string::ToString::to_string(crate::version::FIRMWARE),
-                        sign_key: unsafe { crate::state::SIGN_KEY },
+                        sign_key: crate::state::sign_key_hex(),
                     },
                 })
                 .await;
@@ -457,22 +473,70 @@ async fn ws_rw(
                             } => {
                                 let mut state = global_state.state.lock().await;
                                 state.device_added = Some(added);
-                                state.sound_enabled = sound_enabled;
-                                crate::translations::clear_locales();
+                                // Sensitive settings only from a pinned/trusted peer.
+                                if unsafe { crate::state::TRUST_SERVER } {
+                                    state.sound_enabled = sound_enabled;
+                                    crate::translations::clear_locales();
 
-                                for locale in locales {
-                                    crate::translations::process_locale(
-                                        locale.locale,
-                                        locale.translations,
+                                    for locale in locales {
+                                        crate::translations::process_locale(
+                                            locale.locale,
+                                            locale.translations,
+                                        );
+                                    }
+
+                                    crate::translations::select_locale(
+                                        &default_locale,
+                                        &global_state,
                                     );
+                                    crate::translations::set_default_locale();
+
+                                    unsafe { crate::state::FKM_TOKEN = fkm_token };
+                                    unsafe { crate::state::SECURE_RFID = secure_rfid };
+                                    unsafe { crate::state::AUTO_SETUP = auto_setup };
+                                } else {
+                                    unsafe {
+                                        crate::state::FKM_TOKEN = 0;
+                                        crate::state::SECURE_RFID = false;
+                                        crate::state::AUTO_SETUP = false;
+                                    }
                                 }
-
-                                crate::translations::select_locale(&default_locale, &global_state);
-                                crate::translations::set_default_locale();
-
-                                unsafe { crate::state::FKM_TOKEN = fkm_token };
-                                unsafe { crate::state::SECURE_RFID = secure_rfid };
-                                unsafe { crate::state::AUTO_SETUP = auto_setup };
+                            }
+                            TimerPacketInner::AuthChallenge { nonce } => {
+                                // Respond to connect-time HMAC challenge if we have a secret.
+                                if !crate::state::sign_key_is_set() {
+                                    log::warn!("AuthChallenge received but no device secret set");
+                                    continue;
+                                }
+                                let Ok(nonce_bytes) = hex::decode(nonce.trim()) else {
+                                    log::error!("AuthChallenge bad nonce hex");
+                                    continue;
+                                };
+                                let key = crate::state::sign_key_bytes();
+                                let mut mac = match HmacSha256::new_from_slice(&key) {
+                                    Ok(m) => m,
+                                    Err(_) => continue,
+                                };
+                                mac.update(b"FKM-AUTH-V1");
+                                mac.update(&crate::utils::get_efuse_u32().to_be_bytes());
+                                mac.update(&nonce_bytes);
+                                let tag = mac.finalize().into_bytes();
+                                let mac_hex = hex::encode(tag);
+                                crate::ws::send_packet(crate::structs::TimerPacket {
+                                    tag: None,
+                                    data: crate::structs::TimerPacketInner::AuthResponse {
+                                        mac: mac_hex,
+                                    },
+                                })
+                                .await;
+                            }
+                            TimerPacketInner::AuthOk => {
+                                log::info!("Connect auth OK");
+                            }
+                            TimerPacketInner::AuthFail { reason } => {
+                                log::error!("Connect auth failed: {reason}");
+                                global_state.state.lock().await.error_text =
+                                    Some(alloc::format!("Auth failed: {reason}"));
                             }
                             TimerPacketInner::ApiError(e) => {
                                 // if should_reset_time reset time
@@ -821,12 +885,68 @@ impl WsSocket<'_, '_> {
     }
 }
 
-struct Provider {
-    rng: OsRng,
-    verifier: NoVerify,
+/// Captures SHA-256 of the end-entity cert via HW SHA; accepts any cert (pin is out-of-band).
+struct FingerprintCaptureVerifier<'a> {
+    peer_fp: &'a mut [u8; 32],
+    has_peer_fp: &'a mut bool,
+    sha: &'a mut Sha<'static>,
 }
 
-impl embedded_tls::CryptoProvider for Provider {
+impl<'a, CipherSuite> TlsVerifier<CipherSuite> for FingerprintCaptureVerifier<'a>
+where
+    CipherSuite: embedded_tls::TlsCipherSuite,
+{
+    fn set_hostname_verification(&mut self, _hostname: &str) -> Result<(), TlsError> {
+        Ok(())
+    }
+
+    fn verify_certificate(
+        &mut self,
+        _transcript: &CipherSuite::Hash,
+        cert: CertificateRef<'_>,
+    ) -> Result<(), TlsError> {
+        use esp_hal::sha::Sha256;
+        use nb::block;
+
+        // Prefer first X509 entry (end-entity).
+        for entry in cert.entries.iter() {
+            if let CertificateEntryRef::X509(der) = entry {
+                let mut hasher = self.sha.start::<Sha256>();
+                let mut remaining: &[u8] = der;
+                while !remaining.is_empty() {
+                    // Infallible on this peripheral; block until the engine accepts more data.
+                    remaining = match block!(hasher.update(remaining)) {
+                        Ok(rest) => rest,
+                        Err(_) => return Err(TlsError::InvalidCertificate),
+                    };
+                }
+                let mut dig = [0u8; 32];
+                if block!(hasher.finish(&mut dig)).is_err() {
+                    return Err(TlsError::InvalidCertificate);
+                }
+                self.peer_fp.copy_from_slice(&dig);
+                *self.has_peer_fp = true;
+                return Ok(());
+            }
+        }
+        Err(TlsError::InvalidCertificate)
+    }
+
+    fn verify_signature(
+        &mut self,
+        _verify: embedded_tls::CertificateVerifyRef<'_>,
+    ) -> Result<(), TlsError> {
+        // Accept signature without PKI validation — authenticity is the cert fingerprint pin.
+        Ok(())
+    }
+}
+
+struct Provider<'a> {
+    rng: OsRng,
+    verifier: FingerprintCaptureVerifier<'a>,
+}
+
+impl<'a> embedded_tls::CryptoProvider for Provider<'a> {
     type CipherSuite = Aes128GcmSha256;
 
     type Signature = &'static [u8];
@@ -837,8 +957,7 @@ impl embedded_tls::CryptoProvider for Provider {
 
     fn verifier(
         &mut self,
-    ) -> Result<&mut impl embedded_tls::TlsVerifier<Self::CipherSuite>, embedded_tls::TlsError>
-    {
+    ) -> Result<&mut impl TlsVerifier<Self::CipherSuite>, TlsError> {
         Ok(&mut self.verifier)
     }
 }
