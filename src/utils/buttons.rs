@@ -3,6 +3,9 @@ use alloc::vec::Vec;
 use embassy_time::{Instant, Timer};
 use esp_hal::gpio::Input;
 
+#[cfg(feature = "v3")]
+use crate::consts::BUTTON_DEBOUNCE_MS;
+
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Clone)]
 pub enum ButtonTrigger {
@@ -68,7 +71,10 @@ impl ButtonsHandler {
         #[cfg(feature = "v3")] button_input: &Input<'static>,
         #[cfg(feature = "v3")] button_reg: &adv_shift_registers::wrappers::ShifterValue,
     ) {
-        let mut old_val = 0;
+        let mut old_val = 0u8;
+        // Pending sample while waiting for v3 debounce stability.
+        #[cfg(feature = "v3")]
+        let mut debounce: Option<(u8, Instant)> = None;
 
         #[cfg(feature = "e2e")]
         let mut e2e_data = (esp_hal::time::Instant::now(), 0, 0);
@@ -80,7 +86,7 @@ impl ButtonsHandler {
         let mut last_button_down = None;
 
         loop {
-            let mut out_val = 0;
+            let mut out_val = 0u8;
 
             #[cfg(feature = "e2e")]
             {
@@ -121,16 +127,47 @@ impl ButtonsHandler {
                 }
             }
 
-            if old_val != out_val {
-                if old_val == 0 {
+            // v3: only accept an edge after the new mask is stable for
+            // BUTTON_DEBOUNCE_MS (filters bounce / scan glitches).
+            // v4: keep immediate edges (per-pin pull-downs on GPIO).
+            #[cfg(feature = "v3")]
+            let edge = if out_val == old_val {
+                debounce = None;
+                None
+            } else {
+                match debounce {
+                    Some((cand, since)) if cand == out_val => {
+                        if since.elapsed().as_millis() >= BUTTON_DEBOUNCE_MS {
+                            debounce = None;
+                            Some((old_val, out_val))
+                        } else {
+                            None
+                        }
+                    }
+                    _ => {
+                        debounce = Some((out_val, Instant::now()));
+                        None
+                    }
+                }
+            };
+
+            #[cfg(not(feature = "v3"))]
+            let edge = if old_val != out_val {
+                Some((old_val, out_val))
+            } else {
+                None
+            };
+
+            if let Some((prev, next)) = edge {
+                if prev == 0 {
                     #[cfg(not(feature = "qa"))]
-                    self.button_down((out_val as u8).into(), state).await;
+                    self.button_down(next.into(), state).await;
 
                     #[cfg(feature = "qa")]
                     {
-                        crate::qa::send_qa_resp(crate::qa::QaSignal::ButtonDown(out_val as u8));
-                        last_button_down = Some(out_val as u8);
-                        log::warn!("Button pressed down: {out_val}");
+                        crate::qa::send_qa_resp(crate::qa::QaSignal::ButtonDown(next));
+                        last_button_down = Some(next);
+                        log::warn!("Button pressed down: {next}");
                     }
                 } else {
                     #[cfg(not(feature = "qa"))]
@@ -152,7 +189,7 @@ impl ButtonsHandler {
                     }
                 }
 
-                old_val = out_val;
+                old_val = next;
             }
 
             if old_val != 0 {

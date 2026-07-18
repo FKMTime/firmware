@@ -21,6 +21,11 @@ pub const LCD_INSPECTION_FRAME_TIME: u64 = 1000 / 30;
 pub const RFID_RETRY_INIT_MS: u64 = 1500;
 pub const WS_RETRY_MS: u64 = 1000;
 
+/// v3 buttons are shift-register scanned with no hardware debounce / strong
+/// pull-down filtering; require this long of a stable sample before edges fire.
+#[cfg(feature = "v3")]
+pub const BUTTON_DEBOUNCE_MS: u64 = 30;
+
 pub const MDNS_RESEND_INTERVAL: u64 = 500;
 
 pub const INSPECTION_TIME_DNF: u64 = 17000;
