@@ -73,7 +73,7 @@ async fn main(spawner: Spawner) {
         config
     });
 
-    esp_alloc::heap_allocator!(size: 120 * 1024);
+    esp_alloc::heap_allocator!(size: 116 * 1024);
     /*
     {
         const HEAP_SIZE: usize = 8 * 1024;
@@ -151,7 +151,10 @@ async fn main(spawner: Spawner) {
             log::warn!("Ignoring SIGN_KEY of unexpected length {}", sign_key.len());
         }
     }
-    if let Ok(pin) = nvs.get::<alloc::vec::Vec<u8>>(crate::consts::NVS_TLS_PIN).await {
+    if let Ok(pin) = nvs
+        .get::<alloc::vec::Vec<u8>>(crate::consts::NVS_TLS_PIN)
+        .await
+    {
         if pin.len() == 32 {
             let mut fp = [0u8; 32];
             fp.copy_from_slice(&pin);

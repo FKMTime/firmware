@@ -18,7 +18,7 @@ use embedded_tls::{
 use esp_hal::sha::Sha;
 use esp_hal_ota::Ota;
 use esp_storage::FlashStorage;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, Mac, KeyInit};
 use rand_core::OsRng;
 use sha2::Sha256;
 use ws_framer::{WsFrame, WsFrameOwned, WsRxFramer, WsTxFramer, WsUrl, WsUrlOwned};

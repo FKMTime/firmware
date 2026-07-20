@@ -8,7 +8,7 @@ edition = "2024"
 esp-backtrace = { version = "0.19.0", features = [ "panic-handler", "println", "custom-pre-backtrace", "custom-halt", "esp32c3" ] }
 esp-hal = { version = "1.1.1", features = [ "esp32c3" ] }
 esp-println = { version = "0.17.0", features = ["log-04", "esp32c3"] }
-log = { version = "0.4.30" }
+log = { version = "0.4.33" }
 esp-radio = { version = "1.0.0-beta.0", features = ["coex", "esp32c3"] }
 esp-rtos = { version = "0.3.0", features = ["esp32c3", "embassy", "esp-radio"] }
 embassy-executor = { version = "0.10.0", features = ["nightly"] }
@@ -19,10 +19,10 @@ embedded-storage = "0.3.1"
 static_cell = { version = "2.1.1", features = ["nightly"] }
 heapless = { version = "0.9.3", default-features = false }
 esp-alloc = "0.10.0"
-#esp-hal-wifimanager = { version = "0.2.10", default-features = false, features = ["ap", "ble", "esp32c3", "ota", "custom_panel"] }
-esp-hal-wifimanager = { git = "https://github.com/filipton/esp-hal-wifimanager.git", default-features = false, features = ["ap", "ble", "esp32c3", "ota", "custom_panel"] }
-serde = { version = "1.0.228", features = ["alloc", "derive"], default-features = false }
-serde_json = { version = "1.0.150", default-features = false, features = ["alloc"] }
+esp-hal-wifimanager = { path = "/home/pilif/projects/esp-hal-wifimanager", default-features = false, features = ["ap", "ble", "esp32c3", "ota", "custom_panel"] }
+#esp-hal-wifimanager = { git = "https://github.com/filipton/esp-hal-wifimanager.git", default-features = false, features = ["ap", "ble", "esp32c3", "ota", "custom_panel"] }
+serde = { version = "1.0.229", features = ["alloc", "derive"], default-features = false }
+serde_json = { version = "1.0.151", default-features = false, features = ["alloc"] }
 adv-shift-registers = "0.2.5"
 embedded-hal = "1.0.0"
 esp-hal-mdns = "0.1.4"
@@ -33,20 +33,20 @@ embassy-futures = "0.1.2"
 embassy-sync = "0.7.2"
 ws-framer = { version = "0.3.2", default-features = false, features = ["alloc", "http", "getrandom02"] }
 embedded-hal-async = "1.0.0"
-portable-atomic = { version = "1.13.1", default-features = false }
+portable-atomic = { version = "1.14.0", default-features = false }
 critical-section = "1.2.0"
 getrandom = { version = "=0.2.15", features = ["custom"] }
 uuid = { version = "=1.12.1", default-features = false, features = ["v4"] }
 esp-hal-ota = { version = "0.5.7", features = ["esp32c3"] }
 esp32c3 = { version = "0.32.2" }
-anyhow = { version = "1.0.103", default-features = false }
+anyhow = { version = "1.0.104", default-features = false }
 embedded-hal-bus = { version = "0.3.0", features = ["async"] }
 #embedded-tls = { git = "https://github.com/drogue-iot/embedded-tls.git", default-features = false, features = ["alloc", "embedded-io-adapters", "log"] }
 embedded-tls = { git = "https://github.com/filipton/embedded-tls", default-features = false, features = ["alloc", "embedded-io-adapters", "log"] }
-sha2 = { version = "0.10", default-features = false }
-hmac = { version = "0.12", default-features = false }
-digest = { version = "0.10", default-features = false }
-hex = { version = "0.4", default-features = false, features = ["alloc"] }
+sha2 = { version = "0.11.0", default-features = false }
+hmac = { version = "0.13.0", default-features = false }
+digest = { version = "0.11.3", default-features = false }
+hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
 rand_core = { version = "0.6.4", features = ["getrandom"] }
 esp-hal-mfrc522 = { version = "0.3.3", features = ["embassy-time"] }
 esp-bootloader-esp-idf = { version = "0.5.0", features = ["log-04", "esp32c3"] }
