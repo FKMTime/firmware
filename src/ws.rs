@@ -18,7 +18,7 @@ use embedded_tls::{
 use esp_hal::sha::Sha;
 use esp_hal_ota::Ota;
 use esp_storage::FlashStorage;
-use hmac::{Hmac, Mac, KeyInit};
+use hmac::{Hmac, KeyInit, Mac};
 use rand_core::OsRng;
 use sha2::Sha256;
 use ws_framer::{WsFrame, WsFrameOwned, WsRxFramer, WsTxFramer, WsUrl, WsUrlOwned};
@@ -247,6 +247,8 @@ async fn ws_loop(
         let remote_endpoint = (ip, ws_url.port);
         let r = socket.connect(remote_endpoint).await;
         if let Err(e) = r {
+            drop(socket);
+
             // but if wifi conneceted signal was sent remove wifi connection lost msg
             if wifi_conn_sig.signaled() && wifi_conn_sig.wait().await {
                 global_state.state.lock().await.wifi_connected = Some(true);
@@ -278,7 +280,7 @@ async fn ws_loop(
         let config = TlsConfig::new().enable_rsa_signatures();
         let mut peer_fp = [0u8; 32];
         let mut has_peer_fp = false;
-        // Hold HW SHA for the handshake so the verifier can hash the peer cert.
+
         let mut sha_guard = global_state.sha.lock().await;
         let open_res = tls
             .open(TlsContext::new(
@@ -302,7 +304,6 @@ async fn ws_loop(
 
         if has_peer_fp {
             crate::state::set_last_peer_cert_fp(peer_fp);
-            // TRUST_SERVER only when pinned fingerprint matches this peer.
             let trusted =
                 unsafe { crate::state::HAS_TLS_PIN } && crate::state::tls_pin_bytes() == peer_fp;
 

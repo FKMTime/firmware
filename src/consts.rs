@@ -22,6 +22,7 @@ pub const RFID_RETRY_INIT_MS: u64 = 1500;
 pub const WS_RETRY_MS: u64 = 1000;
 
 pub const MDNS_RESEND_INTERVAL: u64 = 500;
+pub const MDNS_QUERY_TIMEOUT_MS: u64 = 5000;
 
 pub const INSPECTION_TIME_DNF: u64 = 17000;
 pub const INSPECTION_TIME_PLUS2: u64 = 15000;

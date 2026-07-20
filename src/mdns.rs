@@ -1,9 +1,9 @@
-use crate::consts::MDNS_RESEND_INTERVAL;
+use crate::consts::{MDNS_QUERY_TIMEOUT_MS, MDNS_RESEND_INTERVAL};
 use embassy_net::{
     IpAddress, IpEndpoint, Stack,
     udp::{PacketMetadata, UdpSocket},
 };
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use esp_hal_mdns::MdnsQuery;
 
 const FKMTIME_MDNS: &str = "_fkmtime._tcp.local.";
@@ -33,8 +33,14 @@ pub async fn mdns_query(stack: Stack<'static>) -> heapless::String<255> {
     });
     let mut data_buf = [0; 1024];
 
-    let tmp;
+    let mut tmp: heapless::String<255> = heapless::String::new();
+    let deadline = Instant::now() + Duration::from_millis(MDNS_QUERY_TIMEOUT_MS);
     loop {
+        if Instant::now() >= deadline {
+            log::warn!("mDNS lookup timed out — no responder?");
+            break;
+        }
+
         if let Some(data) = mdns.should_send_mdns_packet() {
             _ = sock.send_to(data, ip_endpoint).await;
         }

@@ -335,6 +335,12 @@ async fn main(spawner: Spawner) {
             let mdns_res = mdns::mdns_query(wifi_res.sta_stack).await;
             log::info!("Mdns result: {mdns_res:?}");
 
+            if mdns_res.is_empty() {
+                log::warn!("mDNS lookup timed out at boot — retrying");
+                Timer::after_millis(1000).await;
+                continue;
+            }
+
             mdns_res.to_string()
         } else {
             conn_settings.ws_url.clone().unwrap_or_default()
