@@ -15,9 +15,9 @@ use embedded_tls::{
     Aes128GcmSha256, CertificateEntryRef, CertificateRef, TlsConfig, TlsConnection, TlsContext,
     TlsError, TlsVerifier,
 };
+use esp_hal::sha::Sha;
 use esp_hal_ota::Ota;
 use esp_storage::FlashStorage;
-use esp_hal::sha::Sha;
 use hmac::{Hmac, Mac};
 use rand_core::OsRng;
 use sha2::Sha256;
@@ -54,10 +54,51 @@ static mut TLS_RX_BUF: core::mem::MaybeUninit<[u8; TLS_BUF_SIZE]> =
 static mut TLS_TX_BUF: core::mem::MaybeUninit<[u8; TLS_BUF_SIZE]> =
     core::mem::MaybeUninit::uninit();
 
+const RE_RESOLVE_AFTER: u32 = 5;
+
+async fn resolve_ws_url(
+    stack: Stack<'static>,
+    mdns_enabled: bool,
+    fallback_url: &Option<alloc::string::String>,
+) -> Option<WsUrlOwned> {
+    let url = if mdns_enabled || fallback_url.is_none() {
+        let res = crate::mdns::mdns_query(stack).await;
+        log::info!("mDNS re-resolve result: {res:?}");
+        res.to_string()
+    } else {
+        fallback_url.clone().unwrap_or_default()
+    };
+    WsUrl::from_str(&url).map(|u| WsUrlOwned::new(&u))
+}
+
+async fn note_conn_failure(
+    ws_url: &mut WsUrlOwned,
+    conn_failures: &mut u32,
+    stack: Stack<'static>,
+    mdns_enabled: bool,
+    fallback_url: &Option<alloc::string::String>,
+) {
+    *conn_failures += 1;
+    if *conn_failures >= RE_RESOLVE_AFTER {
+        match resolve_ws_url(stack, mdns_enabled, fallback_url).await {
+            Some(new_url) => {
+                log::info!("Server unreachable; re-resolved address: {new_url:?}");
+                *ws_url = new_url;
+            }
+            None => {
+                log::warn!("Server unreachable; mDNS re-resolve failed, keeping last address");
+            }
+        }
+        *conn_failures = 0;
+    }
+}
+
 #[embassy_executor::task]
 pub async fn ws_task(
     stack: Stack<'static>,
-    ws_url: WsUrlOwned,
+    mut ws_url: WsUrlOwned,
+    mdns_enabled: bool,
+    fallback_url: Option<alloc::string::String>,
     global_state: GlobalState,
     ws_sleep_sig: Rc<Signal<CriticalSectionRawMutex, bool>>,
     wifi_conn_sig: Rc<Signal<CriticalSectionRawMutex, bool>>,
@@ -90,7 +131,9 @@ pub async fn ws_task(
 
         let ws_fut = ws_loop(
             &global_state,
-            ws_url.as_ref(),
+            &mut ws_url,
+            mdns_enabled,
+            &fallback_url,
             stack,
             &mut rx_buf,
             &mut tx_buf,
@@ -129,7 +172,9 @@ pub async fn ws_task(
 #[allow(clippy::too_many_arguments)]
 async fn ws_loop(
     global_state: &GlobalState,
-    ws_url: WsUrl<'_>,
+    ws_url: &mut WsUrlOwned,
+    mdns_enabled: bool,
+    fallback_url: &Option<alloc::string::String>,
     stack: Stack<'static>,
     rx_buf: &mut [u8],
     tx_buf: &mut [u8],
@@ -139,23 +184,34 @@ async fn ws_loop(
     ssl_tx_buf: &mut [u8],
     wifi_conn_sig: &Rc<Signal<CriticalSectionRawMutex, bool>>,
 ) -> Result<(), ()> {
+    let mut conn_failures: u32 = 0;
     loop {
         {
-            global_state.state.lock().await.server_connected = Some(false);
+            let mut state = global_state.state.lock().await;
+            state.server_connected = Some(false);
+            state.device_added = None;
         }
 
-        let ip = if let Ok(addr) = embassy_net::Ipv4Address::from_str(ws_url.ip) {
+        let ip = if let Ok(addr) = embassy_net::Ipv4Address::from_str(ws_url.ip.as_str()) {
             addr
         } else {
             let dns_resolver = embassy_net::dns::DnsSocket::new(stack);
             let res = dns_resolver
-                .query(ws_url.ip, embassy_net::dns::DnsQueryType::A)
+                .query(ws_url.ip.as_str(), embassy_net::dns::DnsQueryType::A)
                 .await;
 
             let res = match res {
                 Ok(res) => res,
                 Err(e) => {
                     log::error!("[WS]Dns resolver error: {e:?}");
+                    note_conn_failure(
+                        &mut *ws_url,
+                        &mut conn_failures,
+                        stack,
+                        mdns_enabled,
+                        fallback_url,
+                    )
+                    .await;
                     Timer::after_millis(1000).await;
                     continue;
                 }
@@ -171,6 +227,14 @@ async fn ws_loop(
 
                     DNS_EMPTY_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
                 }
+                note_conn_failure(
+                    &mut *ws_url,
+                    &mut conn_failures,
+                    stack,
+                    mdns_enabled,
+                    fallback_url,
+                )
+                .await;
                 Timer::after_millis(1000).await;
                 continue;
             };
@@ -189,9 +253,19 @@ async fn ws_loop(
             }
 
             log::error!("connect error: {e:?}");
+            note_conn_failure(
+                &mut *ws_url,
+                &mut conn_failures,
+                stack,
+                mdns_enabled,
+                fallback_url,
+            )
+            .await;
             Timer::after_millis(WS_RETRY_MS).await;
             continue;
         }
+        // The address is reachable — reset the unreachable-address failure counter.
+        conn_failures = 0;
 
         // TLS is mandatory — cleartext WS is no longer supported.
         if !ws_url.secure {
@@ -229,8 +303,9 @@ async fn ws_loop(
         if has_peer_fp {
             crate::state::set_last_peer_cert_fp(peer_fp);
             // TRUST_SERVER only when pinned fingerprint matches this peer.
-            let trusted = unsafe { crate::state::HAS_TLS_PIN }
-                && crate::state::tls_pin_bytes() == peer_fp;
+            let trusted =
+                unsafe { crate::state::HAS_TLS_PIN } && crate::state::tls_pin_bytes() == peer_fp;
+
             unsafe { crate::state::TRUST_SERVER = trusted };
             if !trusted {
                 log::warn!("TLS peer cert not pinned / mismatch — untrusted session");
@@ -270,7 +345,7 @@ async fn ws_loop(
         );
 
         socket
-            .write_all(tx_framer.generate_http_upgrade(ws_url.host, &path, None))
+            .write_all(tx_framer.generate_http_upgrade(&ws_url.host, &path, None))
             .await
             .map_err(|_| ())?;
 
@@ -955,9 +1030,7 @@ impl<'a> embedded_tls::CryptoProvider for Provider<'a> {
         &mut self.rng
     }
 
-    fn verifier(
-        &mut self,
-    ) -> Result<&mut impl TlsVerifier<Self::CipherSuite>, TlsError> {
+    fn verifier(&mut self) -> Result<&mut impl TlsVerifier<Self::CipherSuite>, TlsError> {
         Ok(&mut self.verifier)
     }
 }

@@ -369,6 +369,8 @@ async fn main(spawner: Spawner) {
         ws::ws_task(
             wifi_res.sta_stack,
             ws_url,
+            conn_settings.mdns,
+            conn_settings.ws_url.clone(),
             global_state.clone(),
             ws_sleep_sig.clone(),
             wifi_conn_sig,
