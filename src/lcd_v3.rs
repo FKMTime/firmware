@@ -109,19 +109,17 @@ pub async fn lcd_task(
     _ = lcd_driver.clear_all();
     let mut last_update;
     loop {
-        let current_state = global_state.state.value().await.clone();
+        let current_state = global_state.state.lock_silent().await.clone();
         log::debug!("lcd current_state: {current_state:?}");
         last_update = Instant::now();
 
         if sleep_state() {
             lcd.backlight_on();
 
-            unsafe {
-                crate::state::SLEEP_STATE = false;
-            }
+            crate::state::SLEEP_STATE.store(false, portable_atomic::Ordering::Relaxed);
         }
 
-        let current_scene = current_state.scene.clone();
+        let current_scene = current_state.solve.scene.clone();
         let fut = async {
             let _ = process_lcd(
                 current_state,
@@ -153,15 +151,13 @@ pub async fn lcd_task(
                     lcd.backlight_off();
 
                     {
-                        global_state.state.lock().await.server_connected = Some(false);
+                        global_state.state.lock().await.conn.server_connected = Some(false);
                     }
 
-                    unsafe {
-                        crate::state::SLEEP_STATE = true;
-                        crate::state::TRUST_SERVER = false;
-                    }
+                    crate::state::SLEEP_STATE.store(true, portable_atomic::Ordering::Relaxed);
+                    crate::state::set_trust_server(false);
 
-                    global_state.state.signal_reset();
+                    global_state.render.reset();
                 }
 
                 #[cfg(not(any(feature = "e2e", feature = "qa")))]
@@ -177,7 +173,7 @@ pub async fn lcd_task(
             }
         };
 
-        let res = embassy_futures::select::select(fut, global_state.state.wait()).await;
+        let res = embassy_futures::select::select(fut, global_state.render.wait()).await;
         match res {
             embassy_futures::select::Either::First(_) => {}
             embassy_futures::select::Either::Second(_) => {
@@ -196,7 +192,8 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
 ) -> Option<()> {
     #[cfg(feature = "bat_dev_lcd")]
     {
-        let battery_read = current_state.current_bat_read.unwrap_or(-1.0);
+        let battery = global_state.battery.lock().await;
+        let battery_read = battery.current_bat_read.unwrap_or(-1.0);
         lcd_driver
             .print(
                 0,
@@ -206,7 +203,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
             )
             .ok()?;
 
-        if let Some(avg) = current_state.avg_bat_read {
+        if let Some(avg) = battery.avg_bat_read {
             lcd_driver
                 .print(1, &alloc::format!("AVG: {avg}"), PrintAlign::Left, true)
                 .ok()?;
@@ -215,7 +212,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
         return Some(());
     }
 
-    if let Some(error_text) = current_state.error_text {
+    if let Some(error_text) = current_state.msg.error_text {
         lcd_driver
             .print(
                 0,
@@ -232,15 +229,15 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
         return Some(());
     }
 
-    // display custom message on top of everything!
-    if let Some((line1, line2)) = &current_state.custom_message {
+    // custom message overrides the regular screens
+    if let Some((line1, line2)) = &current_state.msg.custom_message {
         _ = lcd_driver.print(0, line1, PrintAlign::Center, true);
         _ = lcd_driver.print(1, line2, PrintAlign::Center, true);
 
         return Some(());
     }
 
-    if let Some(sel) = current_state.selected_config_menu {
+    if let Some(sel) = current_state.ui.selected_config_menu {
         lcd_driver.clear_all().ok()?;
         lcd_driver.print(0, "<", PrintAlign::Left, false).ok()?;
         lcd_driver.print(0, ">", PrintAlign::Right, false).ok()?;
@@ -261,9 +258,9 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
         return Some(());
     }
 
-    match current_state.menu_scene {
+    match current_state.ui.menu_scene {
         Some(MenuScene::Signing) | Some(MenuScene::Unsigning) => {
-            let prefix = if current_state.menu_scene == Some(MenuScene::Signing) {
+            let prefix = if current_state.ui.menu_scene == Some(MenuScene::Signing) {
                 "S"
             } else {
                 "Uns"
@@ -310,22 +307,23 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
         }
         Some(crate::state::MenuScene::BtDisplay) => {
             lcd_driver.clear_all().ok()?;
-            if current_state.selected_bluetooth_item
-                == current_state.discovered_bluetooth_devices.len()
+            if current_state.ui.selected_bluetooth_item
+                == current_state.ui.discovered_bluetooth_devices.len()
             {
                 lcd_driver
                     .print(0, "Unpair", PrintAlign::Center, true)
                     .ok()?;
-            } else if current_state.selected_bluetooth_item
-                == current_state.discovered_bluetooth_devices.len() + 1
+            } else if current_state.ui.selected_bluetooth_item
+                == current_state.ui.discovered_bluetooth_devices.len() + 1
             {
                 lcd_driver.print(0, "Exit", PrintAlign::Center, true).ok()?;
-            } else if current_state.selected_bluetooth_item
-                < current_state.discovered_bluetooth_devices.len()
+            } else if current_state.ui.selected_bluetooth_item
+                < current_state.ui.discovered_bluetooth_devices.len()
             {
                 if let Some(display_dev) = current_state
+                    .ui
                     .discovered_bluetooth_devices
-                    .get(current_state.selected_bluetooth_item)
+                    .get(current_state.ui.selected_bluetooth_item)
                 {
                     lcd_driver
                         .print(0, &display_dev.name, PrintAlign::Center, true)
@@ -341,7 +339,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                         .ok()?;
                 }
             } else {
-                global_state.state.lock().await.selected_bluetooth_item = 0;
+                global_state.state.lock().await.ui.selected_bluetooth_item = 0;
             }
 
             return Some(());
@@ -349,8 +347,8 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
         Some(MenuScene::ErrorLog) => {
             lcd_driver.clear_all().ok()?;
 
-            if let Some(entry_idx) = current_state.selected_error_log_entry {
-                if let Some(entry) = current_state.error_log_entries.get(entry_idx) {
+            if let Some(entry_idx) = current_state.ui.selected_error_log_entry {
+                if let Some(entry) = current_state.ui.error_log_entries.get(entry_idx) {
                     match entry {
                         crate::utils::error_log::ErrorLogEntry::Code { timestamp, code } => {
                             lcd_driver
@@ -391,15 +389,16 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                         .ok()?;
                 }
             } else {
-                let exit_idx = current_state.error_log_entries.len();
-                if current_state.selected_error_log_item == exit_idx {
+                let exit_idx = current_state.ui.error_log_entries.len();
+                if current_state.ui.selected_error_log_item == exit_idx {
                     lcd_driver.print(0, "Exit", PrintAlign::Center, true).ok()?;
                     lcd_driver
                         .print(1, "Submit to return", PrintAlign::Center, true)
                         .ok()?;
                 } else if let Some(entry) = current_state
+                    .ui
                     .error_log_entries
-                    .get(current_state.selected_error_log_item)
+                    .get(current_state.ui.selected_error_log_item)
                 {
                     lcd_driver
                         .print(0, &entry.list_label_v3(), PrintAlign::Center, true)
@@ -428,7 +427,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
     }
 
     lcd_driver.clear_all().ok()?;
-    if let Some(time) = current_state.delegate_hold {
+    if let Some(time) = current_state.solve.delegate_hold {
         let delegate_remaining = 3 - time;
 
         if delegate_remaining == 0 {
@@ -475,7 +474,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
         return Some(());
     }
 
-    match current_state.scene {
+    match current_state.solve.scene {
         Scene::WifiConnect => {
             lcd_driver
                 .print(
@@ -497,7 +496,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
 
             lcd_driver.display_on_lcd(lcd).await;
             wifi_setup_sig.wait().await;
-            global_state.state.lock().await.scene = Scene::AutoSetupWait;
+            global_state.state.lock().await.solve.scene = Scene::AutoSetupWait;
         }
         Scene::AutoSetupWait => {
             let wifi_ssid = alloc::format!("FKM-{:X}", crate::utils::get_efuse_u32());
@@ -552,7 +551,8 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
             lcd_driver
                 .print(
                     1,
-                    &current_state.possible_groups[current_state.group_selected_idx].name,
+                    &current_state.solve.possible_groups[current_state.solve.group_selected_idx]
+                        .name,
                     PrintAlign::Center,
                     false,
                 )
@@ -568,7 +568,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 )
                 .ok()?;
 
-            if let Some(solve_time) = current_state.solve_time {
+            if let Some(solve_time) = current_state.solve.solve_time {
                 let time_str = ms_to_time_str(solve_time);
                 lcd_driver
                     .print(
@@ -597,6 +597,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 .print(
                     0,
                     &current_state
+                        .solve
                         .competitor_display
                         .unwrap_or("??????".to_string()),
                     PrintAlign::Center,
@@ -604,7 +605,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 )
                 .ok()?;
 
-            if let Some(group) = current_state.solve_group {
+            if let Some(group) = current_state.solve.solve_group {
                 lcd_driver
                     .print(1, &group.name, PrintAlign::Center, true)
                     .ok()?;
@@ -613,8 +614,9 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
         Scene::Inspection => {
             let inspection_start = global_state
                 .state
-                .value()
+                .lock_silent()
                 .await
+                .solve
                 .inspection_start
                 .unwrap_or(Instant::now());
 
@@ -644,20 +646,20 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
             lcd_driver.display_on_lcd(lcd).await;
         },
         Scene::Finished => {
-            let solve_time = current_state.solve_time.unwrap_or(0);
+            let solve_time = current_state.solve.solve_time.unwrap_or(0);
             let time_str = if solve_time > 0 {
                 ms_to_time_str(solve_time)
             } else {
                 heapless::String::new()
             };
 
-            let inspection_time =
-                match (current_state.inspection_start, current_state.inspection_end) {
-                    (Some(start), Some(end)) => {
-                        Some(end.saturating_duration_since(start).as_millis())
-                    }
-                    _ => None,
-                };
+            let inspection_time = match (
+                current_state.solve.inspection_start,
+                current_state.solve.inspection_end,
+            ) {
+                (Some(start), Some(end)) => Some(end.saturating_duration_since(start).as_millis()),
+                _ => None,
+            };
 
             if current_state.use_inspection()
                 && inspection_time.unwrap_or(0) > INSPECTION_TIME_PLUS2
@@ -677,7 +679,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                     .ok()?;
             }
 
-            let penalty = current_state.penalty.unwrap_or(0);
+            let penalty = current_state.solve.penalty.unwrap_or(0);
             let penalty_str = match penalty {
                 -2 => "DNS",
                 -1 => "DNF",
@@ -689,7 +691,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                 .print(0, penalty_str, PrintAlign::Right, false)
                 .ok()?;
 
-            if !current_state.time_confirmed {
+            if !current_state.solve.time_confirmed {
                 lcd_driver
                     .print(
                         1,
@@ -698,7 +700,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                         true,
                     )
                     .ok()?;
-            } else if current_state.current_judge.is_none() {
+            } else if current_state.solve.current_judge.is_none() {
                 lcd_driver
                     .print(
                         1,
@@ -707,8 +709,8 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                         true,
                     )
                     .ok()?;
-            } else if current_state.current_competitor.is_some()
-                && current_state.current_judge.is_some()
+            } else if current_state.solve.current_competitor.is_some()
+                && current_state.solve.current_judge.is_some()
             {
                 lcd_driver
                     .print(
@@ -739,12 +741,12 @@ async fn process_lcd_overwrite(
     _global_state: &GlobalState,
     lcd_driver: &mut LcdAbstract<80, 16, 2, 3>,
 ) -> bool {
-    if !current_state.scene.can_be_lcd_overwritten() {
+    if !current_state.solve.scene.can_be_lcd_overwritten() {
         return false;
     }
 
-    if current_state.server_connected == Some(false) {
-        if current_state.wifi_connected == Some(false) {
+    if current_state.conn.server_connected == Some(false) {
+        if current_state.conn.wifi_connected == Some(false) {
             // TODO: maybe add to this translation
             _ = lcd_driver.print(0, "Wi-Fi", PrintAlign::Center, true);
             _ = lcd_driver.print(1, "Connection lost", PrintAlign::Center, true);
@@ -762,7 +764,7 @@ async fn process_lcd_overwrite(
                 true,
             );
         }
-    } else if current_state.device_added == Some(false) {
+    } else if current_state.conn.device_added == Some(false) {
         #[cfg(not(feature = "e2e"))]
         let lines = (
             &get_translation(TranslationKey::DEVICE_NOT_ADDED_HEADER),
@@ -774,7 +776,7 @@ async fn process_lcd_overwrite(
 
         _ = lcd_driver.print(0, lines.0, PrintAlign::Center, true);
         _ = lcd_driver.print(1, lines.1, PrintAlign::Center, true);
-    } else if current_state.stackmat_connected == Some(false) {
+    } else if current_state.conn.stackmat_connected == Some(false) {
         _ = lcd_driver.print(
             0,
             &get_translation(TranslationKey::STACKMAT_DISCONNECTED_HEADER),

@@ -19,17 +19,17 @@ pub async fn qa_processor(global_state: GlobalState) {
     let res = qa_inner(&global_state).await;
 
     if res {
-        global_state.state.lock().await.custom_message =
+        global_state.state.lock().await.msg.custom_message =
             Some((format!("PERIPHERALS QA"), format!("PASSED")));
     } else {
-        global_state.state.lock().await.custom_message =
+        global_state.state.lock().await.msg.custom_message =
             Some((format!("PERIPHERALS QA"), format!("NOT GOOD")));
     }
 }
 
 async fn qa_inner(global_state: &GlobalState) -> bool {
     for i in 1..5 {
-        global_state.state.lock().await.custom_message =
+        global_state.state.lock().await.msg.custom_message =
             Some((format!("Button {i}"), format!("Down")));
 
         loop {
@@ -43,7 +43,7 @@ async fn qa_inner(global_state: &GlobalState) -> bool {
             return false;
         }
 
-        global_state.state.lock().await.custom_message =
+        global_state.state.lock().await.msg.custom_message =
             Some((format!("Button {i}"), format!("Up")));
 
         loop {
@@ -59,7 +59,7 @@ async fn qa_inner(global_state: &GlobalState) -> bool {
     }
 
     let first_card_scan;
-    global_state.state.lock().await.custom_message = Some((format!("Scan card"), format!("1")));
+    global_state.state.lock().await.msg.custom_message = Some((format!("Scan card"), format!("1")));
     loop {
         let val = BACK_SIGNAL.wait().await;
         if let QaSignal::Rfid(card) = val {
@@ -70,7 +70,7 @@ async fn qa_inner(global_state: &GlobalState) -> bool {
         return false;
     }
 
-    global_state.state.lock().await.custom_message =
+    global_state.state.lock().await.msg.custom_message =
         Some((format!("Scan card"), format!("1 again")));
     loop {
         let val = BACK_SIGNAL.wait().await;
@@ -83,7 +83,7 @@ async fn qa_inner(global_state: &GlobalState) -> bool {
         return false;
     }
 
-    global_state.state.lock().await.custom_message = Some((format!("Scan card"), format!("2")));
+    global_state.state.lock().await.msg.custom_message = Some((format!("Scan card"), format!("2")));
     loop {
         let val = BACK_SIGNAL.wait().await;
         if let QaSignal::Rfid(card) = val {
@@ -95,7 +95,7 @@ async fn qa_inner(global_state: &GlobalState) -> bool {
         return false;
     }
 
-    global_state.state.lock().await.custom_message =
+    global_state.state.lock().await.msg.custom_message =
         Some((format!("Connect"), format!("Stackmat")));
     loop {
         let val = BACK_SIGNAL.wait().await;
@@ -106,7 +106,7 @@ async fn qa_inner(global_state: &GlobalState) -> bool {
         return false;
     }
 
-    global_state.state.lock().await.custom_message =
+    global_state.state.lock().await.msg.custom_message =
         Some((format!("Stackmat solve"), format!("> 1s")));
     loop {
         let val = BACK_SIGNAL.wait().await;
@@ -119,7 +119,7 @@ async fn qa_inner(global_state: &GlobalState) -> bool {
         return false;
     }
 
-    global_state.state.lock().await.custom_message = Some((
+    global_state.state.lock().await.msg.custom_message = Some((
         format!("Setup WIFI"),
         format!("FKM-{:X}", crate::utils::get_efuse_u32()),
     ));

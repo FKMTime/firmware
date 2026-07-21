@@ -74,24 +74,6 @@ async fn main(spawner: Spawner) {
     });
 
     esp_alloc::heap_allocator!(size: 116 * 1024);
-    /*
-    {
-        const HEAP_SIZE: usize = 8 * 1024;
-
-        #[unsafe(link_section = ".dram2_uninit")]
-        static mut HEAP2: core::mem::MaybeUninit<[u8; HEAP_SIZE]> =
-            core::mem::MaybeUninit::uninit();
-
-        #[allow(static_mut_refs)]
-        unsafe {
-            esp_alloc::HEAP.add_region(esp_alloc::HeapRegion::new(
-                HEAP2.as_mut_ptr() as *mut u8,
-                core::mem::size_of_val(&*core::ptr::addr_of!(HEAP2)),
-                esp_alloc::MemoryCapability::Internal.into(),
-            ));
-        }
-    }
-    */
 
     set_brownout_detection(false);
     let board = Board::init(peripherals);
@@ -138,7 +120,7 @@ async fn main(spawner: Spawner) {
 
     utils::error_log::load_error_log(&nvs).await;
 
-    let global_state = Rc::new(GlobalStateInner::new(&nvs, board.aes, board.sha));
+    let global_state = Rc::new(GlobalStateInner::new(&nvs));
     let wifi_setup_sig = Rc::new(Signal::new());
     let wifi_conn_sig = Rc::new(Signal::new());
 
@@ -279,16 +261,13 @@ async fn main(spawner: Spawner) {
         format_args!("FKM-{:X}", crate::utils::get_efuse_u32()),
     );
 
-    // mark ota as valid
+    if let Ok(mut ota) =
+        esp_hal_ota::Ota::new(FlashStorage::new(unsafe { board.flash.clone_unchecked() }))
     {
-        if let Ok(mut ota) =
-            esp_hal_ota::Ota::new(FlashStorage::new(unsafe { board.flash.clone_unchecked() }))
-        {
-            let res = ota.ota_mark_app_valid();
-            if let Err(e) = res {
-                log::error!("Ota mark app valid failed: {e:?}");
-                utils::error_log::add_error(utils::error_log::codes::OTA_MARK_VALID_FAILED).await;
-            }
+        let res = ota.ota_mark_app_valid();
+        if let Err(e) = res {
+            log::error!("Ota mark app valid failed: {e:?}");
+            utils::error_log::add_error(utils::error_log::codes::OTA_MARK_VALID_FAILED).await;
         }
     }
 
@@ -315,7 +294,7 @@ async fn main(spawner: Spawner) {
     };
 
     {
-        global_state.state.lock().await.wifi_connected = Some(true);
+        global_state.state.lock().await.conn.wifi_connected = Some(true);
     }
 
     #[cfg(feature = "qa")]
@@ -331,7 +310,7 @@ async fn main(spawner: Spawner) {
     let ws_url = loop {
         let url = if conn_settings.mdns || conn_settings.ws_url.is_none() || parse_retry_count > 0 {
             log::info!("Starting mdns lookup...");
-            global_state.state.lock().await.scene = Scene::MdnsWait;
+            global_state.state.lock().await.solve.scene = Scene::MdnsWait;
             let mdns_res = mdns::mdns_query(wifi_res.sta_stack).await;
             log::info!("Mdns result: {mdns_res:?}");
 
@@ -383,6 +362,7 @@ async fn main(spawner: Spawner) {
             global_state.clone(),
             ws_sleep_sig.clone(),
             wifi_conn_sig,
+            board.sha,
         ),
     );
     spawn_task(&spawner, "logger_task", logger_task(global_state.clone()));
@@ -395,7 +375,7 @@ async fn main(spawner: Spawner) {
     );
 
     set_brownout_detection(true);
-    global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
+    global_state.state.lock().await.solve.scene = Scene::WaitingForCompetitor;
     if let Some(saved_state) = SavedGlobalState::from_nvs(&nvs).await {
         global_state
             .state
@@ -423,13 +403,11 @@ async fn main(spawner: Spawner) {
                 ))
                 .await;
 
-                // only wait that 15s when going into sleep mode (to make sure close is sent and to
-                // debounce sleeps)
+                // Let the Close frame flush and debounce rapid sleep/wake transitions.
                 let start = Instant::now();
                 while start.elapsed().as_millis() < 15000 {
                     if sleep_state() != last_sleep {
-                        // send sleep to ws to make sure clean state of
-                        // ws is reached in next outer loop iteration
+                        // Settle ws before the next outer-loop pass.
                         ws_sleep_sig.signal(true);
 
                         continue 'outer;
@@ -460,10 +438,9 @@ async fn logger_task(global_state: GlobalState) {
             continue;
         }
 
-        #[allow(static_mut_refs)]
-        let logs_vec = unsafe {
-            crate::utils::logger::LOGS_WRITER.get_vec(Some(crate::stackmat::CURRENT_TIME))
-        };
+        let logs_vec = crate::utils::logger::get_vec(Some(
+            crate::stackmat::CURRENT_TIME.load(portable_atomic::Ordering::Relaxed),
+        ));
 
         if !logs_vec.is_empty() {
             ws::send_frame(ws_framer::WsFrameOwned::Binary(logs_vec)).await;
@@ -471,7 +448,7 @@ async fn logger_task(global_state: GlobalState) {
 
         #[cfg(not(feature = "release_build"))]
         if (Instant::now() - heap_start).as_millis() >= consts::PRINT_HEAP_INTERVAL_MS {
-            if global_state.state.lock().await.server_connected == Some(true) {
+            if global_state.state.lock_silent().await.conn.server_connected == Some(true) {
                 log::info!("{}", esp_alloc::HEAP.stats());
             }
 

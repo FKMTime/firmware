@@ -64,6 +64,18 @@ impl OledData<'_> {
         Ok(())
     }
 
+    /// Flush with a 1.5s timeout, logging + reporting LCD_FLUSH_TIMEOUT on failure.
+    pub async fn flush_timed(&mut self) {
+        if embassy_time::with_timeout(embassy_time::Duration::from_millis(1500), self.flush())
+            .await
+            .is_err()
+        {
+            log::error!("OLED FLUSH TIMEOUT");
+            crate::utils::error_log::add_error(crate::utils::error_log::codes::LCD_FLUSH_TIMEOUT)
+                .await;
+        }
+    }
+
     pub fn clear_main(&mut self) -> Result<()> {
         self.fbuf.fill_solid(&MAIN_RECT, BinaryColor::Off);
         Ok(())
@@ -325,15 +337,18 @@ where
     Ok(())
 }
 
-pub async fn lcd_show_critical_code(i2c: SharedI2C, mut display_rst: Output<'static>, code: u8) {
+async fn init_display(
+    i2c: SharedI2C,
+    display_rst: &mut Output<'static>,
+) -> GraphicsMode<Ssd1309_128_64, I2CInterface<SharedI2C>> {
     let di = display_interface_i2c::I2CInterface::new(i2c, 0x3C, 0x40);
     let raw_disp =
         oled_async::builder::Builder::new(oled_async::displays::ssd1309::Ssd1309_128_64 {})
             .with_rotation(oled_async::prelude::DisplayRotation::Rotate180)
             .connect(di);
 
-    let mut disp: oled_async::mode::GraphicsMode<_, _> = raw_disp.into();
-    disp.reset(&mut display_rst, &mut Delay);
+    let mut disp: GraphicsMode<_, _> = raw_disp.into();
+    disp.reset(display_rst, &mut Delay);
 
     let disp_init = async {
         disp.init().await?;
@@ -348,6 +363,12 @@ pub async fn lcd_show_critical_code(i2c: SharedI2C, mut display_rst: Output<'sta
         log::error!("Disp init error: {e:?} (but continuing i guess)");
         crate::utils::error_log::add_error(crate::utils::error_log::codes::LCD_INIT_FAILED).await;
     }
+
+    disp
+}
+
+pub async fn lcd_show_critical_code(i2c: SharedI2C, mut display_rst: Output<'static>, code: u8) {
+    let mut disp = init_display(i2c, &mut display_rst).await;
 
     let text = format!("CRITICAL ERROR\nCODE: {code}",);
     let text = Text::with_text_style(&text, Point::zero(), NORMAL_FONT, TEXT_CENTER);
@@ -363,28 +384,7 @@ pub async fn lcd_task(
     global_state: GlobalState,
     wifi_setup_sig: Rc<Signal<NoopRawMutex, ()>>,
 ) {
-    let di = display_interface_i2c::I2CInterface::new(i2c, 0x3C, 0x40);
-    let raw_disp =
-        oled_async::builder::Builder::new(oled_async::displays::ssd1309::Ssd1309_128_64 {})
-            .with_rotation(oled_async::prelude::DisplayRotation::Rotate180)
-            .connect(di);
-
-    let mut disp: oled_async::mode::GraphicsMode<_, _> = raw_disp.into();
-    disp.reset(&mut display_rst, &mut Delay);
-
-    let disp_init = async {
-        disp.init().await?;
-        disp.clear();
-        disp.flush().await?;
-
-        anyhow::Result::<(), display_interface::DisplayError>::Ok(())
-    }
-    .await;
-
-    if let Err(e) = disp_init {
-        log::error!("Disp init error: {e:?} (but continuing i guess)");
-        crate::utils::error_log::add_error(crate::utils::error_log::codes::LCD_INIT_FAILED).await;
-    }
+    let disp = init_display(i2c, &mut display_rst).await;
 
     let mut data = alloc::vec![embedded_graphics::pixelcolor::BinaryColor::Off; FBUF_SIZE];
     let Some(data): Option<&mut [BinaryColor; FBUF_SIZE]> = data.as_mut_array() else {
@@ -401,7 +401,7 @@ pub async fn lcd_task(
 
     global_state.show_battery.wait().await;
     _ = process_top_bar(
-        &global_state.state.value().await.clone(),
+        &global_state.state.lock_silent().await.clone(),
         &global_state,
         &mut oled,
     )
@@ -421,58 +421,35 @@ pub async fn lcd_task(
 
     let mut last_update;
     loop {
-        let current_state = global_state.state.value().await.clone();
+        let current_state = global_state.state.lock_silent().await.clone();
         log::debug!("lcd current_state: {current_state:?}");
         last_update = Instant::now();
 
         if sleep_state() {
-            unsafe {
-                crate::state::SLEEP_STATE = false;
-            }
+            crate::state::SLEEP_STATE.store(false, portable_atomic::Ordering::Relaxed);
             log::warn!("Sleep wakeup!");
         }
 
-        let current_scene = current_state.scene.clone();
+        let current_scene = current_state.solve.scene.clone();
         let fut = async {
             oled.fbuf.clear(BinaryColor::Off);
             _ = process_top_bar(&current_state, &global_state, &mut oled).await;
             _ = process_main(&current_state, &global_state, &wifi_setup_sig, &mut oled).await;
-            if embassy_time::with_timeout(embassy_time::Duration::from_millis(1500), oled.flush())
-                .await
-                .is_err()
-            {
-                log::error!("OLED FLUSH TIMEOUT");
-                crate::utils::error_log::add_error(
-                    crate::utils::error_log::codes::LCD_FLUSH_TIMEOUT,
-                )
-                .await;
-            }
+            oled.flush_timed().await;
 
             loop {
                 Timer::after_millis(1000).await;
                 if global_state.show_battery.signaled() {
-                    let state_snapshot = global_state.state.value().await.clone();
-                    let qr_open = state_snapshot.menu_scene == Some(MenuScene::ErrorLog)
-                        && state_snapshot.error_log_entry_stage == Some(ErrorLogEntryStage::Qr);
+                    let state_snapshot = global_state.state.lock_silent().await.clone();
+                    let qr_open = state_snapshot.ui.menu_scene == Some(MenuScene::ErrorLog)
+                        && state_snapshot.ui.error_log_entry_stage == Some(ErrorLogEntryStage::Qr);
                     if qr_open {
                         continue;
                     }
 
                     oled.fbuf.fill_solid(&TOPBAR_RECT, BinaryColor::Off);
                     _ = process_top_bar(&state_snapshot, &global_state, &mut oled).await;
-                    if embassy_time::with_timeout(
-                        embassy_time::Duration::from_millis(1500),
-                        oled.flush(),
-                    )
-                    .await
-                    .is_err()
-                    {
-                        log::error!("OLED FLUSH TIMEOUT");
-                        crate::utils::error_log::add_error(
-                            crate::utils::error_log::codes::LCD_FLUSH_TIMEOUT,
-                        )
-                        .await;
-                    }
+                    oled.flush_timed().await;
 
                     global_state.show_battery.reset();
                 }
@@ -487,32 +464,18 @@ pub async fn lcd_task(
                         Text::with_text_style("Sleep", Point::zero(), SMALL_FONT, TEXT_CENTER);
 
                     center_screen(Chain::new(text)).draw(&mut oled.fbuf);
-                    if embassy_time::with_timeout(
-                        embassy_time::Duration::from_millis(1500),
-                        oled.flush(),
-                    )
-                    .await
-                    .is_err()
-                    {
-                        log::error!("OLED FLUSH TIMEOUT");
-                        crate::utils::error_log::add_error(
-                            crate::utils::error_log::codes::LCD_FLUSH_TIMEOUT,
-                        )
-                        .await;
-                    }
+                    oled.flush_timed().await;
 
                     {
                         let mut state = global_state.state.lock().await;
-                        state.server_connected = Some(false);
-                        state.wifi_connected = Some(false);
+                        state.conn.server_connected = Some(false);
+                        state.conn.wifi_connected = Some(false);
                     }
 
-                    unsafe {
-                        crate::state::SLEEP_STATE = true;
-                        crate::state::TRUST_SERVER = false;
-                    }
+                    crate::state::SLEEP_STATE.store(true, portable_atomic::Ordering::Relaxed);
+                    crate::state::set_trust_server(false);
 
-                    global_state.state.signal_reset();
+                    global_state.render.reset();
                 }
 
                 #[cfg(not(any(feature = "e2e", feature = "qa")))]
@@ -548,7 +511,7 @@ pub async fn lcd_task(
             }
         };
 
-        let res = embassy_futures::select::select(fut, global_state.state.wait()).await;
+        let res = embassy_futures::select::select(fut, global_state.render.wait()).await;
         match res {
             embassy_futures::select::Either::First(_) => {}
             embassy_futures::select::Either::Second(_) => {
@@ -588,12 +551,13 @@ fn topbar_icons_layout<VG: ViewGroup>(
 
 async fn process_top_bar(
     current_state: &SignaledGlobalStateInner,
-    _global_state: &GlobalState,
+    global_state: &GlobalState,
     oled: &mut OledData<'_>,
 ) -> Result<()> {
-    let text = format!("{}%", current_state.battery_status.0);
+    let battery_status = global_state.battery.lock().await.battery_status;
+    let text = format!("{}%", battery_status.0);
     let text = Text::with_text_style(&text, Point::zero(), NORMAL_FONT, TEXT_TOPBAR);
-    if current_state.battery_status.1 {
+    if battery_status.1 {
         battery_layout(Chain::new(Resources::CHARGING).append(text)).draw(&mut oled.fbuf)?;
     } else {
         battery_layout(Chain::new(text)).draw(&mut oled.fbuf)?;
@@ -601,27 +565,27 @@ async fn process_top_bar(
 
     let topbar_chain = Chain::new(CrossedIcon::new(
         Resources::WIFI,
-        !current_state.wifi_connected.unwrap_or(false),
+        !current_state.conn.wifi_connected.unwrap_or(false),
         9,
     ))
     .append(CrossedIcon::new(
         Resources::SERVER,
-        !current_state.server_connected.unwrap_or(false),
+        !current_state.conn.server_connected.unwrap_or(false),
         9,
     ));
 
     #[cfg(not(feature = "timer-func"))]
     let topbar_chain = topbar_chain.append(CrossedIcon::new(
         Resources::TIMER,
-        !current_state.stackmat_connected.unwrap_or(false),
+        !current_state.conn.stackmat_connected.unwrap_or(false),
         9,
     ));
 
     topbar_icons_layout(topbar_chain).draw(&mut oled.fbuf)?;
 
-    let text = if current_state.selected_config_menu.is_some() {
+    let text = if current_state.ui.selected_config_menu.is_some() {
         Some("CONFIG")
-    } else if let Some(ref menu_scene) = current_state.menu_scene {
+    } else if let Some(ref menu_scene) = current_state.ui.menu_scene {
         match menu_scene {
             MenuScene::Signing => Some("SIGN"),
             MenuScene::Unsigning => Some("UNSIGN"),
@@ -629,8 +593,8 @@ async fn process_top_bar(
             MenuScene::ErrorLog => Some("ERRLOG"),
             MenuScene::BuzzerVolume => Some("BUZZER"),
         }
-    } else if let Some(ref group) = current_state.solve_group
-        && current_state.scene == Scene::CompetitorInfo
+    } else if let Some(ref group) = current_state.solve.solve_group
+        && current_state.solve.scene == Scene::CompetitorInfo
     {
         Some(group.name.as_str())
     } else {
@@ -654,7 +618,7 @@ async fn process_main(
     wifi_setup_sig: &Signal<NoopRawMutex, ()>,
     oled: &mut OledData<'_>,
 ) -> Result<()> {
-    if let Some(ref error_text) = current_state.error_text {
+    if let Some(ref error_text) = current_state.msg.error_text {
         center_text_layout(&format!(
             "{}\n{}",
             get_translation(TranslationKey::ERROR_HEADER),
@@ -665,13 +629,13 @@ async fn process_main(
         return Ok(());
     }
 
-    // display custom message on top of everything!
-    if let Some((line1, line2)) = &current_state.custom_message {
+    // custom message overrides the regular screens
+    if let Some((line1, line2)) = &current_state.msg.custom_message {
         center_text_layout(&format!("{line1}\n{line2}")).draw(&mut oled.fbuf)?;
         return Ok(());
     }
 
-    if let Some(sel) = current_state.selected_config_menu {
+    if let Some(sel) = current_state.ui.selected_config_menu {
         let items: alloc::vec::Vec<alloc::string::String> = crate::structs::CONFIG_MENU_ITEMS
             .iter()
             .enumerate()
@@ -682,7 +646,7 @@ async fn process_main(
         return Ok(());
     }
 
-    match current_state.menu_scene {
+    match current_state.ui.menu_scene {
         Some(MenuScene::BuzzerVolume) => {
             center_text_layout(&format!(
                 "Buzzer Volume\n< {} >\nSubmit to save",
@@ -692,9 +656,9 @@ async fn process_main(
             return Ok(());
         }
         Some(MenuScene::ErrorLog) => {
-            if let Some(entry_idx) = current_state.selected_error_log_entry {
-                if let Some(entry) = current_state.error_log_entries.get(entry_idx) {
-                    if current_state.error_log_entry_stage == Some(ErrorLogEntryStage::Qr) {
+            if let Some(entry_idx) = current_state.ui.selected_error_log_entry {
+                if let Some(entry) = current_state.ui.error_log_entries.get(entry_idx) {
+                    if current_state.ui.error_log_entry_stage == Some(ErrorLogEntryStage::Qr) {
                         match entry {
                             crate::utils::error_log::ErrorLogEntry::Code { timestamp: _, code } => {
                                 let url = format!("https://docs.fkmtime.com/debugging/e{}", code);
@@ -722,7 +686,7 @@ async fn process_main(
                     draw_scrollable_details_text(
                         &mut oled.fbuf,
                         &error_log_entry_details_text(entry),
-                        current_state.error_log_details_scroll,
+                        current_state.ui.error_log_details_scroll,
                     );
                     return Ok(());
                 }
@@ -732,15 +696,16 @@ async fn process_main(
             }
 
             let mut items = current_state
+                .ui
                 .error_log_entries
                 .iter()
                 .map(|entry| entry.list_label_v4())
                 .collect::<alloc::vec::Vec<_>>();
             items.push("Exit".into());
 
-            let sel = current_state.selected_error_log_item;
+            let sel = current_state.ui.selected_error_log_item;
             if sel >= items.len() {
-                global_state.state.lock().await.selected_error_log_item = 0;
+                global_state.state.lock().await.ui.selected_error_log_item = 0;
             } else {
                 let item_refs = items
                     .iter()
@@ -751,7 +716,7 @@ async fn process_main(
             return Ok(());
         }
         Some(MenuScene::Signing) | Some(MenuScene::Unsigning) => {
-            let prefix = if current_state.menu_scene == Some(MenuScene::Signing) {
+            let prefix = if current_state.ui.menu_scene == Some(MenuScene::Signing) {
                 "S"
             } else {
                 "Uns"
@@ -783,6 +748,7 @@ async fn process_main(
         }
         Some(crate::state::MenuScene::BtDisplay) => {
             let mut items: alloc::vec::Vec<alloc::string::String> = current_state
+                .ui
                 .discovered_bluetooth_devices
                 .iter()
                 .map(|dev| alloc::format!("{} [{:X?}]", dev.name, dev.addr))
@@ -790,9 +756,9 @@ async fn process_main(
             items.push("Unpair".into());
             items.push("Exit".into());
 
-            let sel = current_state.selected_bluetooth_item;
+            let sel = current_state.ui.selected_bluetooth_item;
             if sel >= items.len() {
-                global_state.state.lock().await.selected_bluetooth_item = 0;
+                global_state.state.lock().await.ui.selected_bluetooth_item = 0;
             } else {
                 let item_refs: alloc::vec::Vec<&str> = items.iter().map(|s| s.as_str()).collect();
                 draw_scrollable_menu(&mut oled.fbuf, &item_refs, sel);
@@ -807,7 +773,7 @@ async fn process_main(
         return Ok(());
     }
 
-    if let Some(time) = current_state.delegate_hold {
+    if let Some(time) = current_state.solve.delegate_hold {
         let delegate_remaining = 3 - time;
 
         if delegate_remaining == 0 {
@@ -832,7 +798,7 @@ async fn process_main(
         return Ok(());
     }
 
-    match current_state.scene {
+    match current_state.solve.scene {
         Scene::WifiConnect => {
             center_text_layout(&format!(
                 "{}\n{}",
@@ -843,7 +809,7 @@ async fn process_main(
             oled.flush().await?;
 
             wifi_setup_sig.wait().await;
-            global_state.state.lock().await.scene = Scene::AutoSetupWait;
+            global_state.state.lock().await.solve.scene = Scene::AutoSetupWait;
         }
         Scene::AutoSetupWait => {
             let wifi_ssid = alloc::format!("FKM-{:X}", crate::utils::get_efuse_u32());
@@ -888,12 +854,12 @@ async fn process_main(
             center_text_layout(&format!(
                 "{}\n{}",
                 get_translation(TranslationKey::SELECT_GROUP),
-                current_state.possible_groups[current_state.group_selected_idx].name
+                current_state.solve.possible_groups[current_state.solve.group_selected_idx].name
             ))
             .draw(&mut oled.fbuf)?;
         }
         Scene::WaitingForCompetitor => {
-            if let Some(solve_time) = current_state.solve_time {
+            if let Some(solve_time) = current_state.solve.solve_time {
                 let time_str = ms_to_time_str(solve_time);
                 center_text_layout(&format!(
                     "{}\n{}",
@@ -915,12 +881,13 @@ async fn process_main(
         }
         Scene::CompetitorInfo => {
             let mut text = current_state
+                .solve
                 .competitor_display
                 .clone()
                 .unwrap_or("------".to_string())
                 .to_string();
 
-            if let Some(ref group) = current_state.solve_group
+            if let Some(ref group) = current_state.solve.solve_group
                 && let Some(ref secondary_text) = group.secondary_text
             {
                 text += &format!("\n{}", secondary_text);
@@ -933,8 +900,9 @@ async fn process_main(
             oled.flush().await?;
             let inspection_start = global_state
                 .state
-                .value()
+                .lock_silent()
                 .await
+                .solve
                 .inspection_start
                 .unwrap_or(Instant::now());
 
@@ -975,22 +943,22 @@ async fn process_main(
             }
         }
         Scene::Finished => {
-            let solve_time = current_state.solve_time.unwrap_or(0);
+            let solve_time = current_state.solve.solve_time.unwrap_or(0);
             let time_str = ms_to_time_str(solve_time);
-            let inspection_time =
-                match (current_state.inspection_start, current_state.inspection_end) {
-                    (Some(start), Some(end)) => {
-                        Some(end.saturating_duration_since(start).as_millis())
-                    }
-                    _ => None,
-                };
+            let inspection_time = match (
+                current_state.solve.inspection_start,
+                current_state.solve.inspection_end,
+            ) {
+                (Some(start), Some(end)) => Some(end.saturating_duration_since(start).as_millis()),
+                _ => None,
+            };
 
             let show_inspection = current_state.use_inspection()
                 && inspection_time.unwrap_or(0) > INSPECTION_TIME_PLUS2;
             let inspection_display =
                 show_inspection.then(|| ms_to_time_str(inspection_time.unwrap_or(0)));
 
-            let penalty = current_state.penalty.unwrap_or(0);
+            let penalty = current_state.solve.penalty.unwrap_or(0);
             let main_time_display: String = match penalty {
                 -2 if solve_time == 0 => "DNS".into(),
                 -2 => format!("DNS ({time_str})"),
@@ -1051,12 +1019,12 @@ async fn process_main(
                     .draw(&mut oled.fbuf)?;
             }
 
-            let status = if !current_state.time_confirmed {
+            let status = if !current_state.solve.time_confirmed {
                 Some(get_translation(TranslationKey::CONFIRM_TIME))
-            } else if current_state.current_judge.is_none() {
+            } else if current_state.solve.current_judge.is_none() {
                 Some(get_translation(TranslationKey::SCAN_JUDGE_CARD))
-            } else if current_state.current_competitor.is_some()
-                && current_state.current_judge.is_some()
+            } else if current_state.solve.current_competitor.is_some()
+                && current_state.solve.current_judge.is_some()
             {
                 Some(get_translation(TranslationKey::SCAN_COMPETITOR_CARD))
             } else {
@@ -1119,12 +1087,12 @@ async fn process_main_overwrite(
     _global_state: &GlobalState,
     oled: &mut OledData<'_>,
 ) -> bool {
-    if !current_state.scene.can_be_lcd_overwritten() {
+    if !current_state.solve.scene.can_be_lcd_overwritten() {
         return false;
     }
 
-    if current_state.server_connected == Some(false) {
-        if current_state.wifi_connected == Some(false) {
+    if current_state.conn.server_connected == Some(false) {
+        if current_state.conn.wifi_connected == Some(false) {
             _ = center_text_layout("Wi-Fi\nConnection lost").draw(&mut oled.fbuf);
         } else {
             let text = format!(
@@ -1134,7 +1102,7 @@ async fn process_main_overwrite(
             );
             _ = center_text_layout(&text).draw(&mut oled.fbuf);
         }
-    } else if current_state.device_added == Some(false) {
+    } else if current_state.conn.device_added == Some(false) {
         #[cfg(not(feature = "e2e"))]
         let lines = (
             &get_translation(TranslationKey::DEVICE_NOT_ADDED_HEADER),
@@ -1146,7 +1114,7 @@ async fn process_main_overwrite(
 
         let text = format!("{}\n{}", lines.0, lines.1);
         _ = center_text_layout(&text).draw(&mut oled.fbuf);
-    } else if current_state.stackmat_connected == Some(false) {
+    } else if current_state.conn.stackmat_connected == Some(false) {
         let text = format!(
             "{}\n{}",
             get_translation(TranslationKey::STACKMAT_DISCONNECTED_HEADER),

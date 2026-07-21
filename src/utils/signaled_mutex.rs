@@ -1,86 +1,64 @@
+use alloc::rc::Rc;
 use embassy_sync::{
     blocking_mutex::raw::RawMutex,
     mutex::{Mutex, MutexGuard},
     signal::Signal,
 };
 
-pub struct SignaledMutex<M: RawMutex, T: Clone + PartialEq> {
+/// A mutex paired with a shared change-notification signal. `lock()` signals on
+/// drop; `lock_silent()` does not. Every sub-state shares the one render signal,
+/// so a change in any of them wakes the renderer. There is intentionally no
+/// clone/diff of `T`: signaling is the caller's intent, not a whole-struct compare.
+pub struct SignaledMutex<M: RawMutex, T> {
     inner: Mutex<M, T>,
-    update_sig: Signal<M, ()>,
+    notify: Rc<Signal<M, ()>>,
 }
 
-#[allow(dead_code)]
-impl<M: RawMutex, T: Clone + PartialEq> SignaledMutex<M, T> {
-    pub fn new(initial: T) -> Self {
-        let sig = Signal::new();
-        //sig.signal(());
-
+impl<M: RawMutex, T> SignaledMutex<M, T> {
+    pub fn new(initial: T, notify: Rc<Signal<M, ()>>) -> Self {
         Self {
             inner: Mutex::new(initial),
-            update_sig: sig,
+            notify,
         }
     }
 
-    pub async fn wait(&self) {
-        self.update_sig.wait().await;
-    }
-
     pub fn signal(&self) {
-        self.update_sig.signal(());
-    }
-
-    pub fn signal_reset(&self) {
-        self.update_sig.reset();
-    }
-
-    pub fn signalled(&self) -> bool {
-        self.update_sig.signaled()
+        self.notify.signal(());
     }
 
     pub async fn lock(&self) -> SignaledMutexGuard<'_, M, T> {
         let inner_guard = self.inner.lock().await;
-        let old_value = (*inner_guard).clone();
 
         SignaledMutexGuard {
-            update_sig: &self.update_sig,
+            notify: &self.notify,
             inner_guard,
-            old_value,
         }
     }
 
-    pub async fn wait_lock(&self) -> MutexGuard<'_, M, T> {
-        self.update_sig.wait().await;
-        self.inner.lock().await
-    }
-
-    pub async fn value(&self) -> MutexGuard<'_, M, T> {
+    pub async fn lock_silent(&self) -> MutexGuard<'_, M, T> {
         self.inner.lock().await
     }
 }
 
-pub struct SignaledMutexGuard<'a, M: RawMutex, T: Clone + PartialEq> {
-    update_sig: &'a Signal<M, ()>,
+pub struct SignaledMutexGuard<'a, M: RawMutex, T> {
+    notify: &'a Rc<Signal<M, ()>>,
     inner_guard: MutexGuard<'a, M, T>,
-
-    old_value: T,
 }
 
-impl<M: RawMutex, T: Clone + PartialEq> Drop for SignaledMutexGuard<'_, M, T> {
+impl<M: RawMutex, T> Drop for SignaledMutexGuard<'_, M, T> {
     fn drop(&mut self) {
-        if *self.inner_guard != self.old_value {
-            self.update_sig.signal(()); // signal value change (if actually changed)
-        }
+        self.notify.signal(());
     }
 }
 
-impl<M: RawMutex, T: Clone + PartialEq> core::ops::Deref for SignaledMutexGuard<'_, M, T> {
+impl<M: RawMutex, T> core::ops::Deref for SignaledMutexGuard<'_, M, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         self.inner_guard.deref()
     }
 }
 
-impl<M: RawMutex, T: Clone + PartialEq> core::ops::DerefMut for SignaledMutexGuard<'_, M, T> {
+impl<M: RawMutex, T> core::ops::DerefMut for SignaledMutexGuard<'_, M, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.inner_guard.deref_mut()
     }

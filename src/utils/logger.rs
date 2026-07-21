@@ -1,32 +1,29 @@
 use crate::state::{ota_state, sleep_state};
 use alloc::vec::Vec;
+use core::cell::{Cell, UnsafeCell};
+use embassy_sync::blocking_mutex::{Mutex as BlockingMutex, raw::CriticalSectionRawMutex};
+
+const LOGS_BUF_SIZE: usize = 8 * 1024;
+
+/// The log bytes live in `.dram2_uninit` so the 8 KiB is not zeroed at boot.
+/// Access is guarded by `LOGS` below; sound on the single core.
+struct BufCell(UnsafeCell<core::mem::MaybeUninit<[u8; LOGS_BUF_SIZE]>>);
+unsafe impl Sync for BufCell {}
 
 #[unsafe(link_section = ".dram2_uninit")]
-static mut LOGS_BUF: core::mem::MaybeUninit<[u8; 8 * 1024]> = core::mem::MaybeUninit::uninit();
+static LOGS_BUF: BufCell = BufCell(UnsafeCell::new(core::mem::MaybeUninit::uninit()));
 
-pub struct LogsBufWriter {
-    buf: &'static mut [u8],
+/// Guards `LOGS_BUF` and holds the write position (kept out of `.dram2_uninit`,
+/// which is not initialized at boot).
+static LOGS: BlockingMutex<CriticalSectionRawMutex, Cell<usize>> = BlockingMutex::new(Cell::new(0));
+
+/// Short-lived writer over the log buffer; used only inside `LOGS.lock(..)`.
+struct Writer<'a> {
+    buf: &'a mut [u8],
     pos: usize,
 }
 
-#[allow(static_mut_refs)]
-pub static mut LOGS_WRITER: LogsBufWriter = LogsBufWriter {
-    buf: unsafe { &mut *LOGS_BUF.as_mut_ptr() },
-    pos: 0,
-};
-
-impl LogsBufWriter {
-    pub fn get_vec(&mut self, current_time: Option<u64>) -> Vec<u8> {
-        if let Some(current_time) = current_time {
-            self.buf[2..10].copy_from_slice(&current_time.to_be_bytes());
-        }
-
-        let tmp = self.buf[0..self.pos].to_vec();
-        self.pos = 0;
-
-        tmp
-    }
-
+impl Writer<'_> {
     fn mark_truncated(&mut self) {
         self.buf[1] = 0x01;
     }
@@ -42,11 +39,25 @@ impl LogsBufWriter {
     }
 }
 
-impl core::fmt::Write for LogsBufWriter {
+impl core::fmt::Write for Writer<'_> {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         self.write_raw(s.as_bytes());
         Ok(())
     }
+}
+
+/// Drain the buffered logs into an owned Vec (resetting the write position).
+pub fn get_vec(current_time: Option<u64>) -> Vec<u8> {
+    LOGS.lock(|pos_cell| {
+        let buf = unsafe { &mut *(*LOGS_BUF.0.get()).as_mut_ptr() };
+        if let Some(current_time) = current_time {
+            buf[2..10].copy_from_slice(&current_time.to_be_bytes());
+        }
+
+        let tmp = buf[0..pos_cell.get()].to_vec();
+        pos_cell.set(0);
+        tmp
+    })
 }
 
 #[cfg(feature = "release_build")]
@@ -69,7 +80,6 @@ impl FkmLogger {
 impl log::Log for FkmLogger {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
         let level = metadata.level();
-        //let target = metadata.target();
 
         if level <= FILTER_MAX {
             return true;
@@ -87,14 +97,14 @@ impl log::Log for FkmLogger {
         const GREEN: &str = "\u{001B}[32m";
         const YELLOW: &str = "\u{001B}[33m";
         const BLUE: &str = "\u{001B}[34m";
-        const CYAN: &str = "\u{001B}[35m";
+        const MAGENTA: &str = "\u{001B}[35m";
 
         let color = match record.level() {
             log::Level::Error => RED,
             log::Level::Warn => YELLOW,
             log::Level::Info => GREEN,
             log::Level::Debug => BLUE,
-            log::Level::Trace => CYAN,
+            log::Level::Trace => MAGENTA,
         };
         let reset = RESET;
 
@@ -110,9 +120,13 @@ impl log::Log for FkmLogger {
                 log::Level::Trace => "T ",
             };
 
-            unsafe {
-                #[allow(clippy::deref_addrof)]
-                let w = &mut *(&raw mut LOGS_WRITER);
+            LOGS.lock(|pos_cell| {
+                let buf = unsafe { &mut *(*LOGS_BUF.0.get()).as_mut_ptr() };
+                let mut w = Writer {
+                    buf,
+                    pos: pos_cell.get(),
+                };
+
                 if w.pos == 0 {
                     w.buf[0] = b'L';
                     w.buf[1] = 0x00;
@@ -121,6 +135,7 @@ impl log::Log for FkmLogger {
 
                 if w.pos + 3 > w.buf.len() {
                     w.mark_truncated();
+                    pos_cell.set(w.pos);
                     return;
                 }
 
@@ -128,10 +143,12 @@ impl log::Log for FkmLogger {
                 w.pos += 2;
                 w.write_raw(level.as_bytes());
 
-                _ = core::fmt::write(w, *record.args());
+                _ = core::fmt::write(&mut w, *record.args());
                 let line_len = w.pos - line_start - 2;
                 w.buf[line_start..line_start + 2].copy_from_slice(&(line_len as u16).to_be_bytes());
-            }
+
+                pos_cell.set(w.pos);
+            });
         }
     }
 

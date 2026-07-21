@@ -5,21 +5,47 @@ use alloc::{
     vec::Vec,
 };
 use anyhow::Result;
+use core::cell::{Cell, UnsafeCell};
+use embassy_sync::blocking_mutex::{Mutex as BlockingMutex, raw::CriticalSectionRawMutex};
 use esp_hal_wifimanager::Nvs;
 
+const ERROR_LOG_BUF_SIZE: usize = 2 * 1024;
+
+/// The log bytes live in `.dram2_uninit` so the 2 KiB is not zeroed at boot.
+/// Every access happens inside the `ERROR_LOG` critical-section lock below, so
+/// this `Sync` impl is sound on the single core.
+struct BufCell(UnsafeCell<core::mem::MaybeUninit<[u8; ERROR_LOG_BUF_SIZE]>>);
+unsafe impl Sync for BufCell {}
+
 #[unsafe(link_section = ".dram2_uninit")]
-static mut ERROR_LOG_BUF: core::mem::MaybeUninit<[u8; 2 * 1024]> = core::mem::MaybeUninit::uninit();
-static mut OFFSET: usize = 0;
-static mut SAVE_READY: bool = false;
+static ERROR_LOG_BUF: BufCell = BufCell(UnsafeCell::new(core::mem::MaybeUninit::uninit()));
+
+#[derive(Clone, Copy)]
+struct Meta {
+    offset: usize,
+    save_ready: bool,
+}
+
+/// Guards `ERROR_LOG_BUF` and holds `offset`/`save_ready` (these must stay out
+/// of `.dram2_uninit`, which is not initialized at boot).
+static ERROR_LOG: BlockingMutex<CriticalSectionRawMutex, Cell<Meta>> =
+    BlockingMutex::new(Cell::new(Meta {
+        offset: 0,
+        save_ready: false,
+    }));
 
 #[inline(always)]
 pub fn is_save_ready() -> bool {
-    unsafe { SAVE_READY }
+    ERROR_LOG.lock(|m| m.get().save_ready)
 }
 
 #[inline(always)]
 pub fn clear_save_ready() {
-    unsafe { SAVE_READY = false };
+    ERROR_LOG.lock(|m| {
+        let mut meta = m.get();
+        meta.save_ready = false;
+        m.set(meta);
+    });
 }
 
 #[allow(dead_code)]
@@ -127,31 +153,40 @@ fn ensure_space(buf: &mut [u8], offset: &mut usize, needed: usize) -> bool {
 }
 
 pub async fn add_error(code: u8) {
-    unsafe {
-        #[allow(static_mut_refs)]
-        let error_log_buf = &mut (*ERROR_LOG_BUF.as_mut_ptr());
+    let epoch = current_epoch();
+    ERROR_LOG.lock(|cell| {
+        let mut meta = cell.get();
+        let buf = unsafe { &mut *(*ERROR_LOG_BUF.0.get()).as_mut_ptr() };
 
-        let mut offset = OFFSET;
-        if !ensure_space(error_log_buf, &mut offset, 1 + 8 + 1) {
+        if !ensure_space(buf, &mut meta.offset, 1 + 8 + 1) {
             return;
         }
 
-        error_log_buf[offset] = b'N';
-        error_log_buf[offset + 1..offset + 1 + 8].copy_from_slice(&current_epoch().to_be_bytes());
-        error_log_buf[offset + 1 + 8] = code;
+        let o = meta.offset;
+        buf[o] = b'N';
+        buf[o + 1..o + 1 + 8].copy_from_slice(&epoch.to_be_bytes());
+        buf[o + 1 + 8] = code;
 
-        OFFSET = offset + 1 + 8 + 1;
-        SAVE_READY = true;
+        meta.offset = o + 1 + 8 + 1;
+        meta.save_ready = true;
+        cell.set(meta);
+    });
+}
+
+/// Log `code` at most once, guarded by `flag`.
+pub async fn report_once(flag: &core::sync::atomic::AtomicBool, code: u8) {
+    if !flag.load(core::sync::atomic::Ordering::Relaxed) {
+        add_error(code).await;
+        flag.store(true, core::sync::atomic::Ordering::Relaxed);
     }
 }
 
 pub async fn add_stacktrace(addrs: &[u32], version: &str, timestamp: u64) {
-    unsafe {
-        #[allow(static_mut_refs)]
-        let error_log_buf = &mut (*ERROR_LOG_BUF.as_mut_ptr());
+    ERROR_LOG.lock(|cell| {
+        let mut meta = cell.get();
+        let buf = unsafe { &mut *(*ERROR_LOG_BUF.0.get()).as_mut_ptr() };
 
-        let mut offset = OFFSET;
-        if !ensure_space(error_log_buf, &mut offset, 1 + 8 + 16 + 1 + addrs.len() * 4) {
+        if !ensure_space(buf, &mut meta.offset, 1 + 8 + 16 + 1 + addrs.len() * 4) {
             return;
         }
 
@@ -160,27 +195,30 @@ pub async fn add_stacktrace(addrs: &[u32], version: &str, timestamp: u64) {
         let version_len = core::cmp::min(version_bytes.len(), version_buf.len());
         version_buf[..version_len].copy_from_slice(&version_bytes[..version_len]);
 
-        error_log_buf[offset] = b'S';
-        error_log_buf[offset + 1..offset + 1 + 8].copy_from_slice(&timestamp.to_be_bytes());
-        error_log_buf[offset + 1 + 8..offset + 1 + 8 + 16].copy_from_slice(&version_buf);
-        error_log_buf[offset + 1 + 8 + 16] = addrs.len() as u8;
+        let o = meta.offset;
+        buf[o] = b'S';
+        buf[o + 1..o + 1 + 8].copy_from_slice(&timestamp.to_be_bytes());
+        buf[o + 1 + 8..o + 1 + 8 + 16].copy_from_slice(&version_buf);
+        buf[o + 1 + 8 + 16] = addrs.len() as u8;
 
         for (i, &addr) in addrs.iter().enumerate() {
-            let start = offset + 1 + 8 + 16 + 1 + i * 4;
+            let start = o + 1 + 8 + 16 + 1 + i * 4;
             let end = start + 4;
-            error_log_buf[start..end].copy_from_slice(&addr.to_be_bytes());
+            buf[start..end].copy_from_slice(&addr.to_be_bytes());
         }
 
-        OFFSET = offset + 1 + 8 + 16 + 1 + addrs.len() * 4;
-        SAVE_READY = true;
-    }
+        meta.offset = o + 1 + 8 + 16 + 1 + addrs.len() * 4;
+        meta.save_ready = true;
+        cell.set(meta);
+    });
 }
 
-pub fn dump_error_log() -> &'static [u8] {
-    #[allow(static_mut_refs)]
-    unsafe {
-        &(&*ERROR_LOG_BUF.as_ptr())[..OFFSET]
-    }
+pub fn dump_error_log() -> Vec<u8> {
+    ERROR_LOG.lock(|cell| {
+        let meta = cell.get();
+        let buf = unsafe { &*(*ERROR_LOG_BUF.0.get()).as_ptr() };
+        buf[..meta.offset].to_vec()
+    })
 }
 
 pub async fn load_error_log(nvs: &Nvs) {
@@ -188,67 +226,73 @@ pub async fn load_error_log(nvs: &Nvs) {
         return;
     };
 
-    #[allow(static_mut_refs)]
-    let error_log_buf = unsafe { &mut (*ERROR_LOG_BUF.as_mut_ptr()) };
+    ERROR_LOG.lock(|cell| {
+        let log_buf = unsafe { &mut *(*ERROR_LOG_BUF.0.get()).as_mut_ptr() };
 
-    if buf.len() > error_log_buf.len() {
-        // stored log is oversized/corrupt - start fresh instead of panicking
-        unsafe { OFFSET = 0 };
-        return;
-    }
-
-    let loaded_len = buf.len();
-    error_log_buf[..loaded_len].copy_from_slice(&buf);
-    drop(buf);
-
-    // validate structure, truncate at the first malformed entry
-    let mut offset = 0;
-    while offset < loaded_len {
-        match entry_size(error_log_buf, offset) {
-            Some(size) if offset + size <= loaded_len => {
-                offset += size;
-            }
-            _ => break,
+        if buf.len() > log_buf.len() {
+            // stored log is oversized/corrupt - start fresh instead of panicking
+            let mut meta = cell.get();
+            meta.offset = 0;
+            cell.set(meta);
+            return;
         }
-    }
 
-    unsafe {
-        OFFSET = offset;
-    }
+        let loaded_len = buf.len();
+        log_buf[..loaded_len].copy_from_slice(&buf);
+
+        // validate structure, truncate at the first malformed entry
+        let mut offset = 0;
+        while offset < loaded_len {
+            match entry_size(log_buf, offset) {
+                Some(size) if offset + size <= loaded_len => {
+                    offset += size;
+                }
+                _ => break,
+            }
+        }
+
+        let mut meta = cell.get();
+        meta.offset = offset;
+        cell.set(meta);
+    });
 }
 
 pub async fn save_error_log(nvs: &Nvs) {
-    #[allow(static_mut_refs)]
-    let error_log_buf = unsafe { &mut (*ERROR_LOG_BUF.as_mut_ptr()) };
+    // Snapshot under the lock so a concurrent add_error can't shift the bytes mid-save.
+    let snapshot: Vec<u8> = ERROR_LOG.lock(|cell| {
+        let meta = cell.get();
+        let buf = unsafe { &*(*ERROR_LOG_BUF.0.get()).as_ptr() };
+        buf[..meta.offset].to_vec()
+    });
 
-    unsafe {
-        _ = nvs.delete(NVS_ERROR_LOG).await;
-        let res = nvs.set(NVS_ERROR_LOG, &error_log_buf[..OFFSET]).await;
-        if let Err(e) = res {
-            log::error!("errorlog save error: {e:?}");
-        }
+    _ = nvs.delete(NVS_ERROR_LOG).await;
+    let res = nvs.set(NVS_ERROR_LOG, snapshot.as_slice()).await;
+    if let Err(e) = res {
+        log::error!("errorlog save error: {e:?}");
     }
 }
 
 pub fn parse_error_log_entries() -> Result<Vec<ErrorLogEntry>> {
-    let mut tmp = Vec::new();
+    // Snapshot under the lock, then parse/allocate outside it.
+    let buf: Vec<u8> = ERROR_LOG.lock(|cell| {
+        let meta = cell.get();
+        let b = unsafe { &*(*ERROR_LOG_BUF.0.get()).as_ptr() };
+        b[..meta.offset].to_vec()
+    });
 
-    #[allow(static_mut_refs)]
-    let error_log_buf = unsafe { &mut (*ERROR_LOG_BUF.as_mut_ptr()) };
-    let max_offset = unsafe { OFFSET };
+    let mut tmp = Vec::new();
+    let max_offset = buf.len();
 
     log::warn!("ERROR LOG:");
     let mut offset = 0;
     while offset < max_offset {
-        let log_type = error_log_buf[offset];
+        let log_type = buf[offset];
         match log_type {
             b'N' => {
                 // u64 + u8
                 let entry = ErrorLogEntry::Code {
-                    timestamp: u64::from_be_bytes(
-                        error_log_buf[offset + 1..offset + 1 + 8].try_into()?,
-                    ),
-                    code: error_log_buf[offset + 1 + 8],
+                    timestamp: u64::from_be_bytes(buf[offset + 1..offset + 1 + 8].try_into()?),
+                    code: buf[offset + 1 + 8],
                 };
 
                 if let ErrorLogEntry::Code { timestamp, code } = entry {
@@ -265,22 +309,19 @@ pub fn parse_error_log_entries() -> Result<Vec<ErrorLogEntry>> {
             b'S' => {
                 // u64 + 16 * u8 + u8 (size) + size * u32
 
-                let version_str =
-                    core::str::from_utf8(&error_log_buf[offset + 1 + 8..offset + 1 + 8 + 16])?;
+                let version_str = core::str::from_utf8(&buf[offset + 1 + 8..offset + 1 + 8 + 16])?;
                 let version_str = version_str.trim_end_matches('\0');
 
-                let size = error_log_buf[offset + 1 + 8 + 16];
+                let size = buf[offset + 1 + 8 + 16];
                 let mut tmp_addrs = Vec::new();
-                for addr in (error_log_buf
+                for addr in (buf
                     [offset + 1 + 8 + 16 + 1..offset + 1 + 8 + 16 + 1 + size as usize * 4])
                     .chunks(4)
                 {
                     tmp_addrs.push(u32::from_be_bytes(addr.try_into()?));
                 }
                 let entry = ErrorLogEntry::Stacktrace {
-                    timestamp: u64::from_be_bytes(
-                        error_log_buf[offset + 1..offset + 1 + 8].try_into()?,
-                    ),
+                    timestamp: u64::from_be_bytes(buf[offset + 1..offset + 1 + 8].try_into()?),
                     version: version_str.to_string(),
                     addrs: tmp_addrs,
                 };

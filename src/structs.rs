@@ -57,7 +57,6 @@ pub struct TimerPacket {
 pub enum TimerPacketInner {
     StartUpdate {
         version: String,
-        build_time: u64, // NOT USED
         size: u32,
         crc: u32,
         firmware: String,
@@ -128,7 +127,6 @@ pub enum TimerPacketInner {
     },
     DumpCrashLog,
 
-    // packet for end to end testing
     #[cfg(feature = "e2e")]
     TestPacket(TestPacketData),
 

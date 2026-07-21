@@ -12,7 +12,6 @@ use crate::utils::shared_i2c::SharedI2C;
 
 #[allow(dead_code)]
 pub struct Board {
-    // peripherals
     pub timg0: TimerGroup<'static, TIMG0<'static>>,
     pub timg1: TimerGroup<'static, TIMG1<'static>>,
     pub rng: Rng,

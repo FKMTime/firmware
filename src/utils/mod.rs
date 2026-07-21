@@ -2,6 +2,7 @@ use embassy_executor::{SpawnError, SpawnToken, Spawner};
 
 pub mod arc;
 pub mod backtrace_store;
+pub mod battery;
 pub mod buttons;
 pub mod error_log;
 pub mod logger;
@@ -43,14 +44,7 @@ pub fn set_brownout_detection(state: bool) {
     }
 }
 
-pub fn get_random_u64() -> u64 {
-    let mut buf = [0; 8];
-    _ = getrandom::getrandom(&mut buf);
-    u64::from_be_bytes(buf)
-}
-
-/// This function returns value with maximum of signed integer
-/// (2147483647) to easily store it in postgres db as integer
+/// Hash of the eFuse MAC, masked to fit a signed i32 (Postgres integer column).
 pub fn get_efuse_u32() -> u32 {
     let mut efuse = esp_hal_wifimanager::get_efuse_mac();
     efuse = (!efuse).wrapping_add(efuse << 18);
@@ -65,11 +59,11 @@ pub fn get_efuse_u32() -> u32 {
 }
 
 #[cfg(feature = "v3")]
-/// Sets cpu clock to 10mHz (not reversable)
+/// Sets the CPU clock to 10 MHz (not reversible).
 pub fn deeper_sleep() {
     esp32c3_set_cpu_freq_10mhz();
 
-    unsafe { crate::state::DEEPER_SLEEP = true };
+    crate::state::DEEPER_SLEEP.store(true, portable_atomic::Ordering::Relaxed);
 }
 
 #[cfg(feature = "v3")]

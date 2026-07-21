@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use crate::{
     consts::WS_RETRY_MS,
     state::{GlobalState, Scene, ota_state},
@@ -102,8 +104,10 @@ pub async fn ws_task(
     global_state: GlobalState,
     ws_sleep_sig: Rc<Signal<CriticalSectionRawMutex, bool>>,
     wifi_conn_sig: Rc<Signal<CriticalSectionRawMutex, bool>>,
+    sha: esp_hal::peripherals::SHA<'static>,
 ) {
     log::debug!("ws_url: {ws_url:?}");
+    let mut sha = Sha::new(sha);
 
     let mut rx_buf = [0; WS_BUF_SIZE];
     let mut tx_buf = [0; WS_BUF_SIZE];
@@ -124,10 +128,10 @@ pub async fn ws_task(
     };
 
     loop {
-        unsafe { crate::state::TRUST_SERVER = false };
-        unsafe { crate::state::SECURE_RFID = false };
-        unsafe { crate::state::AUTO_SETUP = false };
-        unsafe { crate::state::FKM_TOKEN = 0 };
+        crate::state::set_trust_server(false);
+        crate::state::set_secure_rfid(false);
+        crate::state::set_auto_setup(false);
+        crate::state::set_fkm_token(0);
 
         let ws_fut = ws_loop(
             &global_state,
@@ -142,6 +146,7 @@ pub async fn ws_task(
             &mut *ssl_rx_buf,
             &mut *ssl_tx_buf,
             &wifi_conn_sig,
+            &mut sha,
         );
 
         let res = embassy_futures::select::select(ws_fut, ws_sleep_sig.wait()).await;
@@ -168,8 +173,6 @@ pub async fn ws_task(
     }
 }
 
-// TODO: maybe make less args?
-#[allow(clippy::too_many_arguments)]
 async fn ws_loop(
     global_state: &GlobalState,
     ws_url: &mut WsUrlOwned,
@@ -183,13 +186,14 @@ async fn ws_loop(
     ssl_rx_buf: &mut [u8],
     ssl_tx_buf: &mut [u8],
     wifi_conn_sig: &Rc<Signal<CriticalSectionRawMutex, bool>>,
+    sha: &mut Sha<'static>,
 ) -> Result<(), ()> {
     let mut conn_failures: u32 = 0;
     loop {
         {
             let mut state = global_state.state.lock().await;
-            state.server_connected = Some(false);
-            state.device_added = None;
+            state.conn.server_connected = Some(false);
+            state.conn.device_added = None;
         }
 
         let ip = if let Ok(addr) = embassy_net::Ipv4Address::from_str(ws_url.ip.as_str()) {
@@ -219,14 +223,11 @@ async fn ws_loop(
 
             let Some(IpAddress::Ipv4(addr)) = res.first() else {
                 log::error!("[WS]Dns resolver empty vec");
-                if !DNS_EMPTY_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
-                    crate::utils::error_log::add_error(
-                        crate::utils::error_log::codes::WS_DNS_RESOLVE_EMPTY,
-                    )
-                    .await;
-
-                    DNS_EMPTY_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
-                }
+                crate::utils::error_log::report_once(
+                    &DNS_EMPTY_LOGGED,
+                    crate::utils::error_log::codes::WS_DNS_RESOLVE_EMPTY,
+                )
+                .await;
                 note_conn_failure(
                     &mut *ws_url,
                     &mut conn_failures,
@@ -249,9 +250,9 @@ async fn ws_loop(
         if let Err(e) = r {
             drop(socket);
 
-            // but if wifi conneceted signal was sent remove wifi connection lost msg
+            // If wifi reconnected during the failed connect, clear the 'wifi lost' indicator.
             if wifi_conn_sig.signaled() && wifi_conn_sig.wait().await {
-                global_state.state.lock().await.wifi_connected = Some(true);
+                global_state.state.lock().await.conn.wifi_connected = Some(true);
             }
 
             log::error!("connect error: {e:?}");
@@ -266,10 +267,8 @@ async fn ws_loop(
             Timer::after_millis(WS_RETRY_MS).await;
             continue;
         }
-        // The address is reachable — reset the unreachable-address failure counter.
         conn_failures = 0;
 
-        // TLS is mandatory — cleartext WS is no longer supported.
         if !ws_url.secure {
             log::error!("Refusing cleartext ws:// connection; use wss://");
             Timer::after_millis(WS_RETRY_MS).await;
@@ -281,7 +280,6 @@ async fn ws_loop(
         let mut peer_fp = [0u8; 32];
         let mut has_peer_fp = false;
 
-        let mut sha_guard = global_state.sha.lock().await;
         let open_res = tls
             .open(TlsContext::new(
                 &config,
@@ -290,12 +288,11 @@ async fn ws_loop(
                     verifier: FingerprintCaptureVerifier {
                         peer_fp: &mut peer_fp,
                         has_peer_fp: &mut has_peer_fp,
-                        sha: &mut sha_guard,
+                        sha: &mut *sha,
                     },
                 },
             ))
             .await;
-        drop(sha_guard);
         if let Err(e) = open_res {
             log::error!("tls open error: {e:?}");
             Timer::after_millis(WS_RETRY_MS).await;
@@ -304,15 +301,14 @@ async fn ws_loop(
 
         if has_peer_fp {
             crate::state::set_last_peer_cert_fp(peer_fp);
-            let trusted =
-                unsafe { crate::state::HAS_TLS_PIN } && crate::state::tls_pin_bytes() == peer_fp;
+            let trusted = crate::state::with_tls_pin(|pin| pin.is_some_and(|p| p == peer_fp));
 
-            unsafe { crate::state::TRUST_SERVER = trusted };
+            crate::state::set_trust_server(trusted);
             if !trusted {
                 log::warn!("TLS peer cert not pinned / mismatch — untrusted session");
                 #[cfg(not(feature = "e2e"))]
-                if unsafe { crate::state::HAS_TLS_PIN } {
-                    global_state.state.lock().await.error_text =
+                if crate::state::has_tls_pin() {
+                    global_state.state.lock().await.msg.error_text =
                         Some("Server Not Trusted!".to_string());
                 }
             } else {
@@ -324,12 +320,12 @@ async fn ws_loop(
             continue;
         }
 
-        let mut socket = WsSocket::Tls(Box::new(tls));
+        let mut socket = WsSocket(Box::new(tls));
 
         {
             let mut state = global_state.state.lock().await;
-            state.server_connected = Some(true);
-            state.wifi_connected = Some(true);
+            state.conn.server_connected = Some(true);
+            state.conn.wifi_connected = Some(true);
         }
 
         log::info!("connected!");
@@ -354,14 +350,11 @@ async fn ws_loop(
             let n = socket.read(rx_framer.mut_buf()).await.map_err(|_| ())?;
             if n == 0 {
                 log::error!("error while reading http response");
-                if !HTTP_UPGRADE_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
-                    crate::utils::error_log::add_error(
-                        crate::utils::error_log::codes::WS_HTTP_UPGRADE_READ_FAILED,
-                    )
-                    .await;
-
-                    HTTP_UPGRADE_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
-                }
+                crate::utils::error_log::report_once(
+                    &HTTP_UPGRADE_LOGGED,
+                    crate::utils::error_log::codes::WS_HTTP_UPGRADE_READ_FAILED,
+                )
+                .await;
                 return Err(());
             }
 
@@ -378,28 +371,28 @@ async fn ws_loop(
         {
             if !global_state
                 .state
-                .lock()
+                .lock_silent()
                 .await
+                .conn
                 .device_added
                 .unwrap_or(false)
-                && unsafe { crate::state::HAS_LAST_PEER_CERT_FP }
             {
-                // auto_add still pins + enroll secret like button path
-                let mut sign_key = [0u8; 32];
-                _ = getrandom::getrandom(&mut sign_key);
-                crate::state::set_sign_key(sign_key);
-                crate::state::set_tls_pin(crate::state::last_peer_cert_fp());
-                unsafe {
-                    crate::state::TRUST_SERVER = true;
+                // auto_add enrolls like the button path: pin the cert, generate a secret.
+                if let Some(peer_fp) = crate::state::last_peer_cert_fp() {
+                    let mut sign_key = [0u8; 32];
+                    _ = getrandom::getrandom(&mut sign_key);
+                    crate::state::set_sign_key(sign_key);
+                    crate::state::set_tls_pin(peer_fp);
+                    crate::state::set_trust_server(true);
+                    crate::ws::send_packet(crate::structs::TimerPacket {
+                        tag: None,
+                        data: crate::structs::TimerPacketInner::Add {
+                            firmware: alloc::string::ToString::to_string(crate::version::FIRMWARE),
+                            sign_key: crate::state::sign_key_hex(),
+                        },
+                    })
+                    .await;
                 }
-                crate::ws::send_packet(crate::structs::TimerPacket {
-                    tag: None,
-                    data: crate::structs::TimerPacketInner::Add {
-                        firmware: alloc::string::ToString::to_string(crate::version::FIRMWARE),
-                        sign_key: crate::state::sign_key_hex(),
-                    },
-                })
-                .await;
             }
         }
 
@@ -422,7 +415,7 @@ async fn ws_loop(
                     .await;
                     crate::utils::error_log::save_error_log(&global_state.nvs).await;
 
-                    global_state.state.lock().await.custom_message =
+                    global_state.state.lock().await.msg.custom_message =
                         Some(("Connection lost".to_string(), "during update".to_string()));
 
                     Timer::after_millis(5000).await;
@@ -485,14 +478,12 @@ async fn ws_rw(
                         .await
                         .map_err(|_| WsRwError::SocketWriteError)?;
 
-                    // if frame not splitted, break from loop
                     if !splitted {
                         if let WsFrameOwned::Close(code, _) = write_frame
                             && code == 4000
                         {
-                            // going into sleep mode, so sleep for 30s (in 15s from that frame
-                            // radio should disable and this task will be stopped
-
+                            // Close code 4000 = sleep request: park 30s; the radio powers
+                            // down ~15s after this frame and this task is stopped.
                             Timer::after_millis(30000).await;
                         }
 
@@ -510,7 +501,7 @@ async fn ws_rw(
                     continue;
                 }
 
-                global_state.state.lock().await.wifi_connected = Some(false);
+                global_state.state.lock().await.conn.wifi_connected = Some(false);
                 log::error!("Wifi disconnected, ws_rw stop.");
                 return Err(WsRwError::WifiDisconnected);
             }
@@ -527,12 +518,9 @@ async fn ws_rw(
 
         framer_rx.revolve_write_offset(n);
         while let Some(frame) = framer_rx.process_data() {
-            //log::warn!("recv_frame: opcode:{}", frame.opcode());
-
             match frame {
                 WsFrame::Text(text) => match serde_json::from_str::<TimerPacket>(text) {
                     Ok(timer_packet) => {
-                        //log::info!("Timer packet recv: {timer_packet:?}");
                         if let Some(tag) = timer_packet.tag {
                             tagged_publisher.publish((tag, timer_packet.clone())).await;
                         }
@@ -547,11 +535,17 @@ async fn ws_rw(
                                 auto_setup,
                                 sound_enabled,
                             } => {
-                                let mut state = global_state.state.lock().await;
-                                state.device_added = Some(added);
-                                // Sensitive settings only from a pinned/trusted peer.
-                                if unsafe { crate::state::TRUST_SERVER } {
-                                    state.sound_enabled = sound_enabled;
+                                // Only the conn fields need the state lock; hold it briefly.
+                                let trusted = crate::state::trust_server();
+                                {
+                                    let mut state = global_state.state.lock().await;
+                                    state.conn.device_added = Some(added);
+                                    if trusted {
+                                        state.conn.sound_enabled = sound_enabled;
+                                    }
+                                }
+                                // Sensitive settings + locale import happen off the state lock.
+                                if trusted {
                                     crate::translations::clear_locales();
 
                                     for locale in locales {
@@ -567,15 +561,13 @@ async fn ws_rw(
                                     );
                                     crate::translations::set_default_locale();
 
-                                    unsafe { crate::state::FKM_TOKEN = fkm_token };
-                                    unsafe { crate::state::SECURE_RFID = secure_rfid };
-                                    unsafe { crate::state::AUTO_SETUP = auto_setup };
+                                    crate::state::set_fkm_token(fkm_token);
+                                    crate::state::set_secure_rfid(secure_rfid);
+                                    crate::state::set_auto_setup(auto_setup);
                                 } else {
-                                    unsafe {
-                                        crate::state::FKM_TOKEN = 0;
-                                        crate::state::SECURE_RFID = false;
-                                        crate::state::AUTO_SETUP = false;
-                                    }
+                                    crate::state::set_fkm_token(0);
+                                    crate::state::set_secure_rfid(false);
+                                    crate::state::set_auto_setup(false);
                                 }
                             }
                             TimerPacketInner::AuthChallenge { nonce } => {
@@ -588,16 +580,20 @@ async fn ws_rw(
                                     log::error!("AuthChallenge bad nonce hex");
                                     continue;
                                 };
-                                let key = crate::state::sign_key_bytes();
-                                let mut mac = match HmacSha256::new_from_slice(&key) {
-                                    Ok(m) => m,
-                                    Err(_) => continue,
+                                let mac_hex = crate::state::with_sign_key(|key| {
+                                    let mut mac = match HmacSha256::new_from_slice(key) {
+                                        Ok(m) => m,
+                                        Err(_) => return None,
+                                    };
+                                    mac.update(b"FKM-AUTH-V1");
+                                    mac.update(&crate::utils::get_efuse_u32().to_be_bytes());
+                                    mac.update(&nonce_bytes);
+                                    let tag = mac.finalize().into_bytes();
+                                    Some(hex::encode(tag))
+                                });
+                                let Some(mac_hex) = mac_hex else {
+                                    continue;
                                 };
-                                mac.update(b"FKM-AUTH-V1");
-                                mac.update(&crate::utils::get_efuse_u32().to_be_bytes());
-                                mac.update(&nonce_bytes);
-                                let tag = mac.finalize().into_bytes();
-                                let mac_hex = hex::encode(tag);
                                 crate::ws::send_packet(crate::structs::TimerPacket {
                                     tag: None,
                                     data: crate::structs::TimerPacketInner::AuthResponse {
@@ -611,27 +607,29 @@ async fn ws_rw(
                             }
                             TimerPacketInner::AuthFail { reason } => {
                                 log::error!("Connect auth failed: {reason}");
-                                global_state.state.lock().await.error_text =
+                                global_state.state.lock().await.msg.error_text =
                                     Some(alloc::format!("Auth failed: {reason}"));
                             }
                             TimerPacketInner::ApiError(e) => {
                                 // if should_reset_time reset time
                                 let mut state = global_state.state.lock().await;
-                                state.error_text = Some(e.error);
+                                state.msg.error_text = Some(e.error);
                             }
                             TimerPacketInner::CustomMessage { line1, line2 } => {
                                 let mut state = global_state.state.lock().await;
-                                state.custom_message = Some((line1, line2));
+                                state.msg.custom_message = Some((line1, line2));
                             }
-                            TimerPacketInner::EpochTime { current_epoch } => unsafe {
-                                crate::state::EPOCH_BASE = current_epoch - Instant::now().as_secs();
-                            },
+                            TimerPacketInner::EpochTime { current_epoch } => {
+                                crate::state::EPOCH_BASE.store(
+                                    current_epoch - Instant::now().as_secs(),
+                                    portable_atomic::Ordering::Relaxed,
+                                );
+                            }
                             TimerPacketInner::DelegateResponse(_) => {
                                 tagged_publisher.publish((69420, timer_packet)).await;
                             }
                             TimerPacketInner::StartUpdate {
                                 version,
-                                build_time: _,
                                 size,
                                 crc,
                                 firmware,
@@ -641,19 +639,18 @@ async fn ws_rw(
                                 }
 
                                 #[cfg(not(feature = "e2e"))]
-                                if unsafe { !crate::state::TRUST_SERVER } {
+                                if !crate::state::trust_server() {
                                     continue;
                                 }
 
                                 log::info!("Start update: {firmware}/{version}");
                                 log::info!("Begin update size: {size} crc: {crc}");
                                 ota.ota_begin(size, crc).map_err(WsRwError::OtaError)?;
-                                unsafe {
-                                    crate::state::OTA_STATE = true;
-                                }
+                                crate::state::OTA_STATE
+                                    .store(true, portable_atomic::Ordering::Relaxed);
 
                                 let mut state = global_state.state.lock().await;
-                                state.scene = Scene::Update;
+                                state.solve.scene = Scene::Update;
                                 drop(state);
 
                                 clear_frame_channel();
@@ -700,7 +697,7 @@ async fn ws_rw(
                             TimerPacketInner::DumpCrashLog => {
                                 let mut tmp = Vec::new();
                                 tmp.push(b'C');
-                                tmp.extend_from_slice(crate::utils::error_log::dump_error_log());
+                                tmp.extend_from_slice(&crate::utils::error_log::dump_error_log());
 
                                 send_frame(ws_framer::WsFrameOwned::Binary(tmp)).await;
                             }
@@ -714,14 +711,11 @@ async fn ws_rw(
                     }
                     Err(e) => {
                         log::error!("timer_packet_fail: {e:?}\nTried to parse:\n{text}\n\n");
-                        if !PACKET_PARSE_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
-                            crate::utils::error_log::add_error(
-                                crate::utils::error_log::codes::WS_PACKET_PARSE_FAILED,
-                            )
-                            .await;
-
-                            PACKET_PARSE_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
-                        }
+                        crate::utils::error_log::report_once(
+                            &PACKET_PARSE_LOGGED,
+                            crate::utils::error_log::codes::WS_PACKET_PARSE_FAILED,
+                        )
+                        .await;
                     }
                 },
                 WsFrame::Binary(data) => {
@@ -730,7 +724,7 @@ async fn ws_rw(
                     }
 
                     #[cfg(not(feature = "e2e"))]
-                    if unsafe { !crate::state::TRUST_SERVER } {
+                    if !crate::state::trust_server() {
                         continue;
                     }
 
@@ -774,12 +768,7 @@ async fn parse_test_packet(
 
     match test_packet {
         crate::structs::TestPacketData::ResetState => {
-            global_state
-                .state
-                .lock()
-                .await
-                .reset_solve_state(None)
-                .await;
+            global_state.state.lock().await.reset_solve_state();
 
             global_state
                 .e2e
@@ -794,7 +783,7 @@ async fn parse_test_packet(
                 .stackmat_sig
                 .signal((crate::utils::stackmat::StackmatTimerState::Reset, 0));
 
-            global_state.state.lock().await.hard_state_reset().await;
+            global_state.state.lock().await.hard_state_reset();
         }
         crate::structs::TestPacketData::ScanCard(uid) => {
             global_state.e2e.card_scan_sig.signal(uid as u128)
@@ -820,7 +809,7 @@ async fn parse_test_packet(
 pub async fn send_test_ack(global_state: &GlobalState) {
     send_packet(TimerPacket {
         tag: None,
-        data: TimerPacketInner::TestAck(global_state.state.value().await.snapshot_data()),
+        data: TimerPacketInner::TestAck(global_state.state.lock_silent().await.snapshot_data()),
     })
     .await;
 }
@@ -832,14 +821,11 @@ pub async fn send_packet(packet: TimerPacket) {
         }
         Err(e) => {
             log::error!("send_packet json to_string failed: {e:?}");
-            if !PACKET_SERIALIZE_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
-                crate::utils::error_log::add_error(
-                    crate::utils::error_log::codes::WS_PACKET_SERIALIZE_FAILED,
-                )
-                .await;
-
-                PACKET_SERIALIZE_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
-            }
+            crate::utils::error_log::report_once(
+                &PACKET_SERIALIZE_LOGGED,
+                crate::utils::error_log::codes::WS_PACKET_SERIALIZE_FAILED,
+            )
+            .await;
         }
     }
 }
@@ -911,31 +897,22 @@ async fn wait_for_tagged_response(tag: u64) -> TimerPacket {
             },
             Err(_) => {
                 log::error!("failed to get TAGGED_RETURN subscriber! Retry!");
-                if !TAGGED_SUBSCRIBER_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
-                    crate::utils::error_log::add_error(
-                        crate::utils::error_log::codes::WS_TAGGED_SUBSCRIBER_FAILED,
-                    )
-                    .await;
-
-                    TAGGED_SUBSCRIBER_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
-                }
+                crate::utils::error_log::report_once(
+                    &TAGGED_SUBSCRIBER_LOGGED,
+                    crate::utils::error_log::codes::WS_TAGGED_SUBSCRIBER_FAILED,
+                )
+                .await;
                 Timer::after_millis(500).await;
             }
         }
     }
 }
 
-enum WsSocket<'a, 'b> {
-    Tls(Box<TlsConnection<'b, TcpSocket<'a>, Aes128GcmSha256>>),
-    Raw(TcpSocket<'a>),
-}
+struct WsSocket<'a, 'b>(Box<TlsConnection<'b, TcpSocket<'a>, Aes128GcmSha256>>);
 
 impl WsSocket<'_, '_> {
     pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize, ()> {
-        match self {
-            WsSocket::Tls(tls_connection) => tls_connection.read(buf).await.map_err(|_| ()),
-            WsSocket::Raw(tcp_socket) => tcp_socket.read(buf).await.map_err(|_| ()),
-        }
+        self.0.read(buf).await.map_err(|_| ())
     }
 
     pub async fn write_all(&mut self, buf: &[u8]) -> Result<(), ()> {
@@ -948,14 +925,8 @@ impl WsSocket<'_, '_> {
     }
 
     pub async fn write(&mut self, buf: &[u8]) -> Result<usize, ()> {
-        let n = match self {
-            WsSocket::Tls(tls_connection) => {
-                let n = tls_connection.write(buf).await.map_err(|_| ())?;
-                tls_connection.flush().await.map_err(|_| ())?;
-                n
-            }
-            WsSocket::Raw(tcp_socket) => tcp_socket.write(buf).await.map_err(|_| ())?,
-        };
+        let n = self.0.write(buf).await.map_err(|_| ())?;
+        self.0.flush().await.map_err(|_| ())?;
 
         Ok(n)
     }

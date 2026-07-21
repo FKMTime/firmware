@@ -17,13 +17,10 @@ impl<const N: usize> RollingAverage<N> {
     }
 
     pub fn push(&mut self, value: f32) {
-        // Subtract the old value from sum before it's overwritten
         self.sum -= self.buffer[self.position];
-        // Add new value
         self.buffer[self.position] = value;
         self.sum += value;
 
-        // Update position
         self.position = (self.position + 1) % N;
         if self.position == 0 {
             self.filled = true;
