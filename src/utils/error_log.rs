@@ -11,6 +11,13 @@ use esp_hal_wifimanager::Nvs;
 
 const ERROR_LOG_BUF_SIZE: usize = 2 * 1024;
 
+/// 'N' (error code) entry: tag(1) + timestamp(8) + code(1).
+const ENTRY_N: usize = 1 + 8 + 1;
+/// 'S' (stacktrace) entry header: tag(1) + timestamp(8) + version(16) + addr-count(1);
+/// `addr_count * ADDR_SIZE` address bytes follow it. Shared with the panic writer.
+const ENTRY_S_HEADER: usize = 1 + 8 + 16 + 1;
+const ADDR_SIZE: usize = 4;
+
 /// The log bytes live in `.dram2_uninit` so the 2 KiB is not zeroed at boot.
 /// Every access happens inside the `ERROR_LOG` critical-section lock below, so
 /// this `Sync` impl is sound on the single core.
@@ -127,10 +134,10 @@ pub mod codes {
 /// Size of the log entry at `offset` in `buf`, or None if malformed/truncated.
 fn entry_size(buf: &[u8], offset: usize) -> Option<usize> {
     match *buf.get(offset)? {
-        b'N' => Some(1 + 8 + 1),
+        b'N' => Some(ENTRY_N),
         b'S' => {
             let size = *buf.get(offset + 1 + 8 + 16)? as usize;
-            Some(1 + 8 + 16 + 1 + size * 4)
+            Some(ENTRY_S_HEADER + size * ADDR_SIZE)
         }
         _ => None,
     }
@@ -158,7 +165,7 @@ pub async fn add_error(code: u8) {
         let mut meta = cell.get();
         let buf = unsafe { &mut *(*ERROR_LOG_BUF.0.get()).as_mut_ptr() };
 
-        if !ensure_space(buf, &mut meta.offset, 1 + 8 + 1) {
+        if !ensure_space(buf, &mut meta.offset, ENTRY_N) {
             return;
         }
 
@@ -167,7 +174,7 @@ pub async fn add_error(code: u8) {
         buf[o + 1..o + 1 + 8].copy_from_slice(&epoch.to_be_bytes());
         buf[o + 1 + 8] = code;
 
-        meta.offset = o + 1 + 8 + 1;
+        meta.offset = o + ENTRY_N;
         meta.save_ready = true;
         cell.set(meta);
     });
@@ -186,7 +193,11 @@ pub async fn add_stacktrace(addrs: &[u32], version: &str, timestamp: u64) {
         let mut meta = cell.get();
         let buf = unsafe { &mut *(*ERROR_LOG_BUF.0.get()).as_mut_ptr() };
 
-        if !ensure_space(buf, &mut meta.offset, 1 + 8 + 16 + 1 + addrs.len() * 4) {
+        if !ensure_space(
+            buf,
+            &mut meta.offset,
+            ENTRY_S_HEADER + addrs.len() * ADDR_SIZE,
+        ) {
             return;
         }
 
@@ -202,12 +213,12 @@ pub async fn add_stacktrace(addrs: &[u32], version: &str, timestamp: u64) {
         buf[o + 1 + 8 + 16] = addrs.len() as u8;
 
         for (i, &addr) in addrs.iter().enumerate() {
-            let start = o + 1 + 8 + 16 + 1 + i * 4;
-            let end = start + 4;
+            let start = o + ENTRY_S_HEADER + i * ADDR_SIZE;
+            let end = start + ADDR_SIZE;
             buf[start..end].copy_from_slice(&addr.to_be_bytes());
         }
 
-        meta.offset = o + 1 + 8 + 16 + 1 + addrs.len() * 4;
+        meta.offset = o + ENTRY_S_HEADER + addrs.len() * ADDR_SIZE;
         meta.save_ready = true;
         cell.set(meta);
     });
@@ -304,7 +315,7 @@ pub fn parse_error_log_entries() -> Result<Vec<ErrorLogEntry>> {
                 }
 
                 tmp.push(entry);
-                offset += 1 + 8 + 1;
+                offset += ENTRY_N;
             }
             b'S' => {
                 // u64 + 16 * u8 + u8 (size) + size * u32
@@ -315,7 +326,7 @@ pub fn parse_error_log_entries() -> Result<Vec<ErrorLogEntry>> {
                 let size = buf[offset + 1 + 8 + 16];
                 let mut tmp_addrs = Vec::new();
                 for addr in (buf
-                    [offset + 1 + 8 + 16 + 1..offset + 1 + 8 + 16 + 1 + size as usize * 4])
+                    [offset + ENTRY_S_HEADER..offset + ENTRY_S_HEADER + size as usize * ADDR_SIZE])
                     .chunks(4)
                 {
                     tmp_addrs.push(u32::from_be_bytes(addr.try_into()?));
@@ -338,7 +349,7 @@ pub fn parse_error_log_entries() -> Result<Vec<ErrorLogEntry>> {
                 }
 
                 tmp.push(entry);
-                offset += 1 + 8 + 16 + 1 + size as usize * 4;
+                offset += ENTRY_S_HEADER + size as usize * ADDR_SIZE;
             }
             _ => {
                 break;

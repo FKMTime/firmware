@@ -393,141 +393,66 @@ async fn submit_up(
     }
 
     if let Some(sel) = state_val.ui.selected_config_menu {
-        #[cfg(feature = "v3")]
-        {
-            match sel {
-                0 => {
-                    // Reset settings
+        match sel {
+            0 => {
+                // Reset settings
 
-                    _ = state.nvs.delete(esp_hal_wifimanager::WIFI_NVS_KEY).await;
-                    _ = state.nvs.delete(NVS_SIGN_KEY).await;
-                    _ = state.nvs.delete(crate::consts::NVS_TLS_PIN).await;
-                    _ = state.nvs.delete(NVS_BONDING_KEY).await;
-                    _ = state.nvs.delete(NVS_ERROR_LOG).await;
+                _ = state.nvs.delete(esp_hal_wifimanager::WIFI_NVS_KEY).await;
+                _ = state.nvs.delete(NVS_SIGN_KEY).await;
+                _ = state.nvs.delete(crate::consts::NVS_TLS_PIN).await;
+                _ = state.nvs.delete(NVS_BONDING_KEY).await;
+                _ = state.nvs.delete(NVS_ERROR_LOG).await;
 
-                    Timer::after_millis(250).await;
-                    esp_hal::system::software_reset();
-                }
-                1 => {
-                    state_val.ui.menu_scene = Some(MenuScene::BtDisplay);
-                    state.ble_sig.signal(BleAction::StartScan);
-                }
-                2 => {
-                    if !crate::state::auto_setup() {
-                        state_val.msg.error_text = Some("AutoSetup Mode Disabled".to_string());
-                        state.state.signal();
-                        return Ok(true);
-                    }
-
-                    state_val.ui.menu_scene = Some(MenuScene::Signing);
-                }
-                3 => {
-                    if !crate::state::auto_setup() {
-                        state_val.msg.error_text = Some("AutoSetup Mode Disabled".to_string());
-                        state.state.signal();
-                        return Ok(true);
-                    }
-
-                    state_val.ui.menu_scene = Some(MenuScene::Unsigning);
-                }
-                CONFIG_MENU_ERROR_LOG_IDX => {
-                    state_val.ui.error_log_entries =
-                        match crate::utils::error_log::parse_error_log_entries() {
-                            Ok(entries) => entries,
-                            Err(e) => {
-                                log::error!("Parse error log failed: {e:?}");
-                                if !ERROR_LOG_PARSE_FAILED_LOGGED
-                                    .load(core::sync::atomic::Ordering::Relaxed)
-                                {
-                                    crate::utils::error_log::add_error(
-                                        crate::utils::error_log::codes::ERROR_LOG_PARSE_FAILED,
-                                    )
-                                    .await;
-
-                                    ERROR_LOG_PARSE_FAILED_LOGGED
-                                        .store(true, core::sync::atomic::Ordering::Relaxed);
-                                }
-                                alloc::vec![]
-                            }
-                        };
-                    state_val.ui.selected_error_log_item = 0;
-                    state_val.ui.selected_error_log_entry = None;
-                    state_val.ui.error_log_entry_stage = None;
-                    state_val.ui.menu_scene = Some(MenuScene::ErrorLog);
-                }
-                CONFIG_MENU_EXIT_IDX => {}
-                _ => {}
+                Timer::after_millis(250).await;
+                esp_hal::system::software_reset();
             }
-        }
-
-        #[cfg(feature = "v4")]
-        {
-            match sel {
-                0 => {
-                    // Reset settings
-
-                    _ = state.nvs.delete(esp_hal_wifimanager::WIFI_NVS_KEY).await;
-                    _ = state.nvs.delete(NVS_SIGN_KEY).await;
-                    _ = state.nvs.delete(crate::consts::NVS_TLS_PIN).await;
-                    _ = state.nvs.delete(NVS_BONDING_KEY).await;
-                    _ = state.nvs.delete(NVS_ERROR_LOG).await;
-
-                    Timer::after_millis(250).await;
-                    esp_hal::system::software_reset();
-                }
-                1 => {
-                    state_val.ui.menu_scene = Some(MenuScene::BtDisplay);
-                    state.ble_sig.signal(BleAction::StartScan);
-                }
-                2 => {
-                    if !crate::state::auto_setup() {
-                        state_val.msg.error_text = Some("AutoSetup Mode Disabled".to_string());
-                        state.state.signal();
-                        return Ok(true);
-                    }
-
-                    state_val.ui.menu_scene = Some(MenuScene::Signing);
-                }
-                3 => {
-                    if !crate::state::auto_setup() {
-                        state_val.msg.error_text = Some("AutoSetup Mode Disabled".to_string());
-                        state.state.signal();
-                        return Ok(true);
-                    }
-
-                    state_val.ui.menu_scene = Some(MenuScene::Unsigning);
-                }
-                4 => {
-                    state_val.ui.menu_scene = Some(MenuScene::BuzzerVolume);
-                }
-                CONFIG_MENU_ERROR_LOG_IDX => {
-                    state_val.ui.error_log_entries =
-                        match crate::utils::error_log::parse_error_log_entries() {
-                            Ok(entries) => entries,
-                            Err(e) => {
-                                log::error!("Parse error log failed: {e:?}");
-                                if !ERROR_LOG_PARSE_FAILED_LOGGED
-                                    .load(core::sync::atomic::Ordering::Relaxed)
-                                {
-                                    crate::utils::error_log::add_error(
-                                        crate::utils::error_log::codes::ERROR_LOG_PARSE_FAILED,
-                                    )
-                                    .await;
-
-                                    ERROR_LOG_PARSE_FAILED_LOGGED
-                                        .store(true, core::sync::atomic::Ordering::Relaxed);
-                                }
-                                alloc::vec![]
-                            }
-                        };
-                    state_val.ui.selected_error_log_item = 0;
-                    state_val.ui.selected_error_log_entry = None;
-                    state_val.ui.error_log_entry_stage = None;
-                    state_val.ui.menu_scene = Some(MenuScene::ErrorLog);
-                }
-                CONFIG_MENU_EXIT_IDX => {}
-                _ => {}
+            1 => {
+                state_val.ui.menu_scene = Some(MenuScene::BtDisplay);
+                state.ble_sig.signal(BleAction::StartScan);
             }
+            2 => {
+                if !crate::state::auto_setup() {
+                    state_val.msg.error_text = Some("AutoSetup Mode Disabled".to_string());
+                    state.state.signal();
+                    return Ok(true);
+                }
+
+                state_val.ui.menu_scene = Some(MenuScene::Signing);
+            }
+            3 => {
+                if !crate::state::auto_setup() {
+                    state_val.msg.error_text = Some("AutoSetup Mode Disabled".to_string());
+                    state.state.signal();
+                    return Ok(true);
+                }
+
+                state_val.ui.menu_scene = Some(MenuScene::Unsigning);
+            }
+            #[cfg(feature = "v4")]
+            CONFIG_MENU_BUZZER_IDX => {
+                state_val.ui.menu_scene = Some(MenuScene::BuzzerVolume);
+            }
+            CONFIG_MENU_ERROR_LOG_IDX => {
+                state_val.ui.error_log_entries =
+                    match crate::utils::error_log::parse_error_log_entries() {
+                        Ok(entries) => entries,
+                        Err(e) => {
+                            log::error!("Parse error log failed: {e:?}");
+                            crate::utils::error_log::report_once(
+                                &ERROR_LOG_PARSE_FAILED_LOGGED,
+                                crate::utils::error_log::codes::ERROR_LOG_PARSE_FAILED,
+                            )
+                            .await;
+                            alloc::vec![]
+                        }
+                    };
+                state_val.ui.selected_error_log_item = 0;
+                state_val.ui.selected_error_log_entry = None;
+                state_val.ui.error_log_entry_stage = None;
+                state_val.ui.menu_scene = Some(MenuScene::ErrorLog);
+            }
+            CONFIG_MENU_EXIT_IDX => {}
+            _ => {}
         }
 
         state_val.ui.selected_config_menu = None;

@@ -17,6 +17,40 @@ use esp_hal::{
     spi::{Mode, master::Spi},
 };
 
+const MAIN_LOOP_POLL_MS: u64 = 10;
+const SLEEP_POLL_MS: u64 = 500;
+const RESCAN_DEBOUNCE_MS: u64 = 500;
+
+// Secured-card scheme (sector 15): block 62 holds the card UID, block 63 is the
+// sector trailer (KeyA | access bits FF 07 80 69 | KeyB). A signed card stores
+// the token-derived key + its UID; an unsigned card holds the factory default.
+#[cfg(not(feature = "e2e"))]
+const SEC_DATA_BLOCK: u8 = 62;
+#[cfg(not(feature = "e2e"))]
+const SECTOR_TRAILER_BLOCK: u8 = 63;
+#[cfg(not(feature = "e2e"))]
+const DEFAULT_MIFARE_KEY: [u8; 6] = [0xFF; 6];
+#[cfg(not(feature = "e2e"))]
+const FKM_ACCESS_BYTES: [u8; 4] = [0xFF, 0x07, 0x80, 0x69];
+
+/// Derive the 6-byte sector key from the fkm token (first 4 bytes = token BE).
+#[cfg(not(feature = "e2e"))]
+fn token_key(fkm_token: i32) -> [u8; 6] {
+    let mut key = [0u8; 6];
+    key[..4].copy_from_slice(&fkm_token.to_be_bytes());
+    key
+}
+
+/// Build the 16-byte sector-15 trailer: KeyA | FF 07 80 69 | KeyB.
+#[cfg(not(feature = "e2e"))]
+fn sector_trailer(key: &[u8; 6]) -> [u8; 16] {
+    let mut b = [0u8; 16];
+    b[..6].copy_from_slice(key);
+    b[6..10].copy_from_slice(&FKM_ACCESS_BYTES);
+    b[10..16].copy_from_slice(key);
+    b
+}
+
 #[embassy_executor::task]
 pub async fn rfid_task(
     #[cfg(feature = "v4")] i2c: crate::utils::shared_i2c::SharedI2C,
@@ -93,25 +127,7 @@ pub async fn rfid_task(
     };
 
     #[cfg(not(feature = "e2e"))]
-    {
-        let mut error_logged = false;
-        loop {
-            _ = mfrc522.pcd_init().await;
-            if mfrc522.pcd_is_init().await {
-                break;
-            }
-
-            log::error!("MFRC522 init failed! Try to power cycle to module! Retrying...");
-            if !error_logged {
-                crate::utils::error_log::add_error(
-                    crate::utils::error_log::codes::RFID_INIT_FAILED,
-                )
-                .await;
-                error_logged = true;
-            }
-            Timer::after(Duration::from_millis(RFID_RETRY_INIT_MS)).await;
-        }
-    }
+    init_pcd_with_retry(&mut mfrc522).await;
 
     #[cfg(not(feature = "e2e"))]
     log::debug!("PCD ver: {:?}", mfrc522.pcd_get_version().await);
@@ -119,7 +135,7 @@ pub async fn rfid_task(
     let mut rfid_sleep = false;
     let mut last_card = (0, Instant::now());
     loop {
-        Timer::after(Duration::from_millis(10)).await;
+        Timer::after(Duration::from_millis(MAIN_LOOP_POLL_MS)).await;
         if sleep_state() != rfid_sleep {
             rfid_sleep = sleep_state();
 
@@ -128,31 +144,13 @@ pub async fn rfid_task(
                 false => {
                     _ = mfrc522.pcd_soft_power_up().await;
                     Timer::after_millis(100).await;
-                    let mut error_logged = false;
-                    loop {
-                        _ = mfrc522.pcd_init().await;
-                        if mfrc522.pcd_is_init().await {
-                            break;
-                        }
-
-                        log::error!(
-                            "MFRC522 init failed! Try to power cycle to module! Retrying..."
-                        );
-                        if !error_logged {
-                            crate::utils::error_log::add_error(
-                                crate::utils::error_log::codes::RFID_INIT_FAILED,
-                            )
-                            .await;
-                            error_logged = true;
-                        }
-                        Timer::after(Duration::from_millis(RFID_RETRY_INIT_MS)).await;
-                    }
+                    init_pcd_with_retry(&mut mfrc522).await;
                 }
             }
         }
 
         if rfid_sleep {
-            Timer::after(Duration::from_millis(500)).await;
+            Timer::after(Duration::from_millis(SLEEP_POLL_MS)).await;
             continue;
         }
 
@@ -193,7 +191,8 @@ pub async fn rfid_task(
             global_state.state.lock_silent().await.conn.server_connected == Some(true)
         };
 
-        if (last_card.0 == card_uid && last_scan_time < 500) || !is_server_connected {
+        if (last_card.0 == card_uid && last_scan_time < RESCAN_DEBOUNCE_MS) || !is_server_connected
+        {
             log::warn!(
                 "Skipping card scan: {last_scan_time:?} {card_uid} {}",
                 last_card.0
@@ -224,175 +223,13 @@ pub async fn rfid_task(
         #[cfg(not(feature = "e2e"))]
         let menu_scene = global_state.state.lock_silent().await.ui.menu_scene.clone();
         #[cfg(not(feature = "e2e"))]
-        match menu_scene {
-            Some(MenuScene::Signing) => {
-                let fkm_token = crate::state::fkm_token();
-
-                let status = mfrc522
-                    .pcd_authenticate(
-                        esp_hal_mfrc522::consts::PICCCommand::PICC_CMD_MF_AUTH_KEY_A,
-                        63,
-                        &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
-                        &card,
-                    )
-                    .await;
-
-                let mut key = [0; 6];
-                key[..4].copy_from_slice(&fkm_token.to_be_bytes());
-
-                log::debug!("signing auth status: {status:?}");
-                if status.is_ok() {
-                    let mut buff = [0; 18];
-
-                    buff[..6].copy_from_slice(&key);
-                    buff[6] = 0xFF;
-                    buff[7] = 0x07;
-                    buff[8] = 0x80;
-                    buff[9] = 0x69;
-                    buff[10..16].copy_from_slice(&key);
-
-                    let res = mfrc522.mifare_write(63, &buff, 16).await;
-                    if let Err(e) = res {
-                        log::error!("write res: {e:?}");
-                        global_state.sign_unsign_progress.signal(false);
-                        global_state.state.signal();
-                        _ = mfrc522.picc_halta().await;
-                        _ = mfrc522.pcd_stop_crypto1().await;
-                        continue;
-                    }
-
-                    let status = mfrc522
-                        .pcd_authenticate(
-                            esp_hal_mfrc522::consts::PICCCommand::PICC_CMD_MF_AUTH_KEY_A,
-                            63,
-                            &key,
-                            &card,
-                        )
-                        .await;
-                    if status.is_err() {
-                        log::error!("Cannot auth card!");
-                        global_state.sign_unsign_progress.signal(false);
-                        global_state.state.signal();
-                        _ = mfrc522.picc_halta().await;
-                        _ = mfrc522.pcd_stop_crypto1().await;
-                        continue;
-                    }
-
-                    let mut buff = [0; 16];
-                    buff[..16].clone_from_slice(&card_uid.to_be_bytes());
-                    let res = mfrc522.mifare_write(62, &buff, 16).await;
-                    if res.is_err() {
-                        log::error!("Cannot write secured rfid info!");
-                        global_state.sign_unsign_progress.signal(false);
-                        global_state.state.signal();
-                        _ = mfrc522.picc_halta().await;
-                        _ = mfrc522.pcd_stop_crypto1().await;
-                        continue;
-                    }
-
-                    global_state.sign_unsign_progress.signal(true);
-                    global_state.state.signal();
-                } else {
-                    global_state.sign_unsign_progress.signal(false);
-                    global_state.state.signal();
-                }
-
-                _ = mfrc522.picc_halta().await;
-                _ = mfrc522.pcd_stop_crypto1().await;
-                continue;
-            }
-            Some(MenuScene::Unsigning) => {
-                let fkm_token = crate::state::fkm_token();
-                let mut key = [0; 6];
-                key[..4].copy_from_slice(&fkm_token.to_be_bytes());
-
-                let status = mfrc522
-                    .pcd_authenticate(
-                        esp_hal_mfrc522::consts::PICCCommand::PICC_CMD_MF_AUTH_KEY_A,
-                        63,
-                        &key,
-                        &card,
-                    )
-                    .await;
-
-                log::debug!("unsigning auth status: {status:?}");
-                if status.is_ok() {
-                    let buff = [0; 16];
-                    _ = mfrc522.mifare_write(62, &buff, 16).await;
-
-                    let mut buff = [0; 18];
-                    buff[..6].copy_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
-                    buff[6] = 0xFF;
-                    buff[7] = 0x07;
-                    buff[8] = 0x80;
-                    buff[9] = 0x69;
-                    buff[10..16].copy_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
-
-                    let res = mfrc522.mifare_write(63, &buff, 16).await;
-                    if let Err(e) = res {
-                        log::error!("cannot unsecure card error: {e:?}");
-                        global_state.sign_unsign_progress.signal(false);
-                        global_state.state.signal();
-                        _ = mfrc522.picc_halta().await;
-                        _ = mfrc522.pcd_stop_crypto1().await;
-                        continue;
-                    }
-
-                    global_state.sign_unsign_progress.signal(true);
-                    global_state.state.signal();
-                } else {
-                    log::error!("unsign auth failed!");
-                    global_state.sign_unsign_progress.signal(false);
-                    global_state.state.signal();
-                }
-
-                _ = mfrc522.picc_halta().await;
-                _ = mfrc522.pcd_stop_crypto1().await;
-                continue;
-            }
-            _ => {}
+        if try_handle_sign_unsign(&mut mfrc522, &global_state, &menu_scene, &card, card_uid).await {
+            continue;
         }
 
         #[cfg(not(feature = "e2e"))]
-        if crate::state::secure_rfid() {
-            let fkm_token = crate::state::fkm_token();
-            let mut key = [0; 6];
-            key[..4].copy_from_slice(&fkm_token.to_be_bytes());
-
-            let status = mfrc522
-                .pcd_authenticate(
-                    esp_hal_mfrc522::consts::PICCCommand::PICC_CMD_MF_AUTH_KEY_A,
-                    63,
-                    &key,
-                    &card,
-                )
-                .await;
-
-            if status.is_err() {
-                log::error!("Cannot auth card!");
-                _ = mfrc522.picc_halta().await;
-                _ = mfrc522.pcd_stop_crypto1().await;
-                continue;
-            }
-
-            let mut buff = [0; 18];
-            let mut byte_count = 18;
-            let res = mfrc522.mifare_read(62, &mut buff, &mut byte_count).await;
-            if res.is_err() {
-                log::error!("Cannot read secured rfid info!");
-                _ = mfrc522.picc_halta().await;
-                _ = mfrc522.pcd_stop_crypto1().await;
-                continue;
-            }
-
-            let secured_uid = u128::from_be_bytes(buff[..16].try_into().unwrap_or_default());
-            if secured_uid != card_uid {
-                log::error!("Card is not secure!");
-                log::debug!("read: {res:?}, data: {buff:#?}");
-                _ = mfrc522.picc_halta().await;
-                _ = mfrc522.pcd_stop_crypto1().await;
-                continue;
-            }
+        if crate::state::secure_rfid() && !verify_secure_card(&mut mfrc522, &card, card_uid).await {
+            continue;
         }
 
         let is_competitor = {
@@ -445,6 +282,282 @@ pub async fn rfid_task(
     }
 }
 
+/// Signal the sign/unsign result to the LCD: progress first, then the render wake.
+fn report_sign_progress(global_state: &GlobalState, ok: bool) {
+    global_state.sign_unsign_progress.signal(ok);
+    global_state.state.signal();
+}
+
+/// Release the card: halt + stop crypto1 (both errors ignored, as before).
+#[cfg(not(feature = "e2e"))]
+async fn deactivate_card<D: esp_hal_mfrc522::MfrcDriver>(
+    mfrc522: &mut esp_hal_mfrc522::MFRC522<D>,
+) {
+    _ = mfrc522.picc_halta().await;
+    _ = mfrc522.pcd_stop_crypto1().await;
+}
+
+/// Sign one card: write the token key + access bits to the trailer, re-auth with
+/// it, then store the card UID. Returns whether every step succeeded.
+#[cfg(not(feature = "e2e"))]
+async fn handle_signing<D: esp_hal_mfrc522::MfrcDriver>(
+    mfrc522: &mut esp_hal_mfrc522::MFRC522<D>,
+    card: &esp_hal_mfrc522::consts::Uid,
+    card_uid: u128,
+) -> bool {
+    let fkm_token = crate::state::fkm_token();
+    let key = token_key(fkm_token);
+
+    let status = mfrc522
+        .pcd_authenticate(
+            esp_hal_mfrc522::consts::PICCCommand::PICC_CMD_MF_AUTH_KEY_A,
+            SECTOR_TRAILER_BLOCK,
+            &DEFAULT_MIFARE_KEY,
+            card,
+        )
+        .await;
+
+    log::debug!("signing auth status: {status:?}");
+    if status.is_err() {
+        return false;
+    }
+
+    if let Err(e) = mfrc522
+        .mifare_write(SECTOR_TRAILER_BLOCK, &sector_trailer(&key), 16)
+        .await
+    {
+        log::error!("write res: {e:?}");
+        return false;
+    }
+
+    if mfrc522
+        .pcd_authenticate(
+            esp_hal_mfrc522::consts::PICCCommand::PICC_CMD_MF_AUTH_KEY_A,
+            SECTOR_TRAILER_BLOCK,
+            &key,
+            card,
+        )
+        .await
+        .is_err()
+    {
+        log::error!("Cannot auth card!");
+        return false;
+    }
+
+    if mfrc522
+        .mifare_write(SEC_DATA_BLOCK, &card_uid.to_be_bytes(), 16)
+        .await
+        .is_err()
+    {
+        log::error!("Cannot write secured rfid info!");
+        return false;
+    }
+
+    true
+}
+
+/// Unsign one card: auth with the token key, wipe the UID, restore the factory
+/// trailer. Returns whether every checked step succeeded.
+#[cfg(not(feature = "e2e"))]
+async fn handle_unsigning<D: esp_hal_mfrc522::MfrcDriver>(
+    mfrc522: &mut esp_hal_mfrc522::MFRC522<D>,
+    card: &esp_hal_mfrc522::consts::Uid,
+) -> bool {
+    let fkm_token = crate::state::fkm_token();
+    let key = token_key(fkm_token);
+
+    let status = mfrc522
+        .pcd_authenticate(
+            esp_hal_mfrc522::consts::PICCCommand::PICC_CMD_MF_AUTH_KEY_A,
+            SECTOR_TRAILER_BLOCK,
+            &key,
+            card,
+        )
+        .await;
+
+    log::debug!("unsigning auth status: {status:?}");
+    if status.is_err() {
+        log::error!("unsign auth failed!");
+        return false;
+    }
+
+    // Intentionally unchecked: clearing the UID block is best-effort.
+    _ = mfrc522.mifare_write(SEC_DATA_BLOCK, &[0u8; 16], 16).await;
+
+    if let Err(e) = mfrc522
+        .mifare_write(
+            SECTOR_TRAILER_BLOCK,
+            &sector_trailer(&DEFAULT_MIFARE_KEY),
+            16,
+        )
+        .await
+    {
+        log::error!("cannot unsecure card error: {e:?}");
+        return false;
+    }
+
+    true
+}
+
+/// If the menu is in a sign/unsign scene, handle it (signal + release the card)
+/// and return true so the caller skips the rest of the scan. Sign/unsign only
+/// exist on real hardware; e2e injects scans and always runs the solve flow.
+#[cfg(not(feature = "e2e"))]
+async fn try_handle_sign_unsign<D: esp_hal_mfrc522::MfrcDriver>(
+    mfrc522: &mut esp_hal_mfrc522::MFRC522<D>,
+    global_state: &GlobalState,
+    menu_scene: &Option<MenuScene>,
+    card: &esp_hal_mfrc522::consts::Uid,
+    card_uid: u128,
+) -> bool {
+    let ok = match menu_scene {
+        Some(MenuScene::Signing) => handle_signing(mfrc522, card, card_uid).await,
+        Some(MenuScene::Unsigning) => handle_unsigning(mfrc522, card).await,
+        _ => return false,
+    };
+
+    report_sign_progress(global_state, ok);
+    deactivate_card(mfrc522).await;
+    true
+}
+
+/// Read-side of the secured-card scheme: auth with the token key, read the
+/// stored UID from block 62, and check it matches the scanned card. On success
+/// returns true WITHOUT halting (the loop tail stops crypto1 only when
+/// secure_rfid()); on any failure deactivates the card and returns false.
+#[cfg(not(feature = "e2e"))]
+async fn verify_secure_card<D: esp_hal_mfrc522::MfrcDriver>(
+    mfrc522: &mut esp_hal_mfrc522::MFRC522<D>,
+    card: &esp_hal_mfrc522::consts::Uid,
+    card_uid: u128,
+) -> bool {
+    let key = token_key(crate::state::fkm_token());
+    if mfrc522
+        .pcd_authenticate(
+            esp_hal_mfrc522::consts::PICCCommand::PICC_CMD_MF_AUTH_KEY_A,
+            SECTOR_TRAILER_BLOCK,
+            &key,
+            card,
+        )
+        .await
+        .is_err()
+    {
+        log::error!("Cannot auth card!");
+        deactivate_card(mfrc522).await;
+        return false;
+    }
+
+    // mifare_read needs buff_size >= 18 (NoRoom otherwise).
+    let mut buff = [0u8; 18];
+    let mut byte_count = 18;
+    let res = mfrc522
+        .mifare_read(SEC_DATA_BLOCK, &mut buff, &mut byte_count)
+        .await;
+    if res.is_err() {
+        log::error!("Cannot read secured rfid info!");
+        deactivate_card(mfrc522).await;
+        return false;
+    }
+
+    let secured_uid = u128::from_be_bytes(buff[..16].try_into().unwrap_or_default());
+    if secured_uid != card_uid {
+        log::error!("Card is not secure!");
+        log::debug!("read: {res:?}, data: {buff:#?}");
+        deactivate_card(mfrc522).await;
+        return false;
+    }
+
+    true
+}
+
+/// Init the reader, retrying (and logging once per call) until it responds.
+/// Shared by the boot init and the wake-from-sleep re-init.
+async fn init_pcd_with_retry<D: esp_hal_mfrc522::MfrcDriver>(
+    mfrc522: &mut esp_hal_mfrc522::MFRC522<D>,
+) {
+    let mut error_logged = false;
+    loop {
+        _ = mfrc522.pcd_init().await;
+        if mfrc522.pcd_is_init().await {
+            break;
+        }
+
+        log::error!("MFRC522 init failed! Try to power cycle to module! Retrying...");
+        if !error_logged {
+            crate::utils::error_log::add_error(crate::utils::error_log::codes::RFID_INIT_FAILED)
+                .await;
+            error_logged = true;
+        }
+        Timer::after(Duration::from_millis(RFID_RETRY_INIT_MS)).await;
+    }
+}
+
+/// Elapsed inspection time in ms (0 if inspection isn't in use or wasn't started).
+fn inspection_time_ms(state: &crate::state::SignaledGlobalStateInner) -> i64 {
+    state
+        .use_inspection()
+        .then_some((state.solve.inspection_end, state.solve.inspection_start))
+        .and_then(|(end, start)| end.zip(start))
+        .map(|(end, start)| (end - start).as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Split the server confirm message into two LCD lines.
+fn split_confirm_message(message: &str) -> (alloc::string::String, alloc::string::String) {
+    let words: alloc::vec::Vec<&str> = message.split(' ').collect();
+    if words.len() >= 2 {
+        (words[..2].join(" "), words[2..].join(" "))
+    } else {
+        ("Solve".to_string(), "sent".to_string())
+    }
+}
+
+/// Wait `ms`, then clear the custom message (re-locking with the signaling lock).
+async fn clear_custom_message_after(global_state: &GlobalState, ms: u64) {
+    Timer::after_millis(ms).await;
+    global_state.state.lock().await.msg.custom_message = None;
+}
+
+/// Register a competitor from a card-info response: set the competitor, switch
+/// to their locale, and advance the scene based on their groups. Takes the
+/// already-held guard (never its own lock, to avoid a double render signal).
+fn register_competitor(
+    state: &mut crate::state::SignaledGlobalStateInner,
+    resp: &CardInfoResponsePacket,
+    global_state: &GlobalState,
+) {
+    state.solve.competitor_display = Some(resp.display.clone());
+    state.solve.current_competitor = Some(resp.card_id);
+
+    let competitor_locale =
+        crate::translations::get_locale_index(&resp.country_iso2.to_lowercase());
+    if competitor_locale != crate::translations::current_locale_index() {
+        crate::translations::select_locale_idx(competitor_locale, global_state);
+    }
+
+    match resp.possible_groups.len() {
+        1 => {
+            state.solve.solve_group = Some(resp.possible_groups[0].clone());
+
+            if state.solve.solve_time.is_some() {
+                state.solve.scene = crate::state::Scene::Finished;
+            } else {
+                state.solve.scene = crate::state::Scene::CompetitorInfo;
+            }
+        }
+        2.. => {
+            state.solve.possible_groups = resp.possible_groups.clone();
+            state.solve.scene = crate::state::Scene::GroupSelect;
+        }
+        _ => {
+            // Reset (restores the default locale) BEFORE setting the error so it
+            // renders in the default locale.
+            state.reset_solve_state();
+            state.msg.error_text = Some(get_translation(TranslationKey::EMPTY_GROUPS_ERROR));
+        }
+    }
+}
+
 async fn process_card_info_response(
     resp: CardInfoResponsePacket,
     global_state: &GlobalState,
@@ -458,35 +571,7 @@ async fn process_card_info_response(
         crate::state::Scene::WaitingForCompetitor
             if state.solve.current_competitor.is_none() && resp.can_compete =>
         {
-            state.solve.competitor_display = Some(resp.display);
-            state.solve.current_competitor = Some(resp.card_id);
-
-            let competitor_locale =
-                crate::translations::get_locale_index(&resp.country_iso2.to_lowercase());
-            if competitor_locale != crate::translations::current_locale_index() {
-                crate::translations::select_locale_idx(competitor_locale, global_state);
-            }
-
-            match resp.possible_groups.len() {
-                1 => {
-                    state.solve.solve_group = Some(resp.possible_groups[0].clone());
-
-                    if state.solve.solve_time.is_some() {
-                        state.solve.scene = crate::state::Scene::Finished;
-                    } else {
-                        state.solve.scene = crate::state::Scene::CompetitorInfo;
-                    }
-                }
-                2.. => {
-                    state.solve.possible_groups = resp.possible_groups;
-                    state.solve.scene = crate::state::Scene::GroupSelect;
-                }
-                _ => {
-                    state.reset_solve_state();
-                    state.msg.error_text =
-                        Some(get_translation(TranslationKey::EMPTY_GROUPS_ERROR));
-                }
-            }
+            register_competitor(&mut state, &resp, global_state);
         }
         crate::state::Scene::Finished => {
             if state.solve.current_competitor != Some(resp.card_id) && state.solve.time_confirmed {
@@ -496,34 +581,23 @@ async fn process_card_info_response(
                 && state.solve.current_competitor == Some(resp.card_id)
                 && state.solve.time_confirmed
             {
-                let inspection_time = state
-                    .use_inspection()
-                    .then_some((state.solve.inspection_end, state.solve.inspection_start))
-                    .and_then(|(end, start)| end.zip(start))
-                    .map(|(end, start)| (end - start).as_millis() as i64)
-                    .unwrap_or(0);
+                let inspection_time = inspection_time_ms(&state);
 
-                let session_id = match &state.solve.session_id {
-                    Some(sess_id) => sess_id.clone(),
-                    None => {
-                        let sess_id = uuid::Uuid::new_v4().to_string();
-                        state.solve.session_id = Some(sess_id.clone());
-                        sess_id
-                    }
-                };
+                let session_id = state
+                    .solve
+                    .session_id
+                    .get_or_insert_with(|| uuid::Uuid::new_v4().to_string())
+                    .clone();
 
                 let Some(ref solve_group) = state.solve.solve_group else {
                     log::error!("Solve group is none! (How would that happen?)");
                     static LOGGED: core::sync::atomic::AtomicBool =
                         core::sync::atomic::AtomicBool::new(false);
-                    if !LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
-                        crate::utils::error_log::add_error(
-                            crate::utils::error_log::codes::RFID_SOLVE_GROUP_MISSING,
-                        )
-                        .await;
-
-                        LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
-                    }
+                    crate::utils::error_log::report_once(
+                        &LOGGED,
+                        crate::utils::error_log::codes::RFID_SOLVE_GROUP_MISSING,
+                    )
+                    .await;
                     return Ok(());
                 };
 
@@ -558,24 +632,12 @@ async fn process_card_info_response(
                     let mut state = global_state.state.lock().await;
                     state.reset_solve_state();
 
-                    let words: alloc::vec::Vec<&str> = resp.message.split(' ').collect();
-                    if words.len() >= 2 {
-                        let first_line = words[..2].join(" ");
-                        let second_line = words[2..].join(" ");
-
-                        state.msg.custom_message = Some((first_line, second_line));
-                    } else {
-                        state.msg.custom_message = Some(("Solve".to_string(), "sent".to_string()));
-                    }
+                    state.msg.custom_message = Some(split_confirm_message(&resp.message));
 
                     drop(state);
                     crate::state::SavedGlobalState::clear_saved_global_state(&global_state.nvs)
                         .await;
-                    Timer::after_millis(3000).await;
-
-                    {
-                        global_state.state.lock().await.msg.custom_message = None;
-                    }
+                    clear_custom_message_after(global_state, 3000).await;
                 }
             } else if state.solve.current_competitor == Some(resp.card_id)
                 && state.solve.current_judge.is_none()
@@ -586,8 +648,7 @@ async fn process_card_info_response(
                     get_translation(TranslationKey::CARDS_CANNOT_BE_THE_SAME_FOOTER),
                 ));
                 drop(state);
-                Timer::after_millis(8000).await;
-                global_state.state.lock().await.msg.custom_message = None;
+                clear_custom_message_after(global_state, 8000).await;
             }
         }
         _ => {}
