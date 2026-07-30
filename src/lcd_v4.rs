@@ -949,8 +949,11 @@ async fn process_main(
             let text_rect = Rectangle::new(Point::new(0, 28), Size::new(128, 17));
             loop {
                 let elapsed = (Instant::now() - inspection_start).as_millis();
-                let time_str = ms_to_time_str(elapsed);
+                unsafe {
+                    crate::state::INSPECTION_TIME = Some(elapsed);
+                }
 
+                let time_str = ms_to_time_str(elapsed);
                 _ = oled.disp.fill_solid(&text_rect, BinaryColor::Off);
                 _ = Text::with_text_style(&time_str, Point::new(64, 36), TIMER_FONT, TEXT_CENTER)
                     .draw(&mut oled.disp);

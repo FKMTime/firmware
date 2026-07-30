@@ -8,8 +8,6 @@ use crate::{
 use alloc::string::ToString;
 use embassy_time::{Instant, Timer};
 
-pub static mut CURRENT_TIME: u64 = 0;
-
 #[cfg(feature = "timer-func")]
 #[embassy_executor::task]
 pub async fn stackmat_task(
@@ -51,7 +49,7 @@ pub async fn stackmat_task(
                         global_state.timer_signal.signal(limit);
                         global_state.bt_display_signal.signal(limit);
                         unsafe {
-                            CURRENT_TIME = limit;
+                            crate::state::CURRENT_TIME = Some(limit);
                         }
                         time_end(limit, true, &mut None, &global_state).await;
                         break;
@@ -59,7 +57,7 @@ pub async fn stackmat_task(
                         global_state.timer_signal.signal(time);
                         global_state.bt_display_signal.signal(time);
                         unsafe {
-                            CURRENT_TIME = time;
+                            crate::state::CURRENT_TIME = Some(time);
                         }
 
                         if pads.0.is_high() && pads.1.is_high() {
@@ -160,14 +158,14 @@ pub async fn stackmat_task(
                 global_state.timer_signal.signal(limit);
                 global_state.bt_display_signal.signal(limit);
                 unsafe {
-                    CURRENT_TIME = limit;
+                    crate::state::CURRENT_TIME = Some(limit);
                 }
                 time_end(limit, true, &mut last_time, &global_state).await;
             } else {
                 global_state.timer_signal.signal(time_interpolated);
                 global_state.bt_display_signal.signal(time_interpolated);
                 unsafe {
-                    CURRENT_TIME = time_interpolated;
+                    crate::state::CURRENT_TIME = Some(time_interpolated);
                 }
 
                 if global_state.timer_stop_signal.signaled() {
@@ -256,7 +254,7 @@ pub async fn stackmat_task(
                 }
 
                 unsafe {
-                    CURRENT_TIME = parsed.1;
+                    crate::state::CURRENT_TIME = Some(parsed.1);
                 }
 
                 let time_limit = unsafe { crate::state::GROUP_LIMIT };

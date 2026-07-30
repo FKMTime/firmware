@@ -1,6 +1,5 @@
 use crate::{
     consts::{NVS_BONDING_KEY, NVS_ERROR_LOG, NVS_SIGN_KEY},
-    stackmat::CURRENT_TIME,
     state::{
         BleAction, ErrorLogEntryStage, GlobalState, MenuScene, Scene, current_epoch,
         deeper_sleep_state, sleep_state,
@@ -563,6 +562,12 @@ async fn submit_up(
         unsafe {
             crate::state::GROUP_LIMIT =
                 state_val.possible_groups[state_val.group_selected_idx].limit;
+
+            crate::state::CURRENT_GROUP_ID = Some(
+                state_val.possible_groups[state_val.group_selected_idx]
+                    .group_id
+                    .clone(),
+            );
         }
 
         state.state.signal();
@@ -594,7 +599,7 @@ async fn inspection_start(
         return Ok(false);
     }
 
-    if unsafe { CURRENT_TIME } != 0 {
+    if unsafe { crate::state::CURRENT_TIME } != Some(0) {
         log::warn!("Skipping inspection start because current timer time is not 0");
         return Ok(false);
     }

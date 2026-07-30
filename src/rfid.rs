@@ -461,6 +461,9 @@ async fn process_card_info_response(
         {
             state.competitor_display = Some(resp.display);
             state.current_competitor = Some(resp.card_id);
+            unsafe {
+                crate::state::CURRENT_COMPETITOR = Some(resp.card_id);
+            }
 
             let competitor_locale =
                 crate::translations::get_locale_index(&resp.country_iso2.to_lowercase());
@@ -473,6 +476,8 @@ async fn process_card_info_response(
                     state.solve_group = Some(resp.possible_groups[0].clone());
                     unsafe {
                         crate::state::GROUP_LIMIT = resp.possible_groups[0].limit;
+                        crate::state::CURRENT_GROUP_ID =
+                            Some(resp.possible_groups[0].group_id.clone());
                     }
 
                     if state.solve_time.is_some() {

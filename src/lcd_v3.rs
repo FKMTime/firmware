@@ -624,8 +624,11 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
 
             loop {
                 let elapsed = (Instant::now() - inspection_start).as_millis();
-                let time_str = ms_to_time_str(elapsed);
+                unsafe {
+                    crate::state::INSPECTION_TIME = Some(elapsed);
+                }
 
+                let time_str = ms_to_time_str(elapsed);
                 lcd_driver
                     .print(0, &time_str, PrintAlign::Center, true)
                     .ok()?;

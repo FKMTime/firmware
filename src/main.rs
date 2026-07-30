@@ -436,7 +436,12 @@ async fn logger_task(global_state: GlobalState) {
 
         #[allow(static_mut_refs)]
         let logs_vec = unsafe {
-            crate::utils::logger::LOGS_WRITER.get_vec(Some(crate::stackmat::CURRENT_TIME))
+            crate::utils::logger::LOGS_WRITER.get_vec(
+                crate::state::CURRENT_TIME,
+                crate::state::INSPECTION_TIME,
+                crate::state::CURRENT_COMPETITOR,
+                &crate::state::CURRENT_GROUP_ID,
+            )
         };
 
         if !logs_vec.is_empty() {

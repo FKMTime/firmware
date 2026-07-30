@@ -28,6 +28,12 @@ pub static mut SLEEP_STATE: bool = false;
 pub static mut DEEPER_SLEEP: bool = false;
 pub static mut OTA_STATE: bool = false;
 
+// Live vars
+pub static mut CURRENT_TIME: Option<u64> = None;
+pub static mut INSPECTION_TIME: Option<u64> = None;
+pub static mut CURRENT_COMPETITOR: Option<u64> = None;
+pub static mut CURRENT_GROUP_ID: Option<String> = None;
+
 #[cfg(feature = "v4")]
 pub static mut BUZZER_VOLUME: u8 = crate::consts::BUZZER_VOLUME_DEFAULT;
 
@@ -387,6 +393,10 @@ impl SignaledGlobalStateInner {
     pub async fn hard_state_reset(&mut self) {
         unsafe {
             GROUP_LIMIT = None;
+            CURRENT_TIME = None;
+            INSPECTION_TIME = None;
+            CURRENT_GROUP_ID = None;
+            CURRENT_COMPETITOR = None;
         }
         self.scene = Scene::WaitingForCompetitor;
         self.inspection_start = None;

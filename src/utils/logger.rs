@@ -1,5 +1,5 @@
 use crate::state::{ota_state, sleep_state};
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 #[unsafe(link_section = ".dram2_uninit")]
 static mut LOGS_BUF: core::mem::MaybeUninit<[u8; 8 * 1024]> = core::mem::MaybeUninit::uninit();
@@ -16,9 +16,23 @@ pub static mut LOGS_WRITER: LogsBufWriter = LogsBufWriter {
 };
 
 impl LogsBufWriter {
-    pub fn get_vec(&mut self, current_time: Option<u64>) -> Vec<u8> {
-        if let Some(current_time) = current_time {
-            self.buf[2..10].copy_from_slice(&current_time.to_be_bytes());
+    pub fn get_vec(
+        &mut self,
+        current_time: Option<u64>,
+        inspection_time: Option<u64>,
+        competitor: Option<u64>,
+        group_id: &Option<String>,
+    ) -> Vec<u8> {
+        self.buf[2..10].copy_from_slice(&current_time.unwrap_or(u64::MAX).to_be_bytes());
+        self.buf[10..18].copy_from_slice(&inspection_time.unwrap_or(u64::MAX).to_be_bytes());
+        self.buf[18..26].copy_from_slice(&competitor.unwrap_or(u64::MAX).to_be_bytes());
+
+        self.buf[26..26 + 20].fill(0x00);
+        if let Some(group_id) = group_id
+            && group_id.len() <= 20
+        {
+            let bytes = &group_id.as_bytes();
+            self.buf[26..26 + bytes.len()].copy_from_slice(bytes);
         }
 
         let tmp = self.buf[0..self.pos].to_vec();
@@ -116,7 +130,7 @@ impl log::Log for FkmLogger {
                 if w.pos == 0 {
                     w.buf[0] = b'L';
                     w.buf[1] = 0x00;
-                    w.pos = 10;
+                    w.pos = 50; // 2 + u64 + u64 + u64 + max20char + padding
                 }
 
                 if w.pos + 3 > w.buf.len() {
