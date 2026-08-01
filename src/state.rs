@@ -33,6 +33,7 @@ pub static mut CURRENT_TIME: Option<u64> = None;
 pub static mut INSPECTION_TIME: Option<u64> = None;
 pub static mut CURRENT_COMPETITOR: Option<u64> = None;
 pub static mut CURRENT_GROUP_ID: Option<String> = None;
+pub static mut CURRENT_SESSION_ID: Option<String> = None;
 
 #[cfg(feature = "v4")]
 pub static mut BUZZER_VOLUME: u8 = crate::consts::BUZZER_VOLUME_DEFAULT;
@@ -397,6 +398,7 @@ impl SignaledGlobalStateInner {
             INSPECTION_TIME = None;
             CURRENT_GROUP_ID = None;
             CURRENT_COMPETITOR = None;
+            CURRENT_SESSION_ID = None;
         }
         self.scene = Scene::WaitingForCompetitor;
         self.inspection_start = None;

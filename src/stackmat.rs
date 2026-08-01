@@ -303,6 +303,9 @@ pub async fn stackmat_task(
 
                             if state.session_id.is_none() {
                                 state.session_id = Some(uuid::Uuid::new_v4().to_string());
+                                unsafe {
+                                    crate::state::CURRENT_SESSION_ID = state.session_id.clone();
+                                }
                             }
 
                             state.time_confirmed = true;
@@ -357,6 +360,9 @@ async fn time_end(
 
         if state.session_id.is_none() {
             state.session_id = Some(uuid::Uuid::new_v4().to_string());
+            unsafe {
+                crate::state::CURRENT_SESSION_ID = state.session_id.clone();
+            }
         }
 
         if state.current_competitor.is_some() {

@@ -22,17 +22,26 @@ impl LogsBufWriter {
         inspection_time: Option<u64>,
         competitor: Option<u64>,
         group_id: &Option<String>,
+        session_id: &Option<String>,
     ) -> Vec<u8> {
         self.buf[2..10].copy_from_slice(&current_time.unwrap_or(u64::MAX).to_be_bytes());
         self.buf[10..18].copy_from_slice(&inspection_time.unwrap_or(u64::MAX).to_be_bytes());
         self.buf[18..26].copy_from_slice(&competitor.unwrap_or(u64::MAX).to_be_bytes());
+        self.buf[26..46].fill(0x00);
+        self.buf[46..82].fill(0x00);
 
-        self.buf[26..26 + 20].fill(0x00);
         if let Some(group_id) = group_id
             && group_id.len() <= 20
         {
             let bytes = &group_id.as_bytes();
             self.buf[26..26 + bytes.len()].copy_from_slice(bytes);
+        }
+
+        if let Some(session_id) = session_id
+            && session_id.len() <= 36
+        {
+            let bytes = &session_id.as_bytes();
+            self.buf[46..46 + bytes.len()].copy_from_slice(bytes);
         }
 
         let tmp = self.buf[0..self.pos].to_vec();
@@ -130,7 +139,7 @@ impl log::Log for FkmLogger {
                 if w.pos == 0 {
                     w.buf[0] = b'L';
                     w.buf[1] = 0x00;
-                    w.pos = 50; // 2 + u64 + u64 + u64 + max20char + padding
+                    w.pos = 100; // 2 + u64 + u64 + u64 + max20char + 36char uuid + padding
                 }
 
                 if w.pos + 3 > w.buf.len() {

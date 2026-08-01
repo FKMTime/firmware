@@ -441,6 +441,7 @@ async fn logger_task(global_state: GlobalState) {
                 crate::state::INSPECTION_TIME,
                 crate::state::CURRENT_COMPETITOR,
                 &crate::state::CURRENT_GROUP_ID,
+                &crate::state::CURRENT_SESSION_ID,
             )
         };
 
