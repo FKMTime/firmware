@@ -5,7 +5,6 @@
 
 extern crate alloc;
 use crate::consts::NVS_SIGN_KEY;
-use alloc::rc::Rc;
 use board::Board;
 use consts::LOG_SEND_INTERVAL_MS;
 use embassy_executor::Spawner;
@@ -338,7 +337,6 @@ async fn main(spawner: Spawner) {
         }
     };
 
-    let ws_sleep_sig: Rc<power::SleepSignal> = Rc::new(Signal::new());
     spawn_task(
         &spawner,
         "ws::ws_task",
@@ -346,17 +344,15 @@ async fn main(spawner: Spawner) {
             wifi_res.stack(),
             ws_url,
             global_state,
-            ws_sleep_sig.clone(),
             &WIFI_CONN_SIG,
         ),
     );
     spawn_task(&spawner, "logger_task", logger_task(global_state));
 
-    let ble_sleep_sig: Rc<power::SleepSignal> = Rc::new(Signal::new());
     spawn_task(
         &spawner,
         "bluetooth::bluetooth_timer_task",
-        bluetooth::bluetooth_timer_task(board.bt, global_state, ble_sleep_sig.clone()),
+        bluetooth::bluetooth_timer_task(board.bt, global_state),
     );
 
     set_brownout_detection(true);
@@ -367,7 +363,7 @@ async fn main(spawner: Spawner) {
         restore_saved_state_task(global_state, nvs),
     );
 
-    let mut power = power::Supervisor::new(&wifi_res, ws_sleep_sig, ble_sleep_sig);
+    let mut power = power::Supervisor::new(&wifi_res);
     let boot = Instant::now();
     let mut healthy = false;
     let mut last_error_log_save: Option<Instant> = None;

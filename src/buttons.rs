@@ -333,11 +333,9 @@ async fn submit(state: &GlobalState) {
             });
             if let Some(device) = device {
                 log::debug!("[BtD] Try to connect to: {device:?}");
-                _ = state.nvs.delete(&NVS_BONDING_KEY).await;
                 crate::bluetooth::COMMANDS.signal(BleAction::Connect(device));
             } else if selected == count {
                 log::debug!("[BtD] Unpair current device");
-                _ = state.nvs.delete(&NVS_BONDING_KEY).await;
                 crate::bluetooth::COMMANDS.signal(BleAction::Unpair);
             }
 

@@ -3,7 +3,6 @@
 //! Display/input code only calls [`request_sleep`] / [`wake`] / [`enter_deep_sleep`];
 //! [`Supervisor::tick`] (main loop) does the radio, websocket and BLE side of each transition.
 
-use alloc::rc::Rc;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Instant};
 use portable_atomic::{AtomicBool, Ordering};
@@ -81,19 +80,15 @@ pub fn enter_deep_sleep() {
 /// Applies sleep transitions to the radio, websocket and BLE tasks.
 pub struct Supervisor<'a> {
     wifi: &'a WifiManager,
-    ws_sleep: Rc<SleepSignal>,
-    ble_sleep: Rc<SleepSignal>,
     sleeping: bool,
     /// Set while waiting [`SLEEP_SETTLE`] before turning the radio off.
     settling_since: Option<Instant>,
 }
 
 impl<'a> Supervisor<'a> {
-    pub fn new(wifi: &'a WifiManager, ws_sleep: Rc<SleepSignal>, ble_sleep: Rc<SleepSignal>) -> Self {
+    pub fn new(wifi: &'a WifiManager) -> Self {
         Self {
             wifi,
-            ws_sleep,
-            ble_sleep,
             sleeping: false,
             settling_since: None,
         }
@@ -107,10 +102,10 @@ impl<'a> Supervisor<'a> {
             if !sleeping {
                 // woken while settling: reset the ws state, the next tick restarts everything
                 self.settling_since = None;
-                self.ws_sleep.signal(true);
+                crate::ws::SLEEP.signal(true);
             } else if since.elapsed() >= SLEEP_SETTLE {
                 self.settling_since = None;
-                self.ws_sleep.signal(true);
+                crate::ws::SLEEP.signal(true);
                 self.wifi.stop_radio();
             }
             return;
@@ -121,13 +116,13 @@ impl<'a> Supervisor<'a> {
         }
 
         self.sleeping = sleeping;
-        self.ble_sleep.signal(sleeping);
+        crate::bluetooth::SLEEP.signal(sleeping);
         if sleeping {
             log::warn!("Entering sleep mode!");
             crate::ws::close(4000, "Going into sleep mode");
             self.settling_since = Some(Instant::now());
         } else {
-            self.ws_sleep.signal(false);
+            crate::ws::SLEEP.signal(false);
             self.wifi.restart_radio();
         }
     }

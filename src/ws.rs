@@ -10,7 +10,6 @@ use crate::{
     structs::{ApiError, DelegateResponsePacket, FromPacket, TimerPacket, TimerPacketInner},
     utils::{UninitBuf, error_log::codes, logger::ReadyLogs},
 };
-use alloc::rc::Rc;
 use core::{cell::Cell, fmt::Write as _, str::FromStr};
 use embassy_crypto_rustcrypto as _;
 use embassy_futures::select::{Either, Either3, select, select3};
@@ -55,6 +54,8 @@ pub fn ota_active() -> bool {
 }
 /// Wakes the connection task when something was queued for it.
 static WAKE: Signal<Cs, ()> = Signal::new();
+/// `true` = going to sleep (connection dropped until `false`), sent by [`crate::power::Supervisor`].
+pub static SLEEP: crate::power::SleepSignal = Signal::new();
 static PENDING_LOGS: Mutex<Cs, Cell<Option<ReadyLogs>>> = Mutex::new(Cell::new(None));
 static PENDING_CLOSE: Mutex<Cs, Cell<Option<(u16, &'static str)>>> = Mutex::new(Cell::new(None));
 
@@ -197,7 +198,6 @@ pub async fn ws_task(
     stack: Stack<'static>,
     ws_url: heapless::String<255>,
     global_state: GlobalState,
-    ws_sleep_sig: Rc<Signal<Cs, bool>>,
     wifi_conn_sig: &'static Signal<Cs, bool>,
 ) {
     let Some(ws_url) = WsUrl::parse(&ws_url) else {
@@ -226,7 +226,7 @@ pub async fn ws_task(
         crate::state::SESSION.write(crate::state::Session::reset_connection);
 
         let conn = run(global_state, ws_url, stack, &mut bufs, wifi_conn_sig);
-        match select(conn, ws_sleep_sig.wait()).await {
+        match select(conn, SLEEP.wait()).await {
             Either::First(Err(e)) => {
                 if ota_active() {
                     log::error!("Connection lost during OTA update: {e:?}");
@@ -241,7 +241,7 @@ pub async fn ws_task(
                 }
                 log::error!("ws error: {e:?}");
             }
-            Either::Second(true) => while ws_sleep_sig.wait().await {},
+            Either::Second(true) => while SLEEP.wait().await {},
             Either::Second(false) => {}
         }
 

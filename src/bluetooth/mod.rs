@@ -9,7 +9,7 @@ use crate::{
     structs::BleDisplayDevice,
     utils::error_log::codes,
 };
-use alloc::{rc::Rc, vec::Vec};
+use alloc::vec::Vec;
 use core::cell::Cell;
 use embassy_futures::select::{Either, select, select3};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, signal::Signal};
@@ -31,6 +31,8 @@ type Pool = DefaultPacketPool;
 
 /// UI → BLE task commands.
 pub static COMMANDS: BleCommands = BleCommands(Channel::new());
+/// `true` = going to sleep (BLE stack dropped until `false`), sent by [`crate::power::Supervisor`].
+pub static SLEEP: crate::power::SleepSignal = Signal::new();
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BleAction {
@@ -63,19 +65,18 @@ impl BleCommands {
 pub async fn bluetooth_timer_task(
     bt: BT<'static>,
     state: GlobalState,
-    sleep_sig: Rc<Signal<CriticalSectionRawMutex, bool>>,
 ) {
     loop {
         // sleeping drops the whole BLE stack
-        select(run(&bt, state), wait_sleep(&sleep_sig, true)).await;
+        select(run(&bt, state), wait_sleep(true)).await;
         // let the controller shut down before it is created again
         Timer::after_millis(1000).await;
-        wait_sleep(&sleep_sig, false).await;
+        wait_sleep(false).await;
     }
 }
 
-async fn wait_sleep(sig: &Signal<CriticalSectionRawMutex, bool>, sleep: bool) {
-    while sig.wait().await != sleep {}
+async fn wait_sleep(sleep: bool) {
+    while SLEEP.wait().await != sleep {}
 }
 
 async fn run(bt: &BT<'static>, state: GlobalState) {
@@ -172,8 +173,14 @@ async fn link(
         connect_params: Default::default(),
         scan_config: ScanConfig { filter_accept_list: &[target], ..Default::default() },
     };
-    // re-pairing or unpairing from the menu ends the link (the buttons already dropped the bond)
-    let ended = COMMANDS.wait_for(|c| matches!(c, BleAction::Unpair | BleAction::StartScan));
+    // re-pairing or unpairing from the menu ends the link; unpairing also forgets the bond
+    let ended = async {
+        if COMMANDS.wait_for(|c| matches!(c, BleAction::Unpair | BleAction::StartScan)).await
+            == BleAction::Unpair
+        {
+            _ = state.nvs.delete(&NVS_BONDING_KEY).await;
+        }
+    };
     let connect = async {
         let mut backoff = Duration::from_secs(1);
         loop {
