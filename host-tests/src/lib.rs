@@ -147,3 +147,64 @@ mod tests {
         assert_eq!(r.possible_groups.len(), new::MAX_POSSIBLE_GROUPS);
     }
 }
+
+/// Outgoing packets are serialized with serde-json-core on the device; it must produce the
+/// same bytes serde_json did.
+#[cfg(test)]
+mod outgoing_json {
+    use crate::structs::{TimerPacket, TimerPacketInner};
+
+    fn same(p: &TimerPacket) {
+        let mut buf = [0u8; 1024];
+        let n = serde_json_core::to_slice(p, &mut buf).expect("serde-json-core");
+        assert_eq!(core::str::from_utf8(&buf[..n]).unwrap(), serde_json::to_string(p).unwrap());
+    }
+
+    #[test]
+    fn identical_to_serde_json() {
+        let packets = [
+            TimerPacketInner::Solve {
+                solve_time: 12345,
+                penalty: -1,
+                competitor_id: 7,
+                judge_id: 9,
+                timestamp: 1_700_000_000,
+                session_id: "0b6a7d2e-1f4c-4f7e-9b1a-2c3d4e5f6a7b".into(),
+                delegate: false,
+                inspection_time: 8000,
+                group_id: "333-r1-g2 \"q\" \\ ż".into(),
+                sign_key: u32::MAX,
+            },
+            TimerPacketInner::CardInfoRequest { card_id: u64::MAX, is_competitor: true, attendance_device: None, sign_key: 5 },
+            TimerPacketInner::CardInfoRequest { card_id: 1, is_competitor: false, attendance_device: Some(true), sign_key: 5 },
+            TimerPacketInner::Battery { level: Some(87.5), voltage: Some(3.91) },
+            TimerPacketInner::Battery { level: Some(0.1), voltage: Some(4.123456789) },
+            TimerPacketInner::Battery { level: Some(100.0), voltage: Some(1e-7) },
+            TimerPacketInner::Battery { level: None, voltage: None },
+            TimerPacketInner::Add { firmware: "STATION".into(), sign_key: 77 },
+        ];
+        for data in packets {
+            same(&TimerPacket { tag: None, data: data.clone() });
+            same(&TimerPacket { tag: Some(u64::MAX), data });
+        }
+    }
+
+    #[cfg(feature = "e2e")]
+    #[test]
+    fn test_ack_identical() {
+        same(&TimerPacket {
+            tag: None,
+            data: TimerPacketInner::TestAck(crate::structs::SnapshotData {
+                scene: 3,
+                inspection_time: Some(15000),
+                solve_time: None,
+                penalty: Some(-1),
+                time_confirmed: true,
+                possible_groups: 2,
+                group_selected_idx: 1,
+                current_competitor: Some(9),
+                current_judge: None,
+            }),
+        });
+    }
+}

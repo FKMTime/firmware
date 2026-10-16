@@ -6,7 +6,6 @@
 extern crate alloc;
 use crate::consts::NVS_SIGN_KEY;
 use alloc::rc::Rc;
-use alloc::string::ToString;
 use board::Board;
 use consts::LOG_SEND_INTERVAL_MS;
 use embassy_executor::Spawner;
@@ -18,7 +17,6 @@ use esp_storage::FlashStorage;
 use state::{GlobalState, GlobalStateInner, SavedGlobalState, Scene, ota_state, sleep_state};
 use structs::ConnSettings;
 use utils::{logger::FkmLogger, set_brownout_detection, spawn_task};
-use ws_framer::{WsUrl, WsUrlOwned};
 
 mod bluetooth;
 mod board;
@@ -316,14 +314,18 @@ async fn main(spawner: Spawner) {
             let mdns_res = mdns::mdns_query(wifi_res.stack()).await;
             log::info!("Mdns result: {mdns_res:?}");
 
-            mdns_res.to_string()
+            mdns_res
         } else {
-            conn_settings.ws_url.clone().unwrap_or_default()
+            // a url longer than 255 bytes counts as unparsable
+            conn_settings
+                .ws_url
+                .as_deref()
+                .and_then(|u| heapless::String::try_from(u).ok())
+                .unwrap_or_default()
         };
 
-        let ws_url = WsUrl::from_str(&url);
-        match ws_url {
-            Some(ws_url) => break WsUrlOwned::new(&ws_url),
+        match ws_framer::WsUrl::parse(&url) {
+            Some(_) => break url,
             None => {
                 parse_retry_count += 1;
                 log::error!("Mdns parse failed! Retry ({parse_retry_count})..");
@@ -389,11 +391,7 @@ async fn main(spawner: Spawner) {
             ble_sleep_sig.signal(last_sleep);
             if last_sleep {
                 log::warn!("Entering sleep mode!");
-                ws::send_frame(ws_framer::WsFrameOwned::Close(
-                    4000,
-                    "Going into sleep mode".to_string(),
-                ))
-                .await;
+                ws::close(4000, "Going into sleep mode");
 
                 // only wait that 15s when going into sleep mode (to make sure close is sent and to
                 // debounce sleeps)
@@ -444,7 +442,7 @@ async fn logger_task(global_state: GlobalState) {
         };
 
         if let Some(logs) = logs {
-            _ = ws::send_raw_binary(&logs);
+            _ = ws::send_logs(logs);
         }
 
         #[cfg(not(feature = "release_build"))]
