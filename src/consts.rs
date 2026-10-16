@@ -44,6 +44,10 @@ pub const BUZZER_VOLUME_MAX: u8 = 25;
 #[cfg(feature = "v4")]
 pub const BUZZER_VOLUME_DEFAULT: u8 = 5;
 
+/// Both hands must rest on the pads this long before the timer arms (like a stackmat).
+#[cfg(feature = "timer-func")]
+pub const PADS_ARM_MS: u64 = 550;
+
 pub const NVS_BONDING_KEY: esp_hal_wifimanager::Key =
     esp_hal_wifimanager::Key::from_str("BONDING_KEY");
 pub const NVS_SIGN_KEY: esp_hal_wifimanager::Key = esp_hal_wifimanager::Key::from_str("SIGN_KEY");

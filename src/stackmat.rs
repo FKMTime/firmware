@@ -59,6 +59,12 @@ pub async fn stackmat_task(global_state: GlobalState, mut pads: Pads) {
         if !core::mem::replace(&mut qa_touched, true) {
             crate::qa::send_qa_resp(crate::qa::QaSignal::StackmatConnected);
         }
+        // a hand lifted before the timer armed (or contact bounce): wait for a fresh touch
+        let early_release = select(pads.0.wait_for_low(), pads.1.wait_for_low());
+        let arm = Duration::from_millis(crate::consts::PADS_ARM_MS);
+        if with_timeout(arm, early_release).await.is_ok() {
+            continue;
+        }
         wait_pad_release(&mut pads).await;
         let timer_start = Instant::now();
         global_state.timer_stop_signal.reset();
