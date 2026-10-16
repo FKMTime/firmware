@@ -272,7 +272,7 @@ pub struct GlobalStateInner {
     pub bt_display_signal: Signal<NoopRawMutex, u64>,
     pub update_progress: Signal<CriticalSectionRawMutex, u8>,
     pub sign_unsign_progress: Signal<CriticalSectionRawMutex, bool>,
-    pub ble_sig: Signal<CriticalSectionRawMutex, BleAction>,
+    pub ble_sig: crate::bluetooth::BleCommands,
     pub show_battery: Signal<CriticalSectionRawMutex, u8>,
     #[cfg(feature = "v4")]
     pub buzzer_sound_test: Signal<CriticalSectionRawMutex, ()>,
@@ -293,7 +293,7 @@ impl GlobalStateInner {
             bt_display_signal: Signal::new(),
             update_progress: Signal::new(),
             sign_unsign_progress: Signal::new(),
-            ble_sig: Signal::new(),
+            ble_sig: crate::bluetooth::BleCommands::new(),
             show_battery: Signal::new(),
             #[cfg(feature = "v4")]
             buzzer_sound_test: Signal::new(),
