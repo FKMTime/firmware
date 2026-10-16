@@ -133,6 +133,7 @@ pub async fn lcd_task(
         }
 
         if rerender {
+            crate::bench!(LCD_FRAME);
             rerender = false;
             global_state.ui.write(|u| {
                 if u.menu_scene == Some(MenuScene::BtDisplay)

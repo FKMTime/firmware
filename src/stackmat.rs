@@ -48,6 +48,7 @@ pub async fn stackmat_task(global_state: GlobalState, mut pads: Pads) {
         if !global_state.solve.update(|s| start_timer(s, timer_start)) {
             continue;
         }
+        crate::bench!(PADS_EVENT, timer_start.elapsed().as_micros());
 
         loop {
             heartbeat(TaskId::Stackmat);
@@ -62,6 +63,7 @@ pub async fn stackmat_task(global_state: GlobalState, mut pads: Pads) {
                     _ => (time, false),
                 };
                 time_end(time, dnf, &global_state).await;
+                crate::bench!(PADS_EVENT, now.elapsed().as_micros());
                 show_time(&global_state, time);
                 wait_pad_release(&mut pads).await;
                 break;
@@ -169,6 +171,7 @@ pub async fn stackmat_task(
         if sleeping {
             continue;
         }
+        crate::bench!(STACKMAT_LOOP);
 
         let now = Instant::now().as_micros();
         for (i, &byte) in buf[..n].iter().enumerate() {
@@ -211,6 +214,7 @@ pub async fn stackmat_task(
             }
 
             show_time(&global_state, frame.1);
+            crate::bench!(FRAME_PUBLISH, Instant::now().as_micros().saturating_sub(at));
         }
 
         if tracker.connected(now) {

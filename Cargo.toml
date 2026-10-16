@@ -57,6 +57,8 @@ dyn-smooth = { version = "0.2.0", optional = true }
 ag-lcd-async = { git = "https://github.com/filipton/ag-lcd-async", features = [], optional = true }
 
 [features]
+# on-device timing stats (stackmat, pads, rfid, lcd), logged every 5 s: cargo build -r --features bench
+bench = []
 default = ["sleep", "v4", "timer-func"]
 gen_version = []
 bat_dev_lcd = []
