@@ -76,12 +76,14 @@ pub fn button_mask() -> u8 {
 }
 
 /// Seeds the emulator's Wi-Fi (`myssid`/`mypassword`) and server url into NVS, so the
-/// wifimanager connects right away instead of starting AP/BLE provisioning.
+/// wifimanager connects right away instead of starting AP/BLE provisioning
+/// (`SIM_PROVISION=1` at build time skips this to test provisioning).
 pub async fn seed_wifi(nvs: &esp_hal_wifimanager::Nvs) {
-    if nvs
-        .get::<alloc::string::String>(&esp_hal_wifimanager::WIFI_NVS_KEY)
-        .await
-        .is_ok()
+    if option_env!("SIM_PROVISION").is_some()
+        || nvs
+            .get::<alloc::string::String>(&esp_hal_wifimanager::WIFI_NVS_KEY)
+            .await
+            .is_ok()
     {
         return;
     }

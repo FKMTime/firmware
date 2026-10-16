@@ -1,0 +1,21 @@
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -52,6 +52,7 @@
+ mod ap;
+ 
+ #[cfg(feature = "ble")]
++#[allow(dead_code)] // esp-emu: never spawned
+ mod bluetooth;
+ 
+ mod nvs;
+@@ -130,8 +131,9 @@
+             Err(_) => log::error!("WM_CONN is too long"),
+         }
+ 
++        // esp-emu can't run esp-radio's BLE controller (it spins in ROM): AP provisioning only
+         #[cfg(feature = "ble")]
+-        spawner.spawn(bluetooth::bluetooth_task(bt, generated_ssid, wm_signals)?);
++        drop((bt, generated_ssid));
+ 
+         let wifi_setup =
+             wifi_connection_worker(&settings, wm_signals, nvs, &mut controller, configuration)

@@ -13,8 +13,10 @@ ESP32-C3 image with Wi-Fi. The `sim` feature (v4, UART stackmat) fills the gaps 
 | Wi-Fi setup | seeded for the emulator's AP; also adds itself to the server (`auto_add`) |
 | BLE, sleep | off (esp-emu can't run esp-radio's BLE) |
 
-`sim/run.sh` builds with `sim/esp-hal-emu.patch` applied to a copy of esp-hal (esp-emu never sets the
-interrupt matrix status registers, which esp-hal relies on), without touching `Cargo.lock`.
+`sim/run.sh` builds with `sim/<crate>-emu.patch` applied to copies of esp-hal (esp-emu never sets the
+interrupt matrix status registers, which esp-hal relies on) and esp-hal-wifimanager (no BLE
+provisioning, it hangs the emulator), without touching `Cargo.lock`. Control port `127.0.0.1:5557`
+takes `reset` (flash kept).
 
 ## Run
 
@@ -28,6 +30,20 @@ python3 sim/stackmat.py                           # terminal 3: start | stop | r
 `192.168.4.1` is this machine inside the emulator. Without `SIM_WS_URL` the firmware uses mDNS,
 which doesn't get answers through esp-emu's relay on macOS. Cards in micro-connector's `tests.json`:
 `69420` (competitor), `3004425529` (judge).
+
+## Wi-Fi provisioning
+
+```sh
+SIM_PROVISION=1 sim/run.sh                                    # nothing seeded: the firmware starts its AP
+curl --compressed http://127.0.0.1:18080/                     # panel (also /list, /update)
+curl -X POST http://127.0.0.1:18080/setup \
+  --data '{"ssid":"myssid","psk":"mypassword","data":{"mdns":false,"ws_url":"ws://192.168.4.1:8080"}}'
+printf 'reset\n' | nc 127.0.0.1 5557                          # reboots straight onto the saved Wi-Fi
+```
+
+esp-emu joins the firmware's AP and gets a lease from its DHCP server (`RUST_LOG=debug` shows it);
+the panel is forwarded to `127.0.0.1:18080`. Bad setups (invalid JSON, wrong password, unknown
+network) are logged and the AP keeps running.
 
 A solve: `card 69420`, `btn 1`, stackmat `start` … `stop`, `btn 3`, `card 3004425529`, `card 69420`.
 
