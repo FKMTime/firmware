@@ -14,3 +14,6 @@ serde-json-core = { version = "0.7.0", default-features = false }
 e2e = []
 v3 = []
 v4 = []
+
+# standalone: the firmware manifest uses nightly-only cargo-features
+[workspace]
