@@ -520,7 +520,8 @@ pub async fn lcd_task(
                     && !deeper_sleep_state()
                     && (Instant::now() - last_update).as_millis() > DEEPER_SLEEP_AFTER_MS
                 {
-                    use esp_hal::rtc_cntl::{Rtc, sleep::RtcioWakeupSource};
+                    use esp_hal::gpio::{Event, Input, InputConfig, Pull, WakeupConfig};
+                    use esp_hal::rtc_cntl::sleep::{LowPower, RtcSleepConfig};
 
                     oled.fbuf.clear(BinaryColor::Off);
                     let text =
@@ -530,19 +531,21 @@ pub async fn lcd_task(
                     _ = oled.flush().await;
 
                     unsafe {
-                        use esp_hal::rtc_cntl::sleep::WakeupLevel;
-
-                        let wakeup_pins: &mut [(
-                            &mut dyn esp_hal::gpio::RtcPinWithResistors,
-                            esp_hal::rtc_cntl::sleep::WakeupLevel,
-                        )] = &mut [
-                            (&mut esp_hal::peripherals::GPIO0::steal(), WakeupLevel::High),
-                            (&mut esp_hal::peripherals::GPIO1::steal(), WakeupLevel::High),
-                            (&mut esp_hal::peripherals::GPIO2::steal(), WakeupLevel::High),
-                            (&mut esp_hal::peripherals::GPIO3::steal(), WakeupLevel::High),
+                        // pull-down like the old RtcioWakeupSource did for a high-level wake
+                        let input_config = InputConfig::default().with_pull(Pull::Down);
+                        let wakeup_config = WakeupConfig::default().with_low_power_path(true);
+                        let mut wakeup_pins = [
+                            Input::new(esp_hal::peripherals::GPIO0::steal(), input_config),
+                            Input::new(esp_hal::peripherals::GPIO1::steal(), input_config),
+                            Input::new(esp_hal::peripherals::GPIO2::steal(), input_config),
+                            Input::new(esp_hal::peripherals::GPIO3::steal(), input_config),
                         ];
-                        let rtcio = RtcioWakeupSource::new(wakeup_pins);
-                        Rtc::new(esp_hal::peripherals::LPWR::steal()).sleep_deep(&[&rtcio]);
+                        for pin in &mut wakeup_pins {
+                            pin.apply_wakeup_config(&wakeup_config).unwrap();
+                            pin.listen(Event::HighLevel);
+                        }
+                        LowPower::new(esp_hal::peripherals::LPWR::steal())
+                            .sleep_deep(RtcSleepConfig::deep());
                     }
                 }
             }

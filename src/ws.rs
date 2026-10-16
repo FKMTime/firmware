@@ -11,10 +11,10 @@ use embassy_sync::{
     signal::Signal,
 };
 use embassy_time::{Duration, Instant, Timer, WithTimeout};
-use embedded_tls::{Aes128GcmSha256, NoVerify, TlsConfig, TlsConnection, TlsContext};
+use embassy_crypto_rustcrypto as _;
+use embedded_tls::{Aes128GcmSha256, InsecureNoVerify, TlsConfig, TlsConnection, TlsContext};
 use esp_hal_ota::Ota;
 use esp_storage::FlashStorage;
-use rand_core::OsRng;
 use ws_framer::{WsFrame, WsFrameOwned, WsRxFramer, WsTxFramer, WsUrl, WsUrlOwned};
 
 static FRAME_CHANNEL: Channel<CriticalSectionRawMutex, WsFrameOwned, 32> = Channel::new();
@@ -188,14 +188,9 @@ async fn ws_loop(
         let mut socket = if ws_url.secure {
             let mut tls = TlsConnection::new(socket, ssl_rx_buf, ssl_tx_buf);
 
-            let config = TlsConfig::new().enable_rsa_signatures();
-            tls.open(TlsContext::new(
-                &config,
-                Provider {
-                    rng: OsRng,
-                    verifier: NoVerify {},
-                },
-            ))
+            // the "rsa" feature makes TlsConfig offer RSA signatures by default
+            let config = TlsConfig::new();
+            tls.open(TlsContext::new(&config, InsecureNoVerify))
             .await
             .map_err(|e| {
                 log::error!("tls open error: {e:?}");
@@ -821,24 +816,13 @@ impl WsSocket<'_, '_> {
     }
 }
 
-struct Provider {
-    rng: OsRng,
-    verifier: NoVerify,
-}
+/// RNG for embedded-tls (embassy-crypto)
+struct EspRng;
 
-impl embedded_tls::CryptoProvider for Provider {
-    type CipherSuite = Aes128GcmSha256;
-
-    type Signature = &'static [u8];
-
-    fn rng(&mut self) -> impl embedded_tls::CryptoRngCore {
-        &mut self.rng
-    }
-
-    fn verifier(
-        &mut self,
-    ) -> Result<&mut impl embedded_tls::TlsVerifier<Self::CipherSuite>, embedded_tls::TlsError>
-    {
-        Ok(&mut self.verifier)
+impl embassy_crypto::driver::Rng for EspRng {
+    fn fill_bytes(buf: &mut [u8]) {
+        _ = crate::custom_rng(buf);
     }
 }
+
+embassy_crypto::rng_impl!(EspRng);

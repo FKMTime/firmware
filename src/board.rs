@@ -1,7 +1,7 @@
 use esp_hal::{
     gpio::{AnyPin, Input, InputConfig, Output, Pin, Pull},
     peripherals::{
-        ADC1, AES, BT, FLASH, Peripherals, SPI2, SW_INTERRUPT, TIMG0, TIMG1, UART1, WIFI,
+        ADC1, AES, BT, FLASH, FROM_CPU_INTR0, Peripherals, SPI2, TIMG0, TIMG1, UART1, WIFI,
     },
     rng::Rng,
     timer::timg::TimerGroup,
@@ -24,7 +24,7 @@ pub struct Board {
     pub spi_dma: esp_hal::peripherals::DMA_CH0<'static>,
     pub aes: AES<'static>,
     pub flash: FLASH<'static>,
-    pub sw_interrupt: SW_INTERRUPT<'static>,
+    pub sw_interrupt: FROM_CPU_INTR0<'static>,
 
     // spi
     #[cfg(feature = "v3")]
@@ -80,7 +80,7 @@ impl Board {
         let bt = peripherals.BT;
         let aes = peripherals.AES;
         let flash = peripherals.FLASH;
-        let sw_interrupt = peripherals.SW_INTERRUPT;
+        let sw_interrupt = peripherals.FROM_CPU_INTR0;
 
         let stackmat_rx = peripherals.GPIO20.degrade();
         let usb_dp = peripherals.GPIO19.degrade();
@@ -215,7 +215,7 @@ impl Board {
         let bt = peripherals.BT;
         let aes = peripherals.AES;
         let flash = peripherals.FLASH;
-        let sw_interrupt = peripherals.SW_INTERRUPT;
+        let sw_interrupt = peripherals.FROM_CPU_INTR0;
 
         let sck = peripherals.GPIO4.degrade();
         let miso = peripherals.GPIO5.degrade();

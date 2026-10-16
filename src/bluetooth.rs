@@ -13,7 +13,6 @@ use embassy_sync::{
 };
 use embassy_time::{Duration, Timer, with_timeout};
 use esp_radio::ble::controller::BleConnector;
-use rand_core::OsRng;
 use trouble_host::prelude::*;
 
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -112,15 +111,12 @@ async fn bluetooth_loop(bt: &esp_hal::peripherals::BT<'static>, state: &GlobalSt
         let address: Address = Address::random(mac_addr);
         log::info!("[ble] address = {address:x?}");
 
-        let mut resources: HostResources<DefaultPacketPool, 1, 3> = HostResources::new();
+        let mut resources: HostResources<_, DefaultPacketPool, 1, 3> = HostResources::new();
         let stack = trouble_host::new(controller, &mut resources)
             .set_random_address(address)
-            .set_random_generator_seed(&mut OsRng);
-        let Host {
-            central,
-            mut runner,
-            ..
-        } = stack.build();
+            .build();
+        let central = stack.central();
+        let mut runner = stack.runner();
 
         let mut central = match bond_info {
             Some(ref bond) => {
@@ -212,7 +208,7 @@ async fn bluetooth_loop(bt: &esp_hal::peripherals::BT<'static>, state: &GlobalSt
         };
 
         let display_addr = match bond_info {
-            Some(ref bond_info) => bond_info.identity.bd_addr.into_inner(),
+            Some(ref bond_info) => bond_info.identity.addr.addr.into_inner(),
             None => loop {
                 let sig = state.ble_sig.wait().await;
                 if let BleAction::Connect(d) = sig {
@@ -225,7 +221,7 @@ async fn bluetooth_loop(bt: &esp_hal::peripherals::BT<'static>, state: &GlobalSt
         let config = ConnectConfig {
             connect_params: Default::default(),
             scan_config: ScanConfig {
-                filter_accept_list: &[(target.kind, &target.addr)],
+                filter_accept_list: &[target],
                 ..Default::default()
             },
         };
@@ -460,7 +456,7 @@ async fn store_bonding_info(nvs: &esp_hal_wifimanager::Nvs, info: &BondInformati
     let mut buf = [0; 32];
     _ = nvs.delete(NVS_BONDING_KEY).await;
 
-    buf[..6].copy_from_slice(info.identity.bd_addr.raw());
+    buf[..6].copy_from_slice(info.identity.addr.addr.raw());
     buf[6..22].copy_from_slice(info.ltk.to_le_bytes().as_slice());
     buf[22] = match info.security_level {
         SecurityLevel::NoEncryption => 0,
@@ -487,7 +483,8 @@ async fn load_bonding_info(nvs: &esp_hal_wifimanager::Nvs) -> Option<BondInforma
         return None;
     }
 
-    let bd_addr = BdAddr::new(buf[..6].try_into().unwrap_or_default());
+    // only the 6 address bytes are stored; peers are connected as random addresses
+    let addr = Address::random(buf[..6].try_into().unwrap_or_default());
     let security_level = match buf[22] {
         0 => SecurityLevel::NoEncryption,
         1 => SecurityLevel::Encrypted,
@@ -497,7 +494,7 @@ async fn load_bonding_info(nvs: &esp_hal_wifimanager::Nvs) -> Option<BondInforma
     let ltk = LongTermKey::from_le_bytes(buf[6..22].try_into().unwrap_or_default());
 
     Some(BondInformation {
-        identity: Identity { bd_addr, irk: None },
+        identity: Identity { addr, irk: None },
         security_level,
         is_bonded: true,
         ltk,

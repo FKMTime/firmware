@@ -13,7 +13,6 @@ use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
 use embassy_time::{Instant, Timer};
 use esp_backtrace as _;
-use esp_hal::interrupt::software::SoftwareInterruptControl;
 use esp_hal_wifimanager::{Nvs, WIFI_NVS_KEY};
 use esp_storage::FlashStorage;
 use state::{GlobalState, GlobalStateInner, SavedGlobalState, Scene, ota_state, sleep_state};
@@ -95,8 +94,7 @@ async fn main(spawner: Spawner) {
 
     set_brownout_detection(false);
     let board = Board::init(peripherals);
-    let software_interrupt = SoftwareInterruptControl::new(board.sw_interrupt);
-    esp_rtos::start(board.timg1.timer0, software_interrupt.software_interrupt0);
+    esp_rtos::start(board.timg1.timer0, board.sw_interrupt);
     FkmLogger::set_logger();
 
     log::info!("Version: {}", version::VERSION);

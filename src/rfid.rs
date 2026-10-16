@@ -11,8 +11,7 @@ use esp_hal_mfrc522::consts::UidSize;
 use esp_hal::time::Rate;
 #[cfg(feature = "v3")]
 use esp_hal::{
-    dma::{DmaRxBuf, DmaTxBuf},
-    dma_buffers,
+    dma_rx_buffer, dma_tx_buffer,
     gpio::AnyPin,
     spi::{Mode, master::Spi},
 };
@@ -38,18 +37,15 @@ pub async fn rfid_task(
         esp_hal_mfrc522::MFRC522::new(driver)
     };
 
-    #[allow(clippy::manual_div_ceil)]
     #[cfg(feature = "v3")]
-    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(512);
-    #[cfg(feature = "v3")]
-    let Ok(dma_tx_buf) = DmaTxBuf::new(tx_descriptors, tx_buffer) else {
+    let Ok(dma_tx_buf) = dma_tx_buffer!(512) else {
         log::error!("Dma tx buf failed");
         crate::utils::error_log::add_error(crate::utils::error_log::codes::RFID_DMA_TX_INIT_FAILED)
             .await;
         return;
     };
     #[cfg(feature = "v3")]
-    let Ok(dma_rx_buf) = DmaRxBuf::new(rx_descriptors, rx_buffer) else {
+    let Ok(dma_rx_buf) = dma_rx_buffer!(512) else {
         log::error!("Dma rx buf failed");
         crate::utils::error_log::add_error(crate::utils::error_log::codes::RFID_DMA_RX_INIT_FAILED)
             .await;
