@@ -25,7 +25,7 @@ serde = { version = "1.0.229", features = ["alloc", "derive"], default-features 
 serde_json = { version = "1.0.154", default-features = false, features = ["alloc"] }
 adv-shift-registers = "0.2.5"
 embedded-hal = "1.0.0"
-esp-hal-mdns = "0.1.6"
+esp-hal-mdns = { version = "0.2.0", features = ["embassy"] }
 embedded-io-async = "0.7.0"
 macros = { path = "./macros" }
 nb = "1.1.0"

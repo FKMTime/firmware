@@ -1935,12 +1935,12 @@ dependencies = [
 
 [[package]]
 name = "esp-hal-mdns"
-version = "0.1.6"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "026c82351da6f49d57e8ad9513e8509e5be2e5e3b9aa2683577f29e237d60865"
+checksum = "7f1c7448022f3f7cb5dbc53505303656b6e716d5206f540c4943d73798c5a6a7"
 dependencies = [
- "heapless 0.9.3",
- "log",
+ "embassy-net",
+ "embassy-time",
 ]
 
 [[package]]
