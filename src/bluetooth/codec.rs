@@ -1,54 +1,23 @@
 //! Pure helpers of the BLE display link (no hardware types, host-tested).
 
-/// Size of the bond record stored in NVS.
-pub const BOND_LEN: usize = 32;
+/// Bond record stored in NVS: `[0..6]` display address, `[6..22]` LTK (little endian),
+/// `[22]` security level (0 none, 1 encrypted, 2 authenticated).
+pub const BOND_LEN: usize = 23;
 
-/// Layout: `[0..6]` peer address, `[6..22]` LTK (little endian), `[22]` security level,
-/// `[23]` address kind (1 = random), `[31]` record version.
-/// Version 0 records (written before the kind byte existed) have zeros in `[23..32]` and are
-/// random addresses.
-const VERSION: u8 = 1;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BondRecord {
-    pub addr: [u8; 6],
-    pub random_addr: bool,
-    pub ltk: [u8; 16],
-    /// 0 = no encryption, 1 = encrypted, 2 = encrypted + authenticated
-    pub security_level: u8,
-}
-
-pub fn encode_bond(bond: &BondRecord) -> [u8; BOND_LEN] {
+pub fn encode_bond(addr: [u8; 6], ltk: [u8; 16], level: u8) -> [u8; BOND_LEN] {
     let mut buf = [0; BOND_LEN];
-    buf[..6].copy_from_slice(&bond.addr);
-    buf[6..22].copy_from_slice(&bond.ltk);
-    buf[22] = bond.security_level;
-    buf[23] = bond.random_addr as u8;
-    buf[31] = VERSION;
+    buf[..6].copy_from_slice(&addr);
+    buf[6..22].copy_from_slice(&ltk);
+    buf[22] = level;
     buf
 }
 
-pub fn decode_bond(buf: &[u8]) -> Option<BondRecord> {
+/// `None` for anything that isn't a current record (old formats just mean "pair again").
+pub fn decode_bond(buf: &[u8]) -> Option<([u8; 6], [u8; 16], u8)> {
     let buf: &[u8; BOND_LEN] = buf.try_into().ok()?;
-    let random_addr = match buf[31] {
-        0 => true,
-        VERSION => buf[23] != 0,
-        _ => return None,
-    };
-    if buf[22] > 2 {
-        return None;
-    }
-
-    let mut addr = [0; 6];
-    addr.copy_from_slice(&buf[..6]);
-    let mut ltk = [0; 16];
-    ltk.copy_from_slice(&buf[6..22]);
-    Some(BondRecord {
-        addr,
-        random_addr,
-        ltk,
-        security_level: buf[22],
-    })
+    let addr = buf[..6].try_into().ok()?;
+    let ltk = buf[6..22].try_into().ok()?;
+    (buf[22] <= 2).then_some((addr, ltk, buf[22]))
 }
 
 /// Local name (complete or shortened) from BLE advertising data.

@@ -31,41 +31,17 @@ mod ble_tests {
     use crate::ble_codec::*;
 
     #[test]
-    fn decodes_legacy_bond_as_random_address() {
-        // pre-version format: [0..6] addr, [6..22] ltk, [22] level, rest zero
-        let mut buf = [0u8; BOND_LEN];
-        buf[..6].copy_from_slice(&[1, 2, 3, 4, 5, 6]);
-        buf[6..22].copy_from_slice(&[7; 16]);
-        buf[22] = 1;
-        let bond = decode_bond(&buf).unwrap();
-        assert_eq!(bond.addr, [1, 2, 3, 4, 5, 6]);
-        assert_eq!(bond.ltk, [7; 16]);
-        assert_eq!(bond.security_level, 1);
-        assert!(bond.random_addr);
-    }
-
-    #[test]
     fn bond_round_trip() {
-        for random_addr in [true, false] {
-            let bond = BondRecord {
-                addr: [9, 8, 7, 6, 5, 4],
-                random_addr,
-                ltk: [3; 16],
-                security_level: 2,
-            };
-            assert_eq!(decode_bond(&encode_bond(&bond)), Some(bond));
-        }
+        let buf = encode_bond([9, 8, 7, 6, 5, 4], [3; 16], 2);
+        assert_eq!(decode_bond(&buf), Some(([9, 8, 7, 6, 5, 4], [3; 16], 2)));
     }
 
     #[test]
     fn rejects_bad_bonds() {
         assert_eq!(decode_bond(&[]), None);
-        assert_eq!(decode_bond(&[0; 31]), None);
+        assert_eq!(decode_bond(&[0; 32]), None); // old format: re-pair
         let mut buf = [0u8; BOND_LEN];
         buf[22] = 3; // unknown security level
-        assert_eq!(decode_bond(&buf), None);
-        buf[22] = 0;
-        buf[31] = 7; // unknown version
         assert_eq!(decode_bond(&buf), None);
     }
 
