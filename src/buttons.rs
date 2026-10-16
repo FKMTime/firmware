@@ -71,6 +71,10 @@ async fn button_loop(state: GlobalState, mut inputs: ButtonInputs) {
 
         #[allow(unused_mut)]
         let mut extra = 0u8;
+        #[cfg(feature = "sim")]
+        {
+            extra |= crate::sim::button_mask();
+        }
         #[cfg(feature = "e2e")]
         {
             if let Some((btn_idx, press_ms)) = state.e2e.buttons_sig.try_take() {

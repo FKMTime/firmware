@@ -202,7 +202,16 @@ impl log::Log for FkmLogger {
             log::Level::Trace => CYAN,
         };
 
+        #[cfg(not(feature = "sim"))]
         esp_println::println!("{}{} - {}{}", color, record.level(), record.args(), RESET);
+        #[cfg(feature = "sim")]
+        crate::sim::print(format_args!(
+            "{}{} - {}{}",
+            color,
+            record.level(),
+            record.args(),
+            RESET
+        ));
 
         // bat_dev_lcd/qa keep logs on the serial port only
         if !cfg!(any(feature = "bat_dev_lcd", feature = "qa"))

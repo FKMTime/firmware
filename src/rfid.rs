@@ -84,7 +84,8 @@ pub async fn rfid_task(
         esp_hal_mfrc522::Mfrc522::new(esp_hal_mfrc522::SpiInterface::new(spi))
     };
 
-    if !cfg!(feature = "e2e") {
+    // e2e and sim cards are simulated: there is no reader to bring up
+    if !cfg!(any(feature = "e2e", feature = "sim")) {
         init_until_ready(&mut mfrc522).await;
         log::debug!("PCD ver: {:?}", mfrc522.version().await);
     }
@@ -159,7 +160,7 @@ struct Card {
     selected: Option<Uid>,
 }
 
-/// The next scanned card: from the reader, or the simulated e2e card source.
+/// The next scanned card: from the reader, or the simulated e2e/sim card source.
 async fn next_card<I: Interface>(
     mfrc522: &mut Mfrc522<I>,
     global_state: &GlobalState,
@@ -175,7 +176,17 @@ async fn next_card<I: Interface>(
         })
     }
 
-    #[cfg(not(feature = "e2e"))]
+    #[cfg(all(feature = "sim", not(feature = "e2e")))]
+    {
+        let _ = (mfrc522, global_state);
+        let uid = crate::sim::CARD.try_take()?;
+        Some(Card {
+            uid,
+            selected: None,
+        })
+    }
+
+    #[cfg(not(any(feature = "e2e", feature = "sim")))]
     {
         let _ = global_state;
         if !matches!(mfrc522.is_new_card_present().await, Ok(true)) {

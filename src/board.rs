@@ -132,7 +132,8 @@ impl Board {
         );
 
         let i2c = match i2c {
-            Ok(i2c) => {
+            // esp-emu models no I2C devices: the sim build runs every I2C device as absent
+            Ok(i2c) if !cfg!(feature = "sim") => {
                 let i2c = i2c
                     .with_sda(peripherals.GPIO8)
                     .with_scl(peripherals.GPIO9)
@@ -140,7 +141,7 @@ impl Board {
 
                 SharedI2C::new(Some(i2c))
             }
-            Err(_) => SharedI2C::new(None),
+            _ => SharedI2C::new(None),
         };
 
         Board {
