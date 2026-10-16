@@ -60,7 +60,6 @@ ag-lcd-async = { git = "https://github.com/filipton/ag-lcd-async", features = []
 # on-device timing stats (stackmat, pads, rfid, lcd), logged every 5 s: cargo build -r --features bench
 bench = []
 default = ["sleep", "v4", "timer-func"]
-gen_version = []
 bat_dev_lcd = []
 release_build = ["sleep"]
 e2e = []

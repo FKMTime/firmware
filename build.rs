@@ -18,7 +18,6 @@ fn main() {
     }
 
     println!("cargo:rustc-link-arg-bins=-Tlinkall.x");
-    println!("cargo:rustc-cfg=feature=\"gen_version\"");
     println!("cargo:rerun-if-env-changed=RELEASE_BUILD");
     println!("cargo:rerun-if-changed=src/");
 
