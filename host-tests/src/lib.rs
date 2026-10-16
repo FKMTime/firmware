@@ -14,6 +14,8 @@ pub mod text;
 pub mod lcd_text;
 #[path = "../../src/utils/oled_ui.rs"]
 pub mod oled_ui;
+#[path = "../../src/utils/stackmat.rs"]
+pub mod stackmat;
 pub mod utils {
     pub use crate::{bounded, text};
 }

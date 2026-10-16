@@ -1,16 +1,125 @@
+// qa builds report button edges to the QA flow and never dispatch these handlers
+#![cfg_attr(feature = "qa", allow(dead_code))]
+
 use crate::{
     consts::{NVS_BONDING_KEY, NVS_ERROR_LOG, NVS_SIGN_KEY},
     state::{
         BleAction, ErrorLogEntryStage, GlobalState, MenuScene, Scene, current_epoch,
         deeper_sleep_state, sleep_state,
     },
-    utils::buttons::{Button, ButtonTrigger, ButtonsHandler},
+    utils::buttons::{Button, ButtonTrigger, ButtonsHandler, HandlerTable},
 };
-use embassy_time::{Instant, Timer};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
+use embassy_time::{Duration, Instant, Timer};
 use esp_hal::gpio::Input;
+use portable_atomic::{AtomicBool, Ordering};
 
-macros::generate_button_handler_enum!(triggered: &ButtonTrigger, hold_time: u64, state: &GlobalState);
+/// Delegate solve waiting to be sent; the reply can take minutes, so it is awaited next to
+/// (not inside) the button loop.
+static DELEGATE_REQUEST: Signal<CriticalSectionRawMutex, crate::structs::TimerPacketInner> =
+    Signal::new();
+static DELEGATE_PENDING: AtomicBool = AtomicBool::new(false);
 
+/// Every button action; dispatched from [`HANDLERS`] by [`ButtonsHandler`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Handler {
+    Wakeup,
+    SelLeft,
+    SelRight,
+    SubmitUp,
+    SubmitResetCompetitor,
+    SubmitConfigMenu,
+    InspectionStart,
+    InspectionHoldStop,
+    Dnf,
+    Penalty,
+    DelegateHold,
+}
+
+impl Handler {
+    pub async fn execute(
+        self,
+        triggered: &ButtonTrigger,
+        hold_time: u64,
+        state: &GlobalState,
+    ) -> Result<bool, ()> {
+        match self {
+            Self::Wakeup => wakeup_button(state).await,
+            Self::SelLeft => sel_left(state).await,
+            Self::SelRight => sel_right(state).await,
+            Self::SubmitUp => submit_up(state).await,
+            Self::SubmitResetCompetitor => submit_reset_competitor(state).await,
+            Self::SubmitConfigMenu => submit_config_menu(state).await,
+            Self::InspectionStart => inspection_start(state).await,
+            Self::InspectionHoldStop => inspection_hold_stop(state).await,
+            Self::Dnf => dnf_button(state).await,
+            Self::Penalty => penalty_button(state).await,
+            Self::DelegateHold => delegate_hold(triggered, hold_time, state).await,
+        }
+    }
+}
+
+/// Index after moving one step left/right in a list of `len` items, wrapping around.
+const fn wrap_step(idx: usize, len: usize, right: bool) -> usize {
+    if len == 0 {
+        return 0;
+    }
+
+    let idx = if idx < len { idx } else { len - 1 };
+    if right {
+        (idx + 1) % len
+    } else if idx == 0 {
+        len - 1
+    } else {
+        idx - 1
+    }
+}
+
+const _: () = assert!(
+    wrap_step(0, 3, false) == 2
+        && wrap_step(2, 3, true) == 0
+        && wrap_step(1, 3, true) == 2
+        && wrap_step(9, 3, true) == 0
+        && wrap_step(5, 3, false) == 1
+        && wrap_step(4, 0, true) == 0
+        && wrap_step(0, 1, false) == 0
+);
+
+/// Per button, in execution order.
+const HANDLERS: &HandlerTable = &[
+    (Button::Third, ButtonTrigger::Up, Handler::SubmitUp),
+    (
+        Button::Third,
+        ButtonTrigger::HoldOnce(3000),
+        Handler::SubmitResetCompetitor,
+    ),
+    (
+        Button::Third,
+        ButtonTrigger::HoldOnce(10000),
+        Handler::SubmitConfigMenu,
+    ),
+    (Button::First, ButtonTrigger::Down, Handler::SelLeft),
+    (Button::First, ButtonTrigger::Down, Handler::InspectionStart),
+    (
+        Button::First,
+        ButtonTrigger::HoldOnce(1000),
+        Handler::InspectionHoldStop,
+    ),
+    (Button::Fourth, ButtonTrigger::Down, Handler::SelRight),
+    (Button::Fourth, ButtonTrigger::HoldOnce(1000), Handler::Dnf),
+    (Button::Fourth, ButtonTrigger::Up, Handler::Penalty),
+    (
+        Button::Second,
+        ButtonTrigger::HoldTimed(0, 1000),
+        Handler::DelegateHold,
+    ),
+    (
+        Button::Second,
+        ButtonTrigger::HoldOnce(3000),
+        Handler::DelegateHold,
+    ),
+    (Button::Second, ButtonTrigger::Up, Handler::DelegateHold),
+];
 
 #[cfg(feature = "v3")]
 const CONFIG_MENU_ERROR_LOG_IDX: usize = 4;
@@ -31,65 +140,51 @@ pub async fn buttons_task(
     #[cfg(feature = "v3")] button_input: Input<'static>,
     #[cfg(feature = "v3")] button_reg: adv_shift_registers::wrappers::ShifterValue,
 ) {
-    let mut handler = ButtonsHandler::new(Some(wakeup_button()));
-    handler.add_handler(Button::Third, ButtonTrigger::Up, submit_up());
-    handler.add_handler(
-        Button::Third,
-        ButtonTrigger::HoldOnce(3000),
-        submit_reset_competitor(),
-    );
-    handler.add_handler(
-        Button::Third,
-        ButtonTrigger::HoldOnce(10000),
-        submit_config_menu(),
-    );
-
-    handler.add_handler(Button::First, ButtonTrigger::Down, sel_left());
-    handler.add_handler(Button::First, ButtonTrigger::Down, inspection_start());
-    handler.add_handler(
-        Button::First,
-        ButtonTrigger::HoldOnce(1000),
-        inspection_hold_stop(),
-    );
-
-    handler.add_handler(Button::Fourth, ButtonTrigger::Down, sel_right());
-    handler.add_handler(Button::Fourth, ButtonTrigger::HoldOnce(1000), dnf_button());
-    handler.add_handler(Button::Fourth, ButtonTrigger::Up, penalty_button());
-
-    handler.add_handler(
-        Button::Second,
-        ButtonTrigger::HoldTimed(0, 1000),
-        delegate_hold(),
-    );
-    handler.add_handler(
-        Button::Second,
-        ButtonTrigger::HoldOnce(3000),
-        delegate_hold(),
-    );
-    handler.add_handler(Button::Second, ButtonTrigger::Up, delegate_hold());
+    let mut handler = ButtonsHandler::new(Some(Handler::Wakeup), HANDLERS);
 
     #[cfg(feature = "v3")]
-    handler.run(&state, &button_input, &button_reg).await;
+    let buttons = handler.run(&state, &button_input, &button_reg);
     #[cfg(feature = "v4")]
-    handler.run(&state, &button_inputs).await;
+    let buttons = handler.run(&state, &button_inputs);
+
+    embassy_futures::join::join(buttons, delegate_loop(state)).await;
 }
 
-#[macros::button_handler]
-async fn button_test(
-    triggered: &ButtonTrigger,
-    hold_time: u64,
-    _state: &GlobalState,
-) -> Result<bool, ()> {
-    log::info!("Triggered: {triggered:?} - {hold_time}");
-    Ok(false)
+async fn delegate_loop(state: GlobalState) {
+    loop {
+        let packet = DELEGATE_REQUEST.wait().await;
+        let resp = crate::ws::delegate_request(
+            packet,
+            Duration::from_millis(crate::consts::DELEGATE_TIMEOUT_MS),
+        )
+        .await;
+        log::info!("Delegate resp: {resp:?}");
+
+        let mut state_val = state.state.lock().await;
+        match resp {
+            Ok(resp) => {
+                state_val.solve_time =
+                    Some(resp.solve_time.unwrap_or(state_val.solve_time.unwrap_or(0)));
+                state_val.penalty = Some(
+                    resp.penalty
+                        .unwrap_or(state_val.penalty.unwrap_or(0) as i64) as i8,
+                );
+                state_val.scene = Scene::Finished;
+                state_val.time_confirmed = true;
+                state_val.delegate_used = true;
+                if !resp.should_scan_cards {
+                    state_val.reset_solve_state(Some(state.nvs)).await;
+                }
+            }
+            // no answer: drop the "hold" indicator, the solve stays as it was
+            Err(_) => state_val.delegate_hold = None,
+        }
+
+        DELEGATE_PENDING.store(false, Ordering::Relaxed);
+    }
 }
 
-#[macros::button_handler]
-async fn wakeup_button(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn wakeup_button(state: &GlobalState) -> Result<bool, ()> {
     if sleep_state() {
         state.state.signal();
         if deeper_sleep_state() {
@@ -102,12 +197,7 @@ async fn wakeup_button(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn sel_left(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn sel_left(state: &GlobalState) -> Result<bool, ()> {
     let mut state_val = state.state.lock().await;
     #[cfg(feature = "v4")]
     if state_val.menu_scene == Some(MenuScene::BuzzerVolume) {
@@ -137,18 +227,14 @@ async fn sel_left(
         }
 
         let total_items = crate::utils::error_log::entry_count() + 1; // + Exit
-        state_val.selected_error_log_item = state_val
-            .selected_error_log_item
-            .wrapping_sub(1)
-            .min(total_items - 1);
+        state_val.selected_error_log_item =
+            wrap_step(state_val.selected_error_log_item, total_items, false);
 
         return Ok(true);
     }
 
     if let Some(sel) = state_val.selected_config_menu.as_mut() {
-        *sel = sel
-            .wrapping_sub(1)
-            .min(crate::structs::CONFIG_MENU_ITEMS.len() - 1);
+        *sel = wrap_step(*sel, crate::structs::CONFIG_MENU_ITEMS.len(), false);
 
         return Ok(true);
     }
@@ -160,10 +246,11 @@ async fn sel_left(
     }
 
     if state_val.scene == Scene::GroupSelect {
-        state_val.group_selected_idx = state_val
-            .group_selected_idx
-            .wrapping_sub(1)
-            .min(state_val.possible_groups.len() - 1);
+        state_val.group_selected_idx = wrap_step(
+            state_val.group_selected_idx,
+            state_val.possible_groups.len(),
+            false,
+        );
 
         return Ok(true);
     }
@@ -171,12 +258,7 @@ async fn sel_left(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn sel_right(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn sel_right(state: &GlobalState) -> Result<bool, ()> {
     let mut state_val = state.state.lock().await;
     #[cfg(feature = "v4")]
     if state_val.menu_scene == Some(MenuScene::BuzzerVolume) {
@@ -216,16 +298,14 @@ async fn sel_right(
         }
 
         let total_items = crate::utils::error_log::entry_count() + 1; // + Exit
-        state_val.selected_error_log_item = (state_val.selected_error_log_item + 1) % total_items;
+        state_val.selected_error_log_item =
+            wrap_step(state_val.selected_error_log_item, total_items, true);
 
         return Ok(true);
     }
 
     if let Some(sel) = state_val.selected_config_menu.as_mut() {
-        *sel += 1;
-        if *sel == crate::structs::CONFIG_MENU_ITEMS.len() {
-            *sel = 0;
-        }
+        *sel = wrap_step(*sel, crate::structs::CONFIG_MENU_ITEMS.len(), true);
 
         return Ok(true);
     }
@@ -239,10 +319,11 @@ async fn sel_right(
     }
 
     if state_val.scene == Scene::GroupSelect {
-        state_val.group_selected_idx += 1;
-        if state_val.group_selected_idx == state_val.possible_groups.len() {
-            state_val.group_selected_idx = 0;
-        }
+        state_val.group_selected_idx = wrap_step(
+            state_val.group_selected_idx,
+            state_val.possible_groups.len(),
+            true,
+        );
 
         return Ok(true);
     }
@@ -250,12 +331,7 @@ async fn sel_right(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn submit_up(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn submit_up(state: &GlobalState) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
 
     // Clear error (text)
@@ -274,20 +350,15 @@ async fn submit_up(
             return Ok(true);
         }
         Some(MenuScene::BtDisplay) => {
-            if state_val.selected_bluetooth_item < state_val.discovered_bluetooth_devices.len() {
-                log::debug!(
-                    "[BtD] Try to connect to: {:?}",
-                    state_val.discovered_bluetooth_devices[state_val.selected_bluetooth_item]
-                );
+            if let Some(device) = state_val
+                .discovered_bluetooth_devices
+                .get(state_val.selected_bluetooth_item)
+                .cloned()
+            {
+                log::debug!("[BtD] Try to connect to: {device:?}");
 
                 _ = state.nvs.delete(&NVS_BONDING_KEY).await;
-                state.ble_sig.signal(
-                    BleAction::Connect(
-                        state_val.discovered_bluetooth_devices[state_val.selected_bluetooth_item]
-                            .clone(),
-                    )
-                    .clone(),
-                );
+                state.ble_sig.signal(BleAction::Connect(device));
             } else if state_val.selected_bluetooth_item
                 == state_val.discovered_bluetooth_devices.len()
             {
@@ -501,17 +572,22 @@ async fn submit_up(
     }
 
     if state_val.scene == Scene::GroupSelect {
-        state_val.solve_group =
-            Some(state_val.possible_groups[state_val.group_selected_idx].clone());
+        let Some(group) = state_val
+            .possible_groups
+            .get(state_val.group_selected_idx)
+            .cloned()
+        else {
+            log::error!("Group select: no group at {}", state_val.group_selected_idx);
+            return Ok(false);
+        };
+
+        crate::state::set_group_limit(group.limit);
+        state_val.solve_group = Some(group);
         if state_val.solve_time.is_some() {
             state_val.scene = crate::state::Scene::Finished;
         } else {
             state_val.scene = crate::state::Scene::CompetitorInfo;
         }
-
-        crate::state::set_group_limit(
-            state_val.possible_groups[state_val.group_selected_idx].limit,
-        );
 
         state.state.signal();
 
@@ -531,12 +607,7 @@ async fn submit_up(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn inspection_start(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn inspection_start(state: &GlobalState) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
     if !state_val.use_inspection() || state_val.should_skip_other_actions() {
         return Ok(false);
@@ -561,12 +632,7 @@ async fn inspection_start(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn inspection_hold_stop(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn inspection_hold_stop(state: &GlobalState) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
     if state_val.should_skip_other_actions() {
         return Ok(false);
@@ -589,12 +655,7 @@ async fn inspection_hold_stop(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn dnf_button(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn dnf_button(state: &GlobalState) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
     if state_val.should_skip_other_actions() {
         return Ok(false);
@@ -625,12 +686,7 @@ async fn dnf_button(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn penalty_button(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn penalty_button(state: &GlobalState) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
     if state_val.should_skip_other_actions() {
         return Ok(false);
@@ -651,12 +707,7 @@ async fn penalty_button(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn submit_reset_competitor(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    global_state: &GlobalState,
-) -> Result<bool, ()> {
+async fn submit_reset_competitor(global_state: &GlobalState) -> Result<bool, ()> {
     let mut state = global_state.state.lock().await;
     if state.should_skip_other_actions() {
         return Ok(false);
@@ -667,12 +718,7 @@ async fn submit_reset_competitor(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn submit_config_menu(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn submit_config_menu(state: &GlobalState) -> Result<bool, ()> {
     {
         let mut state = state.state.lock().await;
         state.selected_config_menu = Some(0);
@@ -681,7 +727,6 @@ async fn submit_config_menu(
     Ok(true)
 }
 
-#[macros::button_handler]
 async fn delegate_hold(
     triggered: &ButtonTrigger,
     hold_time: u64,
@@ -698,8 +743,7 @@ async fn delegate_hold(
             }
 
             if state_val.current_competitor.is_some() && state_val.solve_group.is_some() {
-                let hold_secs = hold_time / 1000;
-                let hold_secs = if hold_secs > 3 { 3 } else { hold_secs as u8 };
+                let hold_secs = (hold_time / 1000).min(3) as u8;
 
                 state_val.delegate_hold = Some(hold_secs);
                 state.state.signal();
@@ -707,7 +751,10 @@ async fn delegate_hold(
         }
         ButtonTrigger::HoldOnce(_) => {
             let mut state_val = state.state.lock().await;
-            if state_val.should_skip_other_actions() || state_val.delegate_used {
+            if state_val.should_skip_other_actions()
+                || state_val.delegate_used
+                || DELEGATE_PENDING.load(Ordering::Relaxed)
+            {
                 return Ok(false);
             }
 
@@ -729,7 +776,7 @@ async fn delegate_hold(
                 && let Some(start) = state_val.inspection_start
                 && let Some(end) = state_val.inspection_end
             {
-                (end - start).as_millis() as i64
+                end.saturating_duration_since(start).as_millis() as i64
             } else {
                 0
             };
@@ -757,33 +804,8 @@ async fn delegate_hold(
             };
 
             state_val.delegate_hold = Some(3);
-            drop(state_val);
-
-            let resp =
-                crate::ws::delegate_request(
-                    packet,
-                    embassy_time::Duration::from_millis(crate::consts::DELEGATE_TIMEOUT_MS),
-                )
-                .await;
-            log::info!("Delegate resp: {resp:?}");
-
-            if let Ok(resp) = resp {
-                let mut state_val = state.state.lock().await;
-                state_val.solve_time =
-                    Some(resp.solve_time.unwrap_or(state_val.solve_time.unwrap_or(0)));
-
-                state_val.penalty = Some(
-                    resp.penalty
-                        .unwrap_or(state_val.penalty.unwrap_or(0) as i64) as i8,
-                );
-                state_val.scene = Scene::Finished;
-
-                state_val.time_confirmed = true;
-                state_val.delegate_used = true;
-                if !resp.should_scan_cards {
-                    state_val.reset_solve_state(Some(&state.nvs)).await;
-                }
-            }
+            DELEGATE_PENDING.store(true, Ordering::Relaxed);
+            DELEGATE_REQUEST.signal(packet);
         }
         _ => {}
     }

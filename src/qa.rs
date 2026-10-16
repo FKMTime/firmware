@@ -1,10 +1,12 @@
-use alloc::format;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
+use core::fmt::Write;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
 
 use crate::state::GlobalState;
 
-static BACK_SIGNAL: Signal<CriticalSectionRawMutex, QaSignal> = Signal::new();
-#[derive(Debug)]
+/// Peripheral events in arrival order (a `Signal` would drop all but the latest).
+static EVENTS: Channel<CriticalSectionRawMutex, QaSignal, 8> = Channel::new();
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum QaSignal {
     ButtonDown(u8),
     ButtonUp(u8),
@@ -16,135 +18,80 @@ pub enum QaSignal {
 
 #[embassy_executor::task]
 pub async fn qa_processor(global_state: GlobalState) {
-    let res = qa_inner(&global_state).await;
-
-    if res {
-        global_state.state.lock().await.custom_message =
-            Some((format!("PERIPHERALS QA").into(), format!("PASSED").into()));
+    let result = if qa_inner(&global_state).await {
+        "PASSED"
     } else {
-        global_state.state.lock().await.custom_message =
-            Some((format!("PERIPHERALS QA").into(), format!("NOT GOOD").into()));
-    }
+        "NOT GOOD"
+    };
+
+    show(&global_state, "PERIPHERALS QA", result).await;
 }
 
+/// Walks the QA steps; any event other than the expected one fails the run.
 async fn qa_inner(global_state: &GlobalState) -> bool {
-    for i in 1..5 {
-        global_state.state.lock().await.custom_message =
-            Some((format!("Button {i}").into(), format!("Down").into()));
+    for i in 1..5u8 {
+        let mut line = heapless::String::<16>::new();
+        _ = write!(line, "Button {i}");
 
-        loop {
-            let val = BACK_SIGNAL.wait().await;
-            if let QaSignal::ButtonDown(bin) = val {
-                if bin_to_btn_number(bin) == i {
-                    break;
-                }
-            }
-
+        show(global_state, &line, "Down").await;
+        if !matches!(EVENTS.receive().await, QaSignal::ButtonDown(b) if btn_number(b) == Some(i)) {
             return false;
         }
 
-        global_state.state.lock().await.custom_message =
-            Some((format!("Button {i}").into(), format!("Up").into()));
-
-        loop {
-            let val = BACK_SIGNAL.wait().await;
-            if let QaSignal::ButtonUp(bin) = val {
-                if bin_to_btn_number(bin) == i {
-                    break;
-                }
-            }
-
+        show(global_state, &line, "Up").await;
+        if !matches!(EVENTS.receive().await, QaSignal::ButtonUp(b) if btn_number(b) == Some(i)) {
             return false;
         }
     }
 
-    let first_card_scan;
-    global_state.state.lock().await.custom_message = Some((format!("Scan card").into(), format!("1").into()));
-    loop {
-        let val = BACK_SIGNAL.wait().await;
-        if let QaSignal::Rfid(card) = val {
-            first_card_scan = card;
-            break;
-        }
+    show(global_state, "Scan card", "1").await;
+    let QaSignal::Rfid(first_card) = EVENTS.receive().await else {
+        return false;
+    };
 
+    show(global_state, "Scan card", "1 again").await;
+    if EVENTS.receive().await != QaSignal::Rfid(first_card) {
         return false;
     }
 
-    global_state.state.lock().await.custom_message =
-        Some((format!("Scan card").into(), format!("1 again").into()));
-    loop {
-        let val = BACK_SIGNAL.wait().await;
-        if let QaSignal::Rfid(card) = val {
-            if card == first_card_scan {
-                break;
-            }
-        }
-
+    show(global_state, "Scan card", "2").await;
+    if !matches!(EVENTS.receive().await, QaSignal::Rfid(card) if card != first_card) {
         return false;
     }
 
-    global_state.state.lock().await.custom_message = Some((format!("Scan card").into(), format!("2").into()));
-    loop {
-        let val = BACK_SIGNAL.wait().await;
-        if let QaSignal::Rfid(card) = val {
-            if card != first_card_scan {
-                break;
-            }
-        }
-
+    show(global_state, "Connect", "Stackmat").await;
+    if EVENTS.receive().await != QaSignal::StackmatConnected {
         return false;
     }
 
-    global_state.state.lock().await.custom_message =
-        Some((format!("Connect").into(), format!("Stackmat").into()));
-    loop {
-        let val = BACK_SIGNAL.wait().await;
-        if let QaSignal::StackmatConnected = val {
-            break;
-        }
-
+    show(global_state, "Stackmat solve", "> 1s").await;
+    if !matches!(EVENTS.receive().await, QaSignal::Stackmat(time) if time > 1000) {
         return false;
     }
 
-    global_state.state.lock().await.custom_message =
-        Some((format!("Stackmat solve").into(), format!("> 1s").into()));
-    loop {
-        let val = BACK_SIGNAL.wait().await;
-        if let QaSignal::Stackmat(time) = val {
-            if time > 1000 {
-                break;
-            }
-        }
-
-        return false;
-    }
-
-    global_state.state.lock().await.custom_message = Some((
-        format!("Setup WIFI").into(),
-        format!("FKM-{:X}", crate::utils::get_efuse_u32()).into(),
-    ));
-    loop {
-        let val = BACK_SIGNAL.wait().await;
-        if let QaSignal::WifiSetup = val {
-            break;
-        }
-
-        return false;
-    }
-
-    return true;
+    let mut ap_name = heapless::String::<16>::new();
+    _ = write!(ap_name, "FKM-{:X}", crate::utils::get_efuse_u32());
+    show(global_state, "Setup WIFI", &ap_name).await;
+    EVENTS.receive().await == QaSignal::WifiSetup
 }
 
+async fn show(global_state: &GlobalState, line1: &str, line2: &str) {
+    global_state.state.lock().await.custom_message = Some((line1.into(), line2.into()));
+}
+
+/// Reports an event to the QA flow (never blocks; drops it if 8 are already queued).
 pub fn send_qa_resp(val: QaSignal) {
-    BACK_SIGNAL.signal(val);
+    if EVENTS.try_send(val).is_err() {
+        log::warn!("QA event dropped: {val:?}");
+    }
 }
 
-fn bin_to_btn_number(bin: u8) -> u8 {
-    match bin {
-        0b00000001 => 1,
-        0b00000010 => 2,
-        0b00000100 => 3,
-        0b00001000 => 4,
-        _ => u8::MAX,
+fn btn_number(mask: u8) -> Option<u8> {
+    match mask {
+        0b0001 => Some(1),
+        0b0010 => Some(2),
+        0b0100 => Some(3),
+        0b1000 => Some(4),
+        _ => None,
     }
 }

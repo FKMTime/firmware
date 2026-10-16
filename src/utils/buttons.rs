@@ -1,66 +1,73 @@
-use crate::{buttons::HandlersDerive, state::GlobalState};
-use alloc::vec::Vec;
+// qa builds report button edges to the QA flow and never dispatch these handlers
+#![cfg_attr(feature = "qa", allow(dead_code))]
+
+use crate::{buttons::Handler, state::GlobalState};
 use embassy_time::{Instant, Timer};
 use esp_hal::gpio::Input;
 
 #[cfg(feature = "v3")]
 use crate::consts::BUTTON_DEBOUNCE_MS;
 
-#[allow(dead_code)]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ButtonTrigger {
     Down,
     Up,
+    /// Once per press, after the button was held for `ms`.
     HoldOnce(u64),
+    /// Repeatedly while held: first after `offset` ms, then every `gap` ms.
     HoldTimed(u64, u64),
-    Hold,
 }
 
-#[allow(dead_code)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Button {
     First,
     Second,
     Third,
     Fourth,
-    Unknown,
 }
 
-impl From<u8> for Button {
-    fn from(value: u8) -> Self {
-        match value {
-            0b00000001 => Self::First,
-            0b00000010 => Self::Second,
-            0b00000100 => Self::Third,
-            0b00001000 => Self::Fourth,
-            _ => Self::Unknown,
+impl Button {
+    /// Single-button mask to button (`None` for no or multiple buttons).
+    fn from_mask(mask: u8) -> Option<Self> {
+        match mask {
+            0b0001 => Some(Self::First),
+            0b0010 => Some(Self::Second),
+            0b0100 => Some(Self::Third),
+            0b1000 => Some(Self::Fourth),
+            _ => None,
         }
     }
 }
 
-pub struct ButtonHandler {
-    button: Button,
-    handlers: Vec<(ButtonTrigger, bool, HandlersDerive)>,
-}
+pub type HandlerTable = [(Button, ButtonTrigger, Handler)];
 
+/// Dispatches button edges/holds to a const table of handlers.
+///
+/// Handlers of a button run in table order; a handler returning `Ok(true)` stops the rest
+/// for this press.
 pub struct ButtonsHandler {
-    default_handler: Option<HandlersDerive>,
+    default_handler: Option<Handler>,
+    table: &'static HandlerTable,
 
-    handlers: Vec<ButtonHandler>,
     press_time: Instant,
     last_hold_execute: Instant,
-    current_handler_down: Option<usize>,
+    current_button: Option<Button>,
+    /// `HoldOnce` entries (by table index) already fired during this press.
+    fired: u32,
 }
 
 impl ButtonsHandler {
-    pub fn new(default_handler: Option<HandlersDerive>) -> Self {
+    pub fn new(default_handler: Option<Handler>, table: &'static HandlerTable) -> Self {
+        // `fired` is a bitmask over table entries
+        assert!(table.len() <= 32);
+
         Self {
             default_handler,
-
-            handlers: Vec::new(),
+            table,
             press_time: Instant::now(),
             last_hold_execute: Instant::now(),
-            current_handler_down: None,
+            current_button: None,
+            fired: 0,
         }
     }
 
@@ -77,40 +84,38 @@ impl ButtonsHandler {
         let mut debounce: Option<(u8, Instant)> = None;
 
         #[cfg(feature = "e2e")]
-        let mut e2e_data = (esp_hal::time::Instant::now(), 0, 0);
+        let mut e2e_data = (Instant::now(), 0, 0);
 
         #[cfg(feature = "e2e")]
         let mut send_ack = false;
 
         #[cfg(feature = "qa")]
         let mut last_button_down = None;
+        #[cfg(all(feature = "qa", not(feature = "e2e")))]
+        let _ = state;
 
         loop {
+            crate::watchdog::heartbeat(crate::watchdog::TaskId::Buttons);
             let mut out_val = 0u8;
 
             #[cfg(feature = "e2e")]
             {
-                if state.e2e.buttons_sig.signaled() {
-                    let (btn_idx, press_ms) = state.e2e.buttons_sig.wait().await;
+                if let Some((btn_idx, press_ms)) = state.e2e.buttons_sig.try_take() {
                     out_val |= 1 << btn_idx;
 
-                    e2e_data.0 = esp_hal::time::Instant::now();
-                    e2e_data.1 = press_ms;
-                    e2e_data.2 = btn_idx;
+                    e2e_data = (Instant::now(), press_ms, btn_idx);
                     send_ack = true;
 
                     log::debug!("[E2E] Button pressed: {btn_idx} for {press_ms}ms");
-                } else if (esp_hal::time::Instant::now() - e2e_data.0).as_millis() <= e2e_data.1 {
+                } else if e2e_data.0.elapsed().as_millis() <= e2e_data.1 {
                     out_val |= 1 << e2e_data.2;
                 }
             }
 
             #[cfg(feature = "v4")]
-            {
-                for (i, btn) in button_inputs.iter().enumerate().take(4) {
-                    if btn.is_high() {
-                        out_val |= 1 << i;
-                    }
+            for (i, btn) in button_inputs.iter().enumerate().take(4) {
+                if btn.is_high() {
+                    out_val |= 1 << i;
                 }
             }
 
@@ -152,16 +157,12 @@ impl ButtonsHandler {
             };
 
             #[cfg(not(feature = "v3"))]
-            let edge = if old_val != out_val {
-                Some((old_val, out_val))
-            } else {
-                None
-            };
+            let edge = (old_val != out_val).then_some((old_val, out_val));
 
             if let Some((prev, next)) = edge {
                 if prev == 0 {
                     #[cfg(not(feature = "qa"))]
-                    self.button_down(next.into(), state).await;
+                    self.button_down(Button::from_mask(next), state).await;
 
                     #[cfg(feature = "qa")]
                     {
@@ -174,17 +175,14 @@ impl ButtonsHandler {
                     self.button_up(state).await;
 
                     #[cfg(feature = "qa")]
-                    {
-                        if let Some(button) = last_button_down {
-                            crate::qa::send_qa_resp(crate::qa::QaSignal::ButtonUp(button));
-                            last_button_down = None;
-                            log::warn!("Button pressed up: {button}");
-                        }
+                    if let Some(button) = last_button_down.take() {
+                        crate::qa::send_qa_resp(crate::qa::QaSignal::ButtonUp(button));
+                        log::warn!("Button pressed up: {button}");
                     }
 
                     #[cfg(feature = "e2e")]
                     if send_ack {
-                        crate::ws::send_test_ack(&state).await;
+                        crate::ws::send_test_ack(state).await;
                         send_ack = false;
                     }
                 }
@@ -192,8 +190,8 @@ impl ButtonsHandler {
                 old_val = next;
             }
 
+            #[cfg(not(feature = "qa"))]
             if old_val != 0 {
-                #[cfg(not(feature = "qa"))]
                 self.button_hold(state).await;
             }
 
@@ -201,142 +199,124 @@ impl ButtonsHandler {
         }
     }
 
-    pub fn add_handler(&mut self, button: Button, trigger: ButtonTrigger, func: HandlersDerive) {
-        let existing_handler = self.handlers.iter_mut().find(|h| h.button == button);
-        match existing_handler {
-            Some(handler) => handler.handlers.push((trigger, false, func)),
-            None => self.handlers.push(ButtonHandler {
-                button,
-                handlers: alloc::vec![(trigger, false, func)],
-            }),
-        }
-    }
-
-    pub async fn button_down(&mut self, button: Button, state: &GlobalState) {
-        self.press_time = Instant::now();
-        let mut handler = self
-            .handlers
-            .iter_mut()
+    fn entries(
+        &self,
+        button: Button,
+    ) -> impl Iterator<Item = (usize, ButtonTrigger, Handler)> + 'static {
+        self.table
+            .iter()
             .enumerate()
-            .find(|(_, h)| h.button == button);
-
-        if let Some(ref default_handler) = self.default_handler {
-            let res = default_handler
-                .execute(&ButtonTrigger::Down, 0, state)
-                .await;
-
-            if res == Ok(true) {
-                return;
-            }
-        }
-
-        if let Some((i, handler)) = &mut handler {
-            self.current_handler_down = Some(*i);
-
-            for handler in &mut handler.handlers {
-                handler.1 = false;
-
-                if handler.0 == ButtonTrigger::Down {
-                    let res = handler.2.execute(&handler.0, 0, state).await;
-                    if let Err(e) = res {
-                        log::error!("buttons_handler:down_err: {e:?}");
-                    }
-
-                    if res == Ok(true) {
-                        self.current_handler_down = None; // skip other handlers
-                        break;
-                    }
-                }
-            }
-        }
+            .filter(move |(_, (b, _, _))| *b == button)
+            .map(|(i, (_, trigger, handler))| (i, *trigger, *handler))
     }
 
-    pub async fn button_hold(&mut self, state: &GlobalState) {
-        let Some(current_handler_down) = self.current_handler_down else {
+    async fn button_down(&mut self, button: Option<Button>, state: &GlobalState) {
+        self.press_time = Instant::now();
+
+        if let Some(default_handler) = self.default_handler
+            && default_handler
+                .execute(&ButtonTrigger::Down, 0, state)
+                .await
+                == Ok(true)
+        {
+            return;
+        }
+
+        self.current_button = button;
+        self.fired = 0;
+        let Some(button) = button else {
             return;
         };
 
-        let handler = &mut self.handlers[current_handler_down];
-        let hold_time = (Instant::now() - self.press_time).as_millis();
+        for (_, trigger, handler) in self.entries(button) {
+            if trigger != ButtonTrigger::Down {
+                continue;
+            }
 
-        for (trigger, activated, handler) in &mut handler.handlers {
+            if self.run_handler(handler, &trigger, 0, state, "down").await {
+                return;
+            }
+        }
+    }
+
+    async fn button_hold(&mut self, state: &GlobalState) {
+        let Some(button) = self.current_button else {
+            return;
+        };
+
+        let hold_time = self.press_time.elapsed().as_millis();
+        for (i, trigger, handler) in self.entries(button) {
             match trigger {
-                ButtonTrigger::Down => continue,
-                ButtonTrigger::Up => continue,
+                ButtonTrigger::Down | ButtonTrigger::Up => continue,
                 ButtonTrigger::HoldTimed(offset, gap) => {
-                    if hold_time < *offset
-                        || (Instant::now() - self.last_hold_execute).as_millis() < *gap
-                    {
+                    if hold_time < offset || self.last_hold_execute.elapsed().as_millis() < gap {
                         continue;
                     }
 
-                    let res = handler.execute(trigger, hold_time, state).await;
-                    if let Err(e) = res {
-                        log::error!("buttons_handler:hold_timed_err: {e:?}");
-                    }
-
                     self.last_hold_execute = Instant::now();
-                    if res == Ok(true) {
-                        self.current_handler_down = None; // skip other handlers
-                        break;
-                    }
-                }
-                ButtonTrigger::Hold => {
-                    let res = handler.execute(trigger, hold_time, state).await;
-                    if let Err(e) = res {
-                        log::error!("buttons_handler:hold_err: {e:?}");
-                    }
-
-                    if res == Ok(true) {
-                        self.current_handler_down = None; // skip other handlers
-                        break;
-                    }
                 }
                 ButtonTrigger::HoldOnce(after) => {
-                    if hold_time > *after && !*activated {
-                        *activated = true;
-
-                        let res = handler.execute(trigger, hold_time, state).await;
-                        if let Err(e) = res {
-                            log::error!("buttons_handler:hold_once_err: {e:?}");
-                        }
-
-                        if res == Ok(true) {
-                            self.current_handler_down = None; // skip other handlers
-                            break;
-                        }
+                    if hold_time <= after || self.fired & (1 << i) != 0 {
+                        continue;
                     }
+
+                    self.fired |= 1 << i;
+                }
+            }
+
+            if self
+                .run_handler(handler, &trigger, hold_time, state, "hold")
+                .await
+            {
+                return;
+            }
+        }
+    }
+
+    async fn button_up(&mut self, state: &GlobalState) {
+        let Some(button) = self.current_button.take() else {
+            return;
+        };
+
+        let hold_time = self.press_time.elapsed().as_millis();
+        if let Some(default_handler) = self.default_handler
+            && default_handler
+                .execute(&ButtonTrigger::Up, hold_time, state)
+                .await
+                == Ok(true)
+        {
+            return;
+        }
+
+        for (_, trigger, handler) in self.entries(button) {
+            if trigger == ButtonTrigger::Up {
+                let res = handler.execute(&trigger, hold_time, state).await;
+                if let Err(e) = res {
+                    log::error!("buttons_handler:up_err: {e:?}");
                 }
             }
         }
     }
 
-    pub async fn button_up(&mut self, state: &GlobalState) {
-        let Some(current_handler_down) = self.current_handler_down else {
-            return;
-        };
-
-        let hold_time = (Instant::now() - self.press_time).as_millis();
-        if let Some(ref default_handler) = self.default_handler {
-            let res = default_handler
-                .execute(&ButtonTrigger::Up, hold_time, state)
-                .await;
-
-            if res == Ok(true) {
-                self.current_handler_down = None;
-                return;
-            }
+    /// Runs `handler`; returns true (and ends this press) if it consumed the event.
+    async fn run_handler(
+        &mut self,
+        handler: Handler,
+        trigger: &ButtonTrigger,
+        hold_time: u64,
+        state: &GlobalState,
+        what: &str,
+    ) -> bool {
+        let res = handler.execute(trigger, hold_time, state).await;
+        if let Err(e) = res {
+            log::error!("buttons_handler:{what}_err: {e:?}");
         }
 
-        let handler = &self.handlers[current_handler_down];
-        let handlers = handler.handlers.iter().filter(|h| h.0 == ButtonTrigger::Up);
-        for handler in handlers {
-            let res = handler.2.execute(&handler.0, hold_time, state).await;
-            if let Err(e) = res {
-                log::error!("buttons_handler:up_err: {e:?}");
-            }
+        if res == Ok(true) {
+            self.current_button = None; // skip other handlers
+            return true;
         }
 
-        self.current_handler_down = None;
+        false
     }
 }
