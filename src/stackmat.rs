@@ -13,10 +13,7 @@ pub async fn stackmat_task(
     global_state: GlobalState,
     mut pads: (esp_hal::gpio::Input<'static>, esp_hal::gpio::Input<'static>),
 ) {
-    {
-        let mut state = global_state.state.lock().await;
-        state.stackmat_connected = Some(true);
-    }
+    global_state.state.lock().await.stackmat_connected = Some(true);
 
     loop {
         if pads.0.is_high() && pads.1.is_high() {
@@ -36,8 +33,7 @@ pub async fn stackmat_task(
                 loop {
                     let time = timer_start.elapsed().as_millis();
 
-                    if global_state.timer_stop_signal.signaled() {
-                        global_state.timer_stop_signal.wait().await;
+                    if global_state.timer_stop_signal.try_take().is_some() {
                         break;
                     }
 
@@ -122,8 +118,7 @@ pub async fn stackmat_task(
             continue;
         }
 
-        if (esp_hal::time::Instant::now() - last_read).as_millis() > 500
-            && last_state != Some(false)
+        if last_read.elapsed().as_millis() > 500 && last_state != Some(false)
         {
             last_state = Some(false);
             global_state.timer_stop_signal.reset();
@@ -144,7 +139,7 @@ pub async fn stackmat_task(
         if last_state == Some(false)
             && let Some((last_at, last_ms)) = last_time
         {
-            let time_interpolated = last_ms + last_at.elapsed().as_millis();
+            let time_interpolated = last_ms.saturating_add(last_at.elapsed().as_millis());
             let time_limit = crate::state::group_limit();
             if let Some(limit) = time_limit
                 && time_interpolated > limit
@@ -158,7 +153,7 @@ pub async fn stackmat_task(
                 global_state.bt_display_signal.signal(time_interpolated);
                 crate::state::set_current_time(Some(time_interpolated));
 
-                if global_state.timer_stop_signal.signaled() {
+                if global_state.timer_stop_signal.try_take().is_some() {
                     time_end(time_interpolated, false, &mut last_time, &global_state).await;
                 }
             }
@@ -171,8 +166,7 @@ pub async fn stackmat_task(
 
         #[cfg(feature = "e2e")]
         let n = {
-            if global_state.e2e.stackmat_sig.signaled() {
-                let data = global_state.e2e.stackmat_sig.wait().await;
+            if let Some(data) = global_state.e2e.stackmat_sig.try_take() {
                 e2e_data.0 = data.0;
                 e2e_data.1 = data.1;
                 e2e_data.2 = esp_hal::time::Instant::now();
@@ -182,7 +176,7 @@ pub async fn stackmat_task(
                 StackmatTimerState::Unknown => 0,
                 StackmatTimerState::Reset => 0,
                 StackmatTimerState::Running => {
-                    let mut time = (esp_hal::time::Instant::now() - e2e_data.2).as_millis();
+                    let mut time = e2e_data.2.elapsed().as_millis();
                     if time >= e2e_data.1 {
                         time = e2e_data.1;
                         e2e_data.0 = StackmatTimerState::Stopped;
@@ -195,8 +189,7 @@ pub async fn stackmat_task(
             };
 
             read_buf.copy_from_slice(&crate::utils::stackmat::generate_stackmat_data(
-                &e2e_data.0,
-                timer_ms,
+                e2e_data.0, timer_ms,
             ));
 
             8
@@ -229,10 +222,7 @@ pub async fn stackmat_task(
                 continue;
             }
 
-            unsafe {
-                core::ptr::copy(buf.as_ptr().offset(1), buf.as_mut_ptr(), 7);
-            }
-
+            buf.copy_within(1.., 0);
             buf[7] = r;
             if let Ok(parsed) = parse_stackmat_data(&buf) {
                 if last_state != Some(true) {
@@ -319,11 +309,13 @@ async fn time_end(
     last_time: &mut Option<(Instant, u64)>,
     global_state: &GlobalState,
 ) {
+    *last_time = None;
+
     let mut state = global_state.state.lock().await;
     let inspection_time = state
         .inspection_end
         .zip(state.inspection_start)
-        .map(|(end, start)| (end - start).as_millis())
+        .map(|(end, start)| end.saturating_duration_since(start).as_millis())
         .unwrap_or(0);
 
     log::info!(
@@ -355,16 +347,16 @@ async fn time_end(
             state.scene = Scene::WaitingForCompetitor;
         }
 
-        #[cfg(not(feature = "qa"))]
-        if let Some(saved_state) = state.to_saved_global_state() {
-            saved_state.to_nvs(&global_state.nvs).await;
-        }
-
         #[cfg(feature = "qa")]
         crate::qa::send_qa_resp(crate::qa::QaSignal::Stackmat(time));
+
+        // the flash write must not keep the state locked
+        #[cfg(not(feature = "qa"))]
+        if let Some(saved_state) = state.to_saved_global_state() {
+            drop(state);
+            saved_state.to_nvs(global_state.nvs).await;
+        }
     } else if state.scene == Scene::Timer {
         state.scene = Scene::WaitingForCompetitor;
     }
-
-    *last_time = None;
 }
