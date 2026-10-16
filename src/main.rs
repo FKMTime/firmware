@@ -180,7 +180,7 @@ async fn main(spawner: Spawner) {
         &spawner,
         "lcd_v4::lcd_task",
         lcd_v4::lcd_task(
-            board.i2c.clone(),
+            board.i2c,
             board.display_rst,
             global_state,
             &WIFI_SETUP_SIG,
@@ -197,7 +197,7 @@ async fn main(spawner: Spawner) {
     spawn_task(
         &spawner,
         "battery_v4::battery_read_task",
-        battery_v4::battery_read_task(board.i2c.clone(), global_state),
+        battery_v4::battery_read_task(board.i2c, global_state),
     );
 
     spawn_task(
@@ -231,7 +231,7 @@ async fn main(spawner: Spawner) {
         "rfid::rfid_task",
         rfid::rfid_task(
             #[cfg(feature = "v4")]
-            board.i2c.clone(),
+            board.i2c,
             #[cfg(feature = "v4")]
             board.buzzer,
             #[cfg(feature = "v3")]
