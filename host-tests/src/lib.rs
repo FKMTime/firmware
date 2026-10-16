@@ -4,6 +4,8 @@
 //! `old_structs.rs` is the pre-bounded packet definition, kept to check wire compatibility.
 extern crate alloc;
 
+#[path = "../../src/utils/battery.rs"]
+pub mod battery;
 #[path = "../../src/utils/bounded.rs"]
 pub mod bounded;
 #[path = "../../src/utils/ring_log.rs"]

@@ -1,5 +1,6 @@
+use esp_hal::gpio::Pin;
 #[cfg(any(feature = "v3", not(feature = "timer-func")))]
-use esp_hal::gpio::{AnyPin, Pin};
+use esp_hal::gpio::AnyPin;
 use esp_hal::{
     gpio::{Input, InputConfig, Output, Pull},
     peripherals::{AES, BT, FLASH, FROM_CPU_INTR0, Peripherals, TIMG0, TIMG1, WIFI},
@@ -110,36 +111,18 @@ impl Board {
             });
         }
 
-        let b1 = Input::new(
-            peripherals.GPIO0,
-            InputConfig::default().with_pull(Pull::Down),
-        );
-
-        let b2 = Input::new(
-            peripherals.GPIO1,
-            InputConfig::default().with_pull(Pull::Down),
-        );
-
-        let b3 = Input::new(
-            peripherals.GPIO2,
-            InputConfig::default().with_pull(Pull::Down),
-        );
-
-        let b4 = Input::new(
-            peripherals.GPIO3,
-            InputConfig::default().with_pull(Pull::Down),
-        );
-
+        let pull_down = InputConfig::default().with_pull(Pull::Down);
+        let buttons = [
+            peripherals.GPIO0.degrade(),
+            peripherals.GPIO1.degrade(),
+            peripherals.GPIO2.degrade(),
+            peripherals.GPIO3.degrade(),
+        ]
+        .map(|pin| Input::new(pin, pull_down));
         #[cfg(feature = "timer-func")]
-        let pad1 = Input::new(
-            peripherals.GPIO5,
-            InputConfig::default().with_pull(Pull::Down),
-        );
-
-        #[cfg(feature = "timer-func")]
-        let pad2 = Input::new(
-            peripherals.GPIO6,
-            InputConfig::default().with_pull(Pull::Down),
+        let pads = (
+            Input::new(peripherals.GPIO5, pull_down),
+            Input::new(peripherals.GPIO6, pull_down),
         );
 
         let i2c = esp_hal::i2c::master::I2c::new(
@@ -177,10 +160,9 @@ impl Board {
             buzzer,
             #[cfg(not(feature = "timer-func"))]
             stackmat_rx: peripherals.GPIO20.degrade(),
-            buttons: [b1, b2, b3, b4],
-
+            buttons,
             #[cfg(feature = "timer-func")]
-            pads: (pad1, pad2),
+            pads,
         }
     }
 }
