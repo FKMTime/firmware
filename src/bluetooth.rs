@@ -84,8 +84,7 @@ async fn bluetooth_loop(bt: &esp_hal::peripherals::BT<'static>, state: &GlobalSt
         ) else {
             log::error!("Cannot init ble connector");
             if !BLE_INIT_FAILED_LOGGED.load(Ordering::Relaxed) {
-                crate::utils::error_log::add_error(crate::utils::error_log::codes::BLE_INIT_FAILED)
-                    .await;
+                crate::utils::error_log::add_error(crate::utils::error_log::codes::BLE_INIT_FAILED);
 
                 BLE_INIT_FAILED_LOGGED.store(true, Ordering::Relaxed);
             }
@@ -101,8 +100,7 @@ async fn bluetooth_loop(bt: &esp_hal::peripherals::BT<'static>, state: &GlobalSt
             if !BLE_MAC_READ_FAILED_LOGGED.load(Ordering::Relaxed) {
                 crate::utils::error_log::add_error(
                     crate::utils::error_log::codes::BLE_MAC_READ_FAILED,
-                )
-                .await;
+                );
 
                 BLE_MAC_READ_FAILED_LOGGED.store(true, Ordering::Relaxed);
             }
@@ -125,8 +123,7 @@ async fn bluetooth_loop(bt: &esp_hal::peripherals::BT<'static>, state: &GlobalSt
                     if !BLE_BOND_ADD_LOGGED.load(Ordering::Relaxed) {
                         crate::utils::error_log::add_error(
                             crate::utils::error_log::codes::BLE_BOND_ADD_FAILED,
-                        )
-                        .await;
+                        );
 
                         BLE_BOND_ADD_LOGGED.store(true, Ordering::Relaxed);
                     }
@@ -163,8 +160,7 @@ async fn bluetooth_loop(bt: &esp_hal::peripherals::BT<'static>, state: &GlobalSt
                                 if !BLE_SCAN_START_LOGGED.load(Ordering::Relaxed) {
                                     crate::utils::error_log::add_error(
                                         crate::utils::error_log::codes::BLE_SCAN_START_FAILED,
-                                    )
-                                    .await;
+                                    );
 
                                     BLE_SCAN_START_LOGGED.store(true, Ordering::Relaxed);
                                 }
@@ -262,8 +258,7 @@ async fn bluetooth_loop(bt: &esp_hal::peripherals::BT<'static>, state: &GlobalSt
                         if !BLE_BONDABLE_LOGGED.load(Ordering::Relaxed) {
                             crate::utils::error_log::add_error(
                                 crate::utils::error_log::codes::BLE_BONDABLE_FAILED,
-                            )
-                            .await;
+                            );
 
                             BLE_BONDABLE_LOGGED.store(true, Ordering::Relaxed);
                         }
@@ -275,8 +270,7 @@ async fn bluetooth_loop(bt: &esp_hal::peripherals::BT<'static>, state: &GlobalSt
                             if !BLE_REQUEST_SECURITY_LOGGED.load(Ordering::Relaxed) {
                                 crate::utils::error_log::add_error(
                                     crate::utils::error_log::codes::BLE_REQUEST_SECURITY_FAILED,
-                                )
-                                .await;
+                                );
 
                                 BLE_REQUEST_SECURITY_LOGGED.store(true, Ordering::Relaxed);
                             }
@@ -308,8 +302,7 @@ async fn bluetooth_loop(bt: &esp_hal::peripherals::BT<'static>, state: &GlobalSt
                                     if !BLE_PAIRING_LOGGED.load(Ordering::Relaxed) {
                                         crate::utils::error_log::add_error(
                                             crate::utils::error_log::codes::BLE_PAIRING_FAILED,
-                                        )
-                                        .await;
+                                        );
 
                                         BLE_PAIRING_LOGGED.store(true, Ordering::Relaxed);
                                     }
@@ -345,8 +338,7 @@ async fn bluetooth_loop(bt: &esp_hal::peripherals::BT<'static>, state: &GlobalSt
                         if !BLE_GATT_CLIENT_LOGGED.load(Ordering::Relaxed) {
                             crate::utils::error_log::add_error(
                                 crate::utils::error_log::codes::BLE_GATT_CLIENT_FAILED,
-                            )
-                            .await;
+                            );
 
                             BLE_GATT_CLIENT_LOGGED.store(true, Ordering::Relaxed);
                         }
@@ -389,8 +381,7 @@ async fn bluetooth_loop(bt: &esp_hal::peripherals::BT<'static>, state: &GlobalSt
                             if !BLE_SERVICE_NOT_FOUND_LOGGED.load(Ordering::Relaxed) {
                                 crate::utils::error_log::add_error(
                                     crate::utils::error_log::codes::BLE_SERVICE_NOT_FOUND,
-                                )
-                                .await;
+                                );
 
                                 BLE_SERVICE_NOT_FOUND_LOGGED.store(true, Ordering::Relaxed);
                             }
@@ -408,8 +399,7 @@ async fn bluetooth_loop(bt: &esp_hal::peripherals::BT<'static>, state: &GlobalSt
                             if !BLE_CHARACTERISTIC_NOT_FOUND_LOGGED.load(Ordering::Relaxed) {
                                 crate::utils::error_log::add_error(
                                     crate::utils::error_log::codes::BLE_CHARACTERISTIC_NOT_FOUND,
-                                )
-                                .await;
+                                );
 
                                 BLE_CHARACTERISTIC_NOT_FOUND_LOGGED.store(true, Ordering::Relaxed);
                             }
@@ -469,8 +459,7 @@ async fn store_bonding_info(nvs: &esp_hal_wifimanager::Nvs, info: &BondInformati
         log::error!("NVS Bonding key store failed! ({e:?})");
         crate::utils::error_log::add_error(
             crate::utils::error_log::codes::NVS_BONDING_KEY_WRITE_FAILED,
-        )
-        .await;
+        );
     }
 }
 

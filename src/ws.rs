@@ -158,8 +158,7 @@ async fn ws_loop(
                 if !DNS_EMPTY_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
                     crate::utils::error_log::add_error(
                         crate::utils::error_log::codes::WS_DNS_RESOLVE_EMPTY,
-                    )
-                    .await;
+                    );
 
                     DNS_EMPTY_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
                 }
@@ -234,8 +233,7 @@ async fn ws_loop(
                 if !HTTP_UPGRADE_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
                     crate::utils::error_log::add_error(
                         crate::utils::error_log::codes::WS_HTTP_UPGRADE_READ_FAILED,
-                    )
-                    .await;
+                    );
 
                     HTTP_UPGRADE_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
                 }
@@ -321,8 +319,7 @@ async fn ws_loop(
                     log::error!("Connection lost during OTA update: {e:?}");
                     crate::utils::error_log::add_error(
                         crate::utils::error_log::codes::WS_CONNECTION_LOST_DURING_OTA,
-                    )
-                    .await;
+                    );
                     crate::utils::error_log::save_error_log(&global_state.nvs).await;
 
                     global_state.state.lock().await.custom_message =
@@ -536,8 +533,7 @@ async fn ws_rw(
                                         if !LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
                                             crate::utils::error_log::add_error(
                         crate::utils::error_log::codes::NVS_BUZZER_VOLUME_WRITE_FAILED,
-                    )
-                    .await;
+                    );
 
                                             LOGGED
                                                 .store(true, core::sync::atomic::Ordering::Relaxed);
@@ -553,7 +549,7 @@ async fn ws_rw(
                             TimerPacketInner::DumpCrashLog => {
                                 let mut tmp = Vec::new();
                                 tmp.push(b'C');
-                                tmp.extend_from_slice(crate::utils::error_log::dump_error_log());
+                                crate::utils::error_log::with_error_log(|log| tmp.extend_from_slice(log));
 
                                 send_frame(ws_framer::WsFrameOwned::Binary(tmp)).await;
                             }
@@ -570,8 +566,7 @@ async fn ws_rw(
                         if !PACKET_PARSE_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
                             crate::utils::error_log::add_error(
                                 crate::utils::error_log::codes::WS_PACKET_PARSE_FAILED,
-                            )
-                            .await;
+                            );
 
                             PACKET_PARSE_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
                         }
@@ -597,8 +592,7 @@ async fn ws_rw(
                             log::error!("OTA flash verify failed!");
                             crate::utils::error_log::add_error(
                                 crate::utils::error_log::codes::OTA_VERIFY_FAILED,
-                            )
-                            .await;
+                            );
                         }
                     }
 
@@ -688,8 +682,7 @@ pub async fn send_packet(packet: TimerPacket) {
             if !PACKET_SERIALIZE_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
                 crate::utils::error_log::add_error(
                     crate::utils::error_log::codes::WS_PACKET_SERIALIZE_FAILED,
-                )
-                .await;
+                );
 
                 PACKET_SERIALIZE_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
             }
@@ -767,8 +760,7 @@ async fn wait_for_tagged_response(tag: u64) -> TimerPacket {
                 if !TAGGED_SUBSCRIBER_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
                     crate::utils::error_log::add_error(
                         crate::utils::error_log::codes::WS_TAGGED_SUBSCRIBER_FAILED,
-                    )
-                    .await;
+                    );
 
                     TAGGED_SUBSCRIBER_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
                 }

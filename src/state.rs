@@ -1,7 +1,6 @@
 use crate::consts::NVS_SAVED_STATE;
 use crate::{
     structs::{BleDisplayDevice, PossibleGroup},
-    utils::error_log::ErrorLogEntry,
     utils::signaled_mutex::SignaledMutex,
 };
 use alloc::{rc::Rc, string::String, vec::Vec};
@@ -316,7 +315,6 @@ pub struct SignaledGlobalStateInner {
     pub group_selected_idx: usize,
 
     pub selected_config_menu: Option<usize>,
-    pub error_log_entries: Vec<ErrorLogEntry>,
     pub selected_error_log_item: usize,
     pub selected_error_log_entry: Option<usize>,
     pub error_log_entry_stage: Option<ErrorLogEntryStage>,
@@ -379,7 +377,6 @@ impl SignaledGlobalStateInner {
             possible_groups: Vec::new(),
             group_selected_idx: 0,
             selected_config_menu: None,
-            error_log_entries: Vec::new(),
             selected_error_log_item: 0,
             selected_error_log_entry: None,
             error_log_entry_stage: None,
@@ -583,8 +580,7 @@ impl SavedGlobalState {
                 if !SAVED_STATE_WRITE_ERR_LOGGED.load(Ordering::Relaxed) {
                     crate::utils::error_log::add_error(
                         crate::utils::error_log::codes::NVS_SAVED_STATE_WRITE_FAILED,
-                    )
-                    .await;
+                    );
 
                     SAVED_STATE_WRITE_ERR_LOGGED.store(true, Ordering::Relaxed);
                 }
@@ -602,8 +598,7 @@ impl SavedGlobalState {
             if !SAVED_STATE_DELETE_ERR_LOGGED.load(Ordering::Relaxed) {
                 crate::utils::error_log::add_error(
                     crate::utils::error_log::codes::NVS_SAVED_STATE_DELETE_FAILED,
-                )
-                .await;
+                );
 
                 SAVED_STATE_DELETE_ERR_LOGGED.store(true, Ordering::Relaxed);
             }
@@ -637,7 +632,6 @@ impl PartialEq for SignaledGlobalStateInner {
             && self.possible_groups == other.possible_groups
             && self.group_selected_idx == other.group_selected_idx
             && self.selected_config_menu == other.selected_config_menu
-            && self.error_log_entries == other.error_log_entries
             && self.selected_error_log_item == other.selected_error_log_item
             && self.selected_error_log_entry == other.selected_error_log_entry
             && self.error_log_entry_stage == other.error_log_entry_stage

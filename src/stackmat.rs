@@ -97,8 +97,7 @@ pub async fn stackmat_task(
         log::error!("Stackmat task error while creating UartRx instance!");
         crate::utils::error_log::add_error(
             crate::utils::error_log::codes::STACKMAT_UART_INIT_FAILED,
-        )
-        .await;
+        );
         return;
     };
 

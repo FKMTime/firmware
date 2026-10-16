@@ -5,6 +5,7 @@ pub mod backtrace_store;
 pub mod buttons;
 pub mod error_log;
 pub mod logger;
+pub mod ring_log;
 pub mod rolling_average;
 pub mod signaled_mutex;
 pub mod stackmat;
@@ -20,9 +21,7 @@ pub fn spawn_task<T>(
         }
         Err(e) => {
             log::error!("Cannot create task {task_name}: {e:?}");
-            embassy_futures::block_on(crate::utils::error_log::add_error(
-                crate::utils::error_log::codes::TASK_SPAWN_FAILED,
-            ));
+            crate::utils::error_log::add_error(crate::utils::error_log::codes::TASK_SPAWN_FAILED);
         }
     }
 }

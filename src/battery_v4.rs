@@ -21,8 +21,7 @@ const BAT_MAX: f64 = BATTERY_CURVE[BATTERY_CURVE.len() - 1].0;
 pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState) {
     let Ok(mut gauge) = bq27441::Bq27441Async::new(i2c).await else {
         log::error!("BQ27441 init failed!");
-        crate::utils::error_log::add_error(crate::utils::error_log::codes::BATTERY_INIT_FAILED)
-            .await;
+        crate::utils::error_log::add_error(crate::utils::error_log::codes::BATTERY_INIT_FAILED);
         return;
     };
 
@@ -54,8 +53,7 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
             _ => {
                 crate::utils::error_log::add_error(
                     crate::utils::error_log::codes::BATTERY_I2C_TIMEOUT,
-                )
-                .await;
+                );
             }
         };
         let mut mv = last_mv;
@@ -66,8 +64,7 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
             _ => {
                 crate::utils::error_log::add_error(
                     crate::utils::error_log::codes::BATTERY_I2C_TIMEOUT,
-                )
-                .await;
+                );
             }
         };
         if soc == 0 {
@@ -84,8 +81,7 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
             _ => {
                 crate::utils::error_log::add_error(
                     crate::utils::error_log::codes::BATTERY_I2C_TIMEOUT,
-                )
-                .await;
+                );
             }
         };
         let charging = ma >= 0;

@@ -13,8 +13,6 @@ use esp_hal::gpio::Input;
 
 macros::generate_button_handler_enum!(triggered: &ButtonTrigger, hold_time: u64, state: &GlobalState);
 
-static ERROR_LOG_PARSE_FAILED_LOGGED: core::sync::atomic::AtomicBool =
-    core::sync::atomic::AtomicBool::new(false);
 
 #[cfg(feature = "v3")]
 const CONFIG_MENU_ERROR_LOG_IDX: usize = 4;
@@ -140,7 +138,7 @@ async fn sel_left(
             return Ok(true);
         }
 
-        let total_items = state_val.error_log_entries.len() + 1; // + Exit
+        let total_items = crate::utils::error_log::entry_count() + 1; // + Exit
         state_val.selected_error_log_item = state_val
             .selected_error_log_item
             .wrapping_sub(1)
@@ -200,9 +198,9 @@ async fn sel_right(
         #[cfg(feature = "v4")]
         if state_val.error_log_entry_stage == Some(ErrorLogEntryStage::Details) {
             if let Some(entry_idx) = state_val.selected_error_log_entry
-                && let Some(entry) = state_val.error_log_entries.get(entry_idx)
+                && let Some(entry) = crate::utils::error_log::entry(entry_idx)
             {
-                let text = crate::lcd_v4::error_log_entry_details_text(entry);
+                let text = crate::lcd_v4::error_log_entry_details_text(&entry);
                 let max_scroll = text
                     .split('\n')
                     .count()
@@ -219,7 +217,7 @@ async fn sel_right(
             return Ok(true);
         }
 
-        let total_items = state_val.error_log_entries.len() + 1; // + Exit
+        let total_items = crate::utils::error_log::entry_count() + 1; // + Exit
         state_val.selected_error_log_item = (state_val.selected_error_log_item + 1) % total_items;
 
         return Ok(true);
@@ -327,7 +325,7 @@ async fn submit_up(
                 return Ok(true);
             }
 
-            let exit_idx = state_val.error_log_entries.len();
+            let exit_idx = crate::utils::error_log::entry_count();
             if state_val.selected_error_log_item == exit_idx {
                 state_val.menu_scene = None;
                 state_val.selected_error_log_item = 0;
@@ -335,7 +333,6 @@ async fn submit_up(
                 state_val.error_log_entry_stage = None;
                 state_val.error_log_details_scroll = 0;
                 state_val.selected_config_menu = Some(CONFIG_MENU_ERROR_LOG_IDX);
-                state_val.error_log_entries.clear();
             } else {
                 state_val.selected_error_log_entry = Some(state_val.selected_error_log_item);
                 state_val.error_log_details_scroll = 0;
@@ -366,8 +363,7 @@ async fn submit_up(
                 if !LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
                     crate::utils::error_log::add_error(
                         crate::utils::error_log::codes::NVS_BUZZER_VOLUME_WRITE_FAILED,
-                    )
-                    .await;
+                    );
 
                     LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
                 }
@@ -419,25 +415,6 @@ async fn submit_up(
                     state_val.menu_scene = Some(MenuScene::Unsigning);
                 }
                 CONFIG_MENU_ERROR_LOG_IDX => {
-                    state_val.error_log_entries =
-                        match crate::utils::error_log::parse_error_log_entries() {
-                            Ok(entries) => entries,
-                            Err(e) => {
-                                log::error!("Parse error log failed: {e:?}");
-                                if !ERROR_LOG_PARSE_FAILED_LOGGED
-                                    .load(core::sync::atomic::Ordering::Relaxed)
-                                {
-                                    crate::utils::error_log::add_error(
-                                        crate::utils::error_log::codes::ERROR_LOG_PARSE_FAILED,
-                                    )
-                                    .await;
-
-                                    ERROR_LOG_PARSE_FAILED_LOGGED
-                                        .store(true, core::sync::atomic::Ordering::Relaxed);
-                                }
-                                alloc::vec![]
-                            }
-                        };
                     state_val.selected_error_log_item = 0;
                     state_val.selected_error_log_entry = None;
                     state_val.error_log_entry_stage = None;
@@ -488,25 +465,6 @@ async fn submit_up(
                     state_val.menu_scene = Some(MenuScene::BuzzerVolume);
                 }
                 CONFIG_MENU_ERROR_LOG_IDX => {
-                    state_val.error_log_entries =
-                        match crate::utils::error_log::parse_error_log_entries() {
-                            Ok(entries) => entries,
-                            Err(e) => {
-                                log::error!("Parse error log failed: {e:?}");
-                                if !ERROR_LOG_PARSE_FAILED_LOGGED
-                                    .load(core::sync::atomic::Ordering::Relaxed)
-                                {
-                                    crate::utils::error_log::add_error(
-                                        crate::utils::error_log::codes::ERROR_LOG_PARSE_FAILED,
-                                    )
-                                    .await;
-
-                                    ERROR_LOG_PARSE_FAILED_LOGGED
-                                        .store(true, core::sync::atomic::Ordering::Relaxed);
-                                }
-                                alloc::vec![]
-                            }
-                        };
                     state_val.selected_error_log_item = 0;
                     state_val.selected_error_log_entry = None;
                     state_val.error_log_entry_stage = None;

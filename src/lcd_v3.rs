@@ -346,7 +346,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
             lcd_driver.clear_all().ok()?;
 
             if let Some(entry_idx) = current_state.selected_error_log_entry {
-                if let Some(entry) = current_state.error_log_entries.get(entry_idx) {
+                if let Some(entry) = crate::utils::error_log::entry(entry_idx).as_ref() {
                     match entry {
                         crate::utils::error_log::ErrorLogEntry::Code { timestamp, code } => {
                             lcd_driver
@@ -387,18 +387,17 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
                         .ok()?;
                 }
             } else {
-                let exit_idx = current_state.error_log_entries.len();
+                let exit_idx = crate::utils::error_log::entry_count();
                 if current_state.selected_error_log_item == exit_idx {
                     lcd_driver.print(0, "Exit", PrintAlign::Center, true).ok()?;
                     lcd_driver
                         .print(1, "Submit to return", PrintAlign::Center, true)
                         .ok()?;
-                } else if let Some(entry) = current_state
-                    .error_log_entries
-                    .get(current_state.selected_error_log_item)
+                } else if let Some(entry) =
+                    crate::utils::error_log::entry(current_state.selected_error_log_item)
                 {
                     lcd_driver
-                        .print(0, &entry.list_label_v3(), PrintAlign::Center, true)
+                        .print(0, &entry.list_label(), PrintAlign::Center, true)
                         .ok()?;
                     lcd_driver
                         .print(1, "Submit for details", PrintAlign::Center, true)

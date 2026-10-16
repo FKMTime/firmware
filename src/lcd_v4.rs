@@ -346,7 +346,7 @@ pub async fn lcd_show_critical_code(i2c: SharedI2C, mut display_rst: Output<'sta
 
     if let Err(e) = disp_init {
         log::error!("Disp init error: {e:?} (but continuing i guess)");
-        crate::utils::error_log::add_error(crate::utils::error_log::codes::LCD_INIT_FAILED).await;
+        crate::utils::error_log::add_error(crate::utils::error_log::codes::LCD_INIT_FAILED);
     }
 
     let text = format!("CRITICAL ERROR\nCODE: {code}",);
@@ -383,7 +383,7 @@ pub async fn lcd_task(
 
     if let Err(e) = disp_init {
         log::error!("Disp init error: {e:?} (but continuing i guess)");
-        crate::utils::error_log::add_error(crate::utils::error_log::codes::LCD_INIT_FAILED).await;
+        crate::utils::error_log::add_error(crate::utils::error_log::codes::LCD_INIT_FAILED);
     }
 
     let mut data = alloc::vec![embedded_graphics::pixelcolor::BinaryColor::Off; FBUF_SIZE];
@@ -391,8 +391,7 @@ pub async fn lcd_task(
         log::error!("Disp framebuffer data alloc failed!");
         crate::utils::error_log::add_error(
             crate::utils::error_log::codes::LCD_FRAMEBUFFER_ALLOC_FAILED,
-        )
-        .await;
+        );
         return;
     };
     let fbuf = embedded_graphics_framebuf::FrameBuf::new(data, FBUF_WIDTH, FBUF_HEIGHT);
@@ -442,8 +441,7 @@ pub async fn lcd_task(
                 log::error!("OLED FLUSH TIMEOUT");
                 crate::utils::error_log::add_error(
                     crate::utils::error_log::codes::LCD_FLUSH_TIMEOUT,
-                )
-                .await;
+                );
             }
 
             loop {
@@ -468,8 +466,7 @@ pub async fn lcd_task(
                         log::error!("OLED FLUSH TIMEOUT");
                         crate::utils::error_log::add_error(
                             crate::utils::error_log::codes::LCD_FLUSH_TIMEOUT,
-                        )
-                        .await;
+                        );
                     }
 
                     global_state.show_battery.reset();
@@ -495,8 +492,7 @@ pub async fn lcd_task(
                         log::error!("OLED FLUSH TIMEOUT");
                         crate::utils::error_log::add_error(
                             crate::utils::error_log::codes::LCD_FLUSH_TIMEOUT,
-                        )
-                        .await;
+                        );
                     }
 
                     {
@@ -692,7 +688,7 @@ async fn process_main(
         }
         Some(MenuScene::ErrorLog) => {
             if let Some(entry_idx) = current_state.selected_error_log_entry {
-                if let Some(entry) = current_state.error_log_entries.get(entry_idx) {
+                if let Some(entry) = crate::utils::error_log::entry(entry_idx).as_ref() {
                     if current_state.error_log_entry_stage == Some(ErrorLogEntryStage::Qr) {
                         match entry {
                             crate::utils::error_log::ErrorLogEntry::Code { timestamp: _, code } => {
@@ -730,10 +726,9 @@ async fn process_main(
                 return Ok(());
             }
 
-            let mut items = current_state
-                .error_log_entries
-                .iter()
-                .map(|entry| entry.list_label_v4())
+            let mut items = (0..crate::utils::error_log::entry_count())
+                .filter_map(crate::utils::error_log::entry)
+                .map(|entry| alloc::string::String::from(entry.list_label().as_str()))
                 .collect::<alloc::vec::Vec<_>>();
             items.push("Exit".into());
 

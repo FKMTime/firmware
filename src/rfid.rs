@@ -40,15 +40,13 @@ pub async fn rfid_task(
     #[cfg(feature = "v3")]
     let Ok(dma_tx_buf) = dma_tx_buffer!(512) else {
         log::error!("Dma tx buf failed");
-        crate::utils::error_log::add_error(crate::utils::error_log::codes::RFID_DMA_TX_INIT_FAILED)
-            .await;
+        crate::utils::error_log::add_error(crate::utils::error_log::codes::RFID_DMA_TX_INIT_FAILED);
         return;
     };
     #[cfg(feature = "v3")]
     let Ok(dma_rx_buf) = dma_rx_buffer!(512) else {
         log::error!("Dma rx buf failed");
-        crate::utils::error_log::add_error(crate::utils::error_log::codes::RFID_DMA_RX_INIT_FAILED)
-            .await;
+        crate::utils::error_log::add_error(crate::utils::error_log::codes::RFID_DMA_RX_INIT_FAILED);
         return;
     };
 
@@ -68,8 +66,7 @@ pub async fn rfid_task(
             .into_async()
     }) else {
         log::error!("Rfid task error while creating Spi instance!");
-        crate::utils::error_log::add_error(crate::utils::error_log::codes::RFID_SPI_CREATE_FAILED)
-            .await;
+        crate::utils::error_log::add_error(crate::utils::error_log::codes::RFID_SPI_CREATE_FAILED);
         return;
     };
 
@@ -80,8 +77,7 @@ pub async fn rfid_task(
             log::error!("Spi bus init failed (cs set high failed)");
             crate::utils::error_log::add_error(
                 crate::utils::error_log::codes::RFID_SPI_BUS_INIT_FAILED,
-            )
-            .await;
+            );
             return;
         };
 
@@ -101,8 +97,7 @@ pub async fn rfid_task(
             if !error_logged {
                 crate::utils::error_log::add_error(
                     crate::utils::error_log::codes::RFID_INIT_FAILED,
-                )
-                .await;
+                );
                 error_logged = true;
             }
             Timer::after(Duration::from_millis(RFID_RETRY_INIT_MS)).await;
@@ -137,8 +132,7 @@ pub async fn rfid_task(
                         if !error_logged {
                             crate::utils::error_log::add_error(
                                 crate::utils::error_log::codes::RFID_INIT_FAILED,
-                            )
-                            .await;
+                            );
                             error_logged = true;
                         }
                         Timer::after(Duration::from_millis(RFID_RETRY_INIT_MS)).await;
@@ -516,8 +510,7 @@ async fn process_card_info_response(
                     if !LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
                         crate::utils::error_log::add_error(
                             crate::utils::error_log::codes::RFID_SOLVE_GROUP_MISSING,
-                        )
-                        .await;
+                        );
 
                         LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
                     }

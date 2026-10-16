@@ -29,8 +29,7 @@ impl embedded_hal_async::i2c::I2c for SharedI2C {
             Err(_) => {
                 crate::utils::error_log::add_error(
                     crate::utils::error_log::codes::SHARED_I2C_TIMEOUT,
-                )
-                .await;
+                );
                 Err(esp_hal::i2c::master::Error::Timeout)
             }
         }
