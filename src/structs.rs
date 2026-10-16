@@ -24,7 +24,7 @@ pub const CONFIG_MENU_ITEMS: [&str; 7] = [
     "Exit",
 ];
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Hash)]
 pub struct BleDisplayDevice {
     pub name: String,
     pub addr: [u8; 6],
@@ -173,7 +173,7 @@ pub struct CardInfoResponsePacket {
     pub possible_groups: Vec<PossibleGroup>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct PossibleGroup {
     pub group_id: String,

@@ -143,7 +143,7 @@ pub fn current_epoch() -> u64 {
         .saturating_add(Instant::now().as_secs())
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Hash)]
 #[allow(dead_code)]
 pub enum Scene {
     Update,
@@ -165,7 +165,7 @@ pub enum Scene {
     Finished,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Hash)]
 pub enum MenuScene {
     Signing,
     Unsigning,
@@ -175,7 +175,7 @@ pub enum MenuScene {
     BuzzerVolume,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Hash)]
 pub enum ErrorLogEntryStage {
     #[cfg(feature = "v4")]
     Qr,
@@ -617,44 +617,43 @@ impl SavedGlobalState {
     pub async fn clear_saved_global_state(_nvs: &Nvs) {}
 }
 
-impl PartialEq for SignaledGlobalStateInner {
-    fn eq(&self, other: &Self) -> bool {
-        let result = self.scene == other.scene
-            && self.menu_scene == other.menu_scene
-            && self.inspection_start == other.inspection_start
-            && self.inspection_end == other.inspection_end
-            && self.solve_time == other.solve_time
-            && self.penalty == other.penalty
-            && self.session_id == other.session_id
-            && self.time_confirmed == other.time_confirmed
-            && self.solve_group == other.solve_group
-            && self.error_text == other.error_text
-            && self.possible_groups == other.possible_groups
-            && self.group_selected_idx == other.group_selected_idx
-            && self.selected_config_menu == other.selected_config_menu
-            && self.selected_error_log_item == other.selected_error_log_item
-            && self.selected_error_log_entry == other.selected_error_log_entry
-            && self.error_log_entry_stage == other.error_log_entry_stage
-            && self.error_log_details_scroll == other.error_log_details_scroll
-            && self.discovered_bluetooth_devices == other.discovered_bluetooth_devices
-            && self.selected_bluetooth_item == other.selected_bluetooth_item
-            && self.device_added == other.device_added
-            && self.server_connected == other.server_connected
-            && self.wifi_connected == other.wifi_connected
-            && self.stackmat_connected == other.stackmat_connected
-            && self.current_competitor == other.current_competitor
-            && self.current_judge == other.current_judge
-            && self.competitor_display == other.competitor_display
-            && self.delegate_used == other.delegate_used
-            && self.delegate_hold == other.delegate_hold
-            // battery_status intentionally excluded (v4 hw)
-            && self.custom_message == other.custom_message;
+impl core::hash::Hash for SignaledGlobalStateInner {
+    /// Fields that trigger a redraw when changed (battery_status intentionally excluded).
+    fn hash<H: core::hash::Hasher>(&self, h: &mut H) {
+        self.scene.hash(h);
+        self.menu_scene.hash(h);
+        self.inspection_start.map(|i| i.as_ticks()).hash(h);
+        self.inspection_end.map(|i| i.as_ticks()).hash(h);
+        self.solve_time.hash(h);
+        self.penalty.hash(h);
+        self.session_id.hash(h);
+        self.time_confirmed.hash(h);
+        self.solve_group.hash(h);
+        self.error_text.hash(h);
+        self.possible_groups.hash(h);
+        self.group_selected_idx.hash(h);
+        self.selected_config_menu.hash(h);
+        self.selected_error_log_item.hash(h);
+        self.selected_error_log_entry.hash(h);
+        self.error_log_entry_stage.hash(h);
+        self.error_log_details_scroll.hash(h);
+        self.discovered_bluetooth_devices.hash(h);
+        self.selected_bluetooth_item.hash(h);
+        self.device_added.hash(h);
+        self.server_connected.hash(h);
+        self.wifi_connected.hash(h);
+        self.stackmat_connected.hash(h);
+        self.current_competitor.hash(h);
+        self.current_judge.hash(h);
+        self.competitor_display.hash(h);
+        self.delegate_used.hash(h);
+        self.delegate_hold.hash(h);
+        self.custom_message.hash(h);
 
         #[cfg(feature = "bat_dev_lcd")]
-        let result = result
-            && self.current_bat_read == other.current_bat_read
-            && self.avg_bat_read == other.avg_bat_read;
-
-        result
+        {
+            self.current_bat_read.map(f32::to_bits).hash(h);
+            self.avg_bat_read.map(f32::to_bits).hash(h);
+        }
     }
 }
