@@ -1,4 +1,4 @@
-use crate::{consts::BATTERY_SEND_INTERVAL_MS, state::sleep_state, utils::shared_i2c::SharedI2C};
+use crate::{consts::BATTERY_SEND_INTERVAL_MS, utils::shared_i2c::SharedI2C};
 use embassy_time::{Instant, Timer};
 
 const BATTERY_CURVE: [(f64, u8); 11] = [
@@ -39,7 +39,7 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
     let mut outage = false;
     let mut retry_ms = READ_INTERVAL_MS;
     loop {
-        if sleep_state() {
+        if crate::power::is_sleeping() {
             Timer::after_millis(500).await;
             continue;
         }
@@ -74,18 +74,17 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
         let charging = ma >= 0;
 
         if last_soc != soc || last_charging != charging {
-            {
-                let mut state = state.state.lock().await;
-                state.battery_status = (soc, charging)
-            }
-
-            state.show_battery.signal(soc);
+            state.battery.write(|b| {
+                b.percent = soc;
+                b.charging = charging;
+            });
+            state.battery_ready.signal(());
             last_soc = soc;
             last_charging = charging;
         }
 
         if last_sent.elapsed().as_millis() >= BATTERY_SEND_INTERVAL_MS {
-            if state.state.lock().await.server_connected == Some(true) {
+            if state.status.read(|s| s.server_connected) == Some(true) {
                 _ = crate::ws::send(crate::structs::TimerPacket {
                     tag: None,
                     data: crate::structs::TimerPacketInner::Battery {

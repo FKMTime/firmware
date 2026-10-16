@@ -1,6 +1,6 @@
 use crate::{
     consts::RFID_RETRY_INIT_MS,
-    state::{GlobalState, Scene, current_epoch, sleep_state},
+    state::{GlobalState, Scene, current_epoch},
     structs::{CardInfoResponsePacket, SolveConfirmPacket},
     translations::{TranslationKey, get_translation},
 };
@@ -99,8 +99,8 @@ pub async fn rfid_task(
     let mut last_card = (0, Instant::now());
     loop {
         Timer::after(Duration::from_millis(10)).await;
-        if sleep_state() != rfid_sleep {
-            rfid_sleep = sleep_state();
+        if crate::power::is_sleeping() != rfid_sleep {
+            rfid_sleep = crate::power::is_sleeping();
 
             if rfid_sleep {
                 _ = mfrc522.power_down().await;
@@ -118,7 +118,7 @@ pub async fn rfid_task(
 
         #[cfg(feature = "v4")]
         if global_state.buzzer_sound_test.try_take().is_some() {
-            beep_card_scan(&mut buzzer, &global_state, true).await;
+            beep_card_scan(&mut buzzer, true).await;
             continue;
         }
 
@@ -146,7 +146,7 @@ pub async fn rfid_task(
             .saturating_duration_since(last_card.1)
             .as_millis();
         let is_server_connected =
-            cfg!(feature = "qa") || global_state.state.value().await.server_connected == Some(true);
+            cfg!(feature = "qa") || global_state.status.read(|s| s.server_connected) == Some(true);
 
         if (last_card.0 == card_uid && last_scan_time < 500) || !is_server_connected {
             log::warn!(
@@ -157,7 +157,7 @@ pub async fn rfid_task(
         }
         last_card = (card_uid, Instant::now());
         #[cfg(feature = "v4")]
-        beep_card_scan(&mut buzzer, &global_state, false).await;
+        beep_card_scan(&mut buzzer, false).await;
 
         // qa only checks that cards are read
         if cfg!(feature = "qa") {
@@ -200,7 +200,7 @@ async fn init_until_ready<I: Interface>(mfrc522: &mut Mfrc522<I>) {
 #[cfg(not(feature = "e2e"))]
 fn token_key() -> [u8; 6] {
     let mut key = [0; 6];
-    key[..4].copy_from_slice(&crate::state::fkm_token().to_be_bytes());
+    key[..4].copy_from_slice(&crate::state::SESSION.read(|s| s.fkm_token).to_be_bytes());
     key
 }
 
@@ -295,14 +295,14 @@ async fn handle_card<I: Interface>(
 ) {
     #[cfg(not(feature = "e2e"))]
     {
-        if !crate::state::trust_server() {
+        if !crate::state::SESSION.read(|s| s.trust_server) {
             log::error!("Skipping card scan. Server not trusted!");
-            global_state.state.lock().await.error_text = Some("Server NOT Trusted!".into());
+            global_state.ui.update(|u| u.error_text = Some("Server NOT Trusted!".into()));
             _ = mfrc522.halt().await;
             return;
         }
 
-        let menu_scene = global_state.state.value().await.menu_scene.clone();
+        let menu_scene = global_state.ui.read(|u| u.menu_scene);
         let sign_res = match menu_scene {
             Some(MenuScene::Signing) => Some(sign_card(mfrc522, card, card_uid).await),
             Some(MenuScene::Unsigning) => Some(unsign_card(mfrc522, card).await),
@@ -315,31 +315,29 @@ async fn handle_card<I: Interface>(
             }
 
             global_state.sign_unsign_progress.signal(res.is_ok());
-            global_state.state.signal();
+            crate::state::notify();
             _ = mfrc522.halt().await;
             _ = mfrc522.stop_crypto1().await;
             return;
         }
 
-        if crate::state::secure_rfid() && !is_card_secured(mfrc522, card, card_uid).await {
+        if crate::state::SESSION.read(|s| s.secure_rfid) && !is_card_secured(mfrc522, card, card_uid).await {
             _ = mfrc522.halt().await;
             _ = mfrc522.stop_crypto1().await;
             return;
         }
     }
 
-    let is_competitor = {
-        let state = global_state.state.value().await;
-        state.current_competitor.is_none()
-            || state.current_competitor.unwrap_or_default() == card_uid as u64
-    };
+    let is_competitor = global_state
+        .solve
+        .read(|s| s.current_competitor.is_none_or(|c| c == card_uid as u64));
 
     let resp = crate::ws::request::<CardInfoResponsePacket>(
         crate::structs::TimerPacketInner::CardInfoRequest {
             card_id: card_uid as u64,
             is_competitor,
             attendance_device: None,
-            sign_key: crate::state::sign_key(),
+            sign_key: crate::state::SETTINGS.read(|s| s.sign_key),
         },
         Duration::from_millis(crate::consts::WS_REQUEST_TIMEOUT_MS),
     )
@@ -354,10 +352,9 @@ async fn handle_card<I: Interface>(
                 e.error
             );
 
-            let mut state = global_state.state.lock().await;
-            state.error_text = Some(e.error);
+            global_state.ui.update(|u| u.error_text = Some(e.error));
             if e.should_reset_time {
-                state.reset_solve_state(None).await;
+                global_state.reset_solve(false).await;
             }
         }
     }
@@ -371,143 +368,153 @@ async fn handle_card<I: Interface>(
     #[cfg(not(feature = "e2e"))]
     {
         _ = mfrc522.halt().await;
-        if crate::state::secure_rfid() {
+        if crate::state::SESSION.read(|s| s.secure_rfid) {
             _ = mfrc522.stop_crypto1().await;
         }
     }
 }
 
+/// What to do after the state was updated for a scanned card.
+enum CardAction {
+    Nothing,
+    EmptyGroups,
+    SendSolve(crate::structs::TimerPacketInner, u64),
+    SameCards,
+}
+
 async fn process_card_info_response(resp: CardInfoResponsePacket, global_state: &GlobalState) {
-    let mut state = global_state.state.lock().await;
-    if state.should_skip_other_actions() {
+    if global_state.should_skip_other_actions() {
         return;
     }
 
-    match state.scene {
-        Scene::WaitingForCompetitor if state.current_competitor.is_none() && resp.can_compete => {
-            state.competitor_display = Some(resp.display);
-            state.current_competitor = Some(resp.card_id);
+    let action = global_state.solve.update(move |s| match s.scene {
+        Scene::WaitingForCompetitor if s.current_competitor.is_none() && resp.can_compete => {
+            s.competitor_display = Some(resp.display);
+            s.current_competitor = Some(resp.card_id);
 
             let competitor_locale = crate::translations::get_locale_index(&resp.country_iso2);
             if competitor_locale != crate::translations::current_locale_index() {
-                crate::translations::select_locale_idx(competitor_locale, global_state);
+                crate::translations::select_locale_idx(competitor_locale);
             }
 
             match resp.possible_groups.first() {
                 Some(group) if resp.possible_groups.len() == 1 => {
-                    crate::state::set_group_limit(group.limit);
-                    state.solve_group = Some(group.clone());
-                    state.scene = if state.solve_time.is_some() {
+                    s.set_group(group.clone());
+                    s.scene = if s.solve_time.is_some() {
                         Scene::Finished
                     } else {
                         Scene::CompetitorInfo
                     };
+                    CardAction::Nothing
                 }
                 Some(_) => {
-                    state.possible_groups = resp.possible_groups;
-                    state.scene = Scene::GroupSelect;
+                    s.possible_groups = resp.possible_groups;
+                    s.scene = Scene::GroupSelect;
+                    CardAction::Nothing
                 }
-                None => {
-                    state.reset_solve_state(None).await;
-                    state.error_text = Some(
-                        get_translation(TranslationKey::EMPTY_GROUPS_ERROR)
-                            .as_str()
-                            .into(),
-                    );
-                }
+                None => CardAction::EmptyGroups,
             }
         }
         Scene::Finished => {
-            if state.current_competitor != Some(resp.card_id) && state.time_confirmed {
-                state.current_judge = Some(resp.card_id);
-            } else if let Some(current_competitor) = state.current_competitor
-                && let Some(current_judge) = state.current_judge
-                && current_competitor == resp.card_id
-                && state.time_confirmed
-            {
-                let Some(solve_group) = state.solve_group.as_ref().map(|g| g.group_id.clone())
-                else {
+            if s.current_competitor != Some(resp.card_id) && s.time_confirmed {
+                s.current_judge = Some(resp.card_id);
+                return CardAction::Nothing;
+            }
+
+            if s.current_competitor == Some(resp.card_id) && s.time_confirmed {
+                let Some(current_judge) = s.current_judge else {
+                    return CardAction::SameCards;
+                };
+                let Some(group_id) = s.solve_group.as_ref().map(|g| g.group_id.clone()) else {
                     log::error!("Solve group is none! (How would that happen?)");
                     crate::log_once!(crate::utils::error_log::codes::RFID_SOLVE_GROUP_MISSING);
-                    return;
+                    return CardAction::Nothing;
                 };
-                let Some(solve_time) = state.solve_time else {
+                let Some(solve_time) = s.solve_time else {
                     log::error!("Solve time is none!");
-                    return;
+                    return CardAction::Nothing;
                 };
 
                 #[cfg(not(feature = "e2e"))]
-                if !crate::state::trust_server() {
+                if !crate::state::SESSION.read(|s| s.trust_server) {
                     log::error!("Skipping solve send. Server not trusted!");
-                    return;
+                    return CardAction::Nothing;
                 }
 
-                let inspection_time = match (state.inspection_start, state.inspection_end) {
-                    (Some(start), Some(end)) if state.use_inspection() => {
-                        end.saturating_duration_since(start).as_millis() as i64
-                    }
+                let inspection_time = match s.inspection_end.and(s.inspection_ms()) {
+                    Some(ms) if s.use_inspection() => ms as i64,
                     _ => 0,
                 };
-                let session_id = state
+                let session_id = s
                     .session_id
                     .get_or_insert_with(crate::state::new_session_id)
                     .clone();
 
-                let packet = crate::structs::TimerPacketInner::Solve {
-                    solve_time,
-                    penalty: state.penalty.unwrap_or(0) as i64,
-                    competitor_id: current_competitor,
-                    judge_id: current_judge,
-                    timestamp: current_epoch(),
-                    session_id,
-                    delegate: false,
-                    inspection_time,
-                    group_id: solve_group,
-                    sign_key: crate::state::sign_key(),
-                };
-
-                // never hold the state lock across the server round-trip
-                drop(state);
-                let resp = crate::ws::request::<SolveConfirmPacket>(
-                    packet,
-                    Duration::from_millis(crate::consts::WS_REQUEST_TIMEOUT_MS),
-                )
-                .await;
-
-                let Ok(resp) = resp else {
-                    return;
-                };
-                log::warn!("solve_resp: {resp:?}");
-
-                {
-                    let mut state = global_state.state.lock().await;
-                    // the solve may have been reset meanwhile (e.g. competitor reset hold)
-                    if state.current_competitor == Some(current_competitor) {
-                        state.reset_solve_state(Some(global_state.nvs)).await;
-                    }
-
-                    let (first, second) =
-                        split_after_two_words(&resp.message).unwrap_or(("Solve", "sent"));
-                    state.custom_message = Some((first.into(), second.into()));
-                }
-
-                Timer::after_millis(3000).await;
-                global_state.state.lock().await.custom_message = None;
-            } else if state.current_competitor == Some(resp.card_id)
-                && state.current_judge.is_none()
-                && state.time_confirmed
-            {
-                state.custom_message = Some((
-                    get_translation(TranslationKey::CARDS_CANNOT_BE_THE_SAME_HEADER),
-                    get_translation(TranslationKey::CARDS_CANNOT_BE_THE_SAME_FOOTER),
-                ));
-                drop(state);
-                Timer::after_millis(8000).await;
-                global_state.state.lock().await.custom_message = None;
+                return CardAction::SendSolve(
+                    crate::structs::TimerPacketInner::Solve {
+                        solve_time,
+                        penalty: s.penalty.unwrap_or(0) as i64,
+                        competitor_id: resp.card_id,
+                        judge_id: current_judge,
+                        timestamp: current_epoch(),
+                        session_id,
+                        delegate: false,
+                        inspection_time,
+                        group_id,
+                        sign_key: crate::state::SETTINGS.read(|s| s.sign_key),
+                    },
+                    resp.card_id,
+                );
             }
+            CardAction::Nothing
         }
-        _ => {}
+        _ => CardAction::Nothing,
+    });
+
+    match action {
+        CardAction::Nothing => {}
+        CardAction::EmptyGroups => {
+            global_state.reset_solve(false).await;
+            let error = get_translation(TranslationKey::EMPTY_GROUPS_ERROR);
+            global_state.ui.update(|u| u.error_text = Some(error.as_str().into()));
+        }
+        CardAction::SendSolve(packet, competitor) => {
+            let resp = crate::ws::request::<SolveConfirmPacket>(
+                packet,
+                Duration::from_millis(crate::consts::WS_REQUEST_TIMEOUT_MS),
+            )
+            .await;
+            let Ok(resp) = resp else {
+                return;
+            };
+            log::warn!("solve_resp: {resp:?}");
+
+            // the solve may have been reset meanwhile (e.g. competitor reset hold)
+            if global_state.solve.read(|s| s.current_competitor) == Some(competitor) {
+                global_state.reset_solve(true).await;
+            }
+
+            let (first, second) = split_after_two_words(&resp.message).unwrap_or(("Solve", "sent"));
+            show_message(global_state, (first.into(), second.into()), 3000).await;
+        }
+        CardAction::SameCards => {
+            let message = (
+                get_translation(TranslationKey::CARDS_CANNOT_BE_THE_SAME_HEADER),
+                get_translation(TranslationKey::CARDS_CANNOT_BE_THE_SAME_FOOTER),
+            );
+            show_message(global_state, message, 8000).await;
+        }
     }
+}
+
+async fn show_message(
+    global_state: &GlobalState,
+    message: (crate::structs::DisplayText, crate::structs::DisplayText),
+    ms: u64,
+) {
+    global_state.ui.update(|u| u.custom_message = Some(message));
+    Timer::after_millis(ms).await;
+    global_state.ui.update(|u| u.custom_message = None);
 }
 
 /// `"a b c d"` -> `("a b", "c d")`; `None` for a single word.
@@ -522,15 +529,14 @@ fn split_after_two_words(msg: &str) -> Option<(&str, &str)> {
 #[cfg(feature = "v4")]
 async fn beep_card_scan(
     buzzer: &mut esp_hal::ledc::channel::Channel<'static, esp_hal::ledc::LowSpeed>,
-    global_state: &GlobalState,
     sound_test: bool,
 ) {
-    if global_state.state.value().await.sound_enabled || sound_test {
+    if crate::state::SETTINGS.read(|s| s.sound_enabled) || sound_test {
         use esp_hal::ledc::channel::ChannelIFace;
         const BEEP_DUTY_PERCENT: u8 = 50;
         const BEEP_DURATION_MS: u64 = 100;
 
-        let volume: f32 = match crate::state::buzzer_volume() {
+        let volume: f32 = match crate::state::SETTINGS.read(|s| s.buzzer_volume) {
             0 => 0.0,
             v => 0.55 + (v - 1) as f32 * (0.25 / 23.0),
         };

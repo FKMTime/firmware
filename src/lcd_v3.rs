@@ -1,7 +1,7 @@
 use crate::{
     consts::{LCD_INSPECTION_FRAME_TIME, SCROLL_TICKER_INVERVAL_MS},
     power,
-    state::{GlobalState, MenuScene, Scene, SignaledGlobalStateInner},
+    state::{CHANGED, GlobalState, MenuScene, Scene, View},
     translations::{TranslationKey, get_translation, get_translation_params},
     utils::{
         error_log::{self, ErrorLogEntry},
@@ -105,13 +105,18 @@ pub async fn lcd_task(
     show(&mut text, &mut lcd).await;
 
     line.clear();
-    _ = write!(line, "{}%", global_state.show_battery.wait().await);
+    global_state.battery_ready.wait().await;
+    _ = write!(line, "{}%", global_state.battery.read(|b| b.percent));
     text.print(0, &line, Align::Right, false);
     show(&mut text, &mut lcd).await;
 
     #[cfg(not(feature = "bat_dev_lcd"))]
     Timer::after_millis(2500).await;
 
+    let Some(mut timer) = global_state.timer.receiver() else {
+        log::error!("lcd: no timer receiver left");
+        return;
+    };
     let mut local = Local::default();
     let mut live = Live::Idle;
     let mut last_update = Instant::now();
@@ -129,14 +134,14 @@ pub async fn lcd_task(
 
         if rerender {
             rerender = false;
-            let mut state = global_state.state.lock().await;
-            if state.menu_scene == Some(MenuScene::BtDisplay)
-                && state.selected_bluetooth_item > state.discovered_bluetooth_devices.len() + 1
-            {
-                state.selected_bluetooth_item = 0;
-            }
-            live = render(&state, &mut text, &local);
-            drop(state);
+            global_state.ui.write(|u| {
+                if u.menu_scene == Some(MenuScene::BtDisplay)
+                    && u.selected_bluetooth_item > u.discovered_bluetooth_devices.len() + 1
+                {
+                    u.selected_bluetooth_item = 0;
+                }
+            });
+            live = global_state.view(|v| render(v, &mut text, &local));
             if live != Live::Timer {
                 local.timer_ms = None;
             }
@@ -145,7 +150,7 @@ pub async fn lcd_task(
 
         crate::watchdog::heartbeat(crate::watchdog::TaskId::Lcd);
         // bounded so the heartbeat keeps beating while a live screen waits for its signal
-        let event = with_timeout(EVENT_TIMEOUT, next_event(global_state, wifi_setup_sig, live, &local));
+        let event = with_timeout(EVENT_TIMEOUT, next_event(global_state, &mut timer, wifi_setup_sig, live, &local));
         let Ok(event) = event.await else {
             continue;
         };
@@ -158,7 +163,6 @@ pub async fn lcd_task(
             }
             Event::InspectionFrame(start) => {
                 let elapsed = start.elapsed().as_millis();
-                crate::state::set_inspection_time(Some(elapsed));
                 text.print(0, &time_str(elapsed), Align::Center, true);
                 show(&mut text, &mut lcd).await;
             }
@@ -175,7 +179,7 @@ pub async fn lcd_task(
                 rerender = true;
             }
             Event::WifiSetup => {
-                global_state.state.lock().await.scene = Scene::AutoSetupWait;
+                global_state.solve.update(|s| s.scene = Scene::AutoSetupWait);
             }
             Event::ScrollTick => {
                 if text.scroll_step() {
@@ -200,13 +204,14 @@ enum Event {
 
 async fn next_event(
     gs: GlobalState,
+    timer: &mut embassy_sync::watch::Receiver<'_, crate::state::Cs, u64, 2>,
     wifi_setup_sig: &Signal<CriticalSectionRawMutex, ()>,
     live: Live,
     local: &Local,
 ) -> Event {
     let other = async {
         match live {
-            Live::Timer => Event::TimerValue(gs.timer_signal.wait().await),
+            Live::Timer => Event::TimerValue(timer.changed().await),
             Live::Inspection(start) => {
                 Timer::after_millis(LCD_INSPECTION_FRAME_TIME).await;
                 Event::InspectionFrame(start)
@@ -236,7 +241,7 @@ async fn next_event(
         }
     };
 
-    match select(gs.state.wait(), other).await {
+    match select(CHANGED.wait(), other).await {
         Either::First(()) => Event::State,
         Either::Second(event) => event,
     }
@@ -253,20 +258,20 @@ async fn sleep_check(text: &mut LcdText, lcd: &mut Lcd, global_state: GlobalStat
     use crate::consts::{DEEPER_SLEEP_AFTER_MS, SLEEP_AFTER_MS};
 
     let idle_ms = last_update.elapsed().as_millis();
-    let can_sleep = global_state.state.value().await.scene.can_sleep();
+    let can_sleep = global_state.solve.read(|s| s.scene.can_sleep());
     if !power::is_sleeping() && idle_ms > SLEEP_AFTER_MS && can_sleep {
         text.print(0, "Sleep", Align::Center, true);
         text.print(1, "Press any key", Align::Center, true);
         show(text, lcd).await;
         lcd.backlight_off();
 
-        global_state.state.lock().await.server_connected = Some(false);
+        global_state.status.update(|s| s.server_connected = Some(false));
         power::request_sleep();
-        crate::state::set_trust_server(false);
-        global_state.state.signal_reset();
+        crate::state::SESSION.write(|s| s.trust_server = false);
+        CHANGED.reset(); // these changes must not wake the display again
     }
 
-    if power::is_sleeping() && !crate::state::deeper_sleep_state() && idle_ms > DEEPER_SLEEP_AFTER_MS {
+    if power::is_sleeping() && !crate::power::is_deeper_sleeping() && idle_ms > DEEPER_SLEEP_AFTER_MS {
         text.print(0, "Deep Sleep", Align::Center, true);
         text.print(1, "Press any key", Align::Center, true);
         show(text, lcd).await;
@@ -283,15 +288,15 @@ fn tr(text: &mut LcdText, header: usize, footer: usize) {
 }
 
 /// Lays out both lines for the current state (no I/O, no heap).
-fn render(s: &SignaledGlobalStateInner, text: &mut LcdText, local: &Local) -> Live {
+fn render(s: &View, text: &mut LcdText, local: &Local) -> Live {
     text.clear();
     let mut line = Text::new();
 
     #[cfg(feature = "bat_dev_lcd")]
     {
-        _ = write!(line, "BAT: {}", s.current_bat_read.unwrap_or(-1.0));
+        _ = write!(line, "BAT: {}", s.battery.current_read.unwrap_or(-1.0));
         text.print(0, &line, Align::Left, true);
-        if let Some(avg) = s.avg_bat_read {
+        if let Some(avg) = s.battery.avg_read {
             line.clear();
             _ = write!(line, "AVG: {avg}");
             text.print(1, &line, Align::Left, true);
@@ -299,7 +304,7 @@ fn render(s: &SignaledGlobalStateInner, text: &mut LcdText, local: &Local) -> Li
         return Live::Idle;
     }
 
-    match screen(s) {
+    match screen(s.solve, s.ui, &s.status) {
         Screen::Error(error) => {
             text.print(0, &get_translation(TranslationKey::ERROR_HEADER), Align::Center, true);
             text.print(1, error, Align::Center, true);
@@ -330,7 +335,7 @@ fn render(s: &SignaledGlobalStateInner, text: &mut LcdText, local: &Local) -> Li
             return Live::Signing;
         }
         Screen::BtDevices(sel) => {
-            let devices = &s.discovered_bluetooth_devices;
+            let devices = &s.ui.discovered_bluetooth_devices;
             match devices.get(sel) {
                 Some(dev) => {
                     text.print(0, &dev.name, Align::Center, true);
@@ -446,9 +451,9 @@ fn render(s: &SignaledGlobalStateInner, text: &mut LcdText, local: &Local) -> Li
             text.print(1, &footer, Align::Center, true);
         }
         Screen::CompetitorInfo => {
-            let name = s.competitor_display.as_deref().unwrap_or("??????");
+            let name = s.solve.competitor_display.as_deref().unwrap_or("??????");
             text.print(0, name, Align::Center, true);
-            if let Some(ref group) = s.solve_group {
+            if let Some(ref group) = s.solve.solve_group {
                 text.print(1, &group.name, Align::Center, true);
             }
         }

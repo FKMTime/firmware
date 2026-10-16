@@ -6,6 +6,7 @@
 use alloc::rc::Rc;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Instant};
+use portable_atomic::{AtomicBool, Ordering};
 use esp_hal_wifimanager::WifiManager;
 
 pub type SleepSignal = Signal<CriticalSectionRawMutex, bool>;
@@ -13,17 +14,26 @@ pub type SleepSignal = Signal<CriticalSectionRawMutex, bool>;
 /// Time between the websocket close frame and the radio going off; also debounces quick wakes.
 const SLEEP_SETTLE: Duration = Duration::from_secs(15);
 
+static SLEEPING: AtomicBool = AtomicBool::new(false);
+/// v3 only: the cpu runs at 10 MHz until the next reset.
+static DEEPER: AtomicBool = AtomicBool::new(false);
+
 pub fn is_sleeping() -> bool {
-    crate::state::sleep_state()
+    SLEEPING.load(Ordering::Relaxed)
+}
+
+#[cfg_attr(not(feature = "v3"), allow(dead_code))]
+pub fn is_deeper_sleeping() -> bool {
+    DEEPER.load(Ordering::Relaxed)
 }
 
 #[cfg_attr(any(feature = "e2e", feature = "qa"), allow(dead_code))] // sleep is off in e2e/qa
 pub fn request_sleep() {
-    crate::state::set_sleep_state(true);
+    SLEEPING.store(true, Ordering::Relaxed);
 }
 
 pub fn wake() {
-    crate::state::set_sleep_state(false);
+    SLEEPING.store(false, Ordering::Relaxed);
 }
 
 /// Powers the chip down until one of the four buttons is pressed (wake = reset).
@@ -65,6 +75,7 @@ pub fn enter_deep_sleep() -> ! {
 #[cfg_attr(any(feature = "e2e", feature = "qa"), allow(dead_code))]
 pub fn enter_deep_sleep() {
     crate::utils::deeper_sleep();
+    DEEPER.store(true, Ordering::Relaxed);
 }
 
 /// Applies sleep transitions to the radio, websocket and BLE tasks.

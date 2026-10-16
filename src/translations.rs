@@ -1,5 +1,4 @@
 use crate::{
-    state::GlobalState,
     structs::{DisplayText, LocaleCode, TranslationRecord},
     utils::text::fill_placeholders,
 };
@@ -42,12 +41,12 @@ pub fn clear_locales() {
     with_locales(|l| l.list.clear());
 }
 
-pub fn select_locale(locale: &str, global_state: &GlobalState) {
-    select_locale_idx(get_locale_index(locale), global_state);
+pub fn select_locale(locale: &str) {
+    select_locale_idx(get_locale_index(locale));
     log::info!("Selected locale: {locale}");
 }
 
-pub fn select_locale_idx(locale_idx: usize, global_state: &GlobalState) {
+pub fn select_locale_idx(locale_idx: usize) {
     let changed = with_locales(|l| {
         if locale_idx == l.selected {
             return false;
@@ -60,7 +59,7 @@ pub fn select_locale_idx(locale_idx: usize, global_state: &GlobalState) {
     });
 
     if changed {
-        global_state.state.signal(); // reload locale
+        crate::state::notify(); // reload locale
     }
 }
 

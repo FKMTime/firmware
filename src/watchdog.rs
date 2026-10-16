@@ -48,7 +48,7 @@ pub fn heartbeat(task: TaskId) {
 fn stale_task() -> Option<TaskId> {
     let now = now();
     // tasks are allowed to idle while sleeping; they re-arm on their next heartbeat
-    let sleeping = crate::state::sleep_state();
+    let sleeping = crate::power::is_sleeping();
 
     TASKS.into_iter().find(|&task| {
         let beat = &LAST_BEAT[task as usize];

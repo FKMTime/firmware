@@ -9,7 +9,7 @@ mod codec;
 
 use crate::{
     consts::NVS_BONDING_KEY,
-    state::{BleAction, GlobalState, MenuScene},
+    state::{GlobalState, MenuScene},
     structs::{BleDisplayDevice, MAX_BLE_DEVICES},
     utils::error_log::codes,
 };
@@ -39,6 +39,16 @@ const AUTH_FAILURE: u8 = 0x05;
 
 type Ctrl = ExternalController<BleConnector<'static>, 20>;
 type Pool = DefaultPacketPool;
+
+/// UI → BLE task commands.
+pub static COMMANDS: BleCommands = BleCommands::new();
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BleAction {
+    Connect(BleDisplayDevice),
+    StartScan,
+    Unpair,
+}
 
 /// UI → BLE task commands. A queue, so StartScan/Connect/Unpair can't overwrite each other.
 pub struct BleCommands(Channel<CriticalSectionRawMutex, BleAction, 4>);
@@ -102,12 +112,10 @@ async fn run(bt: &BT<'static>, state: GlobalState) {
 
 async fn wait_for_scan_request(state: GlobalState) {
     // the pairing menu is already open (e.g. after unpairing from it)
-    if state.state.lock().await.menu_scene == Some(MenuScene::BtDisplay) {
+    if state.ui.read(|u| u.menu_scene) == Some(MenuScene::BtDisplay) {
         return;
     }
-    state
-        .ble_sig
-        .wait_for(|c| matches!(c, BleAction::StartScan))
+    COMMANDS.wait_for(|c| matches!(c, BleAction::StartScan))
         .await;
 }
 
@@ -179,9 +187,7 @@ async fn link(
     };
 
     // re-pairing or unpairing from the menu ends the link (the buttons already dropped the bond)
-    let ended = state
-        .ble_sig
-        .wait_for(|c| matches!(c, BleAction::Unpair | BleAction::StartScan));
+    let ended = COMMANDS.wait_for(|c| matches!(c, BleAction::Unpair | BleAction::StartScan));
     select(
         ended,
         connect_loop(stack, &mut central, target, bond, state),
@@ -199,19 +205,16 @@ async fn scan<'a>(
     Central<'a, Ctrl, Pool>,
     Result<Option<BleDisplayDevice>, ()>,
 ) {
-    {
-        let mut state = state.state.lock().await;
-        state.discovered_bluetooth_devices.clear();
-        state.selected_bluetooth_item = 0;
-    }
+    state.ui.update(|u| {
+        u.discovered_bluetooth_devices.clear();
+        u.selected_bluetooth_item = 0;
+    });
 
     let mut scanner = Scanner::new(central);
     let picked = match scanner.scan(&ScanConfig::default()).await {
         Ok(_session) => {
             discovery.start();
-            let picked = state
-                .ble_sig
-                .wait_for(|c| matches!(c, BleAction::Connect(_) | BleAction::Unpair));
+            let picked = COMMANDS.wait_for(|c| matches!(c, BleAction::Connect(_) | BleAction::Unpair));
             let picked = match select(picked, list_displays(state, discovery)).await {
                 Either::First(BleAction::Connect(device)) => Some(device),
                 _ => None,
@@ -231,13 +234,14 @@ async fn scan<'a>(
 async fn list_displays(state: GlobalState, discovery: &Discovery) {
     loop {
         let device = discovery.found.receive().await;
-        let mut state = state.state.lock().await;
-        // keep the cursor on "Unpair"/"Exit" (listed after the devices) when it's there
-        let cursor_after_list = state.selected_bluetooth_item > 0
-            && state.selected_bluetooth_item >= state.discovered_bluetooth_devices.len();
-        if state.discovered_bluetooth_devices.push(device) && cursor_after_list {
-            state.selected_bluetooth_item += 1;
-        }
+        state.ui.update(|u| {
+            // keep the cursor on "Unpair"/"Exit" (listed after the devices) when it's there
+            let cursor_after_list = u.selected_bluetooth_item > 0
+                && u.selected_bluetooth_item >= u.discovered_bluetooth_devices.len();
+            if u.discovered_bluetooth_devices.push(device) && cursor_after_list {
+                u.selected_bluetooth_item += 1;
+            }
+        });
     }
 }
 
@@ -443,9 +447,13 @@ async fn write_times(
         return;
     };
 
+    let Some(mut timer) = state.timer.receiver() else {
+        log::error!("[ble] no timer receiver left");
+        return;
+    };
     streaming.set(true);
     loop {
-        let time = state.bt_display_signal.wait().await;
+        let time = timer.changed().await;
         if client
             .write_characteristic_without_response(&characteristic, &time.to_be_bytes())
             .await

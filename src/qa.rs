@@ -76,7 +76,7 @@ async fn qa_inner(global_state: &GlobalState) -> bool {
 }
 
 async fn show(global_state: &GlobalState, line1: &str, line2: &str) {
-    global_state.state.lock().await.custom_message = Some((line1.into(), line2.into()));
+    global_state.ui.update(|u| u.custom_message = Some((line1.into(), line2.into())));
 }
 
 /// Reports an event to the QA flow (never blocks; drops it if 8 are already queued).

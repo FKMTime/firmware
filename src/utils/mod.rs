@@ -7,7 +7,6 @@ pub mod error_log;
 pub mod logger;
 pub mod ring_log;
 pub mod rolling_average;
-pub mod signaled_mutex;
 pub mod stackmat;
 pub mod text;
 
@@ -119,8 +118,6 @@ pub fn get_efuse_u32() -> u32 {
 /// Sets cpu clock to 10mHz (not reversable)
 pub fn deeper_sleep() {
     esp32c3_set_cpu_freq_10mhz();
-
-    crate::state::set_deeper_sleep_state(true);
 }
 
 #[cfg(feature = "v3")]

@@ -177,7 +177,7 @@ pub struct CappedVec<T, const N: usize>(alloc::vec::Vec<T>);
 
 impl<T, const N: usize> Default for CappedVec<T, N> {
     fn default() -> Self {
-        Self(alloc::vec::Vec::new())
+        Self::new()
     }
 }
 
@@ -189,8 +189,8 @@ impl<T, const N: usize> core::ops::Deref for CappedVec<T, N> {
 }
 
 impl<T, const N: usize> CappedVec<T, N> {
-    pub fn clear(&mut self) {
-        self.0.clear();
+    pub const fn new() -> Self {
+        Self(alloc::vec::Vec::new())
     }
 }
 

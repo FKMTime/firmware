@@ -3,7 +3,7 @@
 
 use crate::{
     consts::INSPECTION_TIME_PLUS2,
-    state::{ErrorLogEntryStage, MenuScene, Scene, SignaledGlobalStateInner},
+    state::{ErrorLogEntryStage, MenuScene, Scene, Solve, Status, Ui},
     translations::TranslationKey,
 };
 use embassy_time::Instant;
@@ -55,30 +55,30 @@ pub struct Finished {
 
 /// The priority chain: error > custom message > config menu > menu scene > connection
 /// overwrites > delegate > scene.
-pub fn screen(s: &SignaledGlobalStateInner) -> Screen<'_> {
-    if let Some(ref error) = s.error_text {
+pub fn screen<'a>(s: &'a Solve, ui: &'a Ui, status: &Status) -> Screen<'a> {
+    if let Some(ref error) = ui.error_text {
         return Screen::Error(error);
     }
-    if let Some((ref l1, ref l2)) = s.custom_message {
+    if let Some((ref l1, ref l2)) = ui.custom_message {
         return Screen::Custom(l1, l2);
     }
-    if let Some(sel) = s.selected_config_menu {
+    if let Some(sel) = ui.selected_config_menu {
         return Screen::ConfigMenu(sel);
     }
 
-    match s.menu_scene {
+    match ui.menu_scene {
         Some(MenuScene::Signing | MenuScene::Unsigning) => {
-            return Screen::Signing(s.menu_scene == Some(MenuScene::Signing));
+            return Screen::Signing(ui.menu_scene == Some(MenuScene::Signing));
         }
-        Some(MenuScene::BtDisplay) => return Screen::BtDevices(s.selected_bluetooth_item),
+        Some(MenuScene::BtDisplay) => return Screen::BtDevices(ui.selected_bluetooth_item),
         Some(MenuScene::ErrorLog) => {
-            return match s.selected_error_log_entry {
+            return match ui.selected_error_log_entry {
                 Some(idx) => Screen::ErrorLogEntry {
                     idx,
-                    stage: s.error_log_entry_stage.as_ref(),
-                    scroll: s.error_log_details_scroll,
+                    stage: ui.error_log_entry_stage.as_ref(),
+                    scroll: ui.error_log_details_scroll,
                 },
-                None => Screen::ErrorLogList(s.selected_error_log_item),
+                None => Screen::ErrorLogList(ui.selected_error_log_item),
             };
         }
         #[cfg(feature = "v4")]
@@ -87,17 +87,17 @@ pub fn screen(s: &SignaledGlobalStateInner) -> Screen<'_> {
     }
 
     if s.scene.can_be_lcd_overwritten() {
-        if s.server_connected == Some(false) {
-            return if s.wifi_connected == Some(false) {
+        if status.server_connected == Some(false) {
+            return if status.wifi_connected == Some(false) {
                 Screen::WifiLost
             } else {
                 Screen::ServerLost
             };
         }
-        if s.device_added == Some(false) {
+        if status.device_added == Some(false) {
             return Screen::DeviceNotAdded;
         }
-        if s.stackmat_connected == Some(false) {
+        if status.stackmat_connected == Some(false) {
             return Screen::StackmatLost;
         }
     }

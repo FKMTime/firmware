@@ -1,5 +1,5 @@
 use crate::{
-    consts::BATTERY_SEND_INTERVAL_MS, state::sleep_state, utils::rolling_average::RollingAverage,
+    consts::BATTERY_SEND_INTERVAL_MS, utils::rolling_average::RollingAverage,
 };
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
@@ -45,7 +45,7 @@ pub async fn battery_read_task(
     let mut sample_rate_millis = 10;
     loop {
         Timer::after_millis(sample_rate_millis).await;
-        if sleep_state() {
+        if crate::power::is_sleeping() {
             Timer::after_millis(500).await;
             continue;
         }
@@ -55,16 +55,13 @@ pub async fn battery_read_task(
         avg.push(read);
 
         #[cfg(feature = "bat_dev_lcd")]
-        {
-            let mut state = state.state.lock().await;
-            state.current_bat_read = Some(read);
-        }
+        state.battery.write(|b| b.current_read = Some(read));
 
         let now = Instant::now();
         if !lcd_sent && battery_start <= now {
-            state
-                .show_battery
-                .signal(bat_percentage(calculate(read as f64)));
+            let percent = bat_percentage(calculate(read as f64));
+            state.battery.write(|b| b.percent = percent);
+            state.battery_ready.signal(());
 
             lcd_sent = true;
             sample_rate_millis = 100;
@@ -78,7 +75,7 @@ pub async fn battery_read_task(
         let bat_calc_mv = calculate(read as f64);
         let bat_percentage = bat_percentage(bat_calc_mv);
 
-        if state.state.lock().await.server_connected == Some(true) {
+        if state.status.read(|s| s.server_connected) == Some(true) {
             _ = crate::ws::send(crate::structs::TimerPacket {
                 tag: None,
                 data: crate::structs::TimerPacketInner::Battery {
@@ -90,10 +87,7 @@ pub async fn battery_read_task(
 
         log::info!("calc({read}): {bat_calc_mv}mV {bat_percentage}%");
         #[cfg(feature = "bat_dev_lcd")]
-        {
-            let mut state = state.state.lock().await;
-            state.avg_bat_read = avg.average();
-        }
+        state.battery.write(|b| b.avg_read = avg.average());
     }
 }
 

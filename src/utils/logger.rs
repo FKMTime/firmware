@@ -208,7 +208,7 @@ impl log::Log for FkmLogger {
         esp_println::println!("{}{} - {}{}", color, record.level(), record.args(), RESET);
 
         #[cfg(not(any(feature = "bat_dev_lcd", feature = "qa")))]
-        if !crate::state::ota_state() && !crate::state::sleep_state() {
+        if !crate::ws::ota_active() && !crate::power::is_sleeping() {
             let level: &str = match record.level() {
                 log::Level::Error => "E ",
                 log::Level::Warn => "W ",

@@ -14,7 +14,7 @@ use embassy_time::{Instant, Timer};
 use esp_backtrace as _;
 use esp_hal_wifimanager::{Nvs, WIFI_NVS_KEY};
 use esp_storage::FlashStorage;
-use state::{GlobalState, GlobalStateInner, SavedGlobalState, Scene, ota_state, sleep_state};
+use state::{GlobalState, GlobalStateInner, SavedGlobalState, Scene};
 use structs::ConnSettings;
 use utils::{logger::FkmLogger, set_brownout_detection, spawn_task};
 
@@ -133,14 +133,14 @@ async fn main(spawner: Spawner) {
     static WIFI_CONN_SIG: esp_hal_wifimanager::ConnSignal = Signal::new();
 
     if let Ok(sign_key) = nvs.get::<u32>(&NVS_SIGN_KEY).await {
-        crate::state::set_sign_key(sign_key);
+        crate::state::SETTINGS.write(|s| s.sign_key = sign_key);
     }
     #[cfg(feature = "v4")]
     if let Ok(saved_volume) = nvs.get::<u8>(&crate::consts::NVS_BUZZER_VOLUME).await {
         if (crate::consts::BUZZER_VOLUME_MIN..=crate::consts::BUZZER_VOLUME_MAX)
             .contains(&saved_volume)
         {
-            crate::state::set_buzzer_volume(saved_volume);
+            crate::state::SETTINGS.write(|s| s.buzzer_volume = saved_volume);
         } else {
             log::warn!(
                 "Ignoring invalid saved buzzer volume: {} (valid range {}..={})",
@@ -287,7 +287,7 @@ async fn main(spawner: Spawner) {
     };
 
     {
-        global_state.state.lock().await.wifi_connected = Some(true);
+        global_state.status.update(|s| s.wifi_connected = Some(true));
     }
 
     #[cfg(feature = "qa")]
@@ -302,7 +302,7 @@ async fn main(spawner: Spawner) {
     let ws_url = loop {
         let url = if conn_settings.mdns || conn_settings.ws_url.is_none() || parse_retry_count > 0 {
             log::info!("Starting mdns lookup...");
-            global_state.state.lock().await.scene = Scene::MdnsWait;
+            global_state.solve.update(|s| s.scene = Scene::MdnsWait);
             let mdns_res = mdns::mdns_query(wifi_res.stack()).await;
             log::info!("Mdns result: {mdns_res:?}");
 
@@ -359,7 +359,7 @@ async fn main(spawner: Spawner) {
     );
 
     set_brownout_detection(true);
-    global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
+    global_state.solve.update(|s| s.scene = Scene::WaitingForCompetitor);
     spawn_task(
         &spawner,
         "restore_saved_state_task",
@@ -395,11 +395,12 @@ async fn main(spawner: Spawner) {
 #[embassy_executor::task]
 async fn restore_saved_state_task(global_state: GlobalState, nvs: &'static Nvs) {
     if let Some(saved_state) = SavedGlobalState::from_nvs(nvs).await {
-        let mut state = global_state.state.lock().await;
-        // a new solve may have started while waiting for the server time
-        if state.scene == Scene::WaitingForCompetitor {
-            state.parse_saved_state(saved_state);
-        }
+        global_state.solve.update(|s| {
+            // a new solve may have started while waiting for the server time
+            if s.scene == Scene::WaitingForCompetitor {
+                s.restore(saved_state);
+            }
+        });
     }
 }
 
@@ -410,20 +411,20 @@ async fn logger_task(global_state: GlobalState) {
     loop {
         Timer::after_millis(LOG_SEND_INTERVAL_MS).await;
 
-        if ota_state() || sleep_state() {
+        if crate::ws::ota_active() || crate::power::is_sleeping() {
             continue;
         }
 
-        let logs = {
-            let state = global_state.state.value().await;
+        let current_time = global_state.timer.try_get();
+        let logs = global_state.solve.read(|s| {
             crate::utils::logger::take_ready(&crate::utils::logger::LogsHeader {
-                current_time: crate::state::current_time(),
-                inspection_time: crate::state::inspection_time(),
-                competitor: state.current_competitor,
-                group_id: state.solve_group.as_ref().map(|g| g.group_id.as_str()),
-                session_id: state.session_id.as_deref(),
+                current_time,
+                inspection_time: s.inspection_ms(),
+                competitor: s.current_competitor,
+                group_id: s.solve_group.as_ref().map(|g| g.group_id.as_str()),
+                session_id: s.session_id.as_deref(),
             })
-        };
+        });
 
         if let Some(logs) = logs {
             _ = ws::send_logs(logs);

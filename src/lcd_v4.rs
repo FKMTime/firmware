@@ -1,7 +1,7 @@
 use crate::{
     consts::LCD_INSPECTION_FRAME_TIME,
     power,
-    state::{ErrorLogEntryStage, GlobalState, MenuScene, Scene, SignaledGlobalStateInner},
+    state::{CHANGED, ErrorLogEntryStage, GlobalState, MenuScene, Scene, Ui, View},
     translations::{TranslationKey, get_translation, get_translation_params},
     utils::{
         error_log::{self, ErrorLogEntry, codes},
@@ -84,8 +84,8 @@ pub async fn lcd_task(
 ) {
     let mut oled = init(i2c, display_rst).await;
 
-    global_state.show_battery.wait().await;
-    top_bar(&mut oled.frame, &*global_state.state.value().await);
+    global_state.battery_ready.wait().await;
+    global_state.view(|v| top_bar(&mut oled.frame, v));
     let mut text = Text::new();
     _ = write!(
         text,
@@ -97,6 +97,10 @@ pub async fn lcd_task(
     flush(&mut oled).await;
     Timer::after_millis(2500).await;
 
+    let Some(mut timer) = global_state.timer.receiver() else {
+        log::error!("lcd: no timer receiver left");
+        return;
+    };
     let mut local = Local::default();
     let mut live = Live::Idle;
     let mut last_update = Instant::now();
@@ -114,10 +118,8 @@ pub async fn lcd_task(
 
         if rerender {
             rerender = false;
-            let mut state = global_state.state.lock().await;
-            clamp_selection(&mut state);
-            live = render(&state, &mut oled.frame, &local);
-            drop(state);
+            global_state.ui.write(clamp_selection);
+            live = global_state.view(|v| render(v, &mut oled.frame, &local));
             if live != Live::Timer {
                 local.timer_ms = None;
             }
@@ -126,7 +128,7 @@ pub async fn lcd_task(
 
         crate::watchdog::heartbeat(crate::watchdog::TaskId::Lcd);
         // bounded so the heartbeat keeps beating while a live screen waits for its signal
-        let event = with_timeout(EVENT_TIMEOUT, next_event(global_state, wifi_setup_sig, live, &local));
+        let event = with_timeout(EVENT_TIMEOUT, next_event(global_state, &mut timer, wifi_setup_sig, live, &local));
         let Ok(event) = event.await else {
             continue;
         };
@@ -138,9 +140,7 @@ pub async fn lcd_task(
                 flush(&mut oled).await;
             }
             Event::InspectionFrame(start) => {
-                let elapsed = start.elapsed().as_millis();
-                crate::state::set_inspection_time(Some(elapsed));
-                ui::digits(&mut oled.frame, elapsed);
+                ui::digits(&mut oled.frame, start.elapsed().as_millis());
                 flush(&mut oled).await;
             }
             Event::Progress(p) => {
@@ -156,7 +156,7 @@ pub async fn lcd_task(
                 rerender = true;
             }
             Event::WifiSetup => {
-                global_state.state.lock().await.scene = Scene::AutoSetupWait;
+                global_state.solve.update(|s| s.scene = Scene::AutoSetupWait);
             }
             Event::SleepTick => sleep_check(&mut oled, global_state, last_update).await,
         }
@@ -176,13 +176,14 @@ enum Event {
 
 async fn next_event(
     gs: GlobalState,
+    timer: &mut embassy_sync::watch::Receiver<'_, crate::state::Cs, u64, 2>,
     wifi_setup_sig: &Signal<CriticalSectionRawMutex, ()>,
     live: Live,
     local: &Local,
 ) -> Event {
     let other = async {
         match live {
-            Live::Timer => Event::TimerValue(gs.timer_signal.wait().await),
+            Live::Timer => Event::TimerValue(timer.changed().await),
             Live::Inspection(start) => {
                 Timer::after_millis(LCD_INSPECTION_FRAME_TIME).await;
                 Event::InspectionFrame(start)
@@ -212,7 +213,7 @@ async fn next_event(
         }
     };
 
-    match select(gs.state.wait(), other).await {
+    match select(CHANGED.wait(), other).await {
         Either::First(()) => Event::State,
         Either::Second(event) => event,
     }
@@ -228,11 +229,11 @@ async fn sleep_check(oled: &mut Ssd1309<SharedI2C>, global_state: GlobalState, l
     use crate::consts::{DEEPER_SLEEP_AFTER_MS, SLEEP_AFTER_MS};
 
     let idle_ms = last_update.elapsed().as_millis();
-    let can_sleep = global_state.state.value().await.scene.can_sleep();
+    let can_sleep = global_state.solve.read(|s| s.scene.can_sleep());
     if !power::is_sleeping() && idle_ms > SLEEP_AFTER_MS && can_sleep {
         enter_sleep(oled, global_state).await;
     }
-    if power::is_sleeping() && !crate::state::deeper_sleep_state() && idle_ms > DEEPER_SLEEP_AFTER_MS {
+    if power::is_sleeping() && !crate::power::is_deeper_sleeping() && idle_ms > DEEPER_SLEEP_AFTER_MS {
         oled.frame.clear();
         ui::centered_screen(&mut oled.frame, "Sleep", ui::SMALL_FONT);
         flush(oled).await;
@@ -250,19 +251,18 @@ async fn enter_sleep(oled: &mut Ssd1309<SharedI2C>, global_state: GlobalState) {
     ui::centered_screen(&mut oled.frame, "Sleep", ui::SMALL_FONT);
     flush(oled).await;
 
-    {
-        let mut state = global_state.state.lock().await;
-        state.server_connected = Some(false);
-        state.wifi_connected = Some(false);
-    }
+    global_state.status.update(|s| {
+        s.server_connected = Some(false);
+        s.wifi_connected = Some(false);
+    });
 
     power::request_sleep();
-    crate::state::set_trust_server(false);
-    global_state.state.signal_reset();
+    crate::state::SESSION.write(|s| s.trust_server = false);
+    CHANGED.reset(); // these changes must not wake the display again
 }
 
 /// Out-of-range menu selections reset to the first item (was done mid-render before).
-fn clamp_selection(state: &mut crate::utils::signaled_mutex::SignaledMutexGuard<'_, CriticalSectionRawMutex, SignaledGlobalStateInner>) {
+fn clamp_selection(state: &mut Ui) {
     let error_log_items = error_log::entry_count() + 1;
     if state.menu_scene == Some(MenuScene::ErrorLog)
         && state.selected_error_log_entry.is_none()
@@ -276,10 +276,10 @@ fn clamp_selection(state: &mut crate::utils::signaled_mutex::SignaledMutexGuard<
     }
 }
 
-fn top_bar(f: &mut Frame, s: &SignaledGlobalStateInner) {
-    let title = if s.selected_config_menu.is_some() {
+fn top_bar(f: &mut Frame, s: &View) {
+    let title = if s.ui.selected_config_menu.is_some() {
         Some("CONFIG")
-    } else if let Some(ref menu_scene) = s.menu_scene {
+    } else if let Some(ref menu_scene) = s.ui.menu_scene {
         Some(match menu_scene {
             MenuScene::Signing => "SIGN",
             MenuScene::Unsigning => "UNSIGN",
@@ -287,8 +287,8 @@ fn top_bar(f: &mut Frame, s: &SignaledGlobalStateInner) {
             MenuScene::ErrorLog => "ERRLOG",
             MenuScene::BuzzerVolume => "BUZZER",
         })
-    } else if let Some(ref group) = s.solve_group
-        && s.scene == Scene::CompetitorInfo
+    } else if let Some(ref group) = s.solve.solve_group
+        && s.solve.scene == Scene::CompetitorInfo
     {
         Some(group.name.as_str())
     } else {
@@ -298,10 +298,10 @@ fn top_bar(f: &mut Frame, s: &SignaledGlobalStateInner) {
     ui::top_bar(
         f,
         &TopBar {
-            battery: s.battery_status,
-            wifi: s.wifi_connected.unwrap_or(false),
-            server: s.server_connected.unwrap_or(false),
-            stackmat: s.stackmat_connected.unwrap_or(false),
+            battery: (s.battery.percent, s.battery.charging),
+            wifi: s.status.wifi_connected.unwrap_or(false),
+            server: s.status.server_connected.unwrap_or(false),
+            stackmat: s.status.stackmat_connected.unwrap_or(false),
             title,
         },
     );
@@ -319,12 +319,12 @@ fn tr_lines(header: usize, footer: usize) -> Text {
 }
 
 /// Draws the whole frame for the current state (no I/O, no heap).
-fn render(s: &SignaledGlobalStateInner, f: &mut Frame, local: &Local) -> Live {
+fn render(s: &View, f: &mut Frame, local: &Local) -> Live {
     f.clear();
     top_bar(f, s);
 
     let mut text = Text::new();
-    match screen(s) {
+    match screen(s.solve, s.ui, &s.status) {
         Screen::Error(error) => {
             ui::text_main(f, &two_lines(&get_translation(TranslationKey::ERROR_HEADER), error))
         }
@@ -339,7 +339,7 @@ fn render(s: &SignaledGlobalStateInner, f: &mut Frame, local: &Local) -> Live {
             _ = write!(
                 text,
                 "Buzzer Volume\n< {} >\nSubmit to save",
-                crate::state::buzzer_volume()
+                crate::state::SETTINGS.read(|s| s.buzzer_volume)
             );
             ui::text_main(f, &text);
         }
@@ -369,7 +369,7 @@ fn render(s: &SignaledGlobalStateInner, f: &mut Frame, local: &Local) -> Live {
             return Live::Signing;
         }
         Screen::BtDevices(sel) => {
-            let devices = &s.discovered_bluetooth_devices;
+            let devices = &s.ui.discovered_bluetooth_devices;
             ui::menu(f, devices.len() + 2, sel, |i, buf| match devices.get(i) {
                 Some(dev) => _ = write!(buf, "{} [{:X?}]", dev.name, dev.addr),
                 None if i == devices.len() => _ = buf.push_str("Unpair"),
@@ -457,8 +457,8 @@ fn render(s: &SignaledGlobalStateInner, f: &mut Frame, local: &Local) -> Live {
             ui::text_main(f, &two_lines(&header, &footer));
         }
         Screen::CompetitorInfo => {
-            _ = text.push_str(s.competitor_display.as_deref().unwrap_or("------"));
-            if let Some(secondary) = s.solve_group.as_ref().and_then(|g| g.secondary_text.as_ref()) {
+            _ = text.push_str(s.solve.competitor_display.as_deref().unwrap_or("------"));
+            if let Some(secondary) = s.solve.solve_group.as_ref().and_then(|g| g.secondary_text.as_ref()) {
                 _ = write!(text, "\n{secondary}");
             }
             ui::text_main(f, &text);

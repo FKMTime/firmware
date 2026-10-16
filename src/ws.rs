@@ -6,7 +6,7 @@
 
 use crate::{
     consts::WS_RETRY_MS,
-    state::{GlobalState, Scene, ota_state},
+    state::{GlobalState, Scene},
     structs::{ApiError, DelegateResponsePacket, FromPacket, TimerPacket, TimerPacketInner},
     utils::{UninitBuf, error_log::codes, logger::ReadyLogs},
 };
@@ -46,6 +46,13 @@ static TLS_TX_BUF: UninitBuf<TLS_BUF_SIZE> = UninitBuf::new();
 type Cs = CriticalSectionRawMutex;
 
 static OUT: Channel<Cs, TimerPacket, OUT_QUEUE_LEN> = Channel::new();
+
+/// Set once an update starts; the device resets when it ends.
+static OTA_ACTIVE: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
+
+pub fn ota_active() -> bool {
+    OTA_ACTIVE.load(portable_atomic::Ordering::Relaxed)
+}
 /// Wakes the connection task when something was queued for it.
 static WAKE: Signal<Cs, ()> = Signal::new();
 static PENDING_LOGS: Mutex<Cs, Cell<Option<ReadyLogs>>> = Mutex::new(Cell::new(None));
@@ -98,7 +105,7 @@ pub fn close(code: u16, reason: &'static str) {
 
 #[cfg(feature = "e2e")]
 pub async fn send_test_ack(global_state: &GlobalState) {
-    let data = TimerPacketInner::TestAck(global_state.state.value().await.snapshot_data());
+    let data = TimerPacketInner::TestAck(global_state.solve.read(|s| s.snapshot_data()));
     _ = send(TimerPacket { tag: None, data });
 }
 
@@ -222,20 +229,18 @@ pub async fn ws_task(
 
     loop {
         crate::watchdog::heartbeat(crate::watchdog::TaskId::Ws);
-        crate::state::set_trust_server(false);
-        crate::state::set_secure_rfid(false);
-        crate::state::set_auto_setup(false);
-        crate::state::set_fkm_token(0);
+        crate::state::SESSION.write(crate::state::Session::reset_connection);
 
         let conn = run(global_state, ws_url, stack, &mut bufs, wifi_conn_sig);
         match select(conn, ws_sleep_sig.wait()).await {
             Either::First(Err(e)) => {
-                if ota_state() {
+                if ota_active() {
                     log::error!("Connection lost during OTA update: {e:?}");
                     crate::utils::error_log::add_error(codes::WS_CONNECTION_LOST_DURING_OTA);
                     crate::utils::error_log::save_error_log(global_state.nvs).await;
-                    global_state.state.lock().await.custom_message =
-                        Some(("Connection lost".into(), "during update".into()));
+                    global_state.ui.update(|u| {
+                        u.custom_message = Some(("Connection lost".into(), "during update".into()))
+                    });
 
                     Timer::after_millis(5000).await;
                     esp_hal::system::software_reset();
@@ -246,7 +251,7 @@ pub async fn ws_task(
             Either::Second(false) => {}
         }
 
-        global_state.state.lock().await.server_connected = Some(false);
+        global_state.status.update(|s| s.server_connected = Some(false));
         Timer::after_millis(WS_RETRY_MS).await;
     }
 }
@@ -282,7 +287,7 @@ async fn run(
     bufs: &mut Buffers<'_>,
     wifi_conn_sig: &Signal<Cs, bool>,
 ) -> Result<core::convert::Infallible, WsError> {
-    global_state.state.lock().await.server_connected = Some(false);
+    global_state.status.update(|s| s.server_connected = Some(false));
 
     let ip = resolve(stack, url.hostname).await?;
     let mut tcp = TcpSocket::new(stack, &mut *bufs.tcp_rx, &mut *bufs.tcp_tx);
@@ -290,7 +295,7 @@ async fn run(
     if let Err(e) = tcp.connect((ip, url.port)).await {
         // a reconnected wifi clears the "wifi lost" message even if the server is down
         if wifi_conn_sig.signaled() && wifi_conn_sig.wait().await {
-            global_state.state.lock().await.wifi_connected = Some(true);
+            global_state.status.update(|s| s.wifi_connected = Some(true));
         }
         log::error!("connect error: {e:?}");
         return Err(WsError::Connect);
@@ -309,11 +314,10 @@ async fn run(
         Socket::Raw(tcp)
     };
 
-    {
-        let mut state = global_state.state.lock().await;
-        state.server_connected = Some(true);
-        state.wifi_connected = Some(true);
-    }
+    global_state.status.update(|s| {
+        s.server_connected = Some(true);
+        s.wifi_connected = Some(true);
+    });
     log::info!("connected!");
 
     let mut tx = WsTxFramer::new(true, &mut *bufs.ws_tx);
@@ -321,12 +325,12 @@ async fn run(
     handshake(global_state, url, &mut socket, &mut tx, &mut rx).await?;
 
     #[cfg(feature = "auto_add")]
-    if !global_state.state.lock().await.device_added.unwrap_or(false) {
+    if !global_state.status.read(|s| s.device_added).unwrap_or(false) {
         _ = send(TimerPacket {
             tag: None,
             data: TimerPacketInner::Add {
                 firmware: crate::version::FIRMWARE.into(),
-                sign_key: crate::state::sign_key(),
+                sign_key: crate::state::SETTINGS.read(|s| s.sign_key),
             },
         });
     }
@@ -350,7 +354,7 @@ async fn run(
             Either3::First(Ok(n)) => rx.advance(n),
             Either3::Second(()) | Either3::Third(true) => continue,
             Either3::Third(false) => {
-                global_state.state.lock().await.wifi_connected = Some(false);
+                global_state.status.update(|s| s.wifi_connected = Some(false));
                 return Err(WsError::WifiDisconnected);
             }
         }
@@ -463,7 +467,7 @@ async fn handshake(
 
     if let Some(random_signed) = random_signed {
         let mut key = [0; 16];
-        key[..4].copy_from_slice(&crate::state::sign_key().to_be_bytes());
+        key[..4].copy_from_slice(&crate::state::SETTINGS.read(|s| s.sign_key).to_be_bytes());
         let mut block = random_signed.to_be_bytes();
         global_state
             .aes
@@ -477,12 +481,14 @@ async fn handshake(
         log::debug!("[trust] random: {random}, recv_random: {recv_random} | fkm_token: {fkm_token}");
 
         if random == recv_random {
-            crate::state::set_trust_server(true);
-            crate::state::set_fkm_token(fkm_token);
+            crate::state::SESSION.write(|s| {
+                s.trust_server = true;
+                s.fkm_token = fkm_token;
+            });
         } else {
             #[cfg(not(feature = "e2e"))]
             {
-                global_state.state.lock().await.error_text = Some("Server Not Trusted!".into());
+                global_state.ui.update(|u| u.error_text = Some("Server Not Trusted!".into()));
             }
         }
     }
@@ -594,25 +600,26 @@ async fn handle_packet(
             auto_setup,
             sound_enabled,
         } => {
-            let mut state = global_state.state.lock().await;
-            state.device_added = Some(*added);
-            state.sound_enabled = *sound_enabled;
+            global_state.status.update(|s| s.device_added = Some(*added));
             crate::translations::clear_locales();
             for locale in locales {
                 crate::translations::process_locale(&locale.locale, &locale.translations);
             }
-            crate::translations::select_locale(default_locale, &global_state);
+            crate::translations::select_locale(default_locale);
             crate::translations::set_default_locale();
 
-            crate::state::set_fkm_token(*fkm_token);
-            crate::state::set_secure_rfid(*secure_rfid);
-            crate::state::set_auto_setup(*auto_setup);
+            crate::state::SETTINGS.write(|s| s.sound_enabled = *sound_enabled);
+            crate::state::SESSION.write(|s| {
+                s.fkm_token = *fkm_token;
+                s.secure_rfid = *secure_rfid;
+                s.auto_setup = *auto_setup;
+            });
         }
         TimerPacketInner::ApiError(e) => {
-            global_state.state.lock().await.error_text = Some(e.error.clone());
+            global_state.ui.update(|u| u.error_text = Some(e.error.clone()));
         }
         TimerPacketInner::CustomMessage { line1, line2 } => {
-            global_state.state.lock().await.custom_message = Some((line1.clone(), line2.clone()));
+            global_state.ui.update(|u| u.custom_message = Some((line1.clone(), line2.clone())));
         }
         TimerPacketInner::EpochTime { current_epoch } => crate::state::set_epoch(*current_epoch),
         TimerPacketInner::DelegateResponse(_) if packet.tag.is_none() => {
@@ -632,14 +639,14 @@ async fn handle_packet(
                 return Ok(());
             }
             #[cfg(not(feature = "e2e"))]
-            if !crate::state::trust_server() {
+            if !crate::state::SESSION.read(|s| s.trust_server) {
                 return Ok(());
             }
 
             log::info!("Start update: {firmware}/{version} size: {size} crc: {crc}");
             ota.begin(*size, *crc).map_err(WsError::Ota)?;
-            crate::state::set_ota_state(true);
-            global_state.state.lock().await.scene = Scene::Update;
+            OTA_ACTIVE.store(true, portable_atomic::Ordering::Relaxed);
+            global_state.solve.update(|s| s.scene = Scene::Update);
 
             OUT.clear();
             owed.ota_ack = true;
@@ -652,7 +659,7 @@ async fn handle_packet(
                 crate::consts::BUZZER_VOLUME_MIN,
                 crate::consts::BUZZER_VOLUME_MAX,
             );
-            crate::state::set_buzzer_volume(volume);
+            crate::state::SETTINGS.write(|s| s.buzzer_volume = volume);
             if let Err(e) = global_state
                 .nvs
                 .set(&crate::consts::NVS_BUZZER_VOLUME, volume)
@@ -687,11 +694,11 @@ fn handle_ota_chunk(
     ota: &mut Ota<FlashStorage<'static>>,
     owed: &mut Owed,
 ) -> Result<(), WsError> {
-    if !ota_state() {
+    if !ota_active() {
         return Ok(());
     }
     #[cfg(not(feature = "e2e"))]
-    if !crate::state::trust_server() {
+    if !crate::state::SESSION.read(|s| s.trust_server) {
         return Ok(());
     }
 
@@ -722,13 +729,13 @@ async fn parse_test_packet(test_packet: crate::structs::TestPacketData, global_s
     let e2e = &global_state.e2e;
     match test_packet {
         TestPacketData::ResetState => {
-            global_state.state.lock().await.reset_solve_state(None).await;
+            global_state.reset_solve(false).await;
             e2e.stackmat_sig.signal((StackmatTimerState::Reset, 0));
             send_test_ack(global_state).await;
         }
         TestPacketData::HardStateReset => {
             e2e.stackmat_sig.signal((StackmatTimerState::Reset, 0));
-            global_state.state.lock().await.hard_state_reset().await;
+            global_state.hard_reset();
         }
         TestPacketData::ScanCard(uid) => e2e.card_scan_sig.signal(uid as u128),
         TestPacketData::ButtonPress { pin, press_time } => {
