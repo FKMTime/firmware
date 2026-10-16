@@ -41,10 +41,8 @@ esp-hal-ota = { version = "0.7.1", features = ["esp32c3"] }
 esp32c3 = { version = "0.33.0" }
 anyhow = { version = "1.0.104", default-features = false }
 embedded-hal-bus = { version = "0.3.0", features = ["async"] }
-embedded-tls = { git = "https://github.com/embassy-rs/embedded-tls", rev = "58126ee5c453147a5e00684075f001d7ef962ca3", default-features = false, features = ["log", "p256", "rsa"] }
+embedded-tls = { git = "https://github.com/embassy-rs/embedded-tls", rev = "58126ee5c453147a5e00684075f001d7ef962ca3", default-features = false, features = ["log", "p256"] }
 # same embassy rev as embedded-tls uses
-# riscv32imc has no CAS: let spin (via rsa -> lazy_static) use portable-atomic
-spin = { version = "0.9", default-features = false, features = ["portable_atomic"] }
 embassy-crypto = { git = "https://github.com/embassy-rs/embassy", rev = "822a76ea91f2c0885c6eb0c65fe91181e31133e1" }
 embassy-crypto-rustcrypto = { git = "https://github.com/embassy-rs/embassy", rev = "822a76ea91f2c0885c6eb0c65fe91181e31133e1", features = ["embassy-crypto-sha256", "embassy-crypto-hmac-sha256", "embassy-crypto-aes128-gcm", "embassy-crypto-p256-arith", "embassy-crypto-p256-ecdh", "embassy-crypto-p256-ecdsa"] }
 esp-hal-mfrc522 = { version = "0.4.0", features = ["embassy-time"] }

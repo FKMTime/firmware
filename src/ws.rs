@@ -171,7 +171,6 @@ async fn ws_loop(
         let mut socket = if ws_url.secure {
             let mut tls = TlsConnection::new(socket, ssl_rx_buf, ssl_tx_buf);
 
-            // the "rsa" feature makes TlsConfig offer RSA signatures by default
             let config = TlsConfig::new();
             tls.open(TlsContext::new(&config, InsecureNoVerify))
             .await
