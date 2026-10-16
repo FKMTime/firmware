@@ -17,6 +17,76 @@ pub mod utils {
 pub mod structs;
 #[path = "old_structs.rs"]
 pub mod old_structs;
+#[path = "../../src/bluetooth/codec.rs"]
+pub mod ble_codec;
+
+#[cfg(test)]
+mod ble_tests {
+    use crate::ble_codec::*;
+
+    #[test]
+    fn decodes_legacy_bond_as_random_address() {
+        // pre-version format: [0..6] addr, [6..22] ltk, [22] level, rest zero
+        let mut buf = [0u8; BOND_LEN];
+        buf[..6].copy_from_slice(&[1, 2, 3, 4, 5, 6]);
+        buf[6..22].copy_from_slice(&[7; 16]);
+        buf[22] = 1;
+        let bond = decode_bond(&buf).unwrap();
+        assert_eq!(bond.addr, [1, 2, 3, 4, 5, 6]);
+        assert_eq!(bond.ltk, [7; 16]);
+        assert_eq!(bond.security_level, 1);
+        assert!(bond.random_addr);
+    }
+
+    #[test]
+    fn bond_round_trip() {
+        for random_addr in [true, false] {
+            let bond = BondRecord {
+                addr: [9, 8, 7, 6, 5, 4],
+                random_addr,
+                ltk: [3; 16],
+                security_level: 2,
+            };
+            assert_eq!(decode_bond(&encode_bond(&bond)), Some(bond));
+        }
+    }
+
+    #[test]
+    fn rejects_bad_bonds() {
+        assert_eq!(decode_bond(&[]), None);
+        assert_eq!(decode_bond(&[0; 31]), None);
+        let mut buf = [0u8; BOND_LEN];
+        buf[22] = 3; // unknown security level
+        assert_eq!(decode_bond(&buf), None);
+        buf[22] = 0;
+        buf[31] = 7; // unknown version
+        assert_eq!(decode_bond(&buf), None);
+    }
+
+    #[test]
+    fn parses_device_names() {
+        // flags, then complete local name
+        let adv = [
+            2, 0x01, 0x06, 9, 0x09, b'F', b'K', b'M', b'D', b'-', b'1', b'2', b'3',
+        ];
+        assert_eq!(parse_device_name(&adv), Some("FKMD-123"));
+        assert!(is_fkm_display("FKMD-123"));
+        assert!(!is_fkm_display("Phone"));
+        // shortened name ending exactly at the buffer end
+        assert_eq!(parse_device_name(&[3, 0x08, b'a', b'b']), Some("ab"));
+        // no name, zero length, truncated, empty, invalid utf8
+        assert_eq!(parse_device_name(&[2, 0x01, 0x06]), None);
+        assert_eq!(parse_device_name(&[0, 0x09, b'a']), None);
+        assert_eq!(parse_device_name(&[5, 0x09, b'a']), None);
+        assert_eq!(parse_device_name(&[]), None);
+        assert_eq!(parse_device_name(&[2, 0x09, 0xff]), None);
+        // never panics on arbitrary input
+        for n in 0..=255u8 {
+            let junk = [n, n.wrapping_mul(7), 0x09, n, 1, 0x08];
+            let _ = parse_device_name(&junk);
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
