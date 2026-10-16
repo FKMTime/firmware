@@ -18,7 +18,7 @@ esp-storage = { version = "0.10.0", features = ["esp32c3", "embedded-storage"] }
 embedded-storage = "0.3.2"
 static_cell = { version = "2.1.1", features = ["nightly"] }
 heapless = { version = "0.9.3", default-features = false }
-esp-alloc = "0.11.0"
+esp-alloc = { version = "0.11.0", features = ["internal-heap-stats"] }
 
 esp-hal-wifimanager = { version = "0.6.0", default-features = false, features = ["ap", "ble", "esp32c3", "ota", "custom_panel"] }
 serde = { version = "1.0.229", features = ["alloc", "derive"], default-features = false }
