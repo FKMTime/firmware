@@ -36,6 +36,12 @@ impl<const N: usize> core::ops::Deref for BoundedString<N> {
     }
 }
 
+impl<const N: usize> core::ops::DerefMut for BoundedString<N> {
+    fn deref_mut(&mut self) -> &mut str {
+        self.0.as_mut_str()
+    }
+}
+
 impl<const N: usize> From<&str> for BoundedString<N> {
     fn from(s: &str) -> Self {
         Self::truncated(s)

@@ -454,8 +454,8 @@ async fn ws_rw(
 
                                 for locale in locales {
                                     crate::translations::process_locale(
-                                        locale.locale,
-                                        locale.translations,
+                                        &locale.locale,
+                                        &locale.translations,
                                     );
                                 }
 

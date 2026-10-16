@@ -8,6 +8,8 @@ extern crate alloc;
 pub mod bounded;
 #[path = "../../src/utils/ring_log.rs"]
 pub mod ring_log;
+#[path = "../../src/utils/text.rs"]
+pub mod text;
 pub mod utils {
     pub use crate::bounded;
 }

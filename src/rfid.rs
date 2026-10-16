@@ -474,7 +474,7 @@ async fn process_card_info_response(
                 }
                 _ => {
                     state.reset_solve_state(None).await;
-                    state.error_text = Some(get_translation(TranslationKey::EMPTY_GROUPS_ERROR).into());
+                    state.error_text = Some(get_translation(TranslationKey::EMPTY_GROUPS_ERROR).as_str().into());
                 }
             }
         }
