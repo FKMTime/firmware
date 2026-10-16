@@ -85,7 +85,12 @@ async fn main(spawner: Spawner) {
     });
 
     // wifimanager 0.5+ keeps its signals/buffers in statics instead of the heap
+    #[cfg(not(feature = "sim"))]
     esp_alloc::heap_allocator!(size: 112 * 1024);
+    // shortcut: sim statics leave ~15.6 KB of main stack, which wifimanager 0.6.1's Wi-Fi init
+    // overruns (silent corruption); trade heap for stack until init_wm uses less stack
+    #[cfg(feature = "sim")]
+    esp_alloc::heap_allocator!(size: 100 * 1024);
 
     set_brownout_detection(false);
     let board = Board::init(peripherals);

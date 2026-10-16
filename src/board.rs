@@ -131,9 +131,12 @@ impl Board {
                 .with_frequency(esp_hal::time::Rate::from_khz(400)),
         );
 
+        // esp-emu models no I2C devices: the sim build runs every I2C device as absent
+        #[cfg(feature = "sim")]
+        let i2c = i2c.ok().filter(|_| false).ok_or(());
+
         let i2c = match i2c {
-            // esp-emu models no I2C devices: the sim build runs every I2C device as absent
-            Ok(i2c) if !cfg!(feature = "sim") => {
+            Ok(i2c) => {
                 let i2c = i2c
                     .with_sda(peripherals.GPIO8)
                     .with_scl(peripherals.GPIO9)
@@ -141,7 +144,7 @@ impl Board {
 
                 SharedI2C::new(Some(i2c))
             }
-            _ => SharedI2C::new(None),
+            Err(_) => SharedI2C::new(None),
         };
 
         Board {
