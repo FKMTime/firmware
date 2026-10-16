@@ -2,11 +2,13 @@
 //! renderers (`lcd_v3`, `lcd_v4`) only draw it.
 
 use crate::{
-    consts::INSPECTION_TIME_PLUS2,
-    state::{ErrorLogEntryStage, MenuScene, Scene, Solve, Status, Ui},
+    consts::{INSPECTION_TIME_PLUS2, LCD_INSPECTION_FRAME_TIME},
+    state::{CHANGED, Cs, ErrorLogEntryStage, GlobalState, MenuScene, Scene, Solve, Status, Ui},
     translations::TranslationKey,
 };
-use embassy_time::Instant;
+use embassy_futures::select::{Either, Either3, select, select3};
+use embassy_sync::{signal::Signal, watch::Receiver};
+use embassy_time::{Duration, Instant, Timer};
 
 pub enum Screen<'a> {
     Error(&'a str),
@@ -144,5 +146,89 @@ pub fn screen<'a>(s: &'a Solve, ui: &'a Ui, status: &Status) -> Screen<'a> {
             })
         }
         Scene::Update => Screen::Update,
+    }
+}
+
+/// Which live updates the shown screen needs besides state changes.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Live {
+    /// nothing live: the idle tick (scroll / sleep check) runs
+    Idle,
+    Signing,
+    WifiConnect,
+    Inspection(Instant),
+    Timer,
+    Update,
+}
+
+/// Values that only the display keeps (they arrive as signals, not state).
+#[derive(Default)]
+pub struct Local {
+    /// last timer value of the current solve (Timer scene)
+    pub timer_ms: Option<u64>,
+    pub progress: Option<u8>,
+    pub sign_result: Option<(bool, Instant)>,
+}
+
+/// How long a sign/unsign result stays on screen.
+pub const SIGN_RESULT_MS: u64 = 300;
+
+pub enum Event {
+    State,
+    TimerValue(u64),
+    InspectionFrame(Instant),
+    Progress(u8),
+    SignResult(bool),
+    SignResultEnd,
+    WifiSetup,
+    /// `idle_tick` elapsed (text scrolling, sleep check)
+    Tick,
+}
+
+/// The next thing the display has to react to: a state change, or the live update of the
+/// shown screen (`Tick` every `idle_tick` when nothing is live).
+pub async fn next_event(
+    gs: GlobalState,
+    timer: &mut Receiver<'_, Cs, u64, 2>,
+    wifi_setup_sig: &Signal<Cs, ()>,
+    live: Live,
+    local: &Local,
+    idle_tick: Duration,
+) -> Event {
+    let other = async {
+        match live {
+            Live::Timer => Event::TimerValue(timer.changed().await),
+            Live::Inspection(start) => {
+                Timer::after_millis(LCD_INSPECTION_FRAME_TIME).await;
+                Event::InspectionFrame(start)
+            }
+            Live::Update => Event::Progress(gs.update_progress.wait().await),
+            Live::WifiConnect => {
+                wifi_setup_sig.wait().await;
+                Event::WifiSetup
+            }
+            Live::Signing => {
+                let result_end = async {
+                    match local.sign_result {
+                        Some((_, at)) => Timer::at(at + Duration::from_millis(SIGN_RESULT_MS)).await,
+                        None => core::future::pending().await,
+                    }
+                };
+                match select3(gs.sign_unsign_progress.wait(), result_end, Timer::after(idle_tick)).await {
+                    Either3::First(ok) => Event::SignResult(ok),
+                    Either3::Second(()) => Event::SignResultEnd,
+                    Either3::Third(()) => Event::Tick,
+                }
+            }
+            Live::Idle => {
+                Timer::after(idle_tick).await;
+                Event::Tick
+            }
+        }
+    };
+
+    match select(CHANGED.wait(), other).await {
+        Either::First(()) => Event::State,
+        Either::Second(event) => event,
     }
 }

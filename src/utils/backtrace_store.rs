@@ -88,14 +88,12 @@ pub fn record_watchdog(task: u8) {
 }
 
 /// Moves the crash record (if any) into the error log. Call after `load_error_log`.
-///
-/// Returns how many crashes happened in a row before this boot.
-pub fn report_saved_crash() -> u32 {
+pub fn report_saved_crash() {
     if !is_valid() {
         set(W_KIND, KIND_NONE);
         set(W_CONSECUTIVE, 0);
         seal();
-        return 0;
+        return;
     }
 
     let consecutive = get(W_CONSECUTIVE);
@@ -136,7 +134,6 @@ pub fn report_saved_crash() -> u32 {
 
     set(W_KIND, KIND_NONE);
     seal();
-    consecutive
 }
 
 /// Called once the firmware has run fine for a while: the next crash starts a new count.
@@ -147,7 +144,7 @@ pub fn mark_healthy() {
     }
 }
 
-pub fn backtrace() -> [Option<usize>; MAX_BACKTRACE_ADDRESSES] {
+fn backtrace() -> [Option<usize>; MAX_BACKTRACE_ADDRESSES] {
     let fp = unsafe {
         let mut _tmp: u32;
         core::arch::asm!("mv {0}, x8", out(reg) _tmp);
@@ -157,7 +154,7 @@ pub fn backtrace() -> [Option<usize>; MAX_BACKTRACE_ADDRESSES] {
     backtrace_internal(fp, 2)
 }
 
-pub fn backtrace_internal(fp: u32, suppress: i32) -> [Option<usize>; MAX_BACKTRACE_ADDRESSES] {
+fn backtrace_internal(fp: u32, suppress: i32) -> [Option<usize>; MAX_BACKTRACE_ADDRESSES] {
     let mut result = [None; MAX_BACKTRACE_ADDRESSES];
     let mut index = 0;
 

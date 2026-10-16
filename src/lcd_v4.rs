@@ -1,18 +1,16 @@
 use crate::{
-    consts::LCD_INSPECTION_FRAME_TIME,
     power,
     state::{CHANGED, ErrorLogEntryStage, GlobalState, MenuScene, Scene, Ui, View},
     translations::{TranslationKey, get_translation, get_translation_params},
     utils::{
         error_log::{self, ErrorLogEntry, codes},
         oled_ui::{self as ui, Frame, Line64, QrData, TopBar},
-        screen::{Screen, screen},
+        screen::{Event, Live, Local, SIGN_RESULT_MS, Screen, next_event, screen},
         shared_i2c::SharedI2C,
         ssd1309::Ssd1309,
     },
 };
 use core::fmt::Write;
-use embassy_futures::select::{Either, Either3, select, select3};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Instant, Timer, with_timeout};
 use esp_hal::gpio::Output;
@@ -21,29 +19,9 @@ pub use ui::DETAILS_VISIBLE_LINES;
 
 type Text = heapless::String<256>;
 
-/// Which live updates the shown screen needs besides state changes.
-#[derive(Clone, Copy, PartialEq)]
-enum Live {
-    /// nothing live: the 1 s sleep-check tick runs
-    Idle,
-    Signing,
-    WifiConnect,
-    Inspection(Instant),
-    Timer,
-    Update,
-}
-
-/// Values that only the display keeps (they arrive as signals, not state).
-#[derive(Default)]
-struct Local {
-    /// last timer value of the current solve (Timer scene)
-    timer_ms: Option<u64>,
-    progress: u8,
-    sign_result: Option<(bool, Instant)>,
-}
-
-const SIGN_RESULT_MS: u64 = 300;
 const EVENT_TIMEOUT: Duration = Duration::from_secs(30);
+/// Idle redraw-free tick: the sleep check.
+const IDLE_TICK: Duration = Duration::from_secs(1);
 
 async fn flush(oled: &mut Ssd1309<SharedI2C>) {
     match with_timeout(Duration::from_millis(1500), oled.flush()).await {
@@ -129,7 +107,7 @@ pub async fn lcd_task(
 
         crate::watchdog::heartbeat(crate::watchdog::TaskId::Lcd);
         // bounded so the heartbeat keeps beating while a live screen waits for its signal
-        let event = with_timeout(EVENT_TIMEOUT, next_event(global_state, &mut timer, wifi_setup_sig, live, &local));
+        let event = with_timeout(EVENT_TIMEOUT, next_event(global_state, &mut timer, wifi_setup_sig, live, &local, IDLE_TICK));
         let Ok(event) = event.await else {
             continue;
         };
@@ -145,7 +123,7 @@ pub async fn lcd_task(
                 flush(&mut oled).await;
             }
             Event::Progress(p) => {
-                local.progress = p;
+                local.progress = Some(p);
                 rerender = true;
             }
             Event::SignResult(ok) => {
@@ -159,69 +137,9 @@ pub async fn lcd_task(
             Event::WifiSetup => {
                 global_state.solve.update(|s| s.scene = Scene::AutoSetupWait);
             }
-            Event::SleepTick => sleep_check(&mut oled, global_state, last_update).await,
+            Event::Tick => sleep_check(&mut oled, global_state, last_update).await,
         }
     }
-}
-
-enum Event {
-    State,
-    TimerValue(u64),
-    InspectionFrame(Instant),
-    Progress(u8),
-    SignResult(bool),
-    SignResultEnd,
-    WifiSetup,
-    SleepTick,
-}
-
-async fn next_event(
-    gs: GlobalState,
-    timer: &mut embassy_sync::watch::Receiver<'_, crate::state::Cs, u64, 2>,
-    wifi_setup_sig: &Signal<CriticalSectionRawMutex, ()>,
-    live: Live,
-    local: &Local,
-) -> Event {
-    let other = async {
-        match live {
-            Live::Timer => Event::TimerValue(timer.changed().await),
-            Live::Inspection(start) => {
-                Timer::after_millis(LCD_INSPECTION_FRAME_TIME).await;
-                Event::InspectionFrame(start)
-            }
-            Live::Update => Event::Progress(gs.update_progress.wait().await),
-            Live::WifiConnect => {
-                wifi_setup_sig.wait().await;
-                Event::WifiSetup
-            }
-            Live::Signing => {
-                let result_end = async {
-                    match local.sign_result {
-                        Some((_, at)) => Timer::at(at + Duration::from_millis(SIGN_RESULT_MS)).await,
-                        None => core::future::pending().await,
-                    }
-                };
-                match select3(gs.sign_unsign_progress.wait(), result_end, sleep_tick()).await {
-                    Either3::First(ok) => Event::SignResult(ok),
-                    Either3::Second(()) => Event::SignResultEnd,
-                    Either3::Third(()) => Event::SleepTick,
-                }
-            }
-            Live::Idle => {
-                sleep_tick().await;
-                Event::SleepTick
-            }
-        }
-    };
-
-    match select(CHANGED.wait(), other).await {
-        Either::First(()) => Event::State,
-        Either::Second(event) => event,
-    }
-}
-
-async fn sleep_tick() {
-    Timer::after_millis(1000).await;
 }
 
 /// Sleep after `SLEEP_AFTER_MS` without state changes, deep sleep after `DEEPER_SLEEP_AFTER_MS`.
@@ -495,7 +413,7 @@ fn render(s: &View, f: &mut Frame, local: &Local) -> Live {
             ui::finished(f, &main, inspection.as_deref(), status.as_deref());
         }
         Screen::Update => {
-            _ = write!(text, "Updating\n{}%", local.progress);
+            _ = write!(text, "Updating\n{}%", local.progress.unwrap_or(0));
             ui::text_main(f, &text);
             return Live::Update;
         }

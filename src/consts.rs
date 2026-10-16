@@ -9,8 +9,9 @@ pub const LOG_SEND_INTERVAL_MS: u64 = 1000;
 
 pub const BATTERY_SEND_INTERVAL_MS: u64 = 60000;
 
-#[allow(dead_code)]
-pub const SCROLL_TICKER_INVERVAL_MS: u64 = 500;
+/// v3 long text scrolls one step per tick.
+#[cfg(feature = "v3")]
+pub const SCROLL_TICK_MS: u64 = 500;
 pub const LCD_INSPECTION_FRAME_TIME: u64 = 1000 / 30;
 
 pub const RFID_RETRY_INIT_MS: u64 = 1500;
