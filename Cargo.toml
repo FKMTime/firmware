@@ -31,7 +31,8 @@ macros = { path = "./macros" }
 nb = "1.1.0"
 embassy-futures = "0.1.2"
 embassy-sync = "0.8.0"
-ws-framer = { version = "0.3.2", default-features = false, features = ["alloc", "http", "getrandom02"] }
+ws-framer = { version = "0.4.0", default-features = false, features = ["http", "getrandom02"] }
+serde-json-core = { version = "0.7.0", default-features = false }
 embedded-hal-async = "1.0.0"
 portable-atomic = { version = "1.15.0", default-features = false }
 critical-section = "1.2.0"

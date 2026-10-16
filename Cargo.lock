@@ -923,7 +923,7 @@ dependencies = [
  "bitvec",
  "convert_case 0.6.0",
  "dd-manifest-tree",
- "itertools 0.14.0",
+ "itertools",
  "prettyplease",
  "proc-macro2",
  "quote",
@@ -2198,6 +2198,7 @@ dependencies = [
  "profont",
  "qrcodegen-no-heap",
  "serde",
+ "serde-json-core",
  "serde_json",
  "static_cell",
  "trouble-host",
@@ -2670,15 +2671,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "itertools"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
-dependencies = [
- "either",
 ]
 
 [[package]]
@@ -3431,7 +3423,7 @@ dependencies = [
  "built",
  "cfg-if",
  "interpolate_name",
- "itertools 0.14.0",
+ "itertools",
  "libc",
  "libfuzzer-sys",
  "log",
@@ -3669,6 +3661,16 @@ checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
 dependencies = [
  "serde_core",
  "serde_derive",
+]
+
+[[package]]
+name = "serde-json-core"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d51e6795fbc00a1b26d78c7a0dbda143215d9dd0ee27c8a63ae0e1ccd6b83706"
+dependencies = [
+ "ryu",
+ "serde",
 ]
 
 [[package]]
@@ -4368,26 +4370,13 @@ dependencies = [
 
 [[package]]
 name = "ws-framer"
-version = "0.3.2"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bacd6cff21323641597fe251e294f823e04292202a6e3c9721a1e8b82bea57bf"
+checksum = "dff96a9b275d0beb2ccdbca7faec38c4fb84fdab77a931867205338cd2466404"
 dependencies = [
  "getrandom 0.2.15",
  "httparse",
  "itoa",
- "ws-framer-macros",
-]
-
-[[package]]
-name = "ws-framer-macros"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67fe343b024b086505b3c647de6eae0c26235934cb9138a180e3ac5f97a6aeda"
-dependencies = [
- "itertools 0.13.0",
- "proc-macro2",
- "quote",
- "syn 2.0.119",
 ]
 
 [[package]]
