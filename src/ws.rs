@@ -48,10 +48,10 @@ type Cs = CriticalSectionRawMutex;
 static OUT: Channel<Cs, TimerPacket, OUT_QUEUE_LEN> = Channel::new();
 
 /// Set once an update starts; the device resets when it ends.
-static OTA_ACTIVE: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
+static OTA_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 pub fn ota_active() -> bool {
-    OTA_ACTIVE.load(portable_atomic::Ordering::Relaxed)
+    OTA_ACTIVE.load(Ordering::Relaxed)
 }
 /// Wakes the connection task when something was queued for it.
 static WAKE: Signal<Cs, ()> = Signal::new();
@@ -71,9 +71,9 @@ static SLOTS: [Slot; REQUEST_SLOTS] = [const {
     }
 }; REQUEST_SLOTS];
 
-/// The untagged `DelegateResponse` push, delivered while a delegate request waits for it.
-static DELEGATE_RESPONSE: Signal<Cs, TimerPacket> = Signal::new();
-static DELEGATE_WAITING: AtomicBool = AtomicBool::new(false);
+/// Tag of the pending delegate request: the server answers it with an untagged
+/// `DelegateResponse` push, routed to that request's slot (0 = none).
+static DELEGATE_TAG: AtomicU64 = AtomicU64::new(0);
 
 /// The outgoing queue is full; nothing was sent.
 #[derive(Debug)]
@@ -114,7 +114,8 @@ struct SlotGuard(&'static Slot);
 
 impl Drop for SlotGuard {
     fn drop(&mut self) {
-        self.0.tag.store(0, Ordering::Release);
+        let tag = self.0.tag.swap(0, Ordering::AcqRel);
+        _ = DELEGATE_TAG.compare_exchange(tag, 0, Ordering::AcqRel, Ordering::Relaxed);
     }
 }
 
@@ -167,24 +168,17 @@ pub async fn delegate_request(
     packet: TimerPacketInner,
     timeout: Duration,
 ) -> Result<DelegateResponsePacket, ApiError> {
-    struct Waiting;
-    impl Drop for Waiting {
-        fn drop(&mut self) {
-            DELEGATE_WAITING.store(false, Ordering::Release);
-        }
-    }
-
-    DELEGATE_RESPONSE.reset();
-    DELEGATE_WAITING.store(true, Ordering::Release);
-    let _waiting = Waiting;
     let slot = send_request(packet)?;
-
-    let response = select(slot.0.response.wait(), DELEGATE_RESPONSE.wait())
+    // no await since queueing, so the connection task can't have seen the response yet
+    DELEGATE_TAG.store(slot.0.tag.load(Ordering::Acquire), Ordering::Release);
+    let response = slot
+        .0
+        .response
+        .wait()
         .with_timeout(timeout)
         .await
         .map_err(|_| timeout_error())?;
-    let (Either::First(p) | Either::Second(p)) = response;
-    DelegateResponsePacket::from_packet(p)
+    DelegateResponsePacket::from_packet(response)
 }
 
 fn api_error(error: &str) -> ApiError {
@@ -214,14 +208,14 @@ pub async fn ws_task(
 
     let mut tcp_rx = [0; WS_BUF_SIZE];
     let mut tcp_tx = [0; WS_BUF_SIZE];
-    let (mut init_a, mut init_b, mut init_c, mut init_d) = (false, false, false, false);
-    // SAFETY: `ws_task` is spawned once and these are the only references to the buffers.
+    // SAFETY: `ws_task` is spawned once and these are the only references to the buffers
+    // (each is taken, and zeroed, exactly once).
     let mut bufs = unsafe {
         Buffers {
-            ws_rx: WS_RX_BUF.get(&mut init_a),
-            ws_tx: WS_TX_BUF.get(&mut init_b),
-            tls_rx: TLS_RX_BUF.get(&mut init_c),
-            tls_tx: TLS_TX_BUF.get(&mut init_d),
+            ws_rx: WS_RX_BUF.get(&mut false),
+            ws_tx: WS_TX_BUF.get(&mut false),
+            tls_rx: TLS_RX_BUF.get(&mut false),
+            tls_tx: TLS_TX_BUF.get(&mut false),
             tcp_rx: &mut tcp_rx,
             tcp_tx: &mut tcp_tx,
         }
@@ -392,8 +386,8 @@ async fn resolve(stack: Stack<'static>, hostname: &str) -> Result<embassy_net::I
         return Ok(addr);
     }
 
-    let res = embassy_net::dns::DnsSocket::new(stack)
-        .query(hostname, embassy_net::dns::DnsQueryType::A)
+    let res = stack
+        .dns_query(hostname, embassy_net::dns::DnsQueryType::A)
         .await
         .map_err(|e| {
             log::error!("[WS]Dns resolver error: {e:?}");
@@ -622,12 +616,6 @@ async fn handle_packet(
             global_state.ui.update(|u| u.custom_message = Some((line1.clone(), line2.clone())));
         }
         TimerPacketInner::EpochTime { current_epoch } => crate::state::set_epoch(*current_epoch),
-        TimerPacketInner::DelegateResponse(_) if packet.tag.is_none() => {
-            if DELEGATE_WAITING.load(Ordering::Acquire) {
-                DELEGATE_RESPONSE.signal(packet);
-            }
-            return Ok(());
-        }
         TimerPacketInner::StartUpdate {
             version,
             size,
@@ -645,7 +633,7 @@ async fn handle_packet(
 
             log::info!("Start update: {firmware}/{version} size: {size} crc: {crc}");
             ota.begin(*size, *crc).map_err(WsError::Ota)?;
-            OTA_ACTIVE.store(true, portable_atomic::Ordering::Relaxed);
+            OTA_ACTIVE.store(true, Ordering::Relaxed);
             global_state.solve.update(|s| s.scene = Scene::Update);
 
             OUT.clear();
@@ -677,7 +665,11 @@ async fn handle_packet(
         _ => {}
     }
 
-    if let Some(tag) = packet.tag
+    let tag = match (&packet.data, packet.tag) {
+        (TimerPacketInner::DelegateResponse(_), None) => Some(DELEGATE_TAG.load(Ordering::Acquire)),
+        (_, tag) => tag,
+    };
+    if let Some(tag) = tag.filter(|&t| t != 0)
         && let Some(slot) = SLOTS
             .iter()
             .find(|s| s.tag.load(Ordering::Acquire) == tag)
