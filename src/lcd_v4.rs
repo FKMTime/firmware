@@ -908,11 +908,12 @@ async fn process_main(
             }
         }
         Scene::CompetitorInfo => {
-            let mut text = current_state
-                .competitor_display
-                .clone()
-                .unwrap_or("------".to_string())
-                .to_string();
+            let mut text = alloc::string::String::from(
+                current_state
+                    .competitor_display
+                    .as_deref()
+                    .unwrap_or("------"),
+            );
 
             if let Some(ref group) = current_state.solve_group
                 && let Some(ref secondary_text) = group.secondary_text

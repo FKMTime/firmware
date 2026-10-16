@@ -1,5 +1,5 @@
 use ag_lcd_async::LcdDisplay;
-use alloc::{rc::Rc, string::ToString};
+use alloc::rc::Rc;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Delay, Duration, Instant, Timer};
 use embedded_hal::digital::OutputPin;
@@ -591,9 +591,10 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
             lcd_driver
                 .print(
                     0,
-                    &current_state
+                    current_state
                         .competitor_display
-                        .unwrap_or("??????".to_string()),
+                        .as_deref()
+                        .unwrap_or("??????"),
                     PrintAlign::Center,
                     true,
                 )

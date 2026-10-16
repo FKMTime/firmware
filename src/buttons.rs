@@ -7,7 +7,6 @@ use crate::{
     structs::DelegateResponsePacket,
     utils::buttons::{Button, ButtonTrigger, ButtonsHandler},
 };
-use alloc::string::ToString;
 use embassy_time::{Instant, Timer};
 use esp_hal::gpio::Input;
 
@@ -398,7 +397,7 @@ async fn submit_up(
                 }
                 2 => {
                     if !crate::state::auto_setup() {
-                        state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
+                        state_val.error_text = Some("AutoSetup Mode Disabled".into());
                         state.state.signal();
                         return Ok(true);
                     }
@@ -407,7 +406,7 @@ async fn submit_up(
                 }
                 3 => {
                     if !crate::state::auto_setup() {
-                        state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
+                        state_val.error_text = Some("AutoSetup Mode Disabled".into());
                         state.state.signal();
                         return Ok(true);
                     }
@@ -445,7 +444,7 @@ async fn submit_up(
                 }
                 2 => {
                     if !crate::state::auto_setup() {
-                        state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
+                        state_val.error_text = Some("AutoSetup Mode Disabled".into());
                         state.state.signal();
                         return Ok(true);
                     }
@@ -454,7 +453,7 @@ async fn submit_up(
                 }
                 3 => {
                     if !crate::state::auto_setup() {
-                        state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
+                        state_val.error_text = Some("AutoSetup Mode Disabled".into());
                         state.state.signal();
                         return Ok(true);
                     }
@@ -495,7 +494,7 @@ async fn submit_up(
         crate::ws::send_packet(crate::structs::TimerPacket {
             tag: None,
             data: crate::structs::TimerPacketInner::Add {
-                firmware: alloc::string::ToString::to_string(crate::version::FIRMWARE),
+                firmware: crate::version::FIRMWARE.into(),
                 sign_key: crate::state::sign_key(),
             },
         })
@@ -745,7 +744,7 @@ async fn delegate_hold(
             let session_id = match &state_val.session_id {
                 Some(sess_id) => sess_id.clone(),
                 None => {
-                    let sess_id = uuid::Uuid::new_v4().to_string();
+                    let sess_id = crate::state::new_session_id();
                     state_val.session_id = Some(sess_id.clone());
                     sess_id
                 }

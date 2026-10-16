@@ -2,7 +2,6 @@ use crate::consts::RFID_RETRY_INIT_MS;
 use crate::state::{GlobalState, MenuScene, current_epoch, sleep_state};
 use crate::structs::{CardInfoResponsePacket, SolveConfirmPacket};
 use crate::translations::{TranslationKey, get_translation};
-use alloc::string::ToString;
 use anyhow::{Result, anyhow};
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal_mfrc522::consts::UidSize;
@@ -205,7 +204,7 @@ pub async fn rfid_task(
         #[cfg(not(feature = "e2e"))]
         if !crate::state::trust_server() {
             log::error!("Skipping card scan. Server not trusted!");
-            global_state.state.lock().await.error_text = Some("Server NOT Trusted!".to_string());
+            global_state.state.lock().await.error_text = Some("Server NOT Trusted!".into());
             _ = mfrc522.picc_halta().await;
             continue;
         }
@@ -475,7 +474,7 @@ async fn process_card_info_response(
                 }
                 _ => {
                     state.reset_solve_state(None).await;
-                    state.error_text = Some(get_translation(TranslationKey::EMPTY_GROUPS_ERROR));
+                    state.error_text = Some(get_translation(TranslationKey::EMPTY_GROUPS_ERROR).into());
                 }
             }
         }
@@ -497,7 +496,7 @@ async fn process_card_info_response(
                 let session_id = match &state.session_id {
                     Some(sess_id) => sess_id.clone(),
                     None => {
-                        let sess_id = uuid::Uuid::new_v4().to_string();
+                        let sess_id = crate::state::new_session_id();
                         state.session_id = Some(sess_id.clone());
                         sess_id
                     }
@@ -548,9 +547,9 @@ async fn process_card_info_response(
                         let first_line = words[..2].join(" ");
                         let second_line = words[2..].join(" ");
 
-                        state.custom_message = Some((first_line, second_line));
+                        state.custom_message = Some((first_line.into(), second_line.into()));
                     } else {
-                        state.custom_message = Some(("Solve".to_string(), "sent".to_string()));
+                        state.custom_message = Some(("Solve".into(), "sent".into()));
                     }
 
                     drop(state);
@@ -565,8 +564,8 @@ async fn process_card_info_response(
                 && state.time_confirmed
             {
                 state.custom_message = Some((
-                    get_translation(TranslationKey::CARDS_CANNOT_BE_THE_SAME_HEADER),
-                    get_translation(TranslationKey::CARDS_CANNOT_BE_THE_SAME_FOOTER),
+                    get_translation(TranslationKey::CARDS_CANNOT_BE_THE_SAME_HEADER).into(),
+                    get_translation(TranslationKey::CARDS_CANNOT_BE_THE_SAME_FOOTER).into(),
                 ));
                 drop(state);
                 Timer::after_millis(8000).await;

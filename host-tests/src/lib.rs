@@ -1,0 +1,77 @@
+//! Host tests for firmware modules that don't depend on esp-hal.
+//! Run: `cargo +stable test --target $(rustc +stable -vV | sed -n 's/host: //p')`
+//! (the firmware's .cargo/config.toml would otherwise select the riscv target).
+//! `old_structs.rs` is the pre-bounded packet definition, kept to check wire compatibility.
+extern crate alloc;
+
+#[path = "../../src/utils/bounded.rs"]
+pub mod bounded;
+#[path = "../../src/utils/ring_log.rs"]
+pub mod ring_log;
+pub mod utils {
+    pub use crate::bounded;
+}
+#[path = "../../src/structs.rs"]
+pub mod structs;
+#[path = "old_structs.rs"]
+pub mod old_structs;
+
+#[cfg(test)]
+mod tests {
+    use crate::{old_structs as old, structs as new};
+    use serde_json::{from_str, to_string, Value};
+
+    // every variant the firmware sends or receives, with realistic values
+    const PACKETS: &[&str] = &[
+        r#"{"tag":12,"data":{"solve":{"solve_time":12345,"penalty":-1,"competitor_id":7,"judge_id":9,"timestamp":1700000000,"session_id":"0b6a7d2e-1f4c-4f7e-9b1a-2c3d4e5f6a7b","delegate":false,"inspection_time":8000,"group_id":"333-r1-g2","sign_key":42}}}"#,
+        r#"{"data":{"card_info_request":{"card_id":123,"is_competitor":true,"sign_key":5}}}"#,
+        r#"{"data":{"card_info_request":{"card_id":123,"is_competitor":false,"attendance_device":true,"sign_key":5}}}"#,
+        r#"{"data":{"battery":{"level":87.5,"voltage":3.91}}}"#,
+        r#"{"data":{"battery":{"level":null,"voltage":null}}}"#,
+        r#"{"data":{"add":{"firmware":"STATION","sign_key":77}}}"#,
+        r#"{"tag":3,"data":{"card_info_response":{"card_id":1,"display":"Jan Kowalski","country_iso2":"PL","can_compete":true,"possible_groups":[{"groupId":"333-r1","name":"3x3 R1","secondaryText":null,"useInspection":true,"limit":600000},{"groupId":"222","name":"2x2","secondaryText":"Group B","useInspection":false,"limit":null}]}}}"#,
+        r#"{"tag":4,"data":{"solve_confirm":{"competitor_id":1,"session_id":"0b6a7d2e-1f4c-4f7e-9b1a-2c3d4e5f6a7b","message":"Solve saved: 12.34"}}}"#,
+        r#"{"tag":5,"data":{"api_error":{"error":"Competitor not found","should_reset_time":true}}}"#,
+        r#"{"data":{"delegate_response":{"should_scan_cards":true,"solve_time":1000,"penalty":2}}}"#,
+        r#"{"data":{"custom_message":{"line1":"Hello","line2":"World"}}}"#,
+        r#"{"data":{"start_update":{"version":"D1700000000","build_time":0,"size":1234567,"crc":99,"firmware":"STATION"}}}"#,
+        r#"{"data":{"device_settings":{"added":true,"locales":[{"locale":"pl","translations":[{"key":"A","translation":"Zażółć \"gęślą\""}]}],"default_locale":"en","fkm_token":1,"secure_rfid":false,"auto_setup":true,"sound_enabled":true}}}"#,
+        r#"{"data":{"epoch_time":{"current_epoch":1700000000}}}"#,
+        r#"{"data":{"set_device_settings":{"volume":5}}}"#,
+        r#"{"data":"attendance_marked"}"#,
+        r#"{"data":"dump_crash_log"}"#,
+    ];
+
+    #[test]
+    fn same_json_as_before() {
+        for json in PACKETS {
+            let o: old::TimerPacket = from_str(json).unwrap_or_else(|e| panic!("old {json}: {e}"));
+            let n: new::TimerPacket = from_str(json).unwrap_or_else(|e| panic!("new {json}: {e}"));
+            let (os, ns) = (to_string(&o).unwrap(), to_string(&n).unwrap());
+            assert_eq!(os, ns, "serialization differs for {json}");
+            assert_eq!(from_str::<Value>(&ns).unwrap(), from_str::<Value>(json).unwrap());
+        }
+    }
+
+    #[test]
+    fn oversized_input_is_truncated_not_rejected() {
+        let long = "x".repeat(500);
+        let json = format!(
+            r#"{{"data":{{"api_error":{{"error":"{long}","should_reset_time":false}}}}}}"#
+        );
+        let n: new::TimerPacket = from_str(&json).unwrap();
+        let new::TimerPacketInner::ApiError(e) = n.data else { panic!() };
+        assert_eq!(e.error.len(), 128);
+
+        let groups = (0..20)
+            .map(|i| format!(r#"{{"groupId":"g{i}","name":"n","secondaryText":null,"useInspection":true,"limit":null}}"#))
+            .collect::<Vec<_>>()
+            .join(",");
+        let json = format!(
+            r#"{{"data":{{"card_info_response":{{"card_id":1,"display":"d","country_iso2":"pl","can_compete":true,"possible_groups":[{groups}]}}}}}}"#
+        );
+        let n: new::TimerPacket = from_str(&json).unwrap();
+        let new::TimerPacketInner::CardInfoResponse(r) = n.data else { panic!() };
+        assert_eq!(r.possible_groups.len(), new::MAX_POSSIBLE_GROUPS);
+    }
+}

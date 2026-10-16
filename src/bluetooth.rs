@@ -3,7 +3,7 @@ use crate::{
     state::{BleAction, GlobalState, MenuScene},
     structs::BleDisplayDevice,
 };
-use alloc::{rc::Rc, string::ToString, vec::Vec};
+use alloc::{rc::Rc, vec::Vec};
 use core::cell::RefCell;
 use embassy_futures::select::{Either, select, select3, select4};
 use embassy_sync::{
@@ -507,7 +507,7 @@ impl EventHandler for BleDiscovery<'_> {
                     log::info!("Disovered FKM Display! [{:?}] ({name})", report.addr);
 
                     _ = self.sender.try_send(BleDisplayDevice {
-                        name: name.to_string(),
+                        name: name.into(),
                         addr: report.addr.into_inner(),
                     });
                 }

@@ -3,7 +3,7 @@ use crate::{
     state::{GlobalState, Scene, ota_state},
     structs::{ApiError, FromPacket, TimerPacket, TimerPacketInner},
 };
-use alloc::{boxed::Box, rc::Rc, string::ToString, vec::Vec};
+use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use core::str::FromStr;
 use embassy_net::{IpAddress, Stack, tcp::TcpSocket};
 use embassy_sync::{
@@ -277,7 +277,7 @@ async fn ws_loop(
                 #[cfg(not(feature = "e2e"))]
                 {
                     global_state.state.lock().await.error_text =
-                        Some("Server Not Trusted!".to_string());
+                        Some("Server Not Trusted!".into());
                 }
             }
         }
@@ -296,7 +296,7 @@ async fn ws_loop(
                 crate::ws::send_packet(crate::structs::TimerPacket {
                     tag: None,
                     data: crate::structs::TimerPacketInner::Add {
-                        firmware: alloc::string::ToString::to_string(crate::version::FIRMWARE),
+                        firmware: crate::version::FIRMWARE.into(),
                         sign_key: crate::state::sign_key(),
                     },
                 })
@@ -323,7 +323,7 @@ async fn ws_loop(
                     crate::utils::error_log::save_error_log(&global_state.nvs).await;
 
                     global_state.state.lock().await.custom_message =
-                        Some(("Connection lost".to_string(), "during update".to_string()));
+                        Some(("Connection lost".into(), "during update".into()));
 
                     Timer::after_millis(5000).await;
                     esp_hal::system::software_reset();
@@ -728,7 +728,7 @@ where
         .await
         .map_err(|_| ApiError {
             should_reset_time: false,
-            error: "Channel full".to_string(),
+            error: "Channel full".into(),
         })?;
 
     let packet = if timeout {
@@ -737,7 +737,7 @@ where
             .await
             .map_err(|_| ApiError {
                 should_reset_time: false,
-                error: "Communication timeout!".to_string(),
+                error: "Communication timeout!".into(),
             })?
     } else {
         wait_for_tagged_response(tag).await

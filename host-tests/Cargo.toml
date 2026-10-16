@@ -1,0 +1,15 @@
+[package]
+name = "fkm-host-tests"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive", "alloc"] }
+serde_json = "1"
+heapless = "0.9.3"
+
+[features]
+e2e = []
+v3 = []
+v4 = []

@@ -1,9 +1,14 @@
 use crate::consts::NVS_SAVED_STATE;
 use crate::{
-    structs::{BleDisplayDevice, PossibleGroup},
-    utils::signaled_mutex::SignaledMutex,
+    structs::{
+        BleDisplayDevice, DisplayText, MAX_BLE_DEVICES, MAX_POSSIBLE_GROUPS, MessageText,
+        PossibleGroup, SessionId,
+    },
+    utils::{
+        bounded::{BoundedVec, CappedVec},
+        signaled_mutex::SignaledMutex,
+    },
 };
-use alloc::{string::String, vec::Vec};
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
     mutex::Mutex,
@@ -119,6 +124,12 @@ pub fn inspection_time() -> Option<u64> {
 #[inline(always)]
 pub fn set_inspection_time(time: Option<u64>) {
     INSPECTION_TIME.set(time)
+}
+
+/// A fresh random (v4) uuid, formatted without allocating.
+pub fn new_session_id() -> SessionId {
+    let mut buf = [0; uuid::fmt::Hyphenated::LENGTH];
+    SessionId::truncated(uuid::Uuid::new_v4().hyphenated().encode_lower(&mut buf))
 }
 
 /// Sets the epoch from the server's `current_epoch` (seconds).
@@ -305,13 +316,13 @@ pub struct SignaledGlobalStateInner {
     pub inspection_end: Option<Instant>,
     pub solve_time: Option<u64>,
     pub penalty: Option<i8>,
-    pub session_id: Option<String>,
+    pub session_id: Option<SessionId>,
     pub time_confirmed: bool,
     pub solve_group: Option<PossibleGroup>,
 
-    pub error_text: Option<String>,
+    pub error_text: Option<MessageText>,
 
-    pub possible_groups: Vec<PossibleGroup>,
+    pub possible_groups: CappedVec<PossibleGroup, MAX_POSSIBLE_GROUPS>,
     pub group_selected_idx: usize,
 
     pub selected_config_menu: Option<usize>,
@@ -320,7 +331,7 @@ pub struct SignaledGlobalStateInner {
     pub error_log_entry_stage: Option<ErrorLogEntryStage>,
     pub error_log_details_scroll: usize,
 
-    pub discovered_bluetooth_devices: Vec<BleDisplayDevice>,
+    pub discovered_bluetooth_devices: BoundedVec<BleDisplayDevice, MAX_BLE_DEVICES>,
     pub selected_bluetooth_item: usize,
 
     pub sound_enabled: bool,
@@ -331,7 +342,7 @@ pub struct SignaledGlobalStateInner {
 
     pub current_competitor: Option<u64>,
     pub current_judge: Option<u64>,
-    pub competitor_display: Option<String>,
+    pub competitor_display: Option<DisplayText>,
 
     pub delegate_used: bool,
     pub delegate_hold: Option<u8>,
@@ -345,7 +356,7 @@ pub struct SignaledGlobalStateInner {
     #[cfg(feature = "bat_dev_lcd")]
     pub avg_bat_read: Option<f32>,
 
-    pub custom_message: Option<(String, String)>,
+    pub custom_message: Option<(DisplayText, DisplayText)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -353,7 +364,7 @@ pub struct SavedGlobalState {
     pub inspection_time: Option<u64>,
     pub solve_time: u64,
     pub penalty: i8,
-    pub session_id: String,
+    pub session_id: SessionId,
     pub current_competitor: u64,
     pub solve_epoch: u64,
     pub solve_group: PossibleGroup,
@@ -374,7 +385,7 @@ impl SignaledGlobalStateInner {
             solve_group: None,
 
             error_text: None,
-            possible_groups: Vec::new(),
+            possible_groups: CappedVec::default(),
             group_selected_idx: 0,
             selected_config_menu: None,
             selected_error_log_item: 0,
@@ -382,7 +393,7 @@ impl SignaledGlobalStateInner {
             error_log_entry_stage: None,
             error_log_details_scroll: 0,
             selected_bluetooth_item: 0,
-            discovered_bluetooth_devices: Vec::new(),
+            discovered_bluetooth_devices: BoundedVec::new(),
 
             sound_enabled: true,
             device_added: None,
@@ -555,7 +566,7 @@ impl SavedGlobalState {
             Timer::after_millis(5).await;
         }
 
-        let res = nvs.get::<Vec<u8>>(NVS_SAVED_STATE).await.ok()?;
+        let res = nvs.get::<alloc::vec::Vec<u8>>(NVS_SAVED_STATE).await.ok()?;
         let res: SavedGlobalState = serde_json::from_slice(&res).ok()?;
 
         // 6hours

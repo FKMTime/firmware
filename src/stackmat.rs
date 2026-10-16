@@ -5,7 +5,6 @@ use crate::{
     consts::{INSPECTION_TIME_DNF, INSPECTION_TIME_PLUS2},
     state::{GlobalState, Scene},
 };
-use alloc::string::ToString;
 use embassy_time::{Instant, Timer};
 
 #[cfg(feature = "timer-func")]
@@ -289,7 +288,7 @@ pub async fn stackmat_task(
                             state.penalty = Some(-1);
 
                             if state.session_id.is_none() {
-                                state.session_id = Some(uuid::Uuid::new_v4().to_string());
+                                state.session_id = Some(crate::state::new_session_id());
                             }
 
                             state.time_confirmed = true;
@@ -343,7 +342,7 @@ async fn time_end(
         };
 
         if state.session_id.is_none() {
-            state.session_id = Some(uuid::Uuid::new_v4().to_string());
+            state.session_id = Some(crate::state::new_session_id());
         }
 
         if state.current_competitor.is_some() {
