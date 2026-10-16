@@ -79,24 +79,6 @@ async fn main(spawner: Spawner) {
 
     // wifimanager 0.5+ keeps its signals/buffers in statics instead of the heap
     esp_alloc::heap_allocator!(size: 112 * 1024);
-    /*
-    {
-        const HEAP_SIZE: usize = 8 * 1024;
-
-        #[unsafe(link_section = ".dram2_uninit")]
-        static mut HEAP2: core::mem::MaybeUninit<[u8; HEAP_SIZE]> =
-            core::mem::MaybeUninit::uninit();
-
-        #[allow(static_mut_refs)]
-        unsafe {
-            esp_alloc::HEAP.add_region(esp_alloc::HeapRegion::new(
-                HEAP2.as_mut_ptr() as *mut u8,
-                core::mem::size_of_val(&*core::ptr::addr_of!(HEAP2)),
-                esp_alloc::MemoryCapability::Internal.into(),
-            ));
-        }
-    }
-    */
 
     set_brownout_detection(false);
     let board = Board::init(peripherals);

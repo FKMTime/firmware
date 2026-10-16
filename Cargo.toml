@@ -17,7 +17,6 @@ embassy-executor = { version = "0.10.0", features = ["nightly"] }
 embassy-net = { version = "0.9.1", features = ["tcp", "udp", "multicast", "dhcpv4", "medium-ethernet", "proto-ipv4", "dns"] }
 embassy-time = { version = "0.5.1" }
 esp-storage = { version = "0.10.0", features = ["esp32c3", "embedded-storage"] }
-embedded-storage = "0.3.2"
 static_cell = { version = "2.1.1", features = ["nightly"] }
 heapless = { version = "0.9.3", default-features = false }
 esp-alloc = { version = "0.11.0", features = ["internal-heap-stats"] }
@@ -28,21 +27,17 @@ serde_json = { version = "1.0.154", default-features = false, features = ["alloc
 adv-shift-registers = "0.2.5"
 embedded-hal = "1.0.0"
 esp-hal-mdns = { version = "0.2.0", features = ["embassy"] }
-embedded-io-async = "0.7.0"
 macros = { path = "./macros" }
-nb = "1.1.0"
 embassy-futures = "0.1.2"
 embassy-sync = "0.8.0"
 ws-framer = { version = "0.4.0", default-features = false, features = ["http", "getrandom02"] }
 serde-json-core = { version = "0.7.0", default-features = false }
 embedded-hal-async = "1.0.0"
 portable-atomic = { version = "1.15.0", default-features = false }
-critical-section = "1.2.0"
 getrandom = { version = "=0.2.15", features = ["custom"] }
 uuid = { version = "=1.12.1", default-features = false, features = ["v4"] }
 esp-hal-ota = { version = "0.7.1", features = ["esp32c3"] }
 esp32c3 = { version = "0.33.0" }
-anyhow = { version = "1.0.104", default-features = false }
 embedded-hal-bus = { version = "0.3.0", features = ["async"] }
 embedded-tls = { git = "https://github.com/embassy-rs/embedded-tls", rev = "58126ee5c453147a5e00684075f001d7ef962ca3", default-features = false, features = ["log", "p256"] }
 # same embassy rev as embedded-tls uses
