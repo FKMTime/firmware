@@ -1,15 +1,72 @@
+// qa builds report button edges to the QA flow and never dispatch these handlers
+#![cfg_attr(feature = "qa", allow(dead_code))]
+
+
 use crate::{
     consts::{NVS_BONDING_KEY, NVS_ERROR_LOG, NVS_SIGN_KEY},
     state::{
         BleAction, ErrorLogEntryStage, GlobalState, MenuScene, Scene, current_epoch,
         deeper_sleep_state, sleep_state,
     },
-    utils::buttons::{Button, ButtonTrigger, ButtonsHandler},
+    utils::buttons::{Button, ButtonTrigger, ButtonsHandler, HandlerTable},
 };
 use embassy_time::{Instant, Timer};
 use esp_hal::gpio::Input;
 
-macros::generate_button_handler_enum!(triggered: &ButtonTrigger, hold_time: u64, state: &GlobalState);
+/// Every button action; dispatched from [`HANDLERS`] by [`ButtonsHandler`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Handler {
+    Wakeup,
+    SelLeft,
+    SelRight,
+    SubmitUp,
+    SubmitResetCompetitor,
+    SubmitConfigMenu,
+    InspectionStart,
+    InspectionHoldStop,
+    Dnf,
+    Penalty,
+    DelegateHold,
+}
+
+impl Handler {
+    pub async fn execute(
+        self,
+        triggered: &ButtonTrigger,
+        hold_time: u64,
+        state: &GlobalState,
+    ) -> Result<bool, ()> {
+        match self {
+            Self::Wakeup => wakeup_button(state).await,
+            Self::SelLeft => sel_left(state).await,
+            Self::SelRight => sel_right(state).await,
+            Self::SubmitUp => submit_up(state).await,
+            Self::SubmitResetCompetitor => submit_reset_competitor(state).await,
+            Self::SubmitConfigMenu => submit_config_menu(state).await,
+            Self::InspectionStart => inspection_start(state).await,
+            Self::InspectionHoldStop => inspection_hold_stop(state).await,
+            Self::Dnf => dnf_button(state).await,
+            Self::Penalty => penalty_button(state).await,
+            Self::DelegateHold => delegate_hold(triggered, hold_time, state).await,
+        }
+    }
+}
+
+/// Per button, in execution order.
+const HANDLERS: &HandlerTable = &[
+    (Button::Third, ButtonTrigger::Up, Handler::SubmitUp),
+    (Button::Third, ButtonTrigger::HoldOnce(3000), Handler::SubmitResetCompetitor),
+    (Button::Third, ButtonTrigger::HoldOnce(10000), Handler::SubmitConfigMenu),
+    (Button::First, ButtonTrigger::Down, Handler::SelLeft),
+    (Button::First, ButtonTrigger::Down, Handler::InspectionStart),
+    (Button::First, ButtonTrigger::HoldOnce(1000), Handler::InspectionHoldStop),
+    (Button::Fourth, ButtonTrigger::Down, Handler::SelRight),
+    (Button::Fourth, ButtonTrigger::HoldOnce(1000), Handler::Dnf),
+    (Button::Fourth, ButtonTrigger::Up, Handler::Penalty),
+    (Button::Second, ButtonTrigger::HoldTimed(0, 1000), Handler::DelegateHold),
+    (Button::Second, ButtonTrigger::HoldOnce(3000), Handler::DelegateHold),
+    (Button::Second, ButtonTrigger::Up, Handler::DelegateHold),
+];
 
 
 #[cfg(feature = "v3")]
@@ -31,42 +88,7 @@ pub async fn buttons_task(
     #[cfg(feature = "v3")] button_input: Input<'static>,
     #[cfg(feature = "v3")] button_reg: adv_shift_registers::wrappers::ShifterValue,
 ) {
-    let mut handler = ButtonsHandler::new(Some(wakeup_button()));
-    handler.add_handler(Button::Third, ButtonTrigger::Up, submit_up());
-    handler.add_handler(
-        Button::Third,
-        ButtonTrigger::HoldOnce(3000),
-        submit_reset_competitor(),
-    );
-    handler.add_handler(
-        Button::Third,
-        ButtonTrigger::HoldOnce(10000),
-        submit_config_menu(),
-    );
-
-    handler.add_handler(Button::First, ButtonTrigger::Down, sel_left());
-    handler.add_handler(Button::First, ButtonTrigger::Down, inspection_start());
-    handler.add_handler(
-        Button::First,
-        ButtonTrigger::HoldOnce(1000),
-        inspection_hold_stop(),
-    );
-
-    handler.add_handler(Button::Fourth, ButtonTrigger::Down, sel_right());
-    handler.add_handler(Button::Fourth, ButtonTrigger::HoldOnce(1000), dnf_button());
-    handler.add_handler(Button::Fourth, ButtonTrigger::Up, penalty_button());
-
-    handler.add_handler(
-        Button::Second,
-        ButtonTrigger::HoldTimed(0, 1000),
-        delegate_hold(),
-    );
-    handler.add_handler(
-        Button::Second,
-        ButtonTrigger::HoldOnce(3000),
-        delegate_hold(),
-    );
-    handler.add_handler(Button::Second, ButtonTrigger::Up, delegate_hold());
+    let mut handler = ButtonsHandler::new(Some(Handler::Wakeup), HANDLERS);
 
     #[cfg(feature = "v3")]
     handler.run(&state, &button_input, &button_reg).await;
@@ -74,22 +96,7 @@ pub async fn buttons_task(
     handler.run(&state, &button_inputs).await;
 }
 
-#[macros::button_handler]
-async fn button_test(
-    triggered: &ButtonTrigger,
-    hold_time: u64,
-    _state: &GlobalState,
-) -> Result<bool, ()> {
-    log::info!("Triggered: {triggered:?} - {hold_time}");
-    Ok(false)
-}
-
-#[macros::button_handler]
-async fn wakeup_button(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn wakeup_button(state: &GlobalState) -> Result<bool, ()> {
     if sleep_state() {
         state.state.signal();
         if deeper_sleep_state() {
@@ -102,12 +109,7 @@ async fn wakeup_button(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn sel_left(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn sel_left(state: &GlobalState) -> Result<bool, ()> {
     let mut state_val = state.state.lock().await;
     #[cfg(feature = "v4")]
     if state_val.menu_scene == Some(MenuScene::BuzzerVolume) {
@@ -171,12 +173,7 @@ async fn sel_left(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn sel_right(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn sel_right(state: &GlobalState) -> Result<bool, ()> {
     let mut state_val = state.state.lock().await;
     #[cfg(feature = "v4")]
     if state_val.menu_scene == Some(MenuScene::BuzzerVolume) {
@@ -250,12 +247,7 @@ async fn sel_right(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn submit_up(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn submit_up(state: &GlobalState) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
 
     // Clear error (text)
@@ -531,12 +523,7 @@ async fn submit_up(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn inspection_start(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn inspection_start(state: &GlobalState) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
     if !state_val.use_inspection() || state_val.should_skip_other_actions() {
         return Ok(false);
@@ -561,12 +548,7 @@ async fn inspection_start(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn inspection_hold_stop(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn inspection_hold_stop(state: &GlobalState) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
     if state_val.should_skip_other_actions() {
         return Ok(false);
@@ -589,12 +571,7 @@ async fn inspection_hold_stop(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn dnf_button(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn dnf_button(state: &GlobalState) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
     if state_val.should_skip_other_actions() {
         return Ok(false);
@@ -625,12 +602,7 @@ async fn dnf_button(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn penalty_button(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn penalty_button(state: &GlobalState) -> Result<bool, ()> {
     let mut state_val = state.state.value().await;
     if state_val.should_skip_other_actions() {
         return Ok(false);
@@ -651,12 +623,7 @@ async fn penalty_button(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn submit_reset_competitor(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    global_state: &GlobalState,
-) -> Result<bool, ()> {
+async fn submit_reset_competitor(global_state: &GlobalState) -> Result<bool, ()> {
     let mut state = global_state.state.lock().await;
     if state.should_skip_other_actions() {
         return Ok(false);
@@ -667,12 +634,7 @@ async fn submit_reset_competitor(
     Ok(false)
 }
 
-#[macros::button_handler]
-async fn submit_config_menu(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
+async fn submit_config_menu(state: &GlobalState) -> Result<bool, ()> {
     {
         let mut state = state.state.lock().await;
         state.selected_config_menu = Some(0);
@@ -681,7 +643,6 @@ async fn submit_config_menu(
     Ok(true)
 }
 
-#[macros::button_handler]
 async fn delegate_hold(
     triggered: &ButtonTrigger,
     hold_time: u64,
