@@ -1,7 +1,6 @@
 // qa builds report button edges to the QA flow and never dispatch these handlers
 #![cfg_attr(feature = "qa", allow(dead_code))]
 
-
 use crate::{buttons::Handler, state::GlobalState};
 use embassy_time::{Instant, Timer};
 use esp_hal::gpio::Input;
@@ -96,6 +95,7 @@ impl ButtonsHandler {
         let _ = state;
 
         loop {
+            crate::watchdog::heartbeat(crate::watchdog::TaskId::Buttons);
             let mut out_val = 0u8;
 
             #[cfg(feature = "e2e")]
@@ -199,7 +199,10 @@ impl ButtonsHandler {
         }
     }
 
-    fn entries(&self, button: Button) -> impl Iterator<Item = (usize, ButtonTrigger, Handler)> + 'static {
+    fn entries(
+        &self,
+        button: Button,
+    ) -> impl Iterator<Item = (usize, ButtonTrigger, Handler)> + 'static {
         self.table
             .iter()
             .enumerate()
@@ -261,7 +264,10 @@ impl ButtonsHandler {
                 }
             }
 
-            if self.run_handler(handler, &trigger, hold_time, state, "hold").await {
+            if self
+                .run_handler(handler, &trigger, hold_time, state, "hold")
+                .await
+            {
                 return;
             }
         }

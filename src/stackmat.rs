@@ -1,6 +1,7 @@
 #[cfg(all(feature = "v3", feature = "timer-func"))]
 compile_error!("feature `timer-func` is not supported in v3");
 
+use crate::watchdog::{TaskId, heartbeat};
 use crate::{
     consts::{INSPECTION_TIME_DNF, INSPECTION_TIME_PLUS2},
     state::{GlobalState, Scene},
@@ -16,8 +17,9 @@ pub async fn stackmat_task(
     global_state.state.lock().await.stackmat_connected = Some(true);
 
     loop {
+        heartbeat(TaskId::Stackmat);
         if pads.0.is_high() && pads.1.is_high() {
-            embassy_futures::select::select(pads.0.wait_for_low(), pads.1.wait_for_low()).await;
+            wait_pad_release(&mut pads).await;
             let timer_start = Instant::now();
             global_state.timer_stop_signal.reset();
 
@@ -31,6 +33,7 @@ pub async fn stackmat_task(
                 drop(state);
 
                 loop {
+                    heartbeat(TaskId::Stackmat);
                     let time = timer_start.elapsed().as_millis();
 
                     if global_state.timer_stop_signal.try_take().is_some() {
@@ -53,11 +56,7 @@ pub async fn stackmat_task(
 
                         if pads.0.is_high() && pads.1.is_high() {
                             time_end(time, false, &mut None, &global_state).await;
-                            embassy_futures::select::select(
-                                pads.0.wait_for_low(),
-                                pads.1.wait_for_low(),
-                            )
-                            .await;
+                            wait_pad_release(&mut pads).await;
 
                             break;
                         }
@@ -71,6 +70,24 @@ pub async fn stackmat_task(
         }
 
         Timer::after_millis(10).await;
+    }
+}
+
+/// Waits until a hand leaves the pads, beating the watchdog meanwhile.
+#[cfg(feature = "timer-func")]
+async fn wait_pad_release(
+    pads: &mut (esp_hal::gpio::Input<'static>, esp_hal::gpio::Input<'static>),
+) {
+    loop {
+        heartbeat(TaskId::Stackmat);
+        let released =
+            embassy_futures::select::select(pads.0.wait_for_low(), pads.1.wait_for_low());
+        if embassy_time::with_timeout(embassy_time::Duration::from_secs(10), released)
+            .await
+            .is_ok()
+        {
+            return;
+        }
     }
 }
 
@@ -106,6 +123,7 @@ pub async fn stackmat_task(
     let mut last_state = None;
     let mut last_stackmat_state = StackmatTimerState::Unknown;
     loop {
+        heartbeat(TaskId::Stackmat);
         if sleep_state() {
             loop {
                 let n = uart.read_buffered(&mut read_buf);
@@ -118,8 +136,7 @@ pub async fn stackmat_task(
             continue;
         }
 
-        if last_read.elapsed().as_millis() > 500 && last_state != Some(false)
-        {
+        if last_read.elapsed().as_millis() > 500 && last_state != Some(false) {
             last_state = Some(false);
             global_state.timer_stop_signal.reset();
             if last_time.is_none() {

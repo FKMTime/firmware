@@ -35,7 +35,10 @@ fn parse_digits(data: &[u8]) -> Option<u64> {
 
 /// 64 + sum of the (already validated) time digits; at most 64 + 6 * 9.
 fn checksum(digits: &[u8]) -> u8 {
-    64 + digits.iter().map(|&x| x.wrapping_sub(b'0')).fold(0u8, u8::wrapping_add)
+    64 + digits
+        .iter()
+        .map(|&x| x.wrapping_sub(b'0'))
+        .fold(0u8, u8::wrapping_add)
 }
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -99,7 +102,10 @@ mod tests {
             (StackmatTimerState::Running, 61_005),
             (StackmatTimerState::Stopped, MAX_FRAME_MS),
         ] {
-            assert_eq!(parse_stackmat_data(&generate_stackmat_data(state, ms)), Ok((state, ms)));
+            assert_eq!(
+                parse_stackmat_data(&generate_stackmat_data(state, ms)),
+                Ok((state, ms))
+            );
         }
     }
 
@@ -107,13 +113,19 @@ mod tests {
     fn generator_clamps_long_times() {
         // used to emit ':' etc. as the minute digit from 10 minutes on
         let frame = generate_stackmat_data(StackmatTimerState::Running, 11 * 60_000);
-        assert_eq!(parse_stackmat_data(&frame), Ok((StackmatTimerState::Running, MAX_FRAME_MS)));
+        assert_eq!(
+            parse_stackmat_data(&frame),
+            Ok((StackmatTimerState::Running, MAX_FRAME_MS))
+        );
     }
 
     #[test]
     fn reset_with_time_reads_as_stopped() {
         let frame = generate_stackmat_data(StackmatTimerState::Reset, 500);
-        assert_eq!(parse_stackmat_data(&frame), Ok((StackmatTimerState::Stopped, 500)));
+        assert_eq!(
+            parse_stackmat_data(&frame),
+            Ok((StackmatTimerState::Stopped, 500))
+        );
     }
 
     #[test]

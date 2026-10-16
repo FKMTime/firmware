@@ -88,19 +88,38 @@ const _: () = assert!(
 /// Per button, in execution order.
 const HANDLERS: &HandlerTable = &[
     (Button::Third, ButtonTrigger::Up, Handler::SubmitUp),
-    (Button::Third, ButtonTrigger::HoldOnce(3000), Handler::SubmitResetCompetitor),
-    (Button::Third, ButtonTrigger::HoldOnce(10000), Handler::SubmitConfigMenu),
+    (
+        Button::Third,
+        ButtonTrigger::HoldOnce(3000),
+        Handler::SubmitResetCompetitor,
+    ),
+    (
+        Button::Third,
+        ButtonTrigger::HoldOnce(10000),
+        Handler::SubmitConfigMenu,
+    ),
     (Button::First, ButtonTrigger::Down, Handler::SelLeft),
     (Button::First, ButtonTrigger::Down, Handler::InspectionStart),
-    (Button::First, ButtonTrigger::HoldOnce(1000), Handler::InspectionHoldStop),
+    (
+        Button::First,
+        ButtonTrigger::HoldOnce(1000),
+        Handler::InspectionHoldStop,
+    ),
     (Button::Fourth, ButtonTrigger::Down, Handler::SelRight),
     (Button::Fourth, ButtonTrigger::HoldOnce(1000), Handler::Dnf),
     (Button::Fourth, ButtonTrigger::Up, Handler::Penalty),
-    (Button::Second, ButtonTrigger::HoldTimed(0, 1000), Handler::DelegateHold),
-    (Button::Second, ButtonTrigger::HoldOnce(3000), Handler::DelegateHold),
+    (
+        Button::Second,
+        ButtonTrigger::HoldTimed(0, 1000),
+        Handler::DelegateHold,
+    ),
+    (
+        Button::Second,
+        ButtonTrigger::HoldOnce(3000),
+        Handler::DelegateHold,
+    ),
     (Button::Second, ButtonTrigger::Up, Handler::DelegateHold),
 ];
-
 
 #[cfg(feature = "v3")]
 const CONFIG_MENU_ERROR_LOG_IDX: usize = 4;

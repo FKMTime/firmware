@@ -259,7 +259,11 @@ async fn unsign_card<I: Interface>(
 
 /// Whether block 62 (readable with the token key) holds this card's uid.
 #[cfg(not(feature = "e2e"))]
-async fn is_card_secured<I: Interface>(mfrc522: &mut Mfrc522<I>, card: &Uid, card_uid: u128) -> bool {
+async fn is_card_secured<I: Interface>(
+    mfrc522: &mut Mfrc522<I>,
+    card: &Uid,
+    card_uid: u128,
+) -> bool {
     if mfrc522
         .authenticate(KeyType::A, 63, &Key(token_key()), card)
         .await
@@ -482,8 +486,8 @@ async fn process_card_info_response(resp: CardInfoResponsePacket, global_state: 
                         state.reset_solve_state(Some(global_state.nvs)).await;
                     }
 
-                    let (first, second) = split_after_two_words(&resp.message)
-                        .unwrap_or(("Solve", "sent"));
+                    let (first, second) =
+                        split_after_two_words(&resp.message).unwrap_or(("Solve", "sent"));
                     state.custom_message = Some((first.into(), second.into()));
                 }
 
