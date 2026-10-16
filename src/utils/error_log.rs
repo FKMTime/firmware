@@ -1,4 +1,7 @@
-use super::ring_log::{self, CODE_LEN, STACKTRACE_HEADER_LEN, record_len};
+use super::{
+    UninitBuf,
+    ring_log::{self, CODE_LEN, STACKTRACE_HEADER_LEN, record_len},
+};
 use crate::{consts::NVS_ERROR_LOG, state::current_epoch};
 use core::{cell::RefCell, fmt::Write};
 use embassy_sync::blocking_mutex::{Mutex, raw::CriticalSectionRawMutex};
@@ -14,14 +17,9 @@ const RATE_LIMIT_SLOTS: usize = 8;
 pub const MAX_STACKTRACE_ADDRS: usize = 16;
 
 
-/// Records, oldest first. `b'N'` + epoch u64 BE + code, or `b'S'` + epoch u64 BE +
-/// version [u8; 16] + n + n * u32 BE (same format as stored in NVS).
+/// Records, oldest first, in the [`ring_log`] format (same as stored in NVS).
 #[unsafe(link_section = ".dram2_uninit")]
-static BUF: UninitBuf = UninitBuf(core::cell::UnsafeCell::new(core::mem::MaybeUninit::uninit()));
-
-struct UninitBuf(core::cell::UnsafeCell<core::mem::MaybeUninit<[u8; CAPACITY]>>);
-// SAFETY: only accessed inside `LOG.lock` (critical section), see `with_log`.
-unsafe impl Sync for UninitBuf {}
+static BUF: UninitBuf<CAPACITY> = UninitBuf::new();
 
 struct ErrorLog {
     initialized: bool,
@@ -43,16 +41,8 @@ static DIRTY: AtomicBool = AtomicBool::new(false);
 fn with_log<R>(f: impl FnOnce(&mut ErrorLog, &mut [u8; CAPACITY]) -> R) -> R {
     LOG.lock(|log| {
         let mut log = log.borrow_mut();
-        // SAFETY: the critical section serializes all access; the section is not zeroed
-        // at boot, so zero it once before the first reference is formed.
-        let buf = unsafe {
-            let ptr = BUF.0.get();
-            if !log.initialized {
-                (*ptr).write([0; CAPACITY]);
-                log.initialized = true;
-            }
-            (*ptr).assume_init_mut()
-        };
+        // SAFETY: the critical section serializes all access to BUF.
+        let buf = unsafe { BUF.get(&mut log.initialized) };
         f(&mut log, buf)
     })
 }

@@ -431,22 +431,19 @@ async fn logger_task(global_state: GlobalState) {
             continue;
         }
 
-        let logs_vec = {
+        let logs = {
             let state = global_state.state.value().await;
-            #[allow(static_mut_refs)]
-            unsafe {
-                crate::utils::logger::LOGS_WRITER.get_vec(
-                    crate::state::current_time(),
-                    crate::state::inspection_time(),
-                    state.current_competitor,
-                    state.solve_group.as_ref().map(|g| g.group_id.as_str()),
-                    state.session_id.as_deref(),
-                )
-            }
+            crate::utils::logger::take_ready(&crate::utils::logger::LogsHeader {
+                current_time: crate::state::current_time(),
+                inspection_time: crate::state::inspection_time(),
+                competitor: state.current_competitor,
+                group_id: state.solve_group.as_ref().map(|g| g.group_id.as_str()),
+                session_id: state.session_id.as_deref(),
+            })
         };
 
-        if !logs_vec.is_empty() {
-            ws::send_frame(ws_framer::WsFrameOwned::Binary(logs_vec)).await;
+        if let Some(logs) = logs {
+            ws::send_frame(ws_framer::WsFrameOwned::Binary(logs.to_vec())).await;
         }
 
         #[cfg(not(feature = "release_build"))]

@@ -10,6 +10,39 @@ pub mod rolling_average;
 pub mod signaled_mutex;
 pub mod stackmat;
 
+/// A buffer for a `#[link_section = ".dram2_uninit"]` static (that region is not
+/// zeroed at boot, so `StaticCell`/`Mutex` state can't live there). Callers must
+/// serialize access themselves (a critical section) and call [`UninitBuf::get`]
+/// only from inside it.
+pub struct UninitBuf<const N: usize>(core::cell::UnsafeCell<core::mem::MaybeUninit<[u8; N]>>);
+
+// SAFETY: every access goes through `get`, whose contract requires exclusive access.
+unsafe impl<const N: usize> Sync for UninitBuf<N> {}
+
+impl<const N: usize> UninitBuf<N> {
+    pub const fn new() -> Self {
+        Self(core::cell::UnsafeCell::new(core::mem::MaybeUninit::uninit()))
+    }
+
+    /// Zeroes the buffer on first use (`initialized` is the caller's flag).
+    ///
+    /// # Safety
+    /// The caller must hold exclusive access (e.g. a critical section) for the whole
+    /// lifetime of the returned reference, and use one `initialized` flag per buffer.
+    #[allow(clippy::mut_from_ref)]
+    pub unsafe fn get(&self, initialized: &mut bool) -> &mut [u8; N] {
+        let ptr = self.0.get();
+        // SAFETY: exclusive access is guaranteed by the caller.
+        unsafe {
+            if !*initialized {
+                (*ptr).write([0; N]);
+                *initialized = true;
+            }
+            (*ptr).assume_init_mut()
+        }
+    }
+}
+
 pub fn spawn_task<T>(
     spawner: &Spawner,
     task_name: &str,
