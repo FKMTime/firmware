@@ -580,10 +580,28 @@
                 });
             } catch (_) { }
 
+            showModal("Connecting to " + ssid + "…");
+            const result = await waitForStatus();
             connecting = false;
-            if (listInterval) { clearInterval(listInterval); listInterval = null; }
-            showModal("Credentials sent! Reconnect to your access point in 10–15 seconds if WiFi doesn't connect automatically.");
+            if (result.ok && listInterval) { clearInterval(listInterval); listInterval = null; }
+            showModal(result.message);
         });
+
+        // polls the device's connection status; brief drops are expected (the AP follows the
+        // router's channel), so failed requests are retried
+        async function waitForStatus() {
+            for (let i = 0; i < 40; i++) {
+                await new Promise((r) => setTimeout(r, 1000));
+                let s;
+                try { s = await (await fetch("/status")).text(); } catch (_) { continue; }
+                if (s.startsWith("connected")) {
+                    return { ok: true, message: "Connected! IP: " + (s.split(":")[1] || "?") };
+                }
+                if (s === "failed:connect") return { ok: false, message: "Wrong password or network not found" };
+                if (s.startsWith("failed")) return { ok: false, message: "Invalid settings" };
+            }
+            return { ok: false, message: "No answer from the device, reconnect to its access point and check it" };
+        }
 
         // Show/hide WebSocket URL field based on mDNS toggle
         const mdnsCheckbox = document.getElementById("mdnsCheckbox");
