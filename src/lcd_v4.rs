@@ -426,9 +426,7 @@ pub async fn lcd_task(
         last_update = Instant::now();
 
         if sleep_state() {
-            unsafe {
-                crate::state::SLEEP_STATE = false;
-            }
+            crate::state::set_sleep_state(false);
             log::warn!("Sleep wakeup!");
         }
 
@@ -507,10 +505,8 @@ pub async fn lcd_task(
                         state.wifi_connected = Some(false);
                     }
 
-                    unsafe {
-                        crate::state::SLEEP_STATE = true;
-                        crate::state::TRUST_SERVER = false;
-                    }
+                    crate::state::set_sleep_state(true);
+                    crate::state::set_trust_server(false);
 
                     global_state.state.signal_reset();
                 }
@@ -952,9 +948,7 @@ async fn process_main(
             let text_rect = Rectangle::new(Point::new(0, 28), Size::new(128, 17));
             loop {
                 let elapsed = (Instant::now() - inspection_start).as_millis();
-                unsafe {
-                    crate::state::INSPECTION_TIME = Some(elapsed);
-                }
+                crate::state::set_inspection_time(Some(elapsed));
 
                 let time_str = ms_to_time_str(elapsed);
                 _ = oled.disp.fill_solid(&text_rect, BinaryColor::Off);

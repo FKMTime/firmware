@@ -141,7 +141,7 @@ async fn main(spawner: Spawner) {
     let wifi_conn_sig = Rc::new(Signal::new());
 
     if let Ok(sign_key) = nvs.get::<u32>(NVS_SIGN_KEY).await {
-        unsafe { crate::state::SIGN_KEY = sign_key };
+        crate::state::set_sign_key(sign_key);
     }
     #[cfg(feature = "v4")]
     if let Ok(saved_volume) = nvs.get::<u8>(crate::consts::NVS_BUZZER_VOLUME).await {
@@ -432,15 +432,18 @@ async fn logger_task(global_state: GlobalState) {
             continue;
         }
 
-        #[allow(static_mut_refs)]
-        let logs_vec = unsafe {
-            crate::utils::logger::LOGS_WRITER.get_vec(
-                crate::state::CURRENT_TIME,
-                crate::state::INSPECTION_TIME,
-                crate::state::CURRENT_COMPETITOR,
-                &crate::state::CURRENT_GROUP_ID,
-                &crate::state::CURRENT_SESSION_ID,
-            )
+        let logs_vec = {
+            let state = global_state.state.value().await;
+            #[allow(static_mut_refs)]
+            unsafe {
+                crate::utils::logger::LOGS_WRITER.get_vec(
+                    crate::state::current_time(),
+                    crate::state::inspection_time(),
+                    state.current_competitor,
+                    state.solve_group.as_ref().map(|g| g.group_id.as_str()),
+                    state.session_id.as_deref(),
+                )
+            }
         };
 
         if !logs_vec.is_empty() {

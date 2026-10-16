@@ -13,63 +13,135 @@ use embassy_sync::{
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal::aes::Aes;
 use esp_hal_wifimanager::Nvs;
+#[cfg(feature = "v4")]
+use portable_atomic::AtomicU8;
+use portable_atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
 use serde::{Deserialize, Serialize};
 
-pub static mut SIGN_KEY: u32 = 0;
-pub static mut TRUST_SERVER: bool = false;
-pub static mut FKM_TOKEN: i32 = 0;
-pub static mut SECURE_RFID: bool = false;
-pub static mut AUTO_SETUP: bool = false;
+// Lock-free flags shared between tasks. Loads/stores are plain instructions on the C3;
+// portable-atomic covers the 64-bit ones (single core, critical section fallback).
+static SIGN_KEY: AtomicU32 = AtomicU32::new(0);
+static TRUST_SERVER: AtomicBool = AtomicBool::new(false);
+static FKM_TOKEN: AtomicI32 = AtomicI32::new(0);
+static SECURE_RFID: AtomicBool = AtomicBool::new(false);
+static AUTO_SETUP: AtomicBool = AtomicBool::new(false);
 
-pub static mut GROUP_LIMIT: Option<u64> = None;
+static GROUP_LIMIT: AtomicOptU64 = AtomicOptU64::none();
 
-pub static mut EPOCH_BASE: u64 = 0;
-pub static mut SLEEP_STATE: bool = false;
-pub static mut DEEPER_SLEEP: bool = false;
-pub static mut OTA_STATE: bool = false;
+/// 0 = unknown (server didn't send EpochTime yet)
+static EPOCH_BASE: AtomicU64 = AtomicU64::new(0);
+static SLEEP_STATE: AtomicBool = AtomicBool::new(false);
+static DEEPER_SLEEP: AtomicBool = AtomicBool::new(false);
+static OTA_STATE: AtomicBool = AtomicBool::new(false);
 
-// Live vars
-pub static mut CURRENT_TIME: Option<u64> = None;
-pub static mut INSPECTION_TIME: Option<u64> = None;
-pub static mut CURRENT_COMPETITOR: Option<u64> = None;
-pub static mut CURRENT_GROUP_ID: Option<String> = None;
-pub static mut CURRENT_SESSION_ID: Option<String> = None;
-
-#[cfg(feature = "v4")]
-pub static mut BUZZER_VOLUME: u8 = crate::consts::BUZZER_VOLUME_DEFAULT;
+// Live vars (logger header)
+static CURRENT_TIME: AtomicOptU64 = AtomicOptU64::none();
+static INSPECTION_TIME: AtomicOptU64 = AtomicOptU64::none();
 
 #[cfg(feature = "v4")]
-#[inline(always)]
-pub fn buzzer_volume() -> u8 {
-    unsafe { BUZZER_VOLUME }
+static BUZZER_VOLUME: AtomicU8 = AtomicU8::new(crate::consts::BUZZER_VOLUME_DEFAULT);
+
+/// `Option<u64>` in one atomic; `u64::MAX` is `None` (never a valid time/limit).
+pub struct AtomicOptU64(AtomicU64);
+
+impl AtomicOptU64 {
+    pub const fn none() -> Self {
+        Self(AtomicU64::new(u64::MAX))
+    }
+
+    pub fn get(&self) -> Option<u64> {
+        let v = self.0.load(Ordering::Relaxed);
+        (v != u64::MAX).then_some(v)
+    }
+
+    pub fn set(&self, value: Option<u64>) {
+        self.0.store(value.unwrap_or(u64::MAX), Ordering::Relaxed);
+    }
+}
+
+macro_rules! atomic_accessors {
+    ($($static:ident: $ty:ty => $get:ident, $set:ident;)*) => {$(
+        // e2e/qa builds compile out some readers
+        #[inline(always)]
+        #[allow(dead_code)]
+        pub fn $get() -> $ty {
+            $static.load(Ordering::Relaxed)
+        }
+
+        #[inline(always)]
+        #[allow(dead_code)]
+        pub fn $set(value: $ty) {
+            $static.store(value, Ordering::Relaxed)
+        }
+    )*};
+}
+
+atomic_accessors! {
+    SIGN_KEY: u32 => sign_key, set_sign_key;
+    TRUST_SERVER: bool => trust_server, set_trust_server;
+    FKM_TOKEN: i32 => fkm_token, set_fkm_token;
+    SECURE_RFID: bool => secure_rfid, set_secure_rfid;
+    AUTO_SETUP: bool => auto_setup, set_auto_setup;
+    SLEEP_STATE: bool => sleep_state, set_sleep_state;
+    DEEPER_SLEEP: bool => deeper_sleep_state, set_deeper_sleep_state;
+    OTA_STATE: bool => ota_state, set_ota_state;
 }
 
 #[cfg(feature = "v4")]
+atomic_accessors! {
+    BUZZER_VOLUME: u8 => buzzer_volume, set_buzzer_volume;
+}
+
 #[inline(always)]
-pub fn set_buzzer_volume(volume: u8) {
-    unsafe {
-        BUZZER_VOLUME = volume;
-    }
+pub fn group_limit() -> Option<u64> {
+    GROUP_LIMIT.get()
+}
+
+#[inline(always)]
+pub fn set_group_limit(limit: Option<u64>) {
+    GROUP_LIMIT.set(limit)
+}
+
+#[inline(always)]
+pub fn current_time() -> Option<u64> {
+    CURRENT_TIME.get()
+}
+
+#[inline(always)]
+pub fn set_current_time(time: Option<u64>) {
+    CURRENT_TIME.set(time)
+}
+
+#[inline(always)]
+pub fn inspection_time() -> Option<u64> {
+    INSPECTION_TIME.get()
+}
+
+#[inline(always)]
+pub fn set_inspection_time(time: Option<u64>) {
+    INSPECTION_TIME.set(time)
+}
+
+/// Sets the epoch from the server's `current_epoch` (seconds).
+pub fn set_epoch(current_epoch: u64) {
+    EPOCH_BASE.store(
+        current_epoch.saturating_sub(Instant::now().as_secs()),
+        Ordering::Relaxed,
+    );
+}
+
+/// True after the server sent its time.
+#[inline(always)]
+#[allow(dead_code)]
+pub fn epoch_known() -> bool {
+    EPOCH_BASE.load(Ordering::Relaxed) != 0
 }
 
 #[inline(always)]
 pub fn current_epoch() -> u64 {
-    unsafe { EPOCH_BASE + Instant::now().as_secs() }
-}
-
-#[inline(always)]
-pub fn sleep_state() -> bool {
-    unsafe { SLEEP_STATE }
-}
-
-#[inline(always)]
-pub fn deeper_sleep_state() -> bool {
-    unsafe { DEEPER_SLEEP }
-}
-
-#[inline(always)]
-pub fn ota_state() -> bool {
-    unsafe { OTA_STATE }
+    EPOCH_BASE
+        .load(Ordering::Relaxed)
+        .saturating_add(Instant::now().as_secs())
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -363,14 +435,9 @@ impl SignaledGlobalStateInner {
     }
 
     pub async fn reset_solve_state(&mut self, save_nvs: Option<&Nvs>) {
-        unsafe {
-            GROUP_LIMIT = None;
-            CURRENT_TIME = None;
-            INSPECTION_TIME = None;
-            CURRENT_GROUP_ID = None;
-            CURRENT_COMPETITOR = None;
-            CURRENT_SESSION_ID = None;
-        }
+        set_group_limit(None);
+        set_current_time(None);
+        set_inspection_time(None);
         self.solve_time = None;
         self.penalty = None;
         self.inspection_start = None;
@@ -397,14 +464,9 @@ impl SignaledGlobalStateInner {
 
     #[allow(dead_code)]
     pub async fn hard_state_reset(&mut self) {
-        unsafe {
-            GROUP_LIMIT = None;
-            CURRENT_TIME = None;
-            INSPECTION_TIME = None;
-            CURRENT_GROUP_ID = None;
-            CURRENT_COMPETITOR = None;
-            CURRENT_SESSION_ID = None;
-        }
+        set_group_limit(None);
+        set_current_time(None);
+        set_inspection_time(None);
         self.scene = Scene::WaitingForCompetitor;
         self.inspection_start = None;
         self.inspection_end = None;
@@ -492,7 +554,7 @@ impl SignaledGlobalStateInner {
 #[cfg(not(feature = "e2e"))]
 impl SavedGlobalState {
     pub async fn from_nvs(nvs: &Nvs) -> Option<Self> {
-        while unsafe { EPOCH_BASE == 0 } {
+        while !epoch_known() {
             Timer::after_millis(5).await;
         }
 
@@ -500,7 +562,7 @@ impl SavedGlobalState {
         let res: SavedGlobalState = serde_json::from_slice(&res).ok()?;
 
         // 6hours
-        if current_epoch() - res.solve_epoch > 6 * 60 * 60 {
+        if current_epoch().saturating_sub(res.solve_epoch) > 6 * 60 * 60 {
             log::error!("REMOVE SOLVE: {:?} {:?}", current_epoch(), res.solve_epoch);
             return None;
         }

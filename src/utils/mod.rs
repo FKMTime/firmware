@@ -69,7 +69,7 @@ pub fn get_efuse_u32() -> u32 {
 pub fn deeper_sleep() {
     esp32c3_set_cpu_freq_10mhz();
 
-    unsafe { crate::state::DEEPER_SLEEP = true };
+    crate::state::set_deeper_sleep_state(true);
 }
 
 #[cfg(feature = "v3")]

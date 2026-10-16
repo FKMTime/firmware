@@ -1,5 +1,5 @@
 use crate::state::{ota_state, sleep_state};
-use alloc::{string::String, vec::Vec};
+use alloc::vec::Vec;
 
 #[unsafe(link_section = ".dram2_uninit")]
 static mut LOGS_BUF: core::mem::MaybeUninit<[u8; 8 * 1024]> = core::mem::MaybeUninit::uninit();
@@ -21,8 +21,8 @@ impl LogsBufWriter {
         current_time: Option<u64>,
         inspection_time: Option<u64>,
         competitor: Option<u64>,
-        group_id: &Option<String>,
-        session_id: &Option<String>,
+        group_id: Option<&str>,
+        session_id: Option<&str>,
     ) -> Vec<u8> {
         self.buf[2..10].copy_from_slice(&current_time.unwrap_or(u64::MAX).to_be_bytes());
         self.buf[10..18].copy_from_slice(&inspection_time.unwrap_or(u64::MAX).to_be_bytes());

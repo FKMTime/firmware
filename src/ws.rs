@@ -10,7 +10,7 @@ use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, pubsub::PubSubChannel,
     signal::Signal,
 };
-use embassy_time::{Duration, Instant, Timer, WithTimeout};
+use embassy_time::{Duration, Timer, WithTimeout};
 use embassy_crypto_rustcrypto as _;
 use embedded_tls::{Aes128GcmSha256, InsecureNoVerify, TlsConfig, TlsConnection, TlsContext};
 use esp_hal_ota::Ota;
@@ -75,10 +75,10 @@ pub async fn ws_task(
     };
 
     loop {
-        unsafe { crate::state::TRUST_SERVER = false };
-        unsafe { crate::state::SECURE_RFID = false };
-        unsafe { crate::state::AUTO_SETUP = false };
-        unsafe { crate::state::FKM_TOKEN = 0 };
+        crate::state::set_trust_server(false);
+        crate::state::set_secure_rfid(false);
+        crate::state::set_auto_setup(false);
+        crate::state::set_fkm_token(0);
 
         let ws_fut = ws_loop(
             &global_state,
@@ -255,7 +255,7 @@ async fn ws_loop(
             .map(|h| h.value.parse::<u128>())
         {
             let mut key = [0; 16];
-            key[..4].copy_from_slice(&unsafe { crate::state::SIGN_KEY.to_be_bytes() });
+            key[..4].copy_from_slice(&crate::state::sign_key().to_be_bytes());
 
             let mut block = [0; 16];
             block.copy_from_slice(&random_signed.to_be_bytes());
@@ -273,8 +273,8 @@ async fn ws_loop(
                 "[trust] random: {random}, recv_random: {recv_random} | fkm_token: {fkm_token}"
             );
             if random == recv_random {
-                unsafe { crate::state::TRUST_SERVER = true };
-                unsafe { crate::state::FKM_TOKEN = fkm_token };
+                crate::state::set_trust_server(true);
+                crate::state::set_fkm_token(fkm_token);
             } else {
                 #[cfg(not(feature = "e2e"))]
                 {
@@ -299,7 +299,7 @@ async fn ws_loop(
                     tag: None,
                     data: crate::structs::TimerPacketInner::Add {
                         firmware: alloc::string::ToString::to_string(crate::version::FIRMWARE),
-                        sign_key: unsafe { crate::state::SIGN_KEY },
+                        sign_key: crate::state::sign_key(),
                     },
                 })
                 .await;
@@ -465,9 +465,9 @@ async fn ws_rw(
                                 crate::translations::select_locale(&default_locale, &global_state);
                                 crate::translations::set_default_locale();
 
-                                unsafe { crate::state::FKM_TOKEN = fkm_token };
-                                unsafe { crate::state::SECURE_RFID = secure_rfid };
-                                unsafe { crate::state::AUTO_SETUP = auto_setup };
+                                crate::state::set_fkm_token(fkm_token);
+                                crate::state::set_secure_rfid(secure_rfid);
+                                crate::state::set_auto_setup(auto_setup);
                             }
                             TimerPacketInner::ApiError(e) => {
                                 // if should_reset_time reset time
@@ -478,9 +478,9 @@ async fn ws_rw(
                                 let mut state = global_state.state.lock().await;
                                 state.custom_message = Some((line1, line2));
                             }
-                            TimerPacketInner::EpochTime { current_epoch } => unsafe {
-                                crate::state::EPOCH_BASE = current_epoch - Instant::now().as_secs();
-                            },
+                            TimerPacketInner::EpochTime { current_epoch } => {
+                                crate::state::set_epoch(current_epoch);
+                            }
                             TimerPacketInner::DelegateResponse(_) => {
                                 tagged_publisher.publish((69420, timer_packet)).await;
                             }
@@ -496,16 +496,14 @@ async fn ws_rw(
                                 }
 
                                 #[cfg(not(feature = "e2e"))]
-                                if unsafe { !crate::state::TRUST_SERVER } {
+                                if !crate::state::trust_server() {
                                     continue;
                                 }
 
                                 log::info!("Start update: {firmware}/{version}");
                                 log::info!("Begin update size: {size} crc: {crc}");
                                 ota.ota_begin(size, crc).map_err(WsRwError::OtaError)?;
-                                unsafe {
-                                    crate::state::OTA_STATE = true;
-                                }
+                                crate::state::set_ota_state(true);
 
                                 let mut state = global_state.state.lock().await;
                                 state.scene = Scene::Update;
@@ -585,7 +583,7 @@ async fn ws_rw(
                     }
 
                     #[cfg(not(feature = "e2e"))]
-                    if unsafe { !crate::state::TRUST_SERVER } {
+                    if !crate::state::trust_server() {
                         continue;
                     }
 

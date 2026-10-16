@@ -209,7 +209,7 @@ pub async fn rfid_task(
         }
 
         #[cfg(not(feature = "e2e"))]
-        if unsafe { !crate::state::TRUST_SERVER } {
+        if !crate::state::trust_server() {
             log::error!("Skipping card scan. Server not trusted!");
             global_state.state.lock().await.error_text = Some("Server NOT Trusted!".to_string());
             _ = mfrc522.picc_halta().await;
@@ -221,7 +221,7 @@ pub async fn rfid_task(
         #[cfg(not(feature = "e2e"))]
         match menu_scene {
             Some(MenuScene::Signing) => {
-                let fkm_token = unsafe { crate::state::FKM_TOKEN };
+                let fkm_token = crate::state::fkm_token();
 
                 let status = mfrc522
                     .pcd_authenticate(
@@ -298,7 +298,7 @@ pub async fn rfid_task(
                 continue;
             }
             Some(MenuScene::Unsigning) => {
-                let fkm_token = unsafe { crate::state::FKM_TOKEN };
+                let fkm_token = crate::state::fkm_token();
                 let mut key = [0; 6];
                 key[..4].copy_from_slice(&fkm_token.to_be_bytes());
 
@@ -350,8 +350,8 @@ pub async fn rfid_task(
         }
 
         #[cfg(not(feature = "e2e"))]
-        if unsafe { crate::state::SECURE_RFID } {
-            let fkm_token = unsafe { crate::state::FKM_TOKEN };
+        if crate::state::secure_rfid() {
+            let fkm_token = crate::state::fkm_token();
             let mut key = [0; 6];
             key[..4].copy_from_slice(&fkm_token.to_be_bytes());
 
@@ -402,7 +402,7 @@ pub async fn rfid_task(
                 card_id: card_uid as u64,
                 is_competitor,
                 attendance_device: None,
-                sign_key: unsafe { crate::state::SIGN_KEY },
+                sign_key: crate::state::sign_key(),
             },
         )
         .await;
@@ -435,7 +435,7 @@ pub async fn rfid_task(
         #[cfg(not(feature = "e2e"))]
         {
             _ = mfrc522.picc_halta().await;
-            if unsafe { crate::state::SECURE_RFID } {
+            if crate::state::secure_rfid() {
                 _ = mfrc522.pcd_stop_crypto1().await;
             }
         }
@@ -457,9 +457,6 @@ async fn process_card_info_response(
         {
             state.competitor_display = Some(resp.display);
             state.current_competitor = Some(resp.card_id);
-            unsafe {
-                crate::state::CURRENT_COMPETITOR = Some(resp.card_id);
-            }
 
             let competitor_locale =
                 crate::translations::get_locale_index(&resp.country_iso2.to_lowercase());
@@ -470,11 +467,7 @@ async fn process_card_info_response(
             match resp.possible_groups.len() {
                 1 => {
                     state.solve_group = Some(resp.possible_groups[0].clone());
-                    unsafe {
-                        crate::state::GROUP_LIMIT = resp.possible_groups[0].limit;
-                        crate::state::CURRENT_GROUP_ID =
-                            Some(resp.possible_groups[0].group_id.clone());
-                    }
+                    crate::state::set_group_limit(resp.possible_groups[0].limit);
 
                     if state.solve_time.is_some() {
                         state.scene = crate::state::Scene::Finished;
@@ -532,7 +525,7 @@ async fn process_card_info_response(
                 };
 
                 #[cfg(not(feature = "e2e"))]
-                if unsafe { !crate::state::TRUST_SERVER } {
+                if !crate::state::trust_server() {
                     log::error!("Skipping solve send. Server not trusted!");
                     return Ok(());
                 }
@@ -548,7 +541,7 @@ async fn process_card_info_response(
                         delegate: false,
                         inspection_time,
                         group_id: solve_group.group_id.clone(),
-                        sign_key: unsafe { crate::state::SIGN_KEY },
+                        sign_key: crate::state::sign_key(),
                     },
                 )
                 .await;

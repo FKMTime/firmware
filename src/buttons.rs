@@ -401,7 +401,7 @@ async fn submit_up(
                     state.ble_sig.signal(BleAction::StartScan);
                 }
                 2 => {
-                    if unsafe { !crate::state::AUTO_SETUP } {
+                    if !crate::state::auto_setup() {
                         state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
                         state.state.signal();
                         return Ok(true);
@@ -410,7 +410,7 @@ async fn submit_up(
                     state_val.menu_scene = Some(MenuScene::Signing);
                 }
                 3 => {
-                    if unsafe { !crate::state::AUTO_SETUP } {
+                    if !crate::state::auto_setup() {
                         state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
                         state.state.signal();
                         return Ok(true);
@@ -467,7 +467,7 @@ async fn submit_up(
                     state.ble_sig.signal(BleAction::StartScan);
                 }
                 2 => {
-                    if unsafe { !crate::state::AUTO_SETUP } {
+                    if !crate::state::auto_setup() {
                         state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
                         state.state.signal();
                         return Ok(true);
@@ -476,7 +476,7 @@ async fn submit_up(
                     state_val.menu_scene = Some(MenuScene::Signing);
                 }
                 3 => {
-                    if unsafe { !crate::state::AUTO_SETUP } {
+                    if !crate::state::auto_setup() {
                         state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
                         state.state.signal();
                         return Ok(true);
@@ -531,14 +531,14 @@ async fn submit_up(
 
         _ = state.nvs.delete(NVS_SIGN_KEY).await;
         _ = state.nvs.set(NVS_SIGN_KEY, sign_key).await;
-        unsafe { crate::state::SIGN_KEY = sign_key };
-        unsafe { crate::state::TRUST_SERVER = true };
+        crate::state::set_sign_key(sign_key);
+        crate::state::set_trust_server(true);
 
         crate::ws::send_packet(crate::structs::TimerPacket {
             tag: None,
             data: crate::structs::TimerPacketInner::Add {
                 firmware: alloc::string::ToString::to_string(crate::version::FIRMWARE),
-                sign_key: unsafe { crate::state::SIGN_KEY },
+                sign_key: crate::state::sign_key(),
             },
         })
         .await;
@@ -559,16 +559,9 @@ async fn submit_up(
             state_val.scene = crate::state::Scene::CompetitorInfo;
         }
 
-        unsafe {
-            crate::state::GROUP_LIMIT =
-                state_val.possible_groups[state_val.group_selected_idx].limit;
-
-            crate::state::CURRENT_GROUP_ID = Some(
-                state_val.possible_groups[state_val.group_selected_idx]
-                    .group_id
-                    .clone(),
-            );
-        }
+        crate::state::set_group_limit(
+            state_val.possible_groups[state_val.group_selected_idx].limit,
+        );
 
         state.state.signal();
 
@@ -599,7 +592,7 @@ async fn inspection_start(
         return Ok(false);
     }
 
-    if unsafe { crate::state::CURRENT_TIME } != Some(0) {
+    if crate::state::current_time() != Some(0) {
         log::warn!("Skipping inspection start because current timer time is not 0");
         return Ok(false);
     }
@@ -777,7 +770,7 @@ async fn delegate_hold(
             };
 
             #[cfg(not(feature = "e2e"))]
-            if unsafe { !crate::state::TRUST_SERVER } {
+            if !crate::state::trust_server() {
                 log::error!("Skipping delegate hold. Server not trusted!");
                 return Ok(false);
             }
@@ -810,7 +803,7 @@ async fn delegate_hold(
                 delegate: true,
                 inspection_time,
                 group_id: solve_group,
-                sign_key: unsafe { crate::state::SIGN_KEY },
+                sign_key: crate::state::sign_key(),
             };
 
             state_val.delegate_hold = Some(3);

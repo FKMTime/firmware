@@ -116,9 +116,7 @@ pub async fn lcd_task(
         if sleep_state() {
             lcd.backlight_on();
 
-            unsafe {
-                crate::state::SLEEP_STATE = false;
-            }
+            crate::state::set_sleep_state(false);
         }
 
         let current_scene = current_state.scene.clone();
@@ -156,10 +154,8 @@ pub async fn lcd_task(
                         global_state.state.lock().await.server_connected = Some(false);
                     }
 
-                    unsafe {
-                        crate::state::SLEEP_STATE = true;
-                        crate::state::TRUST_SERVER = false;
-                    }
+                    crate::state::set_sleep_state(true);
+                    crate::state::set_trust_server(false);
 
                     global_state.state.signal_reset();
                 }
@@ -624,9 +620,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
 
             loop {
                 let elapsed = (Instant::now() - inspection_start).as_millis();
-                unsafe {
-                    crate::state::INSPECTION_TIME = Some(elapsed);
-                }
+                crate::state::set_inspection_time(Some(elapsed));
 
                 let time_str = ms_to_time_str(elapsed);
                 lcd_driver

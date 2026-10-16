@@ -42,23 +42,19 @@ pub async fn stackmat_task(
                         break;
                     }
 
-                    let time_limit = unsafe { crate::state::GROUP_LIMIT };
+                    let time_limit = crate::state::group_limit();
                     if let Some(limit) = time_limit
                         && time > limit
                     {
                         global_state.timer_signal.signal(limit);
                         global_state.bt_display_signal.signal(limit);
-                        unsafe {
-                            crate::state::CURRENT_TIME = Some(limit);
-                        }
+                        crate::state::set_current_time(Some(limit));
                         time_end(limit, true, &mut None, &global_state).await;
                         break;
                     } else {
                         global_state.timer_signal.signal(time);
                         global_state.bt_display_signal.signal(time);
-                        unsafe {
-                            crate::state::CURRENT_TIME = Some(time);
-                        }
+                        crate::state::set_current_time(Some(time));
 
                         if pads.0.is_high() && pads.1.is_high() {
                             time_end(time, false, &mut None, &global_state).await;
@@ -151,22 +147,18 @@ pub async fn stackmat_task(
             && let Some((last_at, last_ms)) = last_time
         {
             let time_interpolated = last_ms + last_at.elapsed().as_millis();
-            let time_limit = unsafe { crate::state::GROUP_LIMIT };
+            let time_limit = crate::state::group_limit();
             if let Some(limit) = time_limit
                 && time_interpolated > limit
             {
                 global_state.timer_signal.signal(limit);
                 global_state.bt_display_signal.signal(limit);
-                unsafe {
-                    crate::state::CURRENT_TIME = Some(limit);
-                }
+                crate::state::set_current_time(Some(limit));
                 time_end(limit, true, &mut last_time, &global_state).await;
             } else {
                 global_state.timer_signal.signal(time_interpolated);
                 global_state.bt_display_signal.signal(time_interpolated);
-                unsafe {
-                    crate::state::CURRENT_TIME = Some(time_interpolated);
-                }
+                crate::state::set_current_time(Some(time_interpolated));
 
                 if global_state.timer_stop_signal.signaled() {
                     time_end(time_interpolated, false, &mut last_time, &global_state).await;
@@ -253,18 +245,14 @@ pub async fn stackmat_task(
                     crate::qa::send_qa_resp(crate::qa::QaSignal::StackmatConnected);
                 }
 
-                unsafe {
-                    crate::state::CURRENT_TIME = Some(parsed.1);
-                }
+                crate::state::set_current_time(Some(parsed.1));
 
-                let time_limit = unsafe { crate::state::GROUP_LIMIT };
+                let time_limit = crate::state::group_limit();
                 if let Some(limit) = time_limit
                     && parsed.1 > limit
                 {
                     time_end(limit, true, &mut last_time, &global_state).await;
-                    unsafe {
-                        crate::state::GROUP_LIMIT = None;
-                    }
+                    crate::state::set_group_limit(None);
                     continue;
                 }
                 last_time = Some((Instant::now(), parsed.1));
@@ -303,9 +291,6 @@ pub async fn stackmat_task(
 
                             if state.session_id.is_none() {
                                 state.session_id = Some(uuid::Uuid::new_v4().to_string());
-                                unsafe {
-                                    crate::state::CURRENT_SESSION_ID = state.session_id.clone();
-                                }
                             }
 
                             state.time_confirmed = true;
@@ -360,9 +345,6 @@ async fn time_end(
 
         if state.session_id.is_none() {
             state.session_id = Some(uuid::Uuid::new_v4().to_string());
-            unsafe {
-                crate::state::CURRENT_SESSION_ID = state.session_id.clone();
-            }
         }
 
         if state.current_competitor.is_some() {
