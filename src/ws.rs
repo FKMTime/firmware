@@ -308,7 +308,7 @@ async fn ws_loop(
             let res = ws_rw(
                 &mut rx_framer,
                 &mut tx_framer,
-                global_state.clone(),
+                global_state,
                 &mut socket,
                 wifi_conn_sig,
             )

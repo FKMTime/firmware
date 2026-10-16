@@ -3,7 +3,7 @@ use crate::{
     structs::{BleDisplayDevice, PossibleGroup},
     utils::signaled_mutex::SignaledMutex,
 };
-use alloc::{rc::Rc, string::String, vec::Vec};
+use alloc::{string::String, vec::Vec};
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
     mutex::Mutex,
@@ -253,7 +253,7 @@ pub enum BleAction {
     Unpair,
 }
 
-pub type GlobalState = Rc<GlobalStateInner>;
+pub type GlobalState = &'static GlobalStateInner;
 pub struct GlobalStateInner {
     pub state: SignaledMutex<CriticalSectionRawMutex, SignaledGlobalStateInner>,
     pub timer_signal: Signal<NoopRawMutex, u64>,
