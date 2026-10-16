@@ -30,6 +30,7 @@ mod structs;
 mod translations;
 mod utils;
 mod version;
+mod watchdog;
 mod ws;
 
 #[cfg(feature = "v3")]
@@ -60,6 +61,9 @@ pub fn custom_rng(buf: &mut [u8]) -> Result<(), getrandom::Error> {
 }
 getrandom::register_custom_getrandom!(custom_rng);
 esp_bootloader_esp_idf::esp_app_desc!();
+
+/// Uptime after which a crash no longer counts as part of a crash loop.
+const HEALTHY_AFTER_SECS: u64 = 60;
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) {
@@ -95,6 +99,11 @@ async fn main(spawner: Spawner) {
     let board = Board::init(peripherals);
     esp_rtos::start(board.timg1.timer0, board.sw_interrupt);
     FkmLogger::set_logger();
+    spawn_task(
+        &spawner,
+        "watchdog::watchdog_task",
+        watchdog::watchdog_task(board.timg0.wdt),
+    );
 
     log::info!("Version: {}", version::VERSION);
     log::info!("Hardware Rev: {}", version::HW_VER);
@@ -105,9 +114,6 @@ async fn main(spawner: Spawner) {
 
     #[cfg(feature = "qa")]
     log::info!("This firmware is in QA mode!");
-
-    #[cfg(feature = "release_build")]
-    crate::utils::backtrace_store::verify_panic_flag();
 
     let Ok(nvs) = Nvs::new(unsafe { board.flash.clone_unchecked() }) else {
         utils::error_log::add_error(utils::error_log::codes::WRONG_PARTITION_TABLE);
@@ -134,6 +140,7 @@ async fn main(spawner: Spawner) {
     log::info!("Wake reason: {:?} {:?}", reason, wake_reason);
 
     utils::error_log::load_error_log(nvs).await;
+    utils::backtrace_store::report_saved_crash();
 
     static GLOBAL_STATE: static_cell::StaticCell<GlobalStateInner> = static_cell::StaticCell::new();
     let global_state: GlobalState = GLOBAL_STATE.init(GlobalStateInner::new(nvs, board.aes));
@@ -345,8 +352,6 @@ async fn main(spawner: Spawner) {
         }
     };
 
-    utils::backtrace_store::read_saved_backtrace().await;
-
     let ws_sleep_sig = Rc::new(Signal::new());
     spawn_task(
         &spawner,
@@ -378,9 +383,16 @@ async fn main(spawner: Spawner) {
             .parse_saved_state(saved_state);
     }
 
+    let boot = Instant::now();
+    let mut healthy = false;
     let mut last_sleep = false;
     'outer: loop {
         Timer::after_millis(100).await;
+        watchdog::heartbeat(watchdog::TaskId::Main);
+        if !healthy && boot.elapsed().as_secs() >= HEALTHY_AFTER_SECS {
+            utils::backtrace_store::mark_healthy();
+            healthy = true;
+        }
         if utils::error_log::is_save_ready() {
             utils::error_log::save_error_log(nvs).await;
             utils::error_log::clear_save_ready();
