@@ -113,26 +113,13 @@ pub fn get_efuse_u32() -> u32 {
     mac as u32
 }
 
+/// Sets the cpu clock to 10 MHz (only a reset brings it back).
 #[cfg(feature = "v3")]
-/// Sets cpu clock to 10mHz (not reversable)
 pub fn deeper_sleep() {
-    esp32c3_set_cpu_freq_10mhz();
-}
-
-#[cfg(feature = "v3")]
-#[allow(unused)]
-#[inline(always)]
-fn ets_update_cpu_frequency_rom(ticks_per_us: u32) {
+    use esp32c3::{RTC_CNTL, SYSTEM};
     unsafe extern "C" {
         fn ets_update_cpu_frequency(ticks_per_us: u32);
     }
-
-    unsafe { ets_update_cpu_frequency(ticks_per_us) };
-}
-
-#[cfg(feature = "v3")]
-fn esp32c3_set_cpu_freq_10mhz() {
-    use esp32c3::{RTC_CNTL, SYSTEM};
 
     let rtc_cntl = unsafe { &*RTC_CNTL::ptr() };
     let system = unsafe { &*SYSTEM::ptr() };
@@ -149,7 +136,7 @@ fn esp32c3_set_cpu_freq_10mhz() {
             .modify(|_, w| w.pre_div_cnt().bits(divider - 1));
 
         system.sysclk_conf().modify(|_, w| w.soc_clk_sel().bits(0));
-        ets_update_cpu_frequency_rom(TARGET_FREQ_MHZ);
+        ets_update_cpu_frequency(TARGET_FREQ_MHZ);
 
         let freq_value = (TARGET_FREQ_HZ >> 12) & 0xFFFF;
         rtc_cntl

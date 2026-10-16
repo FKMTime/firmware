@@ -104,7 +104,6 @@ fn write_header(batch: &mut [u8], header: &LogsHeader) {
 }
 
 /// Appends one line record (u16 len + level + text) to the active half.
-#[cfg_attr(any(feature = "bat_dev_lcd", feature = "qa"), allow(dead_code))]
 fn append_line(level: &str, args: &core::fmt::Arguments) {
     LOGS.lock(|state| {
         // a log from inside the formatting below (or an ISR) is dropped instead of tearing
@@ -141,15 +140,13 @@ fn append_line(level: &str, args: &core::fmt::Arguments) {
     });
 }
 
-#[cfg_attr(any(feature = "bat_dev_lcd", feature = "qa"), allow(dead_code))]
 struct HalfWriter<'a> {
     buf: &'a mut [u8],
     pos: usize,
 }
 
 impl HalfWriter<'_> {
-    #[cfg_attr(any(feature = "bat_dev_lcd", feature = "qa"), allow(dead_code))]
-    fn write_raw(&mut self, bytes: &[u8]) {
+        fn write_raw(&mut self, bytes: &[u8]) {
         let len = bytes.len().min(self.buf.len() - self.pos);
         self.buf[self.pos..self.pos + len].copy_from_slice(&bytes[..len]);
         self.pos += len;
@@ -207,8 +204,11 @@ impl log::Log for FkmLogger {
 
         esp_println::println!("{}{} - {}{}", color, record.level(), record.args(), RESET);
 
-        #[cfg(not(any(feature = "bat_dev_lcd", feature = "qa")))]
-        if !crate::ws::ota_active() && !crate::power::is_sleeping() {
+        // bat_dev_lcd/qa keep logs on the serial port only
+        if !cfg!(any(feature = "bat_dev_lcd", feature = "qa"))
+            && !crate::ws::ota_active()
+            && !crate::power::is_sleeping()
+        {
             let level: &str = match record.level() {
                 log::Level::Error => "E ",
                 log::Level::Warn => "W ",

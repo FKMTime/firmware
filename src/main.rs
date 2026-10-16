@@ -3,6 +3,9 @@
 #![feature(impl_trait_in_assoc_type)]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+#[cfg(all(feature = "bat_dev_lcd", not(feature = "v3")))]
+compile_error!("feature `bat_dev_lcd` is a v3 battery debug screen");
+
 extern crate alloc;
 use crate::consts::NVS_SIGN_KEY;
 use board::Board;

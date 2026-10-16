@@ -97,8 +97,8 @@ pub fn new_session_id() -> SessionId {
     SessionId::truncated(uuid::Uuid::new_v4().hyphenated().encode_lower(&mut buf))
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Hash)]
-#[allow(dead_code)]
+/// Ordered: the solve flow goes top to bottom (`scene > Scene::Inspection` etc.).
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy, Hash)]
 pub enum Scene {
     Update,
     /// Waiting for wifi connection
@@ -123,18 +123,8 @@ impl Scene {
         )
     }
 
-    pub fn to_index(self) -> usize {
-        self as usize
-    }
-
     pub fn can_sleep(&self) -> bool {
         !matches!(self, Scene::Update | Scene::WifiConnect | Scene::AutoSetupWait)
-    }
-}
-
-impl PartialOrd for Scene {
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        Some(self.to_index().cmp(&other.to_index()))
     }
 }
 
@@ -285,7 +275,7 @@ impl Solve {
     #[cfg(feature = "e2e")]
     pub fn snapshot_data(&self) -> crate::structs::SnapshotData {
         crate::structs::SnapshotData {
-            scene: self.scene.to_index(),
+            scene: self.scene as usize,
             inspection_time: self.inspection_end.and(self.inspection_ms()),
             penalty: self.penalty,
             solve_time: self.solve_time,
@@ -411,7 +401,6 @@ pub fn set_epoch(current_epoch: u64) {
 }
 
 /// True after the server sent its time.
-#[cfg_attr(feature = "e2e", allow(dead_code))]
 pub fn epoch_known() -> bool {
     SESSION.read(|s| s.epoch_base) != 0
 }
@@ -460,21 +449,8 @@ impl GlobalStateInner {
         Self {
             solve: Shared::new(Solve::new()),
             ui: Shared::new(Ui::new()),
-            status: Shared::new(Status {
-                wifi_connected: None,
-                server_connected: None,
-                stackmat_connected: None,
-                device_added: None,
-            }),
-            battery: Shared::new(Battery {
-                percent: 0,
-                #[cfg(feature = "v4")]
-                charging: false,
-                #[cfg(feature = "bat_dev_lcd")]
-                current_read: None,
-                #[cfg(feature = "bat_dev_lcd")]
-                avg_read: None,
-            }),
+            status: Shared::new(Status::default()),
+            battery: Shared::new(Battery::default()),
             timer: Watch::new(),
             timer_stop_signal: Signal::new(),
             update_progress: Signal::new(),
