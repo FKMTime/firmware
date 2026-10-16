@@ -48,24 +48,6 @@ impl<const N: usize> From<&str> for BoundedString<N> {
     }
 }
 
-impl<const N: usize> From<alloc::string::String> for BoundedString<N> {
-    fn from(s: alloc::string::String) -> Self {
-        Self::truncated(&s)
-    }
-}
-
-impl<const N: usize> PartialEq<str> for BoundedString<N> {
-    fn eq(&self, other: &str) -> bool {
-        self.as_str() == other
-    }
-}
-
-impl<const N: usize> PartialEq<&str> for BoundedString<N> {
-    fn eq(&self, other: &&str) -> bool {
-        self.as_str() == *other
-    }
-}
-
 impl<const N: usize> fmt::Display for BoundedString<N> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
@@ -191,14 +173,6 @@ impl<T, const N: usize> core::ops::Deref for CappedVec<T, N> {
 impl<T, const N: usize> CappedVec<T, N> {
     pub const fn new() -> Self {
         Self(alloc::vec::Vec::new())
-    }
-}
-
-impl<T, const N: usize> IntoIterator for CappedVec<T, N> {
-    type Item = T;
-    type IntoIter = alloc::vec::IntoIter<T>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
     }
 }
 

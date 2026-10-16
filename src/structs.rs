@@ -219,49 +219,38 @@ pub struct ApiError {
     pub should_reset_time: bool,
 }
 
+/// A response type of a tagged request; an `ApiError` answer is returned as `Err`.
 pub trait FromPacket: Sized {
-    fn from_packet(packet: TimerPacket) -> Result<Self, ApiError>;
-}
+    fn from_inner(data: TimerPacketInner) -> Option<Self>;
 
-impl FromPacket for CardInfoResponsePacket {
     fn from_packet(packet: TimerPacket) -> Result<Self, ApiError> {
         match packet.data {
-            TimerPacketInner::CardInfoResponse(card_info_response_packet) => {
-                Ok(card_info_response_packet)
-            }
             TimerPacketInner::ApiError(api_error) => Err(api_error),
-            _ => Err(ApiError {
+            data => Self::from_inner(data).ok_or_else(|| ApiError {
                 error: "Wrong response type!".into(),
                 should_reset_time: false,
             }),
         }
+    }
+}
+
+impl FromPacket for CardInfoResponsePacket {
+    fn from_inner(data: TimerPacketInner) -> Option<Self> {
+        let TimerPacketInner::CardInfoResponse(p) = data else { return None };
+        Some(p)
     }
 }
 
 impl FromPacket for SolveConfirmPacket {
-    fn from_packet(packet: TimerPacket) -> Result<Self, ApiError> {
-        match packet.data {
-            TimerPacketInner::SolveConfirm(solve_confirm_packet) => Ok(solve_confirm_packet),
-            TimerPacketInner::ApiError(api_error) => Err(api_error),
-            _ => Err(ApiError {
-                error: "Wrong response type!".into(),
-                should_reset_time: false,
-            }),
-        }
+    fn from_inner(data: TimerPacketInner) -> Option<Self> {
+        let TimerPacketInner::SolveConfirm(p) = data else { return None };
+        Some(p)
     }
 }
 
 impl FromPacket for DelegateResponsePacket {
-    fn from_packet(packet: TimerPacket) -> Result<Self, ApiError> {
-        match packet.data {
-            TimerPacketInner::DelegateResponse(delegate_response_packet) => {
-                Ok(delegate_response_packet)
-            }
-            TimerPacketInner::ApiError(api_error) => Err(api_error),
-            _ => Err(ApiError {
-                error: "Wrong response type!".into(),
-                should_reset_time: false,
-            }),
-        }
+    fn from_inner(data: TimerPacketInner) -> Option<Self> {
+        let TimerPacketInner::DelegateResponse(p) = data else { return None };
+        Some(p)
     }
 }
