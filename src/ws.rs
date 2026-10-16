@@ -221,6 +221,7 @@ pub async fn ws_task(
     };
 
     loop {
+        crate::watchdog::heartbeat(crate::watchdog::TaskId::Ws);
         crate::state::set_trust_server(false);
         crate::state::set_secure_rfid(false);
         crate::state::set_auto_setup(false);
@@ -340,6 +341,8 @@ async fn run(
     };
 
     loop {
+        // socket reads time out after 15 s, so this beats well within the watchdog window
+        crate::watchdog::heartbeat(crate::watchdog::TaskId::Ws);
         flush(&mut socket, &mut tx, &mut owed).await?;
 
         match select3(socket.read(rx.read_buf()), WAKE.wait(), wifi_conn_sig.wait()).await {
