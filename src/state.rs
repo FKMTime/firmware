@@ -34,6 +34,9 @@ pub fn notify() {
 /// One domain of shared state. Access is synchronous (no `.await` inside the closure),
 /// so a lock can never be held across a network round trip.
 ///
+/// Never access a domain from inside a closure of the *same* domain (the inner `RefCell`
+/// borrow would panic); different domains may nest (see [`GlobalStateInner::view`]).
+///
 /// `M = NoopRawMutex` (default) costs nothing and keeps interrupts on: every task runs on the
 /// one embassy executor and no interrupt handler touches these domains, so a closure can't be
 /// interrupted by another reader. Use `Cs` for statics read from interrupt-ish paths.

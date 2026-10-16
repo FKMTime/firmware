@@ -1,6 +1,4 @@
-use crate::{
-    consts::BATTERY_SEND_INTERVAL_MS, utils::rolling_average::RollingAverage,
-};
+use crate::consts::BATTERY_SEND_INTERVAL_MS;
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 
@@ -39,7 +37,6 @@ pub async fn battery_read_task(
     let sample_freq = 1000.0;
     let sensitivity = 0.5;
     let mut smoother = dyn_smooth::DynamicSmootherEcoF32::new(base_freq, sample_freq, sensitivity);
-    let mut avg = RollingAverage::<128>::new();
     let mut lcd_sent = false;
 
     let mut sample_rate_millis = 10;
@@ -52,7 +49,6 @@ pub async fn battery_read_task(
 
         let read = adc.read_oneshot(&mut adc_pin).await;
         let read = smoother.tick(read as f32);
-        avg.push(read);
 
         #[cfg(feature = "bat_dev_lcd")]
         state.battery.write(|b| b.current_read = Some(read));
@@ -87,7 +83,7 @@ pub async fn battery_read_task(
 
         log::info!("calc({read}): {bat_calc_mv}mV {bat_percentage}%");
         #[cfg(feature = "bat_dev_lcd")]
-        state.battery.write(|b| b.avg_read = avg.average());
+        state.battery.write(|b| b.avg_read = Some(read));
     }
 }
 
