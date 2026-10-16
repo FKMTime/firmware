@@ -16,7 +16,6 @@ const RATE_LIMIT_SECS: u64 = 60;
 const RATE_LIMIT_SLOTS: usize = 8;
 pub const MAX_STACKTRACE_ADDRS: usize = 16;
 
-
 /// Records, oldest first, in the [`ring_log`] format (same as stored in NVS).
 #[unsafe(link_section = ".dram2_uninit")]
 static BUF: UninitBuf<CAPACITY> = UninitBuf::new();
@@ -57,6 +56,7 @@ pub fn clear_save_ready() {
     DIRTY.store(false, Ordering::Relaxed);
 }
 
+/// Numbers are shown to users (docs links), so a removed code's number is never reused.
 #[allow(dead_code)]
 pub mod codes {
     // RFID (1-9)
@@ -80,8 +80,6 @@ pub mod codes {
     // LCD / Display (20-29)
     #[cfg(feature = "v4")]
     pub const LCD_INIT_FAILED: u8 = 20;
-    #[cfg(feature = "v4")]
-    pub const LCD_FRAMEBUFFER_ALLOC_FAILED: u8 = 21;
     #[cfg(feature = "v4")]
     pub const LCD_FLUSH_TIMEOUT: u8 = 22;
 
@@ -113,14 +111,12 @@ pub mod codes {
     pub const WS_HTTP_UPGRADE_READ_FAILED: u8 = 63;
     pub const WS_PACKET_PARSE_FAILED: u8 = 64;
     pub const WS_PACKET_SERIALIZE_FAILED: u8 = 65;
-    pub const WS_TAGGED_SUBSCRIBER_FAILED: u8 = 66;
 
     // NVS persistence (70-79)
     pub const NVS_SAVED_STATE_WRITE_FAILED: u8 = 70;
     pub const NVS_BONDING_KEY_WRITE_FAILED: u8 = 71;
     #[cfg(feature = "v4")]
     pub const NVS_BUZZER_VOLUME_WRITE_FAILED: u8 = 72;
-    pub const ERROR_LOG_PARSE_FAILED: u8 = 73;
     pub const NVS_SAVED_STATE_DELETE_FAILED: u8 = 74;
 
     // Tasks / runtime (80-89)

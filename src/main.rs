@@ -18,6 +18,7 @@ use state::{GlobalState, GlobalStateInner, SavedGlobalState, Scene};
 use structs::ConnSettings;
 use utils::{logger::FkmLogger, set_brownout_detection, spawn_task};
 
+mod bench;
 mod bluetooth;
 mod board;
 mod buttons;

@@ -12,7 +12,7 @@ pub type TranslationText = DisplayText;
 const MAX_LOCALES: usize = 8;
 const MISSING: &str = "#####";
 
-macros::load_default_translations!("src/default_translation.json");
+include!(concat!(env!("OUT_DIR"), "/translations.rs"));
 
 struct Locale {
     code: LocaleCode,

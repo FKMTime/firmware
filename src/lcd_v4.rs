@@ -117,6 +117,7 @@ pub async fn lcd_task(
         }
 
         if rerender {
+            crate::bench!(LCD_FRAME);
             rerender = false;
             global_state.ui.write(clamp_selection);
             live = global_state.view(|v| render(v, &mut oled.frame, &local));

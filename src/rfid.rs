@@ -99,6 +99,7 @@ pub async fn rfid_task(
     let mut last_card = (0, Instant::now());
     loop {
         Timer::after(Duration::from_millis(10)).await;
+        crate::bench!(RFID_POLL);
         if crate::power::is_sleeping() != rfid_sleep {
             rfid_sleep = crate::power::is_sleeping();
 
