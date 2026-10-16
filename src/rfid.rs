@@ -1,16 +1,11 @@
 use crate::{
     consts::RFID_RETRY_INIT_MS,
-    state::{GlobalState, Scene, current_epoch},
+    state::{GlobalState, MenuScene, Scene, current_epoch},
     structs::{CardInfoResponsePacket, SolveConfirmPacket},
     translations::{TranslationKey, get_translation},
 };
 use embassy_time::{Duration, Instant, Timer};
-use esp_hal_mfrc522::{Interface, Mfrc522};
-
-#[cfg(not(feature = "e2e"))]
-use crate::state::MenuScene;
-#[cfg(not(feature = "e2e"))]
-use esp_hal_mfrc522::{Key, KeyType, Uid};
+use esp_hal_mfrc522::{Interface, Key, KeyType, Mfrc522, Uid};
 
 #[cfg(feature = "v3")]
 use esp_hal::time::Rate;
@@ -89,11 +84,10 @@ pub async fn rfid_task(
         esp_hal_mfrc522::Mfrc522::new(esp_hal_mfrc522::SpiInterface::new(spi))
     };
 
-    #[cfg(not(feature = "e2e"))]
-    init_until_ready(&mut mfrc522).await;
-
-    #[cfg(not(feature = "e2e"))]
-    log::debug!("PCD ver: {:?}", mfrc522.version().await);
+    if !cfg!(feature = "e2e") {
+        init_until_ready(&mut mfrc522).await;
+        log::debug!("PCD ver: {:?}", mfrc522.version().await);
+    }
 
     let mut rfid_sleep = false;
     let mut last_card = (0, Instant::now());
@@ -123,24 +117,10 @@ pub async fn rfid_task(
             continue;
         }
 
-        #[cfg(feature = "e2e")]
-        let Some(card_uid) = global_state.e2e.card_scan_sig.try_take() else {
+        let Some(card) = next_card(&mut mfrc522, &global_state).await else {
             continue;
         };
-        #[cfg(feature = "e2e")]
-        log::debug!("[E2E] Card scan: {card_uid}");
-
-        #[cfg(not(feature = "e2e"))]
-        if !matches!(mfrc522.is_new_card_present().await, Ok(true)) {
-            continue;
-        }
-
-        #[cfg(not(feature = "e2e"))]
-        let Ok(card) = mfrc522.select().await else {
-            continue;
-        };
-        #[cfg(not(feature = "e2e"))]
-        let card_uid = card.to_u128();
+        let card_uid = card.uid;
         log::info!("Card UID: {card_uid}");
 
         let last_scan_time = Instant::now()
@@ -168,14 +148,44 @@ pub async fn rfid_task(
             continue;
         }
 
-        handle_card(
-            &mut mfrc522,
-            #[cfg(not(feature = "e2e"))]
-            &card,
-            card_uid,
-            &global_state,
-        )
-        .await;
+        handle_card(&mut mfrc522, &card, &global_state).await;
+    }
+}
+
+/// A scanned card. `selected` is the reader's selection; simulated e2e cards have none, so they
+/// skip everything that talks to a real card (trust, signing, secure check, halt).
+struct Card {
+    uid: u128,
+    selected: Option<Uid>,
+}
+
+/// The next scanned card: from the reader, or the simulated e2e card source.
+async fn next_card<I: Interface>(
+    mfrc522: &mut Mfrc522<I>,
+    global_state: &GlobalState,
+) -> Option<Card> {
+    #[cfg(feature = "e2e")]
+    {
+        let _ = mfrc522;
+        let uid = global_state.e2e.card_scan_sig.try_take()?;
+        log::debug!("[E2E] Card scan: {uid}");
+        Some(Card {
+            uid,
+            selected: None,
+        })
+    }
+
+    #[cfg(not(feature = "e2e"))]
+    {
+        let _ = global_state;
+        if !matches!(mfrc522.is_new_card_present().await, Ok(true)) {
+            return None;
+        }
+        let selected = mfrc522.select().await.ok()?;
+        Some(Card {
+            uid: selected.to_u128(),
+            selected: Some(selected),
+        })
     }
 }
 
@@ -198,7 +208,6 @@ async fn init_until_ready<I: Interface>(mfrc522: &mut Mfrc522<I>) {
 }
 
 /// Card key derived from the server token: token bytes, then two zero bytes.
-#[cfg(not(feature = "e2e"))]
 fn token_key() -> [u8; 6] {
     let mut key = [0; 6];
     key[..4].copy_from_slice(&crate::state::SESSION.read(|s| s.fkm_token).to_be_bytes());
@@ -206,7 +215,6 @@ fn token_key() -> [u8; 6] {
 }
 
 /// Sector trailer with `key` as key A and B and the default access bits.
-#[cfg(not(feature = "e2e"))]
 fn sector_trailer(key: &[u8; 6]) -> [u8; 16] {
     let mut buff = [0u8; 16];
     buff[..6].copy_from_slice(key);
@@ -216,7 +224,6 @@ fn sector_trailer(key: &[u8; 6]) -> [u8; 16] {
 }
 
 /// Locks sector 15 with the token key and stores the uid in block 62.
-#[cfg(not(feature = "e2e"))]
 async fn sign_card<I: Interface>(
     mfrc522: &mut Mfrc522<I>,
     card: &Uid,
@@ -242,7 +249,6 @@ async fn sign_card<I: Interface>(
 }
 
 /// Clears block 62 and restores the default key on sector 15.
-#[cfg(not(feature = "e2e"))]
 async fn unsign_card<I: Interface>(
     mfrc522: &mut Mfrc522<I>,
     card: &Uid,
@@ -259,7 +265,6 @@ async fn unsign_card<I: Interface>(
 }
 
 /// Whether block 62 (readable with the token key) holds this card's uid.
-#[cfg(not(feature = "e2e"))]
 async fn is_card_secured<I: Interface>(
     mfrc522: &mut Mfrc522<I>,
     card: &Uid,
@@ -290,12 +295,11 @@ async fn is_card_secured<I: Interface>(
 
 async fn handle_card<I: Interface>(
     mfrc522: &mut Mfrc522<I>,
-    #[cfg(not(feature = "e2e"))] card: &Uid,
-    card_uid: u128,
+    card: &Card,
     global_state: &GlobalState,
 ) {
-    #[cfg(not(feature = "e2e"))]
-    {
+    let card_uid = card.uid;
+    if let Some(card) = &card.selected {
         if !crate::state::SESSION.read(|s| s.trust_server) {
             log::error!("Skipping card scan. Server not trusted!");
             global_state.ui.update(|u| u.error_text = Some("Server NOT Trusted!".into()));
@@ -360,19 +364,15 @@ async fn handle_card<I: Interface>(
         }
     }
 
-    #[cfg(feature = "e2e")]
-    {
-        let _ = mfrc522;
-        crate::ws::send_test_ack(global_state);
-    }
-
-    #[cfg(not(feature = "e2e"))]
-    {
+    if card.selected.is_some() {
         _ = mfrc522.halt().await;
         if crate::state::SESSION.read(|s| s.secure_rfid) {
             _ = mfrc522.stop_crypto1().await;
         }
     }
+
+    #[cfg(feature = "e2e")]
+    crate::ws::send_test_ack(global_state);
 }
 
 /// What to do after the state was updated for a scanned card.
@@ -436,8 +436,8 @@ async fn process_card_info_response(resp: CardInfoResponsePacket, global_state: 
                     return CardAction::Nothing;
                 };
 
-                #[cfg(not(feature = "e2e"))]
-                if !crate::state::SESSION.read(|s| s.trust_server) {
+                // e2e runs against an untrusted test server
+                if !cfg!(feature = "e2e") && !crate::state::SESSION.read(|s| s.trust_server) {
                     log::error!("Skipping solve send. Server not trusted!");
                     return CardAction::Nothing;
                 }
