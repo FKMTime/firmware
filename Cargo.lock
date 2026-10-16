@@ -399,15 +399,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "convert_case"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1af709f1f33454bf52eadfc8c78b3b9ef9cb26fb54d16dc9cd9a7299f899fd1b"
-dependencies = [
- "unicode-segmentation",
-]
-
-[[package]]
 name = "cordyceps"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1897,7 +1888,6 @@ dependencies = [
  "getrandom",
  "heapless 0.9.3",
  "log",
- "macros",
  "portable-atomic",
  "profont",
  "qrcodegen-no-heap",
@@ -2384,18 +2374,6 @@ dependencies = [
  "scoped-tls",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "macros"
-version = "0.1.0"
-dependencies = [
- "convert_case 0.12.0",
- "proc-macro2",
- "quote",
- "serde",
- "serde_json",
- "syn 3.0.9",
 ]
 
 [[package]]

@@ -27,7 +27,6 @@ serde_json = { version = "1.0.154", default-features = false, features = ["alloc
 adv-shift-registers = "0.2.5"
 embedded-hal = "1.0.0"
 esp-hal-mdns = { version = "0.2.0", features = ["embassy"] }
-macros = { path = "./macros" }
 embassy-futures = "0.1.2"
 embassy-sync = "0.8.0"
 ws-framer = { version = "0.4.0", default-features = false, features = ["http", "getrandom02"] }
@@ -99,6 +98,7 @@ opt-level = 3
 
 [build-dependencies]
 dotenvy = "0.15.7"
+serde_json = "1.0.154"
 
 # slimmer esp-nvs (sorted vec map instead of btreemap, same on-flash format)
 [patch.crates-io]
