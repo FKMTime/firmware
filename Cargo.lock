@@ -2035,8 +2035,7 @@ checksum = "911aadae41ec99104efa865bd0b6e486b4b735999f9b571963748a46d16495ab"
 [[package]]
 name = "esp-nvs"
 version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe94ff32323389591a43f90589698586d7375322d8d4e3ba3bf9efc54b3f6b76"
+source = "git+https://github.com/filipton/esp-nvs.git?rev=9fbd51dc8766507e25003f9b79689832a2b8a798#9fbd51dc8766507e25003f9b79689832a2b8a798"
 dependencies = [
  "embedded-storage",
  "strum",

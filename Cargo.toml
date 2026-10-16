@@ -104,3 +104,7 @@ opt-level = 3
 
 [build-dependencies]
 dotenvy = "0.15.7"
+
+# slimmer esp-nvs (sorted vec map instead of btreemap, same on-flash format)
+[patch.crates-io]
+esp-nvs = { git = "https://github.com/filipton/esp-nvs.git", rev = "9fbd51dc8766507e25003f9b79689832a2b8a798" }
