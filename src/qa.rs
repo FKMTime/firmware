@@ -1,7 +1,7 @@
 use core::fmt::Write;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
 
-use crate::state::GlobalState;
+use crate::{state::GlobalState, utils::buttons::Button};
 
 /// Peripheral events in arrival order (a `Signal` would drop all but the latest).
 static EVENTS: Channel<CriticalSectionRawMutex, QaSignal, 8> = Channel::new();
@@ -29,17 +29,20 @@ pub async fn qa_processor(global_state: GlobalState) {
 
 /// Walks the QA steps; any event other than the expected one fails the run.
 async fn qa_inner(global_state: &GlobalState) -> bool {
-    for i in 1..5u8 {
+    let buttons = [Button::First, Button::Second, Button::Third, Button::Fourth];
+    for (i, button) in buttons.into_iter().enumerate() {
         let mut line = heapless::String::<16>::new();
-        _ = write!(line, "Button {i}");
+        _ = write!(line, "Button {}", i + 1);
 
         show(global_state, &line, "Down").await;
-        if !matches!(EVENTS.receive().await, QaSignal::ButtonDown(b) if btn_number(b) == Some(i)) {
+        if !matches!(EVENTS.receive().await, QaSignal::ButtonDown(b) if Button::from_mask(b) == Some(button))
+        {
             return false;
         }
 
         show(global_state, &line, "Up").await;
-        if !matches!(EVENTS.receive().await, QaSignal::ButtonUp(b) if btn_number(b) == Some(i)) {
+        if !matches!(EVENTS.receive().await, QaSignal::ButtonUp(b) if Button::from_mask(b) == Some(button))
+        {
             return false;
         }
     }
@@ -76,22 +79,14 @@ async fn qa_inner(global_state: &GlobalState) -> bool {
 }
 
 async fn show(global_state: &GlobalState, line1: &str, line2: &str) {
-    global_state.ui.update(|u| u.custom_message = Some((line1.into(), line2.into())));
+    global_state
+        .ui
+        .update(|u| u.custom_message = Some((line1.into(), line2.into())));
 }
 
 /// Reports an event to the QA flow (never blocks; drops it if 8 are already queued).
 pub fn send_qa_resp(val: QaSignal) {
     if EVENTS.try_send(val).is_err() {
         log::warn!("QA event dropped: {val:?}");
-    }
-}
-
-fn btn_number(mask: u8) -> Option<u8> {
-    match mask {
-        0b0001 => Some(1),
-        0b0010 => Some(2),
-        0b0100 => Some(3),
-        0b1000 => Some(4),
-        _ => None,
     }
 }
