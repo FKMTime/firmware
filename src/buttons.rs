@@ -357,15 +357,7 @@ async fn submit_up(
                 .await
             {
                 log::error!("Cannot save buzzer volume to NVS: {e:?}");
-                static LOGGED: core::sync::atomic::AtomicBool =
-                    core::sync::atomic::AtomicBool::new(false);
-                if !LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
-                    crate::utils::error_log::add_error(
-                        crate::utils::error_log::codes::NVS_BUZZER_VOLUME_WRITE_FAILED,
-                    );
-
-                    LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
-                }
+                crate::log_once!(crate::utils::error_log::codes::NVS_BUZZER_VOLUME_WRITE_FAILED);
             }
 
             state_val.menu_scene = None;

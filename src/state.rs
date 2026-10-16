@@ -579,8 +579,6 @@ impl SavedGlobalState {
     }
 
     pub async fn to_nvs(&self, nvs: &Nvs) {
-        use core::sync::atomic::{AtomicBool, Ordering};
-        static SAVED_STATE_WRITE_ERR_LOGGED: AtomicBool = AtomicBool::new(false);
 
         let res = serde_json::to_vec(&self);
         if let Ok(vec) = res {
@@ -588,31 +586,17 @@ impl SavedGlobalState {
             let res = nvs.set(NVS_SAVED_STATE, vec.as_slice()).await;
             if let Err(e) = res {
                 log::error!("{e:?} Faile to write to nvs! (SAVED_STATE {})", vec.len());
-                if !SAVED_STATE_WRITE_ERR_LOGGED.load(Ordering::Relaxed) {
-                    crate::utils::error_log::add_error(
-                        crate::utils::error_log::codes::NVS_SAVED_STATE_WRITE_FAILED,
-                    );
-
-                    SAVED_STATE_WRITE_ERR_LOGGED.store(true, Ordering::Relaxed);
-                }
+                crate::log_once!(crate::utils::error_log::codes::NVS_SAVED_STATE_WRITE_FAILED);
             }
         }
     }
 
     pub async fn clear_saved_global_state(nvs: &Nvs) {
-        use core::sync::atomic::{AtomicBool, Ordering};
-        static SAVED_STATE_DELETE_ERR_LOGGED: AtomicBool = AtomicBool::new(false);
 
         let res = nvs.delete(NVS_SAVED_STATE).await;
         if let Err(e) = res {
             log::error!("{e:?} Faile to delete nvs key! (SAVED_STATE)",);
-            if !SAVED_STATE_DELETE_ERR_LOGGED.load(Ordering::Relaxed) {
-                crate::utils::error_log::add_error(
-                    crate::utils::error_log::codes::NVS_SAVED_STATE_DELETE_FAILED,
-                );
-
-                SAVED_STATE_DELETE_ERR_LOGGED.store(true, Ordering::Relaxed);
-            }
+            crate::log_once!(crate::utils::error_log::codes::NVS_SAVED_STATE_DELETE_FAILED);
         }
     }
 }

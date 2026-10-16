@@ -45,6 +45,18 @@ impl<const N: usize> UninitBuf<N> {
     }
 }
 
+/// Records error `code` only the first time this call site runs (per boot).
+#[macro_export]
+macro_rules! log_once {
+    ($code:expr) => {{
+        static LOGGED: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
+        if !LOGGED.swap(true, portable_atomic::Ordering::Relaxed) {
+            $crate::utils::error_log::add_error($code);
+        }
+    }};
+}
+
+/// Spawns a task; the firmware can't work without any of its tasks, so failure resets.
 pub fn spawn_task<T>(
     spawner: &Spawner,
     task_name: &str,
@@ -55,8 +67,9 @@ pub fn spawn_task<T>(
             spawner.spawn(token);
         }
         Err(e) => {
-            log::error!("Cannot create task {task_name}: {e:?}");
+            log::error!("Cannot create task {task_name}: {e:?}, resetting");
             crate::utils::error_log::add_error(crate::utils::error_log::codes::TASK_SPAWN_FAILED);
+            esp_hal::system::software_reset();
         }
     }
 }

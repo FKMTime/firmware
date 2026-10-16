@@ -504,15 +504,7 @@ async fn process_card_info_response(
 
                 let Some(ref solve_group) = state.solve_group else {
                     log::error!("Solve group is none! (How would that happen?)");
-                    static LOGGED: core::sync::atomic::AtomicBool =
-                        core::sync::atomic::AtomicBool::new(false);
-                    if !LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
-                        crate::utils::error_log::add_error(
-                            crate::utils::error_log::codes::RFID_SOLVE_GROUP_MISSING,
-                        );
-
-                        LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
-                    }
+                    crate::log_once!(crate::utils::error_log::codes::RFID_SOLVE_GROUP_MISSING);
                     return Ok(());
                 };
 

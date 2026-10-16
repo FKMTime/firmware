@@ -21,16 +21,6 @@ static FRAME_CHANNEL: Channel<CriticalSectionRawMutex, WsFrameOwned, 32> = Chann
 static TAGGED_RETURN: PubSubChannel<CriticalSectionRawMutex, (u64, TimerPacket), 20, 20, 4> =
     PubSubChannel::new();
 
-static DNS_EMPTY_LOGGED: core::sync::atomic::AtomicBool =
-    core::sync::atomic::AtomicBool::new(false);
-static HTTP_UPGRADE_LOGGED: core::sync::atomic::AtomicBool =
-    core::sync::atomic::AtomicBool::new(false);
-static PACKET_PARSE_LOGGED: core::sync::atomic::AtomicBool =
-    core::sync::atomic::AtomicBool::new(false);
-static PACKET_SERIALIZE_LOGGED: core::sync::atomic::AtomicBool =
-    core::sync::atomic::AtomicBool::new(false);
-static TAGGED_SUBSCRIBER_LOGGED: core::sync::atomic::AtomicBool =
-    core::sync::atomic::AtomicBool::new(false);
 
 const WS_BUF_SIZE: usize = 8192;
 const TLS_BUF_SIZE: usize = 16640;
@@ -155,13 +145,7 @@ async fn ws_loop(
 
             let Some(IpAddress::Ipv4(addr)) = res.first() else {
                 log::error!("[WS]Dns resolver empty vec");
-                if !DNS_EMPTY_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
-                    crate::utils::error_log::add_error(
-                        crate::utils::error_log::codes::WS_DNS_RESOLVE_EMPTY,
-                    );
-
-                    DNS_EMPTY_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
-                }
+                crate::log_once!(crate::utils::error_log::codes::WS_DNS_RESOLVE_EMPTY);
                 Timer::after_millis(1000).await;
                 continue;
             };
@@ -230,13 +214,7 @@ async fn ws_loop(
             let n = socket.read(rx_framer.mut_buf()).await.map_err(|_| ())?;
             if n == 0 {
                 log::error!("error while reading http response");
-                if !HTTP_UPGRADE_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
-                    crate::utils::error_log::add_error(
-                        crate::utils::error_log::codes::WS_HTTP_UPGRADE_READ_FAILED,
-                    );
-
-                    HTTP_UPGRADE_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
-                }
+                crate::log_once!(crate::utils::error_log::codes::WS_HTTP_UPGRADE_READ_FAILED);
                 return Err(());
             }
 
@@ -528,16 +506,7 @@ async fn ws_rw(
                                         .await
                                     {
                                         log::error!("Cannot save buzzer volume to NVS: {e:?}");
-                                        static LOGGED: core::sync::atomic::AtomicBool =
-                                            core::sync::atomic::AtomicBool::new(false);
-                                        if !LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
-                                            crate::utils::error_log::add_error(
-                        crate::utils::error_log::codes::NVS_BUZZER_VOLUME_WRITE_FAILED,
-                    );
-
-                                            LOGGED
-                                                .store(true, core::sync::atomic::Ordering::Relaxed);
-                                        }
+                                        crate::log_once!(crate::utils::error_log::codes::NVS_BUZZER_VOLUME_WRITE_FAILED);
                                     }
                                 }
 
@@ -563,13 +532,7 @@ async fn ws_rw(
                     }
                     Err(e) => {
                         log::error!("timer_packet_fail: {e:?}\nTried to parse:\n{text}\n\n");
-                        if !PACKET_PARSE_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
-                            crate::utils::error_log::add_error(
-                                crate::utils::error_log::codes::WS_PACKET_PARSE_FAILED,
-                            );
-
-                            PACKET_PARSE_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
-                        }
+                        crate::log_once!(crate::utils::error_log::codes::WS_PACKET_PARSE_FAILED);
                     }
                 },
                 WsFrame::Binary(data) => {
@@ -679,13 +642,7 @@ pub async fn send_packet(packet: TimerPacket) {
         }
         Err(e) => {
             log::error!("send_packet json to_string failed: {e:?}");
-            if !PACKET_SERIALIZE_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
-                crate::utils::error_log::add_error(
-                    crate::utils::error_log::codes::WS_PACKET_SERIALIZE_FAILED,
-                );
-
-                PACKET_SERIALIZE_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
-            }
+            crate::log_once!(crate::utils::error_log::codes::WS_PACKET_SERIALIZE_FAILED);
         }
     }
 }
@@ -757,13 +714,7 @@ async fn wait_for_tagged_response(tag: u64) -> TimerPacket {
             },
             Err(_) => {
                 log::error!("failed to get TAGGED_RETURN subscriber! Retry!");
-                if !TAGGED_SUBSCRIBER_LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
-                    crate::utils::error_log::add_error(
-                        crate::utils::error_log::codes::WS_TAGGED_SUBSCRIBER_FAILED,
-                    );
-
-                    TAGGED_SUBSCRIBER_LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
-                }
+                crate::log_once!(crate::utils::error_log::codes::WS_TAGGED_SUBSCRIBER_FAILED);
                 Timer::after_millis(500).await;
             }
         }
