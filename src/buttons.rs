@@ -1,7 +1,6 @@
 // qa builds report button edges to the QA flow and never dispatch these handlers
 #![cfg_attr(feature = "qa", allow(dead_code))]
 
-
 use crate::{
     consts::{NVS_BONDING_KEY, NVS_ERROR_LOG, NVS_SIGN_KEY},
     state::{
@@ -10,8 +9,16 @@ use crate::{
     },
     utils::buttons::{Button, ButtonTrigger, ButtonsHandler, HandlerTable},
 };
-use embassy_time::{Instant, Timer};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
+use embassy_time::{Duration, Instant, Timer};
 use esp_hal::gpio::Input;
+use portable_atomic::{AtomicBool, Ordering};
+
+/// Delegate solve waiting to be sent; the reply can take minutes, so it is awaited next to
+/// (not inside) the button loop.
+static DELEGATE_REQUEST: Signal<CriticalSectionRawMutex, crate::structs::TimerPacketInner> =
+    Signal::new();
+static DELEGATE_PENDING: AtomicBool = AtomicBool::new(false);
 
 /// Every button action; dispatched from [`HANDLERS`] by [`ButtonsHandler`].
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -52,6 +59,32 @@ impl Handler {
     }
 }
 
+/// Index after moving one step left/right in a list of `len` items, wrapping around.
+const fn wrap_step(idx: usize, len: usize, right: bool) -> usize {
+    if len == 0 {
+        return 0;
+    }
+
+    let idx = if idx < len { idx } else { len - 1 };
+    if right {
+        (idx + 1) % len
+    } else if idx == 0 {
+        len - 1
+    } else {
+        idx - 1
+    }
+}
+
+const _: () = assert!(
+    wrap_step(0, 3, false) == 2
+        && wrap_step(2, 3, true) == 0
+        && wrap_step(1, 3, true) == 2
+        && wrap_step(9, 3, true) == 0
+        && wrap_step(5, 3, false) == 1
+        && wrap_step(4, 0, true) == 0
+        && wrap_step(0, 1, false) == 0
+);
+
 /// Per button, in execution order.
 const HANDLERS: &HandlerTable = &[
     (Button::Third, ButtonTrigger::Up, Handler::SubmitUp),
@@ -91,9 +124,45 @@ pub async fn buttons_task(
     let mut handler = ButtonsHandler::new(Some(Handler::Wakeup), HANDLERS);
 
     #[cfg(feature = "v3")]
-    handler.run(&state, &button_input, &button_reg).await;
+    let buttons = handler.run(&state, &button_input, &button_reg);
     #[cfg(feature = "v4")]
-    handler.run(&state, &button_inputs).await;
+    let buttons = handler.run(&state, &button_inputs);
+
+    embassy_futures::join::join(buttons, delegate_loop(state)).await;
+}
+
+async fn delegate_loop(state: GlobalState) {
+    loop {
+        let packet = DELEGATE_REQUEST.wait().await;
+        let resp = crate::ws::delegate_request(
+            packet,
+            Duration::from_millis(crate::consts::DELEGATE_TIMEOUT_MS),
+        )
+        .await;
+        log::info!("Delegate resp: {resp:?}");
+
+        let mut state_val = state.state.lock().await;
+        match resp {
+            Ok(resp) => {
+                state_val.solve_time =
+                    Some(resp.solve_time.unwrap_or(state_val.solve_time.unwrap_or(0)));
+                state_val.penalty = Some(
+                    resp.penalty
+                        .unwrap_or(state_val.penalty.unwrap_or(0) as i64) as i8,
+                );
+                state_val.scene = Scene::Finished;
+                state_val.time_confirmed = true;
+                state_val.delegate_used = true;
+                if !resp.should_scan_cards {
+                    state_val.reset_solve_state(Some(state.nvs)).await;
+                }
+            }
+            // no answer: drop the "hold" indicator, the solve stays as it was
+            Err(_) => state_val.delegate_hold = None,
+        }
+
+        DELEGATE_PENDING.store(false, Ordering::Relaxed);
+    }
 }
 
 async fn wakeup_button(state: &GlobalState) -> Result<bool, ()> {
@@ -139,18 +208,14 @@ async fn sel_left(state: &GlobalState) -> Result<bool, ()> {
         }
 
         let total_items = crate::utils::error_log::entry_count() + 1; // + Exit
-        state_val.selected_error_log_item = state_val
-            .selected_error_log_item
-            .wrapping_sub(1)
-            .min(total_items - 1);
+        state_val.selected_error_log_item =
+            wrap_step(state_val.selected_error_log_item, total_items, false);
 
         return Ok(true);
     }
 
     if let Some(sel) = state_val.selected_config_menu.as_mut() {
-        *sel = sel
-            .wrapping_sub(1)
-            .min(crate::structs::CONFIG_MENU_ITEMS.len() - 1);
+        *sel = wrap_step(*sel, crate::structs::CONFIG_MENU_ITEMS.len(), false);
 
         return Ok(true);
     }
@@ -162,10 +227,11 @@ async fn sel_left(state: &GlobalState) -> Result<bool, ()> {
     }
 
     if state_val.scene == Scene::GroupSelect {
-        state_val.group_selected_idx = state_val
-            .group_selected_idx
-            .wrapping_sub(1)
-            .min(state_val.possible_groups.len() - 1);
+        state_val.group_selected_idx = wrap_step(
+            state_val.group_selected_idx,
+            state_val.possible_groups.len(),
+            false,
+        );
 
         return Ok(true);
     }
@@ -213,16 +279,14 @@ async fn sel_right(state: &GlobalState) -> Result<bool, ()> {
         }
 
         let total_items = crate::utils::error_log::entry_count() + 1; // + Exit
-        state_val.selected_error_log_item = (state_val.selected_error_log_item + 1) % total_items;
+        state_val.selected_error_log_item =
+            wrap_step(state_val.selected_error_log_item, total_items, true);
 
         return Ok(true);
     }
 
     if let Some(sel) = state_val.selected_config_menu.as_mut() {
-        *sel += 1;
-        if *sel == crate::structs::CONFIG_MENU_ITEMS.len() {
-            *sel = 0;
-        }
+        *sel = wrap_step(*sel, crate::structs::CONFIG_MENU_ITEMS.len(), true);
 
         return Ok(true);
     }
@@ -236,10 +300,11 @@ async fn sel_right(state: &GlobalState) -> Result<bool, ()> {
     }
 
     if state_val.scene == Scene::GroupSelect {
-        state_val.group_selected_idx += 1;
-        if state_val.group_selected_idx == state_val.possible_groups.len() {
-            state_val.group_selected_idx = 0;
-        }
+        state_val.group_selected_idx = wrap_step(
+            state_val.group_selected_idx,
+            state_val.possible_groups.len(),
+            true,
+        );
 
         return Ok(true);
     }
@@ -266,20 +331,15 @@ async fn submit_up(state: &GlobalState) -> Result<bool, ()> {
             return Ok(true);
         }
         Some(MenuScene::BtDisplay) => {
-            if state_val.selected_bluetooth_item < state_val.discovered_bluetooth_devices.len() {
-                log::debug!(
-                    "[BtD] Try to connect to: {:?}",
-                    state_val.discovered_bluetooth_devices[state_val.selected_bluetooth_item]
-                );
+            if let Some(device) = state_val
+                .discovered_bluetooth_devices
+                .get(state_val.selected_bluetooth_item)
+                .cloned()
+            {
+                log::debug!("[BtD] Try to connect to: {device:?}");
 
                 _ = state.nvs.delete(&NVS_BONDING_KEY).await;
-                state.ble_sig.signal(
-                    BleAction::Connect(
-                        state_val.discovered_bluetooth_devices[state_val.selected_bluetooth_item]
-                            .clone(),
-                    )
-                    .clone(),
-                );
+                state.ble_sig.signal(BleAction::Connect(device));
             } else if state_val.selected_bluetooth_item
                 == state_val.discovered_bluetooth_devices.len()
             {
@@ -493,17 +553,22 @@ async fn submit_up(state: &GlobalState) -> Result<bool, ()> {
     }
 
     if state_val.scene == Scene::GroupSelect {
-        state_val.solve_group =
-            Some(state_val.possible_groups[state_val.group_selected_idx].clone());
+        let Some(group) = state_val
+            .possible_groups
+            .get(state_val.group_selected_idx)
+            .cloned()
+        else {
+            log::error!("Group select: no group at {}", state_val.group_selected_idx);
+            return Ok(false);
+        };
+
+        crate::state::set_group_limit(group.limit);
+        state_val.solve_group = Some(group);
         if state_val.solve_time.is_some() {
             state_val.scene = crate::state::Scene::Finished;
         } else {
             state_val.scene = crate::state::Scene::CompetitorInfo;
         }
-
-        crate::state::set_group_limit(
-            state_val.possible_groups[state_val.group_selected_idx].limit,
-        );
 
         state.state.signal();
 
@@ -659,8 +724,7 @@ async fn delegate_hold(
             }
 
             if state_val.current_competitor.is_some() && state_val.solve_group.is_some() {
-                let hold_secs = hold_time / 1000;
-                let hold_secs = if hold_secs > 3 { 3 } else { hold_secs as u8 };
+                let hold_secs = (hold_time / 1000).min(3) as u8;
 
                 state_val.delegate_hold = Some(hold_secs);
                 state.state.signal();
@@ -668,7 +732,10 @@ async fn delegate_hold(
         }
         ButtonTrigger::HoldOnce(_) => {
             let mut state_val = state.state.lock().await;
-            if state_val.should_skip_other_actions() || state_val.delegate_used {
+            if state_val.should_skip_other_actions()
+                || state_val.delegate_used
+                || DELEGATE_PENDING.load(Ordering::Relaxed)
+            {
                 return Ok(false);
             }
 
@@ -690,7 +757,7 @@ async fn delegate_hold(
                 && let Some(start) = state_val.inspection_start
                 && let Some(end) = state_val.inspection_end
             {
-                (end - start).as_millis() as i64
+                end.saturating_duration_since(start).as_millis() as i64
             } else {
                 0
             };
@@ -718,33 +785,8 @@ async fn delegate_hold(
             };
 
             state_val.delegate_hold = Some(3);
-            drop(state_val);
-
-            let resp =
-                crate::ws::delegate_request(
-                    packet,
-                    embassy_time::Duration::from_millis(crate::consts::DELEGATE_TIMEOUT_MS),
-                )
-                .await;
-            log::info!("Delegate resp: {resp:?}");
-
-            if let Ok(resp) = resp {
-                let mut state_val = state.state.lock().await;
-                state_val.solve_time =
-                    Some(resp.solve_time.unwrap_or(state_val.solve_time.unwrap_or(0)));
-
-                state_val.penalty = Some(
-                    resp.penalty
-                        .unwrap_or(state_val.penalty.unwrap_or(0) as i64) as i8,
-                );
-                state_val.scene = Scene::Finished;
-
-                state_val.time_confirmed = true;
-                state_val.delegate_used = true;
-                if !resp.should_scan_cards {
-                    state_val.reset_solve_state(Some(&state.nvs)).await;
-                }
-            }
+            DELEGATE_PENDING.store(true, Ordering::Relaxed);
+            DELEGATE_REQUEST.signal(packet);
         }
         _ => {}
     }
