@@ -30,6 +30,7 @@ pub fn percent(mv: f64) -> u8 {
 }
 
 /// v3 ADC reading (after smoothing) → battery millivolts (calibrated divider).
+#[cfg(any(feature = "v3", test))]
 pub fn adc_to_mv(raw: f64) -> f64 {
     1.69874 * raw + 66.6103
 }

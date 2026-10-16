@@ -54,7 +54,8 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
 
         let mv = mv as f64;
         let soc = match soc as u8 {
-            0 => crate::utils::battery::percent(crate::utils::battery::adc_to_mv(mv)),
+            // the gauge reports millivolts already (no ADC calibration as on v3)
+            0 => crate::utils::battery::percent(mv),
             soc => soc,
         };
         let charging = ma >= 0;
