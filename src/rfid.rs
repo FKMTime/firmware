@@ -390,13 +390,14 @@ pub async fn rfid_task(
                 || state.current_competitor.unwrap_or_default() == card_uid as u64
         };
 
-        let resp = crate::ws::send_request::<CardInfoResponsePacket>(
+        let resp = crate::ws::request::<CardInfoResponsePacket>(
             crate::structs::TimerPacketInner::CardInfoRequest {
                 card_id: card_uid as u64,
                 is_competitor,
                 attendance_device: None,
                 sign_key: crate::state::sign_key(),
             },
+            embassy_time::Duration::from_millis(crate::consts::WS_REQUEST_TIMEOUT_MS),
         )
         .await;
 
@@ -514,7 +515,7 @@ async fn process_card_info_response(
                     return Ok(());
                 }
 
-                let resp = crate::ws::send_request::<SolveConfirmPacket>(
+                let resp = crate::ws::request::<SolveConfirmPacket>(
                     crate::structs::TimerPacketInner::Solve {
                         solve_time: state.solve_time.ok_or(anyhow!("Solve time is None"))?,
                         penalty: state.penalty.unwrap_or(0) as i64,
@@ -527,6 +528,7 @@ async fn process_card_info_response(
                         group_id: solve_group.group_id.clone(),
                         sign_key: crate::state::sign_key(),
                     },
+                    embassy_time::Duration::from_millis(crate::consts::WS_REQUEST_TIMEOUT_MS),
                 )
                 .await;
 

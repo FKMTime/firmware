@@ -1,7 +1,7 @@
 use crate::{
     consts::WS_RETRY_MS,
     state::{GlobalState, Scene, ota_state},
-    structs::{ApiError, FromPacket, TimerPacket, TimerPacketInner},
+    structs::{ApiError, DelegateResponsePacket, FromPacket, TimerPacket, TimerPacketInner},
 };
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use core::str::FromStr;
@@ -457,7 +457,7 @@ async fn ws_rw(
                                 crate::state::set_epoch(current_epoch);
                             }
                             TimerPacketInner::DelegateResponse(_) => {
-                                tagged_publisher.publish((69420, timer_packet)).await;
+                                tagged_publisher.publish((DELEGATE_TAG, timer_packet)).await;
                             }
                             TimerPacketInner::StartUpdate {
                                 version,
@@ -635,7 +635,7 @@ pub async fn send_test_ack(global_state: &GlobalState) {
     .await;
 }
 
-pub async fn send_packet(packet: TimerPacket) {
+async fn send_packet(packet: TimerPacket) {
     match serde_json::to_string(&packet) {
         Ok(string) => {
             FRAME_CHANNEL.send(WsFrameOwned::Text(string)).await;
@@ -656,18 +656,65 @@ pub fn clear_frame_channel() {
     FRAME_CHANNEL.clear();
 }
 
-pub async fn send_request<T>(packet: TimerPacketInner) -> Result<T, ApiError>
-where
-    T: FromPacket,
-{
-    let mut tag_bytes = [0; 8];
-    _ = getrandom::getrandom(&mut tag_bytes);
-    let tag = u64::from_be_bytes(tag_bytes);
+/// Tag under which untagged `DelegateResponse` pushes are delivered.
+const DELEGATE_TAG: u64 = 69420;
 
-    send_tagged_request(tag, packet, true).await
+/// The outgoing queue is full; nothing was sent.
+#[derive(Debug)]
+pub struct WsBusy;
+
+/// Queues `packet` without waiting.
+pub fn send(packet: TimerPacket) -> Result<(), WsBusy> {
+    let text = serde_json::to_string(&packet).map_err(|e| {
+        log::error!("send json to_string failed: {e:?}");
+        crate::log_once!(crate::utils::error_log::codes::WS_PACKET_SERIALIZE_FAILED);
+        WsBusy
+    })?;
+    FRAME_CHANNEL
+        .try_send(WsFrameOwned::Text(text))
+        .map_err(|_| WsBusy)
 }
 
-pub async fn send_tagged_request<T>(
+/// Queues a binary frame without waiting.
+pub fn send_raw_binary(bytes: &[u8]) -> Result<(), WsBusy> {
+    FRAME_CHANNEL
+        .try_send(WsFrameOwned::Binary(bytes.to_vec()))
+        .map_err(|_| WsBusy)
+}
+
+/// Sends `packet` and waits (at most `timeout` in total) for the tagged response.
+pub async fn request<T: FromPacket>(
+    packet: TimerPacketInner,
+    timeout: Duration,
+) -> Result<T, ApiError> {
+    let tag = crate::utils::get_random_u64();
+    send_tagged_request(tag, packet, false)
+        .with_timeout(timeout)
+        .await
+        .unwrap_or_else(|_| Err(timeout_error()))
+}
+
+#[cfg_attr(feature = "qa", allow(dead_code))]
+/// Sends a delegate `Solve` and waits (at most `timeout`) for the server's
+/// `DelegateResponse` (an untagged push answered by a person, hence the long timeout).
+pub async fn delegate_request(
+    packet: TimerPacketInner,
+    timeout: Duration,
+) -> Result<DelegateResponsePacket, ApiError> {
+    send_tagged_request(DELEGATE_TAG, packet, false)
+        .with_timeout(timeout)
+        .await
+        .unwrap_or_else(|_| Err(timeout_error()))
+}
+
+fn timeout_error() -> ApiError {
+    ApiError {
+        should_reset_time: false,
+        error: "Communication timeout!".into(),
+    }
+}
+
+async fn send_tagged_request<T>(
     tag: u64,
     packet: TimerPacketInner,
     timeout: bool,

@@ -444,7 +444,7 @@ async fn logger_task(global_state: GlobalState) {
         };
 
         if let Some(logs) = logs {
-            ws::send_frame(ws_framer::WsFrameOwned::Binary(logs.to_vec())).await;
+            _ = ws::send_raw_binary(&logs);
         }
 
         #[cfg(not(feature = "release_build"))]

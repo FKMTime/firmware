@@ -20,6 +20,11 @@ pub const LCD_INSPECTION_FRAME_TIME: u64 = 1000 / 30;
 
 pub const RFID_RETRY_INIT_MS: u64 = 1500;
 pub const WS_RETRY_MS: u64 = 1000;
+/// Total time for a request (send + tagged response); was 5 s send + 5 s response.
+pub const WS_REQUEST_TIMEOUT_MS: u64 = 10_000;
+/// The delegate answers on the web panel, so wait long (the buttons task is blocked).
+#[cfg_attr(feature = "qa", allow(dead_code))]
+pub const DELEGATE_TIMEOUT_MS: u64 = 5 * 60_000;
 
 /// v3 buttons are shift-register scanned with no hardware debounce / strong
 /// pull-down filtering; require this long of a stable sample before edges fire.

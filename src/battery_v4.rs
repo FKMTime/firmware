@@ -99,14 +99,13 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
 
         if last_sent.elapsed().as_millis() >= BATTERY_SEND_INTERVAL_MS {
             if state.state.lock().await.server_connected == Some(true) {
-                crate::ws::send_packet(crate::structs::TimerPacket {
+                _ = crate::ws::send(crate::structs::TimerPacket {
                     tag: None,
                     data: crate::structs::TimerPacketInner::Battery {
                         level: Some(soc as f64),
                         voltage: Some(mv),
                     },
-                })
-                .await;
+                });
             }
 
             log::info!("Battery {mv}mv {soc}% (avg current: {ma}mA)");

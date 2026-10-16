@@ -4,7 +4,6 @@ use crate::{
         BleAction, ErrorLogEntryStage, GlobalState, MenuScene, Scene, current_epoch,
         deeper_sleep_state, sleep_state,
     },
-    structs::DelegateResponsePacket,
     utils::buttons::{Button, ButtonTrigger, ButtonsHandler},
 };
 use embassy_time::{Instant, Timer};
@@ -483,14 +482,17 @@ async fn submit_up(
         crate::state::set_sign_key(sign_key);
         crate::state::set_trust_server(true);
 
-        crate::ws::send_packet(crate::structs::TimerPacket {
+        if crate::ws::send(crate::structs::TimerPacket {
             tag: None,
             data: crate::structs::TimerPacketInner::Add {
                 firmware: crate::version::FIRMWARE.into(),
                 sign_key: crate::state::sign_key(),
             },
         })
-        .await;
+        .is_err()
+        {
+            log::error!("Add packet dropped: ws queue full");
+        }
 
         return Ok(true);
     }
@@ -759,8 +761,11 @@ async fn delegate_hold(
             drop(state_val);
 
             let resp =
-                crate::ws::send_tagged_request::<DelegateResponsePacket>(69420, packet, false)
-                    .await;
+                crate::ws::delegate_request(
+                    packet,
+                    embassy_time::Duration::from_millis(crate::consts::DELEGATE_TIMEOUT_MS),
+                )
+                .await;
             log::info!("Delegate resp: {resp:?}");
 
             if let Ok(resp) = resp {

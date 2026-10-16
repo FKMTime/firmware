@@ -79,14 +79,13 @@ pub async fn battery_read_task(
         let bat_percentage = bat_percentage(bat_calc_mv);
 
         if state.state.lock().await.server_connected == Some(true) {
-            crate::ws::send_packet(crate::structs::TimerPacket {
+            _ = crate::ws::send(crate::structs::TimerPacket {
                 tag: None,
                 data: crate::structs::TimerPacketInner::Battery {
                     level: Some(bat_percentage as f64),
                     voltage: Some(bat_calc_mv / 1000.0),
                 },
-            })
-            .await;
+            });
         }
 
         log::info!("calc({read}): {bat_calc_mv}mV {bat_percentage}%");
