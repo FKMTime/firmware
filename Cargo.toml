@@ -47,7 +47,7 @@ embedded-tls = { git = "https://github.com/embassy-rs/embedded-tls", rev = "5812
 spin = { version = "0.9", default-features = false, features = ["portable_atomic"] }
 embassy-crypto = { git = "https://github.com/embassy-rs/embassy", rev = "822a76ea91f2c0885c6eb0c65fe91181e31133e1" }
 embassy-crypto-rustcrypto = { git = "https://github.com/embassy-rs/embassy", rev = "822a76ea91f2c0885c6eb0c65fe91181e31133e1", features = ["embassy-crypto-sha256", "embassy-crypto-hmac-sha256", "embassy-crypto-aes128-gcm", "embassy-crypto-p256-arith", "embassy-crypto-p256-ecdh", "embassy-crypto-p256-ecdsa"] }
-esp-hal-mfrc522 = { version = "0.3.4", features = ["embassy-time"] }
+esp-hal-mfrc522 = { version = "0.4.0", features = ["embassy-time"] }
 esp-bootloader-esp-idf = { version = "0.6.0", features = ["log-04", "esp32c3"] }
 trouble-host = { version = "0.7.0", features = ["scan", "security"] }
 
