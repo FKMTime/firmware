@@ -28,6 +28,20 @@ pub fn fill_placeholders<T: Display>(template: &str, params: &[T], out: &mut imp
     _ = out.write_str(rest);
 }
 
+/// Solve time as `m:ss.cc` / `s.cc` (centiseconds truncated), no heap.
+pub fn time_str(ms: u64) -> heapless::String<12> {
+    let minutes = ms / 60000;
+    let seconds = (ms % 60000) / 1000;
+    let cs = (ms % 1000) / 10;
+    let mut s = heapless::String::new();
+    _ = if minutes > 0 {
+        write!(s, "{minutes}:{seconds:02}.{cs:02}")
+    } else {
+        write!(s, "{seconds}.{cs:02}")
+    };
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -45,5 +59,14 @@ mod tests {
         assert_eq!(fill("{2} {x} { {", &["a"]), "{2} {x} { {");
         assert_eq!(fill("", &["a"]), "");
         assert_eq!(fill("ó{0}ł", &["ż"]), "óżł");
+    }
+
+    #[test]
+    fn time_format() {
+        assert_eq!(time_str(0), "0.00");
+        assert_eq!(time_str(9_999), "9.99");
+        assert_eq!(time_str(12_345), "12.34");
+        assert_eq!(time_str(61_009), "1:01.00");
+        assert_eq!(time_str(600_000), "10:00.00");
     }
 }

@@ -10,8 +10,12 @@ pub mod bounded;
 pub mod ring_log;
 #[path = "../../src/utils/text.rs"]
 pub mod text;
+#[path = "../../src/utils/lcd_text.rs"]
+pub mod lcd_text;
+#[path = "../../src/utils/oled_ui.rs"]
+pub mod oled_ui;
 pub mod utils {
-    pub use crate::bounded;
+    pub use crate::{bounded, text};
 }
 #[path = "../../src/structs.rs"]
 pub mod structs;

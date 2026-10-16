@@ -1,1156 +1,558 @@
 use crate::{
-    consts::{
-        DEEPER_SLEEP_AFTER_MS, INSPECTION_TIME_PLUS2, LCD_INSPECTION_FRAME_TIME, SLEEP_AFTER_MS,
-    },
-    state::{
-        ErrorLogEntryStage, GlobalState, MenuScene, Scene, SignaledGlobalStateInner,
-        deeper_sleep_state, sleep_state,
-    },
+    consts::LCD_INSPECTION_FRAME_TIME,
+    power,
+    state::{ErrorLogEntryStage, GlobalState, MenuScene, Scene, SignaledGlobalStateInner},
     translations::{TranslationKey, get_translation, get_translation_params},
     utils::{
-        lcd_resourcese::{CrossedIcon, Resources},
+        error_log::{self, ErrorLogEntry, codes},
+        oled_ui::{self as ui, Frame, Line64, QrData, TopBar},
+        screen::{Screen, screen},
         shared_i2c::SharedI2C,
-        stackmat::ms_to_time_str,
+        ssd1309::Ssd1309,
     },
 };
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec::Vec,
-};
-use anyhow::{Result, anyhow};
-use display_interface_i2c::I2CInterface;
+use core::fmt::Write;
+use embassy_futures::select::{Either, Either3, select, select3};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
-use embassy_time::{Delay, Instant, Timer};
-use embedded_graphics::{
-    Drawable,
-    mono_font::MonoTextStyle,
-    pixelcolor::BinaryColor,
-    prelude::*,
-    primitives::{Line, PrimitiveStyle, Rectangle},
-    text::{Alignment, Baseline, Text, TextStyle, TextStyleBuilder},
-};
-use embedded_graphics_framebuf::FrameBuf;
-use embedded_layout::{
-    layout::linear::{FixedMargin, Horizontal, LinearLayout},
-    prelude::*,
-    view_group::ViewGroup,
-};
-use embedded_text::{
-    TextBox,
-    alignment::{HorizontalAlignment, VerticalAlignment},
-    style::TextBoxStyleBuilder,
-};
+use embassy_time::{Duration, Instant, Timer, with_timeout};
 use esp_hal::gpio::Output;
-use oled_async::{displays::ssd1309::Ssd1309_128_64, mode::GraphicsMode};
 
-pub const FBUF_WIDTH: usize = 128;
-pub const FBUF_HEIGHT: usize = 64;
-pub const FBUF_SIZE: usize = FBUF_WIDTH * FBUF_HEIGHT;
+pub use ui::DETAILS_VISIBLE_LINES;
 
-pub struct OledData<'a> {
-    pub fbuf: FrameBuf<BinaryColor, &'a mut [BinaryColor; FBUF_SIZE]>,
-    pub disp: GraphicsMode<Ssd1309_128_64, I2CInterface<SharedI2C>>,
+type Text = heapless::String<256>;
+
+/// Which live updates the shown screen needs besides state changes.
+#[derive(Clone, Copy, PartialEq)]
+enum Live {
+    /// nothing live: the 1 s sleep-check tick runs
+    Idle,
+    Signing,
+    WifiConnect,
+    Inspection(Instant),
+    Timer,
+    Update,
 }
 
-impl OledData<'_> {
-    pub async fn flush(&mut self) -> Result<()> {
-        self.disp
-            .draw_iter(&self.fbuf)
-            .map_err(|e| anyhow!("{e:?}"))?;
-        self.disp.flush().await.map_err(|e| anyhow!("{e:?}"))?;
-
-        Ok(())
-    }
-
-    pub fn clear_main(&mut self) -> Result<()> {
-        self.fbuf.fill_solid(&MAIN_RECT, BinaryColor::Off);
-        Ok(())
-    }
+/// Values that only the display keeps (they arrive as signals, not state).
+#[derive(Default)]
+struct Local {
+    /// last timer value of the current solve (Timer scene)
+    timer_ms: Option<u64>,
+    progress: u8,
+    sign_result: Option<(bool, Instant)>,
 }
 
-pub const MAIN_RECT: Rectangle = Rectangle::new(Point::new(0, 11), Size::new(128, 53));
-pub const TOPBAR_RECT: Rectangle = Rectangle::new(Point::new(0, 0), Size::new(128, 10));
-pub const DETAILS_VISIBLE_LINES: usize = 5;
-pub const NORMAL_FONT: MonoTextStyle<'_, BinaryColor> = MonoTextStyle::new(
-    &embedded_graphics::mono_font::ascii::FONT_7X13,
-    BinaryColor::On,
-);
-pub const SMALL_FONT: MonoTextStyle<'_, BinaryColor> = MonoTextStyle::new(
-    &embedded_graphics::mono_font::ascii::FONT_6X9,
-    BinaryColor::On,
-);
-pub const TIMER_FONT: MonoTextStyle<'_, BinaryColor> =
-    MonoTextStyle::new(&profont::PROFONT_14_POINT, BinaryColor::On);
-pub const SMALL_TIMER_FONT: MonoTextStyle<'_, BinaryColor> =
-    MonoTextStyle::new(&profont::PROFONT_7_POINT, BinaryColor::On);
+const SIGN_RESULT_MS: u64 = 300;
+const EVENT_TIMEOUT: Duration = Duration::from_secs(30);
 
-pub const TEXT_CENTER: TextStyle = TextStyleBuilder::new()
-    .alignment(Alignment::Center)
-    .baseline(Baseline::Middle)
-    .build();
-pub const TEXT_TOPBAR: TextStyle = TextStyleBuilder::new()
-    .alignment(Alignment::Right)
-    .baseline(Baseline::Top)
-    .build();
-
-fn center_screen<VG: ViewGroup>(
-    content: VG,
-) -> LinearLayout<Horizontal<embedded_layout::align::vertical::Center>, VG> {
-    LinearLayout::horizontal(content)
-        .with_alignment(embedded_layout::align::vertical::Center)
-        .arrange()
-        .align_to(
-            &Rectangle::new(Point::new(0, 0), Size::new(128, 64)),
-            embedded_layout::align::horizontal::Center,
-            embedded_layout::align::vertical::Center,
-        )
-}
-
-fn center_layout<VG: ViewGroup>(
-    content: VG,
-) -> LinearLayout<Horizontal<embedded_layout::align::vertical::Center>, VG> {
-    LinearLayout::horizontal(content)
-        .with_alignment(embedded_layout::align::vertical::Center)
-        .arrange()
-        .align_to(
-            &MAIN_RECT,
-            embedded_layout::align::horizontal::Center,
-            embedded_layout::align::vertical::Center,
-        )
-}
-
-fn center_text_layout(text: &str) -> TextBox<'_, MonoTextStyle<'_, BinaryColor>> {
-    let textbox_style = TextBoxStyleBuilder::new()
-        .alignment(HorizontalAlignment::Center)
-        .vertical_alignment(VerticalAlignment::Middle)
-        .build();
-
-    TextBox::with_textbox_style(text, MAIN_RECT, NORMAL_FONT, textbox_style)
-}
-
-fn draw_scrollable_menu<D>(target: &mut D, items: &[&str], selected: usize)
-where
-    D: DrawTarget<Color = BinaryColor>,
-{
-    const LINE_HEIGHT: i32 = 10;
-    const VISIBLE: usize = 5;
-    const PADDING_X: i32 = 4;
-
-    let menu_font = MonoTextStyle::new(
-        &embedded_graphics::mono_font::ascii::FONT_6X9,
-        BinaryColor::On,
-    );
-    let menu_font_inv = MonoTextStyle::new(
-        &embedded_graphics::mono_font::ascii::FONT_6X9,
-        BinaryColor::Off,
-    );
-
-    let total = items.len();
-    let scroll_start = if selected + 1 >= VISIBLE {
-        (selected + 1 - VISIBLE).min(total.saturating_sub(VISIBLE))
-    } else {
-        0
-    };
-
-    let start_y = MAIN_RECT.top_left.y;
-
-    for (row, item) in items[scroll_start..].iter().take(VISIBLE).enumerate() {
-        let item_idx = scroll_start + row;
-        let y = start_y + row as i32 * LINE_HEIGHT;
-        let text_y = y + LINE_HEIGHT / 2;
-
-        if item_idx == selected {
-            let bar = Rectangle::new(Point::new(0, y), Size::new(128, LINE_HEIGHT as u32));
-            bar.into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-                .draw(target)
-                .ok();
-            Text::with_text_style(
-                item,
-                Point::new(PADDING_X, text_y),
-                menu_font_inv,
-                TextStyleBuilder::new()
-                    .alignment(Alignment::Left)
-                    .baseline(Baseline::Middle)
-                    .build(),
-            )
-            .draw(target)
-            .ok();
-        } else {
-            Text::with_text_style(
-                item,
-                Point::new(PADDING_X, text_y),
-                menu_font,
-                TextStyleBuilder::new()
-                    .alignment(Alignment::Left)
-                    .baseline(Baseline::Middle)
-                    .build(),
-            )
-            .draw(target)
-            .ok();
-        }
-
-        if scroll_start > 0 && row == 0 {
-            Text::with_text_style("^", Point::new(122, text_y), menu_font, TEXT_CENTER)
-                .draw(target)
-                .ok();
-        }
-        if scroll_start + VISIBLE < total && row == VISIBLE - 1 {
-            Text::with_text_style("v", Point::new(122, text_y), menu_font, TEXT_CENTER)
-                .draw(target)
-                .ok();
+async fn flush(oled: &mut Ssd1309<SharedI2C>) {
+    match with_timeout(Duration::from_millis(1500), oled.flush()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => log::error!("OLED flush error: {e:?}"),
+        Err(_) => {
+            oled.frame.invalidate();
+            log::error!("OLED FLUSH TIMEOUT");
+            error_log::add_error(codes::LCD_FLUSH_TIMEOUT);
         }
     }
 }
 
-fn draw_scrollable_details_text<D>(target: &mut D, text: &str, scroll: usize)
-where
-    D: DrawTarget<Color = BinaryColor>,
-{
-    const LINE_HEIGHT: i32 = 10;
-    const VISIBLE: usize = DETAILS_VISIBLE_LINES;
-    const PADDING_X: i32 = 2;
-
-    let font = MonoTextStyle::new(
-        &embedded_graphics::mono_font::ascii::FONT_6X9,
-        BinaryColor::On,
-    );
-
-    let lines: alloc::vec::Vec<&str> = text.split('\n').collect();
-    let total = lines.len();
-    let start_y = MAIN_RECT.top_left.y;
-
-    for (row, line) in lines.iter().skip(scroll).take(VISIBLE).enumerate() {
-        let y = start_y + row as i32 * LINE_HEIGHT;
-        let text_y = y + LINE_HEIGHT / 2;
-        Text::with_text_style(
-            line,
-            Point::new(PADDING_X, text_y),
-            font,
-            TextStyleBuilder::new()
-                .alignment(Alignment::Left)
-                .baseline(Baseline::Middle)
-                .build(),
-        )
-        .draw(target)
-        .ok();
-    }
-
-    if scroll > 0 {
-        Text::with_text_style(
-            "^",
-            Point::new(122, start_y + LINE_HEIGHT / 2),
-            font,
-            TEXT_CENTER,
-        )
-        .draw(target)
-        .ok();
-    }
-    if scroll + VISIBLE < total {
-        let last_row_y = start_y + (VISIBLE as i32 - 1) * LINE_HEIGHT + LINE_HEIGHT / 2;
-        Text::with_text_style("v", Point::new(122, last_row_y), font, TEXT_CENTER)
-            .draw(target)
-            .ok();
-    }
-}
-
-enum QrCodeData<'a> {
-    Text(&'a str),
-    Binary(&'a [u8]),
-}
-
-fn draw_qr_code<D>(display: &mut D, data: QrCodeData<'_>, module_size: u32) -> Result<(), D::Error>
-where
-    D: DrawTarget<Color = BinaryColor>,
-{
-    let max_version = match module_size {
-        1 => qrcodegen_no_heap::Version::new(6),
-        2 => qrcodegen_no_heap::Version::new(3),
-        3 => qrcodegen_no_heap::Version::new(2),
-        _ => qrcodegen_no_heap::Version::new(1),
-    };
-
-    let mut outbuffer = [0u8; qrcodegen_no_heap::Version::new(6).buffer_len()];
-    let mut tempbuffer = [0u8; qrcodegen_no_heap::Version::new(6).buffer_len()];
-
-    let qr = match data {
-        QrCodeData::Text(text) => qrcodegen_no_heap::QrCode::encode_text(
-            text,
-            &mut tempbuffer,
-            &mut outbuffer,
-            qrcodegen_no_heap::QrCodeEcc::Quartile,
-            qrcodegen_no_heap::Version::MIN,
-            max_version,
-            None,
-            true,
-        ),
-        QrCodeData::Binary(data) => {
-            tempbuffer[..data.len()].copy_from_slice(data);
-            qrcodegen_no_heap::QrCode::encode_binary(
-                &mut tempbuffer,
-                data.len(),
-                &mut outbuffer,
-                qrcodegen_no_heap::QrCodeEcc::Quartile,
-                qrcodegen_no_heap::Version::MIN,
-                max_version,
-                None,
-                true,
-            )
-        }
-    };
-
-    if let Ok(qr) = qr {
-        let filled = PrimitiveStyle::with_fill(BinaryColor::On);
-
-        let qr_pixel_size = qr.size() as u32 * module_size;
-        let origin = Point::new(
-            ((128 - qr_pixel_size) / 2) as i32,
-            ((64 - qr_pixel_size) / 2) as i32,
-        );
-
-        for y in 0..qr.size() {
-            for x in 0..qr.size() {
-                if qr.get_module(x, y) {
-                    let top_left =
-                        origin + Point::new(x * module_size as i32, y * module_size as i32);
-                    Rectangle::new(top_left, Size::new(module_size, module_size))
-                        .into_styled(filled)
-                        .draw(display)?;
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-pub async fn lcd_show_critical_code(i2c: SharedI2C, mut display_rst: Output<'static>, code: u8) {
-    let di = display_interface_i2c::I2CInterface::new(i2c, 0x3C, 0x40);
-    let raw_disp =
-        oled_async::builder::Builder::new(oled_async::displays::ssd1309::Ssd1309_128_64 {})
-            .with_rotation(oled_async::prelude::DisplayRotation::Rotate180)
-            .connect(di);
-
-    let mut disp: oled_async::mode::GraphicsMode<_, _> = raw_disp.into();
-    disp.reset(&mut display_rst, &mut Delay);
-
-    let disp_init = async {
-        disp.init().await?;
-        disp.clear();
-        disp.flush().await?;
-
-        anyhow::Result::<(), display_interface::DisplayError>::Ok(())
-    }
-    .await;
-
-    if let Err(e) = disp_init {
+async fn init(i2c: SharedI2C, mut display_rst: Output<'static>) -> Ssd1309<SharedI2C> {
+    let mut oled = Ssd1309::new(i2c);
+    if let Err(e) = oled.init(&mut display_rst).await {
         log::error!("Disp init error: {e:?} (but continuing i guess)");
-        crate::utils::error_log::add_error(crate::utils::error_log::codes::LCD_INIT_FAILED);
+        error_log::add_error(codes::LCD_INIT_FAILED);
     }
+    flush(&mut oled).await; // clear the panel's power-up content
+    oled
+}
 
-    let text = format!("CRITICAL ERROR\nCODE: {code}",);
-    let text = Text::with_text_style(&text, Point::zero(), NORMAL_FONT, TEXT_CENTER);
-
-    _ = center_layout(Chain::new(text)).draw(&mut disp);
-    _ = disp.flush().await;
+pub async fn lcd_show_critical_code(i2c: SharedI2C, display_rst: Output<'static>, code: u8) {
+    let mut oled = init(i2c, display_rst).await;
+    let mut text = Text::new();
+    _ = write!(text, "CRITICAL ERROR\nCODE: {code}");
+    ui::centered_main(&mut oled.frame, &text);
+    flush(&mut oled).await;
 }
 
 #[embassy_executor::task]
 pub async fn lcd_task(
     i2c: SharedI2C,
-    mut display_rst: Output<'static>,
+    display_rst: Output<'static>,
     global_state: GlobalState,
     wifi_setup_sig: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {
-    let di = display_interface_i2c::I2CInterface::new(i2c, 0x3C, 0x40);
-    let raw_disp =
-        oled_async::builder::Builder::new(oled_async::displays::ssd1309::Ssd1309_128_64 {})
-            .with_rotation(oled_async::prelude::DisplayRotation::Rotate180)
-            .connect(di);
-
-    let mut disp: oled_async::mode::GraphicsMode<_, _> = raw_disp.into();
-    disp.reset(&mut display_rst, &mut Delay);
-
-    let disp_init = async {
-        disp.init().await?;
-        disp.clear();
-        disp.flush().await?;
-
-        anyhow::Result::<(), display_interface::DisplayError>::Ok(())
-    }
-    .await;
-
-    if let Err(e) = disp_init {
-        log::error!("Disp init error: {e:?} (but continuing i guess)");
-        crate::utils::error_log::add_error(crate::utils::error_log::codes::LCD_INIT_FAILED);
-    }
-
-    let mut data = alloc::vec![embedded_graphics::pixelcolor::BinaryColor::Off; FBUF_SIZE];
-    let Some(data): Option<&mut [BinaryColor; FBUF_SIZE]> = data.as_mut_array() else {
-        log::error!("Disp framebuffer data alloc failed!");
-        crate::utils::error_log::add_error(
-            crate::utils::error_log::codes::LCD_FRAMEBUFFER_ALLOC_FAILED,
-        );
-        return;
-    };
-    let fbuf = embedded_graphics_framebuf::FrameBuf::new(data, FBUF_WIDTH, FBUF_HEIGHT);
-
-    let mut oled = OledData { fbuf, disp };
+    let mut oled = init(i2c, display_rst).await;
 
     global_state.show_battery.wait().await;
-    _ = process_top_bar(
-        &global_state.state.value().await.clone(),
-        &global_state,
-        &mut oled,
-    )
-    .await;
-
-    let text = format!(
+    top_bar(&mut oled.frame, &*global_state.state.value().await);
+    let mut text = Text::new();
+    _ = write!(
+        text,
         "S/N: {:X}\nVER: {}",
         crate::utils::get_efuse_u32(),
         crate::version::VERSION
     );
-    let text = Text::with_text_style(&text, Point::zero(), NORMAL_FONT, TEXT_CENTER);
-
-    center_layout(Chain::new(text)).draw(&mut oled.fbuf);
-    _ = oled.flush().await;
-
+    ui::centered_main(&mut oled.frame, &text);
+    flush(&mut oled).await;
     Timer::after_millis(2500).await;
 
-    let mut last_update;
+    let mut local = Local::default();
+    let mut live = Live::Idle;
+    let mut last_update = Instant::now();
+    let (mut state_changed, mut rerender) = (true, true);
     loop {
-        let current_state = global_state.state.value().await.clone();
-        log::debug!("lcd current_state: {current_state:?}");
-        last_update = Instant::now();
-
-        if sleep_state() {
-            crate::state::set_sleep_state(false);
-            log::warn!("Sleep wakeup!");
+        if state_changed {
+            state_changed = false;
+            rerender = true;
+            last_update = Instant::now();
+            if power::is_sleeping() {
+                power::wake();
+                log::warn!("Sleep wakeup!");
+            }
         }
 
-        let current_scene = current_state.scene.clone();
-        let fut = async {
-            oled.fbuf.clear(BinaryColor::Off);
-            _ = process_top_bar(&current_state, &global_state, &mut oled).await;
-            _ = process_main(&current_state, &global_state, &wifi_setup_sig, &mut oled).await;
-            if embassy_time::with_timeout(embassy_time::Duration::from_millis(1500), oled.flush())
-                .await
-                .is_err()
-            {
-                log::error!("OLED FLUSH TIMEOUT");
-                crate::utils::error_log::add_error(
-                    crate::utils::error_log::codes::LCD_FLUSH_TIMEOUT,
-                );
+        if rerender {
+            rerender = false;
+            let mut state = global_state.state.lock().await;
+            clamp_selection(&mut state);
+            live = render(&state, &mut oled.frame, &local);
+            drop(state);
+            if live != Live::Timer {
+                local.timer_ms = None;
             }
+            flush(&mut oled).await;
+        }
 
-            loop {
-                Timer::after_millis(1000).await;
-                if global_state.show_battery.signaled() {
-                    let state_snapshot = global_state.state.value().await.clone();
-                    let qr_open = state_snapshot.menu_scene == Some(MenuScene::ErrorLog)
-                        && state_snapshot.error_log_entry_stage == Some(ErrorLogEntryStage::Qr);
-                    if qr_open {
-                        continue;
-                    }
-
-                    oled.fbuf.fill_solid(&TOPBAR_RECT, BinaryColor::Off);
-                    _ = process_top_bar(&state_snapshot, &global_state, &mut oled).await;
-                    if embassy_time::with_timeout(
-                        embassy_time::Duration::from_millis(1500),
-                        oled.flush(),
-                    )
-                    .await
-                    .is_err()
-                    {
-                        log::error!("OLED FLUSH TIMEOUT");
-                        crate::utils::error_log::add_error(
-                            crate::utils::error_log::codes::LCD_FLUSH_TIMEOUT,
-                        );
-                    }
-
-                    global_state.show_battery.reset();
-                }
-
-                #[cfg(not(any(feature = "e2e", feature = "qa")))]
-                if !sleep_state()
-                    && (Instant::now() - last_update).as_millis() > SLEEP_AFTER_MS
-                    && current_scene.can_sleep()
-                {
-                    oled.fbuf.clear(BinaryColor::Off);
-                    let text =
-                        Text::with_text_style("Sleep", Point::zero(), SMALL_FONT, TEXT_CENTER);
-
-                    center_screen(Chain::new(text)).draw(&mut oled.fbuf);
-                    if embassy_time::with_timeout(
-                        embassy_time::Duration::from_millis(1500),
-                        oled.flush(),
-                    )
-                    .await
-                    .is_err()
-                    {
-                        log::error!("OLED FLUSH TIMEOUT");
-                        crate::utils::error_log::add_error(
-                            crate::utils::error_log::codes::LCD_FLUSH_TIMEOUT,
-                        );
-                    }
-
-                    {
-                        let mut state = global_state.state.lock().await;
-                        state.server_connected = Some(false);
-                        state.wifi_connected = Some(false);
-                    }
-
-                    crate::state::set_sleep_state(true);
-                    crate::state::set_trust_server(false);
-
-                    global_state.state.signal_reset();
-                }
-
-                #[cfg(not(any(feature = "e2e", feature = "qa")))]
-                if sleep_state()
-                    && !deeper_sleep_state()
-                    && (Instant::now() - last_update).as_millis() > DEEPER_SLEEP_AFTER_MS
-                {
-                    use esp_hal::gpio::{Event, Input, InputConfig, Pull, WakeupConfig};
-                    use esp_hal::rtc_cntl::sleep::{LowPower, RtcSleepConfig};
-
-                    oled.fbuf.clear(BinaryColor::Off);
-                    let text =
-                        Text::with_text_style("Sleep", Point::zero(), SMALL_FONT, TEXT_CENTER);
-
-                    center_screen(Chain::new(text)).draw(&mut oled.fbuf);
-                    _ = oled.flush().await;
-
-                    unsafe {
-                        // pull-down like the old RtcioWakeupSource did for a high-level wake
-                        let input_config = InputConfig::default().with_pull(Pull::Down);
-                        let wakeup_config = WakeupConfig::default().with_low_power_path(true);
-                        let mut wakeup_pins = [
-                            Input::new(esp_hal::peripherals::GPIO0::steal(), input_config),
-                            Input::new(esp_hal::peripherals::GPIO1::steal(), input_config),
-                            Input::new(esp_hal::peripherals::GPIO2::steal(), input_config),
-                            Input::new(esp_hal::peripherals::GPIO3::steal(), input_config),
-                        ];
-                        for pin in &mut wakeup_pins {
-                            pin.apply_wakeup_config(&wakeup_config).unwrap();
-                            pin.listen(Event::HighLevel);
-                        }
-                        LowPower::new(esp_hal::peripherals::LPWR::steal())
-                            .sleep_deep(RtcSleepConfig::deep());
-                    }
-                }
-            }
+        crate::watchdog::heartbeat(crate::watchdog::TaskId::Lcd);
+        // bounded so the heartbeat keeps beating while a live screen waits for its signal
+        let event = with_timeout(EVENT_TIMEOUT, next_event(global_state, wifi_setup_sig, live, &local));
+        let Ok(event) = event.await else {
+            continue;
         };
+        match event {
+            Event::State => state_changed = true,
+            Event::TimerValue(ms) => {
+                local.timer_ms = Some(ms);
+                ui::digits(&mut oled.frame, ms);
+                flush(&mut oled).await;
+            }
+            Event::InspectionFrame(start) => {
+                let elapsed = start.elapsed().as_millis();
+                crate::state::set_inspection_time(Some(elapsed));
+                ui::digits(&mut oled.frame, elapsed);
+                flush(&mut oled).await;
+            }
+            Event::Progress(p) => {
+                local.progress = p;
+                rerender = true;
+            }
+            Event::SignResult(ok) => {
+                local.sign_result = Some((ok, Instant::now()));
+                rerender = true;
+            }
+            Event::SignResultEnd => {
+                local.sign_result = None;
+                rerender = true;
+            }
+            Event::WifiSetup => {
+                global_state.state.lock().await.scene = Scene::AutoSetupWait;
+            }
+            Event::SleepTick => sleep_check(&mut oled, global_state, last_update).await,
+        }
+    }
+}
 
-        let res = embassy_futures::select::select(fut, global_state.state.wait()).await;
-        match res {
-            embassy_futures::select::Either::First(_) => {}
-            embassy_futures::select::Either::Second(_) => {
-                continue;
+enum Event {
+    State,
+    TimerValue(u64),
+    InspectionFrame(Instant),
+    Progress(u8),
+    SignResult(bool),
+    SignResultEnd,
+    WifiSetup,
+    SleepTick,
+}
+
+async fn next_event(
+    gs: GlobalState,
+    wifi_setup_sig: &Signal<CriticalSectionRawMutex, ()>,
+    live: Live,
+    local: &Local,
+) -> Event {
+    let other = async {
+        match live {
+            Live::Timer => Event::TimerValue(gs.timer_signal.wait().await),
+            Live::Inspection(start) => {
+                Timer::after_millis(LCD_INSPECTION_FRAME_TIME).await;
+                Event::InspectionFrame(start)
+            }
+            Live::Update => Event::Progress(gs.update_progress.wait().await),
+            Live::WifiConnect => {
+                wifi_setup_sig.wait().await;
+                Event::WifiSetup
+            }
+            Live::Signing => {
+                let result_end = async {
+                    match local.sign_result {
+                        Some((_, at)) => Timer::at(at + Duration::from_millis(SIGN_RESULT_MS)).await,
+                        None => core::future::pending().await,
+                    }
+                };
+                match select3(gs.sign_unsign_progress.wait(), result_end, sleep_tick()).await {
+                    Either3::First(ok) => Event::SignResult(ok),
+                    Either3::Second(()) => Event::SignResultEnd,
+                    Either3::Third(()) => Event::SleepTick,
+                }
+            }
+            Live::Idle => {
+                sleep_tick().await;
+                Event::SleepTick
             }
         }
+    };
+
+    match select(gs.state.wait(), other).await {
+        Either::First(()) => Event::State,
+        Either::Second(event) => event,
     }
 }
 
-fn battery_layout<VG: ViewGroup>(
-    content: VG,
-) -> LinearLayout<Horizontal<embedded_layout::align::vertical::Center, FixedMargin>, VG> {
-    LinearLayout::horizontal(content)
-        .with_alignment(embedded_layout::align::vertical::Center)
-        .with_spacing(FixedMargin(1))
-        .arrange()
-        .align_to(
-            &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
-            embedded_layout::align::horizontal::Right,
-            embedded_layout::align::vertical::Center,
-        )
+async fn sleep_tick() {
+    Timer::after_millis(1000).await;
 }
 
-fn topbar_icons_layout<VG: ViewGroup>(
-    content: VG,
-) -> LinearLayout<Horizontal<embedded_layout::align::vertical::Center, FixedMargin>, VG> {
-    LinearLayout::horizontal(content)
-        .with_alignment(embedded_layout::align::vertical::Center)
-        .with_spacing(FixedMargin(2))
-        .arrange()
-        .align_to(
-            &Rectangle::new(Point::new(0, 0), Size::new(128, 10)),
-            embedded_layout::align::horizontal::Left,
-            embedded_layout::align::vertical::Center,
-        )
+/// Sleep after `SLEEP_AFTER_MS` without state changes, deep sleep after `DEEPER_SLEEP_AFTER_MS`.
+#[cfg(not(any(feature = "e2e", feature = "qa")))]
+async fn sleep_check(oled: &mut Ssd1309<SharedI2C>, global_state: GlobalState, last_update: Instant) {
+    use crate::consts::{DEEPER_SLEEP_AFTER_MS, SLEEP_AFTER_MS};
+
+    let idle_ms = last_update.elapsed().as_millis();
+    let can_sleep = global_state.state.value().await.scene.can_sleep();
+    if !power::is_sleeping() && idle_ms > SLEEP_AFTER_MS && can_sleep {
+        enter_sleep(oled, global_state).await;
+    }
+    if power::is_sleeping() && !crate::state::deeper_sleep_state() && idle_ms > DEEPER_SLEEP_AFTER_MS {
+        oled.frame.clear();
+        ui::centered_screen(&mut oled.frame, "Sleep", ui::SMALL_FONT);
+        flush(oled).await;
+        power::enter_deep_sleep();
+    }
 }
 
-async fn process_top_bar(
-    current_state: &SignaledGlobalStateInner,
-    _global_state: &GlobalState,
-    oled: &mut OledData<'_>,
-) -> Result<()> {
-    let text = format!("{}%", current_state.battery_status.0);
-    let text = Text::with_text_style(&text, Point::zero(), NORMAL_FONT, TEXT_TOPBAR);
-    if current_state.battery_status.1 {
-        battery_layout(Chain::new(Resources::CHARGING).append(text)).draw(&mut oled.fbuf)?;
-    } else {
-        battery_layout(Chain::new(text)).draw(&mut oled.fbuf)?;
+#[cfg(any(feature = "e2e", feature = "qa"))]
+async fn sleep_check(_: &mut Ssd1309<SharedI2C>, _: GlobalState, _: Instant) {}
+
+/// Sleep screen + connection flags (logic unchanged; WP5's power module takes it over later).
+#[cfg(not(any(feature = "e2e", feature = "qa")))]
+async fn enter_sleep(oled: &mut Ssd1309<SharedI2C>, global_state: GlobalState) {
+    oled.frame.clear();
+    ui::centered_screen(&mut oled.frame, "Sleep", ui::SMALL_FONT);
+    flush(oled).await;
+
+    {
+        let mut state = global_state.state.lock().await;
+        state.server_connected = Some(false);
+        state.wifi_connected = Some(false);
     }
 
-    let topbar_chain = Chain::new(CrossedIcon::new(
-        Resources::WIFI,
-        !current_state.wifi_connected.unwrap_or(false),
-        9,
-    ))
-    .append(CrossedIcon::new(
-        Resources::SERVER,
-        !current_state.server_connected.unwrap_or(false),
-        9,
-    ));
+    power::request_sleep();
+    crate::state::set_trust_server(false);
+    global_state.state.signal_reset();
+}
 
-    #[cfg(not(feature = "timer-func"))]
-    let topbar_chain = topbar_chain.append(CrossedIcon::new(
-        Resources::TIMER,
-        !current_state.stackmat_connected.unwrap_or(false),
-        9,
-    ));
+/// Out-of-range menu selections reset to the first item (was done mid-render before).
+fn clamp_selection(state: &mut crate::utils::signaled_mutex::SignaledMutexGuard<'_, CriticalSectionRawMutex, SignaledGlobalStateInner>) {
+    let error_log_items = error_log::entry_count() + 1;
+    if state.menu_scene == Some(MenuScene::ErrorLog)
+        && state.selected_error_log_entry.is_none()
+        && state.selected_error_log_item >= error_log_items
+    {
+        state.selected_error_log_item = 0;
+    }
+    let bt_items = state.discovered_bluetooth_devices.len() + 2;
+    if state.menu_scene == Some(MenuScene::BtDisplay) && state.selected_bluetooth_item >= bt_items {
+        state.selected_bluetooth_item = 0;
+    }
+}
 
-    topbar_icons_layout(topbar_chain).draw(&mut oled.fbuf)?;
-
-    let text = if current_state.selected_config_menu.is_some() {
+fn top_bar(f: &mut Frame, s: &SignaledGlobalStateInner) {
+    let title = if s.selected_config_menu.is_some() {
         Some("CONFIG")
-    } else if let Some(ref menu_scene) = current_state.menu_scene {
-        match menu_scene {
-            MenuScene::Signing => Some("SIGN"),
-            MenuScene::Unsigning => Some("UNSIGN"),
-            MenuScene::BtDisplay => Some("BTDISP"),
-            MenuScene::ErrorLog => Some("ERRLOG"),
-            MenuScene::BuzzerVolume => Some("BUZZER"),
-        }
-    } else if let Some(ref group) = current_state.solve_group
-        && current_state.scene == Scene::CompetitorInfo
+    } else if let Some(ref menu_scene) = s.menu_scene {
+        Some(match menu_scene {
+            MenuScene::Signing => "SIGN",
+            MenuScene::Unsigning => "UNSIGN",
+            MenuScene::BtDisplay => "BTDISP",
+            MenuScene::ErrorLog => "ERRLOG",
+            MenuScene::BuzzerVolume => "BUZZER",
+        })
+    } else if let Some(ref group) = s.solve_group
+        && s.scene == Scene::CompetitorInfo
     {
         Some(group.name.as_str())
     } else {
         None
     };
-    if let Some(text) = text {
-        Text::with_text_style(text, Point::new(64, 5), SMALL_FONT, TEXT_CENTER)
-            .draw(&mut oled.fbuf)?;
-    }
 
-    Line::new(Point::new(0, 10), Point::new(128, 10))
-        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
-        .draw(&mut oled.fbuf)?;
-
-    Ok(())
+    ui::top_bar(
+        f,
+        &TopBar {
+            battery: s.battery_status,
+            wifi: s.wifi_connected.unwrap_or(false),
+            server: s.server_connected.unwrap_or(false),
+            stackmat: s.stackmat_connected.unwrap_or(false),
+            title,
+        },
+    );
 }
 
-async fn process_main(
-    current_state: &SignaledGlobalStateInner,
-    global_state: &GlobalState,
-    wifi_setup_sig: &Signal<CriticalSectionRawMutex, ()>,
-    oled: &mut OledData<'_>,
-) -> Result<()> {
-    if let Some(ref error_text) = current_state.error_text {
-        center_text_layout(&format!(
-            "{}\n{}",
-            get_translation(TranslationKey::ERROR_HEADER),
-            error_text
-        ))
-        .draw(&mut oled.fbuf)?;
+/// `a\nb` into a stack buffer.
+fn two_lines(a: &str, b: &str) -> Text {
+    let mut t = Text::new();
+    _ = write!(t, "{a}\n{b}");
+    t
+}
 
-        return Ok(());
-    }
+fn tr_lines(header: usize, footer: usize) -> Text {
+    two_lines(&get_translation(header), &get_translation(footer))
+}
 
-    // display custom message on top of everything!
-    if let Some((line1, line2)) = &current_state.custom_message {
-        center_text_layout(&format!("{line1}\n{line2}")).draw(&mut oled.fbuf)?;
-        return Ok(());
-    }
+/// Draws the whole frame for the current state (no I/O, no heap).
+fn render(s: &SignaledGlobalStateInner, f: &mut Frame, local: &Local) -> Live {
+    f.clear();
+    top_bar(f, s);
 
-    if let Some(sel) = current_state.selected_config_menu {
-        let items: alloc::vec::Vec<alloc::string::String> = crate::structs::CONFIG_MENU_ITEMS
-            .iter()
-            .enumerate()
-            .map(|(i, name)| alloc::format!("{}. {}", i + 1, name))
-            .collect();
-        let item_refs: alloc::vec::Vec<&str> = items.iter().map(|s| s.as_str()).collect();
-        draw_scrollable_menu(&mut oled.fbuf, &item_refs, sel);
-        return Ok(());
-    }
-
-    match current_state.menu_scene {
-        Some(MenuScene::BuzzerVolume) => {
-            center_text_layout(&format!(
+    let mut text = Text::new();
+    match screen(s) {
+        Screen::Error(error) => {
+            ui::text_main(f, &two_lines(&get_translation(TranslationKey::ERROR_HEADER), error))
+        }
+        Screen::Custom(l1, l2) => ui::text_main(f, &two_lines(l1, l2)),
+        Screen::ConfigMenu(sel) => {
+            let items = &crate::structs::CONFIG_MENU_ITEMS;
+            ui::menu(f, items.len(), sel, |i, buf| {
+                _ = write!(buf, "{}. {}", i + 1, items[i]);
+            });
+        }
+        Screen::BuzzerVolume => {
+            _ = write!(
+                text,
                 "Buzzer Volume\n< {} >\nSubmit to save",
                 crate::state::buzzer_volume()
-            ))
-            .draw(&mut oled.fbuf)?;
-            return Ok(());
-        }
-        Some(MenuScene::ErrorLog) => {
-            if let Some(entry_idx) = current_state.selected_error_log_entry {
-                if let Some(entry) = crate::utils::error_log::entry(entry_idx).as_ref() {
-                    if current_state.error_log_entry_stage == Some(ErrorLogEntryStage::Qr) {
-                        match entry {
-                            crate::utils::error_log::ErrorLogEntry::Code { timestamp: _, code } => {
-                                let url = format!("https://docs.fkmtime.com/debugging/e{}", code);
-                                draw_qr_code(&mut oled.fbuf, QrCodeData::Text(&url), 1)?;
-                            }
-                            crate::utils::error_log::ErrorLogEntry::Stacktrace {
-                                timestamp: _,
-                                version,
-                                addrs,
-                            } => {
-                                let mut tmp = Vec::new();
-                                tmp.push(version.len() as u8);
-                                tmp.extend_from_slice(version.as_bytes());
-                                for addr in addrs {
-                                    tmp.extend_from_slice(&addr.to_be_bytes());
-                                }
-
-                                draw_qr_code(&mut oled.fbuf, QrCodeData::Binary(&tmp), 1)?;
-                            }
-                        };
-
-                        return Ok(());
-                    }
-
-                    draw_scrollable_details_text(
-                        &mut oled.fbuf,
-                        &error_log_entry_details_text(entry),
-                        current_state.error_log_details_scroll,
-                    );
-                    return Ok(());
-                }
-
-                center_text_layout("Invalid entry\nSubmit to return").draw(&mut oled.fbuf)?;
-                return Ok(());
-            }
-
-            let mut items = (0..crate::utils::error_log::entry_count())
-                .filter_map(crate::utils::error_log::entry)
-                .map(|entry| alloc::string::String::from(entry.list_label().as_str()))
-                .collect::<alloc::vec::Vec<_>>();
-            items.push("Exit".into());
-
-            let sel = current_state.selected_error_log_item;
-            if sel >= items.len() {
-                global_state.state.lock().await.selected_error_log_item = 0;
-            } else {
-                let item_refs = items
-                    .iter()
-                    .map(|s| s.as_str())
-                    .collect::<alloc::vec::Vec<_>>();
-                draw_scrollable_menu(&mut oled.fbuf, &item_refs, sel);
-            }
-            return Ok(());
-        }
-        Some(MenuScene::Signing) | Some(MenuScene::Unsigning) => {
-            let prefix = if current_state.menu_scene == Some(MenuScene::Signing) {
-                "S"
-            } else {
-                "Uns"
-            };
-
-            let main_text = format!("{prefix}igning");
-
-            if global_state.sign_unsign_progress.signaled() {
-                let status = if global_state.sign_unsign_progress.wait().await {
-                    "OK"
-                } else {
-                    "FAIL"
-                };
-
-                center_text_layout(&format!("{main_text}\nOperation: {status}"))
-                    .draw(&mut oled.fbuf)?;
-                oled.flush().await?;
-
-                Timer::after_millis(300).await;
-                oled.clear_main()?;
-                center_text_layout(&format!("{main_text}\nScan the card\n\nSubmit to exit"))
-                    .draw(&mut oled.fbuf)?;
-            } else {
-                center_text_layout(&format!("{main_text}\nScan the card\n\nSubmit to exit"))
-                    .draw(&mut oled.fbuf)?;
-            }
-
-            return Ok(());
-        }
-        Some(crate::state::MenuScene::BtDisplay) => {
-            let mut items: alloc::vec::Vec<alloc::string::String> = current_state
-                .discovered_bluetooth_devices
-                .iter()
-                .map(|dev| alloc::format!("{} [{:X?}]", dev.name, dev.addr))
-                .collect();
-            items.push("Unpair".into());
-            items.push("Exit".into());
-
-            let sel = current_state.selected_bluetooth_item;
-            if sel >= items.len() {
-                global_state.state.lock().await.selected_bluetooth_item = 0;
-            } else {
-                let item_refs: alloc::vec::Vec<&str> = items.iter().map(|s| s.as_str()).collect();
-                draw_scrollable_menu(&mut oled.fbuf, &item_refs, sel);
-            }
-            return Ok(());
-        }
-        None => {}
-    }
-
-    let overwritten = process_main_overwrite(current_state, global_state, oled).await;
-    if overwritten {
-        return Ok(());
-    }
-
-    if let Some(time) = current_state.delegate_hold {
-        let delegate_remaining = 3 - time;
-
-        if delegate_remaining == 0 {
-            center_text_layout(&format!(
-                "{}\n{}",
-                get_translation(TranslationKey::WAITING_FOR_DELEGATE_HEADER),
-                get_translation(TranslationKey::WAITING_FOR_DELEGATE_FOOTER)
-            ))
-            .draw(&mut oled.fbuf)?;
-        } else {
-            center_text_layout(&format!(
-                "{}\n{}",
-                get_translation(TranslationKey::CALLING_FOR_DELEGATE_HEADER),
-                get_translation_params(
-                    TranslationKey::CALLING_FOR_DELEGATE_FOOTER,
-                    &[delegate_remaining],
-                )
-            ))
-            .draw(&mut oled.fbuf)?;
-        }
-
-        return Ok(());
-    }
-
-    match current_state.scene {
-        Scene::WifiConnect => {
-            center_text_layout(&format!(
-                "{}\n{}",
-                get_translation(TranslationKey::WAITING_FOR_WIFI_HEADER),
-                get_translation(TranslationKey::WAITING_FOR_WIFI_FOOTER)
-            ))
-            .draw(&mut oled.fbuf)?;
-            oled.flush().await?;
-
-            wifi_setup_sig.wait().await;
-            global_state.state.lock().await.scene = Scene::AutoSetupWait;
-        }
-        Scene::AutoSetupWait => {
-            let wifi_ssid = alloc::format!("FKM-{:X}", crate::utils::get_efuse_u32());
-
-            center_text_layout(&format!(
-                "{}\n{wifi_ssid}",
-                get_translation(TranslationKey::WIFI_SETUP_HEADER),
-            ))
-            .draw(&mut oled.fbuf)?;
-        }
-        Scene::MdnsWait => {
-            center_text_layout(&format!(
-                "{}\n{}",
-                get_translation(TranslationKey::WAITING_FOR_MDNS_HEADER),
-                get_translation(TranslationKey::WAITING_FOR_MDNS_FOOTER)
-            ))
-            .draw(&mut oled.fbuf)?;
-        }
-        Scene::GroupSelect => {
-            let lt = Text::with_text_style("<", Point::zero(), TIMER_FONT, TEXT_CENTER);
-            let gt = Text::with_text_style(">", Point::zero(), TIMER_FONT, TEXT_CENTER);
-            LinearLayout::horizontal(Chain::new(lt))
-                .with_alignment(embedded_layout::align::vertical::Center)
-                .arrange()
-                .align_to(
-                    &MAIN_RECT,
-                    embedded_layout::align::horizontal::Left,
-                    embedded_layout::align::vertical::Center,
-                )
-                .draw(&mut oled.fbuf)?;
-
-            LinearLayout::horizontal(Chain::new(gt))
-                .with_alignment(embedded_layout::align::vertical::Center)
-                .arrange()
-                .align_to(
-                    &MAIN_RECT,
-                    embedded_layout::align::horizontal::Right,
-                    embedded_layout::align::vertical::Center,
-                )
-                .draw(&mut oled.fbuf)?;
-
-            center_text_layout(&format!(
-                "{}\n{}",
-                get_translation(TranslationKey::SELECT_GROUP),
-                current_state.possible_groups[current_state.group_selected_idx].name
-            ))
-            .draw(&mut oled.fbuf)?;
-        }
-        Scene::WaitingForCompetitor => {
-            if let Some(solve_time) = current_state.solve_time {
-                let time_str = ms_to_time_str(solve_time);
-                center_text_layout(&format!(
-                    "{}\n{}",
-                    get_translation(TranslationKey::SCAN_COMPETITOR_CARD_HEADER),
-                    get_translation_params(
-                        TranslationKey::SCAN_COMPETITOR_CARD_WITH_TIME_FOOTER,
-                        &[time_str],
-                    )
-                ))
-                .draw(&mut oled.fbuf)?;
-            } else {
-                center_text_layout(&format!(
-                    "{}\n{}",
-                    get_translation(TranslationKey::SCAN_COMPETITOR_CARD_HEADER),
-                    get_translation(TranslationKey::SCAN_COMPETITOR_CARD_FOOTER),
-                ))
-                .draw(&mut oled.fbuf)?;
-            }
-        }
-        Scene::CompetitorInfo => {
-            let mut text = alloc::string::String::from(
-                current_state
-                    .competitor_display
-                    .as_deref()
-                    .unwrap_or("------"),
             );
-
-            if let Some(ref group) = current_state.solve_group
-                && let Some(ref secondary_text) = group.secondary_text
-            {
-                text += &format!("\n{}", secondary_text);
-            }
-
-            center_text_layout(&text).draw(&mut oled.fbuf)?;
+            ui::text_main(f, &text);
         }
-        Scene::Inspection => {
-            oled.clear_main()?;
-            oled.flush().await?;
-            let inspection_start = global_state
-                .state
-                .value()
-                .await
-                .inspection_start
-                .unwrap_or(Instant::now());
-
-            _ = Text::with_text_style(
-                &get_translation(TranslationKey::INSPECTION),
-                Point::new(64, 50),
-                NORMAL_FONT,
-                TEXT_CENTER,
-            )
-            .draw(&mut oled.disp);
-
-            let text_rect = Rectangle::new(Point::new(0, 28), Size::new(128, 17));
-            loop {
-                let elapsed = (Instant::now() - inspection_start).as_millis();
-                crate::state::set_inspection_time(Some(elapsed));
-
-                let time_str = ms_to_time_str(elapsed);
-                _ = oled.disp.fill_solid(&text_rect, BinaryColor::Off);
-                _ = Text::with_text_style(&time_str, Point::new(64, 36), TIMER_FONT, TEXT_CENTER)
-                    .draw(&mut oled.disp);
-                _ = oled.disp.flush().await;
-
-                Timer::after_millis(LCD_INSPECTION_FRAME_TIME).await;
-            }
-        }
-        Scene::Timer => {
-            oled.clear_main()?;
-            oled.flush().await?;
-            let text_rect = Rectangle::new(Point::new(0, 28), Size::new(128, 17));
-
-            loop {
-                let time = global_state.timer_signal.wait().await;
-                let time_str = ms_to_time_str(time);
-
-                _ = oled.disp.fill_solid(&text_rect, BinaryColor::Off);
-                _ = Text::with_text_style(&time_str, Point::new(64, 36), TIMER_FONT, TEXT_CENTER)
-                    .draw(&mut oled.disp);
-                _ = oled.disp.flush().await;
-            }
-        }
-        Scene::Finished => {
-            let solve_time = current_state.solve_time.unwrap_or(0);
-            let time_str = ms_to_time_str(solve_time);
-            let inspection_time =
-                match (current_state.inspection_start, current_state.inspection_end) {
-                    (Some(start), Some(end)) => {
-                        Some(end.saturating_duration_since(start).as_millis())
-                    }
-                    _ => None,
-                };
-
-            let show_inspection = current_state.use_inspection()
-                && inspection_time.unwrap_or(0) > INSPECTION_TIME_PLUS2;
-            let inspection_display =
-                show_inspection.then(|| ms_to_time_str(inspection_time.unwrap_or(0)));
-
-            let penalty = current_state.penalty.unwrap_or(0);
-            let main_time_display: String = match penalty {
-                -2 if solve_time == 0 => "DNS".into(),
-                -2 => format!("DNS ({time_str})"),
-                -1 if solve_time == 0 => "DNF".into(),
-                -1 => format!("DNF ({time_str})"),
-                1.. => format!("{time_str} +{penalty}"),
-                _ => time_str.to_string(),
-            };
-
-            let font = if main_time_display.len() > 13 {
-                NORMAL_FONT
-            } else {
-                TIMER_FONT
-            };
-
-            let main_time_text =
-                Text::with_text_style(&main_time_display, Point::zero(), font, TEXT_CENTER);
-
-            if let Some(insp_str) = inspection_display {
-                let insp_str = format!(
-                    "{}: {insp_str}",
-                    get_translation(TranslationKey::INSPECTION)
-                );
-                let insp_text =
-                    Text::with_text_style(&insp_str, Point::zero(), SMALL_TIMER_FONT, TEXT_CENTER);
-
-                LinearLayout::vertical(
-                    Chain::new(
-                        LinearLayout::horizontal(Chain::new(main_time_text))
-                            .with_alignment(embedded_layout::align::vertical::Center)
-                            .arrange(),
-                    )
-                    .append(
-                        LinearLayout::horizontal(Chain::new(insp_text))
-                            .with_alignment(embedded_layout::align::vertical::Center)
-                            .arrange(),
-                    ),
-                )
-                .with_alignment(embedded_layout::align::horizontal::Center)
-                .arrange()
-                .align_to(
-                    &MAIN_RECT,
-                    embedded_layout::align::horizontal::Center,
-                    embedded_layout::align::vertical::Top,
-                )
-                .translate(Point::new(0, 2))
-                .draw(&mut oled.fbuf)?;
-            } else {
-                LinearLayout::horizontal(Chain::new(main_time_text))
-                    .with_alignment(embedded_layout::align::vertical::Center)
-                    .arrange()
-                    .align_to(
-                        &MAIN_RECT,
-                        embedded_layout::align::horizontal::Center,
-                        embedded_layout::align::vertical::Top,
-                    )
-                    .translate(Point::new(0, 10))
-                    .draw(&mut oled.fbuf)?;
-            }
-
-            let status = if !current_state.time_confirmed {
-                Some(get_translation(TranslationKey::CONFIRM_TIME))
-            } else if current_state.current_judge.is_none() {
-                Some(get_translation(TranslationKey::SCAN_JUDGE_CARD))
-            } else if current_state.current_competitor.is_some()
-                && current_state.current_judge.is_some()
-            {
-                Some(get_translation(TranslationKey::SCAN_COMPETITOR_CARD))
-            } else {
-                None
-            };
-            if let Some(status_str) = status {
-                let textbox_style = TextBoxStyleBuilder::new()
-                    .alignment(HorizontalAlignment::Center)
-                    .vertical_alignment(VerticalAlignment::Bottom)
-                    .build();
-                TextBox::with_textbox_style(&status_str, MAIN_RECT, NORMAL_FONT, textbox_style)
-                    .draw(&mut oled.fbuf)?;
-            }
-        }
-        Scene::Update => loop {
-            let progress = global_state.update_progress.wait().await;
-            oled.clear_main()?;
-            center_text_layout(&format!("Updating\n{progress}%")).draw(&mut oled.fbuf)?;
-            oled.flush().await?;
+        Screen::ErrorLogEntry { idx, stage, scroll } => match error_log::entry(idx) {
+            Some(entry) if stage == Some(&ErrorLogEntryStage::Qr) => draw_qr(f, &entry),
+            Some(entry) => ui::details(f, &error_log_entry_details_text(&entry), scroll),
+            None => ui::text_main(f, "Invalid entry\nSubmit to return"),
         },
+        Screen::ErrorLogList(sel) => {
+            let count = error_log::entry_count();
+            ui::menu(f, count + 1, sel, |i, buf| match error_log::entry(i) {
+                Some(entry) if i < count => _ = buf.push_str(&entry.list_label()),
+                _ if i < count => _ = buf.push('?'),
+                _ => _ = buf.push_str("Exit"),
+            });
+        }
+        Screen::Signing(sign) => {
+            let title = if sign { "Signing" } else { "Unsigning" };
+            match local.sign_result {
+                Some((ok, at)) if at.elapsed().as_millis() < SIGN_RESULT_MS => {
+                    let status = if ok { "OK" } else { "FAIL" };
+                    _ = write!(text, "{title}\nOperation: {status}");
+                }
+                _ => _ = write!(text, "{title}\nScan the card\n\nSubmit to exit"),
+            }
+            ui::text_main(f, &text);
+            return Live::Signing;
+        }
+        Screen::BtDevices(sel) => {
+            let devices = &s.discovered_bluetooth_devices;
+            ui::menu(f, devices.len() + 2, sel, |i, buf| match devices.get(i) {
+                Some(dev) => _ = write!(buf, "{} [{:X?}]", dev.name, dev.addr),
+                None if i == devices.len() => _ = buf.push_str("Unpair"),
+                None => _ = buf.push_str("Exit"),
+            });
+        }
+        Screen::WifiLost => ui::text_main(f, "Wi-Fi\nConnection lost"),
+        Screen::ServerLost => ui::text_main(
+            f,
+            &tr_lines(
+                TranslationKey::SERVER_DISCONNECTED_HEADER,
+                TranslationKey::SERVER_DISCONNECTED_FOOTER,
+            ),
+        ),
+        Screen::DeviceNotAdded => {
+            #[cfg(not(feature = "e2e"))]
+            let lines = tr_lines(
+                TranslationKey::DEVICE_NOT_ADDED_HEADER,
+                TranslationKey::DEVICE_NOT_ADDED_FOOTER,
+            );
+            #[cfg(feature = "e2e")]
+            let lines = two_lines("Press submit", "To start HIL");
+            ui::text_main(f, &lines);
+        }
+        Screen::StackmatLost => ui::text_main(
+            f,
+            &tr_lines(
+                TranslationKey::STACKMAT_DISCONNECTED_HEADER,
+                TranslationKey::STACKMAT_DISCONNECTED_FOOTER,
+            ),
+        ),
+        Screen::Delegate(0) => ui::text_main(
+            f,
+            &tr_lines(
+                TranslationKey::WAITING_FOR_DELEGATE_HEADER,
+                TranslationKey::WAITING_FOR_DELEGATE_FOOTER,
+            ),
+        ),
+        Screen::Delegate(remaining) => ui::text_main(
+            f,
+            &two_lines(
+                &get_translation(TranslationKey::CALLING_FOR_DELEGATE_HEADER),
+                &get_translation_params(TranslationKey::CALLING_FOR_DELEGATE_FOOTER, &[remaining]),
+            ),
+        ),
+        Screen::WifiConnect => {
+            ui::text_main(
+                f,
+                &tr_lines(
+                    TranslationKey::WAITING_FOR_WIFI_HEADER,
+                    TranslationKey::WAITING_FOR_WIFI_FOOTER,
+                ),
+            );
+            return Live::WifiConnect;
+        }
+        Screen::AutoSetup => {
+            _ = write!(
+                text,
+                "{}\nFKM-{:X}",
+                get_translation(TranslationKey::WIFI_SETUP_HEADER),
+                crate::utils::get_efuse_u32()
+            );
+            ui::text_main(f, &text);
+        }
+        Screen::MdnsWait => ui::text_main(
+            f,
+            &tr_lines(
+                TranslationKey::WAITING_FOR_MDNS_HEADER,
+                TranslationKey::WAITING_FOR_MDNS_FOOTER,
+            ),
+        ),
+        Screen::GroupSelect(name) => ui::group_select(
+            f,
+            &two_lines(&get_translation(TranslationKey::SELECT_GROUP), name),
+        ),
+        Screen::WaitingForCompetitor(solve_time) => {
+            let header = get_translation(TranslationKey::SCAN_COMPETITOR_CARD_HEADER);
+            let footer = match solve_time {
+                Some(time) => get_translation_params(
+                    TranslationKey::SCAN_COMPETITOR_CARD_WITH_TIME_FOOTER,
+                    &[crate::utils::text::time_str(time)],
+                ),
+                None => get_translation(TranslationKey::SCAN_COMPETITOR_CARD_FOOTER),
+            };
+            ui::text_main(f, &two_lines(&header, &footer));
+        }
+        Screen::CompetitorInfo => {
+            _ = text.push_str(s.competitor_display.as_deref().unwrap_or("------"));
+            if let Some(secondary) = s.solve_group.as_ref().and_then(|g| g.secondary_text.as_ref()) {
+                _ = write!(text, "\n{secondary}");
+            }
+            ui::text_main(f, &text);
+        }
+        Screen::Inspection(start) => {
+            ui::inspection_label(f, &get_translation(TranslationKey::INSPECTION));
+            ui::digits(f, start.elapsed().as_millis());
+            return Live::Inspection(start);
+        }
+        Screen::Timer => {
+            // keep the last value on re-render so unrelated state changes don't blank the time
+            if let Some(ms) = local.timer_ms {
+                ui::digits(f, ms);
+            }
+            return Live::Timer;
+        }
+        Screen::Finished(fin) => {
+            let time = crate::utils::text::time_str(fin.time);
+            let mut main = Line64::new();
+            _ = match fin.penalty {
+                -2 if fin.time == 0 => write!(main, "DNS"),
+                -2 => write!(main, "DNS ({time})"),
+                -1 if fin.time == 0 => write!(main, "DNF"),
+                -1 => write!(main, "DNF ({time})"),
+                p @ 1.. => write!(main, "{time} +{p}"),
+                _ => write!(main, "{time}"),
+            };
+
+            let inspection = fin.inspection.map(|ms| {
+                let mut s = Line64::new();
+                _ = write!(s, "{}: {}", get_translation(TranslationKey::INSPECTION), crate::utils::text::time_str(ms));
+                s
+            });
+            let status = fin.status.map(get_translation);
+            ui::finished(f, &main, inspection.as_deref(), status.as_deref());
+        }
+        Screen::Update => {
+            _ = write!(text, "Updating\n{}%", local.progress);
+            ui::text_main(f, &text);
+            return Live::Update;
+        }
     }
 
-    Ok(())
+    Live::Idle
 }
 
-pub fn error_log_entry_details_text(entry: &crate::utils::error_log::ErrorLogEntry) -> String {
+fn draw_qr(f: &mut Frame, entry: &ErrorLogEntry) {
     match entry {
-        crate::utils::error_log::ErrorLogEntry::Code { timestamp, code } => format!(
+        ErrorLogEntry::Code { code, .. } => {
+            let mut url = Line64::new();
+            _ = write!(url, "https://docs.fkmtime.com/debugging/e{code}");
+            ui::qr(f, QrData::Text(&url));
+        }
+        ErrorLogEntry::Stacktrace { version, addrs, .. } => {
+            let mut data: heapless::Vec<u8, 96> = heapless::Vec::new();
+            _ = data.push(version.len() as u8);
+            _ = data.extend_from_slice(version.as_bytes());
+            for addr in addrs {
+                _ = data.extend_from_slice(&addr.to_be_bytes());
+            }
+            ui::qr(f, QrData::Binary(&data));
+        }
+    }
+}
+
+/// Lines of the error log details view (also used by the buttons to limit scrolling).
+pub fn error_log_entry_details_text(entry: &ErrorLogEntry) -> Text {
+    let mut t = Text::new();
+    _ = match entry {
+        ErrorLogEntry::Code { timestamp, code } => write!(
+            t,
             "Error E{code}\n{}\nSubmit to return",
-            crate::utils::error_log::format_timestamp_full(*timestamp)
+            error_log::format_timestamp_full(*timestamp)
         ),
-        crate::utils::error_log::ErrorLogEntry::Stacktrace {
+        ErrorLogEntry::Stacktrace {
             timestamp,
             version,
             addrs,
-        } => {
-            let mut details = format!(
+        } => (|| {
+            write!(
+                t,
                 "Panic {}\nVER: {}\n",
-                crate::utils::error_log::format_timestamp_compact(*timestamp),
+                error_log::format_timestamp_compact(*timestamp),
                 version
-            );
+            )?;
             if addrs.is_empty() {
-                details.push_str("No addrs");
-            } else {
-                for (idx, addr) in addrs.iter().enumerate() {
-                    if idx > 0 {
-                        details.push('\n');
-                    }
-                    details.push_str(&format!("0x{addr:X}"));
-                }
+                write!(t, "No addrs")?;
             }
-            details.push_str("\nSubmit to return");
-            details
-        }
-    }
-}
-
-async fn process_main_overwrite(
-    current_state: &SignaledGlobalStateInner,
-    _global_state: &GlobalState,
-    oled: &mut OledData<'_>,
-) -> bool {
-    if !current_state.scene.can_be_lcd_overwritten() {
-        return false;
-    }
-
-    if current_state.server_connected == Some(false) {
-        if current_state.wifi_connected == Some(false) {
-            _ = center_text_layout("Wi-Fi\nConnection lost").draw(&mut oled.fbuf);
-        } else {
-            let text = format!(
-                "{}\n{}",
-                get_translation(TranslationKey::SERVER_DISCONNECTED_HEADER),
-                get_translation(TranslationKey::SERVER_DISCONNECTED_FOOTER)
-            );
-            _ = center_text_layout(&text).draw(&mut oled.fbuf);
-        }
-    } else if current_state.device_added == Some(false) {
-        #[cfg(not(feature = "e2e"))]
-        let lines = (
-            &get_translation(TranslationKey::DEVICE_NOT_ADDED_HEADER),
-            &get_translation(TranslationKey::DEVICE_NOT_ADDED_FOOTER),
-        );
-
-        #[cfg(feature = "e2e")]
-        let lines = ("Press submit", "To start HIL");
-
-        let text = format!("{}\n{}", lines.0, lines.1);
-        _ = center_text_layout(&text).draw(&mut oled.fbuf);
-    } else if current_state.stackmat_connected == Some(false) {
-        let text = format!(
-            "{}\n{}",
-            get_translation(TranslationKey::STACKMAT_DISCONNECTED_HEADER),
-            get_translation(TranslationKey::STACKMAT_DISCONNECTED_FOOTER)
-        );
-        _ = center_text_layout(&text).draw(&mut oled.fbuf);
-    } else {
-        return false;
-    }
-
-    true
+            for (idx, addr) in addrs.iter().enumerate() {
+                let sep = if idx > 0 { "\n" } else { "" };
+                write!(t, "{sep}0x{addr:X}")?;
+            }
+            write!(t, "\nSubmit to return")
+        })(),
+    };
+    t
 }

@@ -74,13 +74,18 @@ pub fn spawn_task<T>(
 }
 
 #[cfg(feature = "v3")]
-pub mod lcd_abstract;
+pub mod lcd_text;
 
 #[cfg(feature = "v4")]
 pub mod shared_i2c;
 
+pub mod screen;
+
 #[cfg(feature = "v4")]
-pub mod lcd_resourcese;
+pub mod oled_ui;
+
+#[cfg(feature = "v4")]
+pub mod ssd1309;
 
 pub fn set_brownout_detection(state: bool) {
     unsafe {

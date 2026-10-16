@@ -82,19 +82,3 @@ pub fn generate_stackmat_data(state: &StackmatTimerState, time_ms: u64) -> [u8; 
     data[7] = 64 + data[1..7].iter().fold(0u8, |acc, &x| acc + (x - b'0'));
     data
 }
-
-pub fn ms_to_time_str(ms: u64) -> heapless::String<12> {
-    let minutes: u8 = (ms / 60000) as u8;
-    let seconds: u8 = ((ms % 60000) / 1000) as u8;
-    let ms: u16 = (ms % 1000) as u16;
-
-    let mut time_str = heapless::String::<12>::new();
-    let ms2 = ms / 10;
-    if minutes > 0 {
-        _ = time_str.push_str(&alloc::format!("{minutes}:{seconds:02}.{ms2:02}"));
-    } else {
-        _ = time_str.push_str(&alloc::format!("{seconds:01}.{ms2:02}"));
-    }
-
-    time_str
-}
