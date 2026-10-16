@@ -543,7 +543,7 @@ impl SignaledGlobalStateInner {
         let inspection_time = self
             .inspection_end
             .zip(self.inspection_start)
-            .map(|(end, start)| (end - start).as_millis());
+            .map(|(end, start)| end.saturating_duration_since(start).as_millis());
 
         crate::structs::SnapshotData {
             scene: self.scene.to_index(),
@@ -582,7 +582,7 @@ impl SavedGlobalState {
 
         let res = serde_json::to_vec(&self);
         if let Ok(vec) = res {
-            _ = nvs.delete(NVS_SAVED_STATE).await;
+            // set replaces the old value atomically (deleting first could lose it on power loss)
             let res = nvs.set(NVS_SAVED_STATE, vec.as_slice()).await;
             if let Err(e) = res {
                 log::error!("{e:?} Faile to write to nvs! (SAVED_STATE {})", vec.len());

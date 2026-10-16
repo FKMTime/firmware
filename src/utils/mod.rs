@@ -1,6 +1,5 @@
 use embassy_executor::{SpawnError, SpawnToken, Spawner};
 
-pub mod arc;
 pub mod backtrace_store;
 pub mod bounded;
 pub mod buttons;
