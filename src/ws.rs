@@ -318,7 +318,7 @@ async fn ws_loop(
 #[derive(Debug)]
 #[allow(dead_code)]
 enum WsRwError {
-    OtaError(esp_hal_ota::OtaError),
+    OtaError(esp_hal_ota::Error),
     TaggedPublisherError,
     SocketWriteError,
     SocketReadError,
@@ -477,7 +477,7 @@ async fn ws_rw(
 
                                 log::info!("Start update: {firmware}/{version}");
                                 log::info!("Begin update size: {size} crc: {crc}");
-                                ota.ota_begin(size, crc).map_err(WsRwError::OtaError)?;
+                                ota.begin(size, crc).map_err(WsRwError::OtaError)?;
                                 crate::state::set_ota_state(true);
 
                                 let mut state = global_state.state.lock().await;
@@ -545,10 +545,10 @@ async fn ws_rw(
                         continue;
                     }
 
-                    let res = ota.ota_write_chunk(data);
+                    let res = ota.write(data);
                     if res == Ok(true) {
                         log::info!("OTA complete! Veryfying..");
-                        if ota.ota_flush(true, true).is_ok() {
+                        if ota.finish(true).is_ok() {
                             log::info!("OTA restart!");
                             esp_hal::system::software_reset();
                         } else {
@@ -559,7 +559,7 @@ async fn ws_rw(
                         }
                     }
 
-                    let progress = (ota.get_ota_progress() * 100.0) as u8;
+                    let progress = ota.progress().map_or(0, |p| p.percent());
                     global_state.update_progress.signal(progress);
 
                     FRAME_CHANNEL

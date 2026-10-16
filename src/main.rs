@@ -265,7 +265,7 @@ async fn main(spawner: Spawner) {
         if let Ok(mut ota) =
             esp_hal_ota::Ota::new(FlashStorage::new(unsafe { board.flash.clone_unchecked() }))
         {
-            let res = ota.ota_mark_app_valid();
+            let res = ota.mark_app_valid();
             if let Err(e) = res {
                 log::error!("Ota mark app valid failed: {e:?}");
                 utils::error_log::add_error(utils::error_log::codes::OTA_MARK_VALID_FAILED);
