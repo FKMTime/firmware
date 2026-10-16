@@ -168,8 +168,13 @@ pub fn add_stacktrace(addrs: &[u32], version: &str, timestamp: u64) {
     let version_len = version.len().min(16);
     record[9..9 + version_len].copy_from_slice(&version.as_bytes()[..version_len]);
     record[STACKTRACE_HEADER_LEN - 1] = addrs.len() as u8;
-    for (chunk, addr) in record[STACKTRACE_HEADER_LEN..].chunks_exact_mut(4).zip(addrs) {
-        chunk.copy_from_slice(&addr.to_be_bytes());
+    for (chunk, addr) in record[STACKTRACE_HEADER_LEN..]
+        .as_chunks_mut::<4>()
+        .0
+        .iter_mut()
+        .zip(addrs)
+    {
+        *chunk = addr.to_be_bytes();
     }
 
     let len = STACKTRACE_HEADER_LEN + addrs.len() * 4;
@@ -239,9 +244,11 @@ impl Iterator for Entries<'_> {
                     timestamp,
                     version: heapless::String::try_from(version).unwrap_or_default(),
                     addrs: record[STACKTRACE_HEADER_LEN..]
-                        .chunks_exact(4)
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
                         .take(MAX_STACKTRACE_ADDRS)
-                        .filter_map(|c| c.try_into().ok().map(u32::from_be_bytes))
+                        .map(|c| u32::from_be_bytes(*c))
                         .collect(),
                 }
             }

@@ -2,6 +2,8 @@
 #![no_main]
 #![feature(impl_trait_in_assoc_type)]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+// errors carry fixed-size server text (no heap), so large `Err` variants are intended
+#![allow(clippy::result_large_err)]
 
 #[cfg(all(feature = "bat_dev_lcd", not(feature = "v3")))]
 compile_error!("feature `bat_dev_lcd` is a v3 battery debug screen");
@@ -164,12 +166,7 @@ async fn main(spawner: Spawner) {
     spawn_task(
         &spawner,
         "lcd_v4::lcd_task",
-        lcd_v4::lcd_task(
-            board.i2c,
-            board.display_rst,
-            global_state,
-            &WIFI_SETUP_SIG,
-        ),
+        lcd_v4::lcd_task(board.i2c, board.display_rst, global_state, &WIFI_SETUP_SIG),
     );
 
     #[cfg(feature = "v3")]
@@ -236,11 +233,7 @@ async fn main(spawner: Spawner) {
     );
 
     #[cfg(feature = "qa")]
-    spawn_task(
-        &spawner,
-        "qa::qa_processor",
-        qa::qa_processor(global_state),
-    );
+    spawn_task(&spawner, "qa::qa_processor", qa::qa_processor(global_state));
 
     let mut wm_settings = esp_hal_wifimanager::WmSettings {
         wifi_panel: esp_hal_wifimanager::include_panel!("src/panel.html"),
@@ -290,7 +283,9 @@ async fn main(spawner: Spawner) {
     };
 
     {
-        global_state.status.update(|s| s.wifi_connected = Some(true));
+        global_state
+            .status
+            .update(|s| s.wifi_connected = Some(true));
     }
 
     #[cfg(feature = "qa")]
@@ -343,12 +338,7 @@ async fn main(spawner: Spawner) {
     spawn_task(
         &spawner,
         "ws::ws_task",
-        ws::ws_task(
-            wifi_res.stack(),
-            ws_url,
-            global_state,
-            &WIFI_CONN_SIG,
-        ),
+        ws::ws_task(wifi_res.stack(), ws_url, global_state, &WIFI_CONN_SIG),
     );
     spawn_task(&spawner, "logger_task", logger_task(global_state));
 
@@ -359,7 +349,9 @@ async fn main(spawner: Spawner) {
     );
 
     set_brownout_detection(true);
-    global_state.solve.update(|s| s.scene = Scene::WaitingForCompetitor);
+    global_state
+        .solve
+        .update(|s| s.scene = Scene::WaitingForCompetitor);
     spawn_task(
         &spawner,
         "restore_saved_state_task",

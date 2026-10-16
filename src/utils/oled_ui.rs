@@ -123,7 +123,10 @@ impl DrawTarget for Frame {
     type Color = BinaryColor;
     type Error = core::convert::Infallible;
 
-    fn draw_iter<I: IntoIterator<Item = Pixel<BinaryColor>>>(&mut self, pixels: I) -> Result<(), Self::Error> {
+    fn draw_iter<I: IntoIterator<Item = Pixel<BinaryColor>>>(
+        &mut self,
+        pixels: I,
+    ) -> Result<(), Self::Error> {
         for Pixel(p, color) in pixels {
             if let (Ok(x @ 0..128), Ok(y @ 0..64)) = (usize::try_from(p.x), usize::try_from(p.y)) {
                 let (byte, bit) = (&mut self.buf[y / 8 * 128 + x], 1 << (y % 8));
@@ -270,7 +273,9 @@ fn crossed_icon<D: DrawTarget<Color = BinaryColor>>(
         let size = icon.size();
         let tl = at + Point::new((size.width as i32 - 9) / 2, (size.height as i32 - 9) / 2);
         let stroke = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
-        _ = Line::new(tl, tl + Point::new(8, 8)).into_styled(stroke).draw(d);
+        _ = Line::new(tl, tl + Point::new(8, 8))
+            .into_styled(stroke)
+            .draw(d);
         _ = Line::new(tl + Point::new(0, 8), tl + Point::new(8, 0))
             .into_styled(stroke)
             .draw(d);
@@ -285,9 +290,7 @@ pub fn top_bar<D: DrawTarget<Color = BinaryColor>>(d: &mut D, bar: &TopBar) {
     let text = Text::with_text_style(&pct, Point::zero(), NORMAL_FONT, TEXT_TOP);
     let tb = text.bounding_box();
     let text_x = 128 - tb.size.width as i32;
-    _ = text
-        .translate(Point::new(text_x, -2) - tb.top_left)
-        .draw(d);
+    _ = text.translate(Point::new(text_x, -2) - tb.top_left).draw(d);
     if bar.battery.1 {
         _ = Image::new(&ICON_CHARGING, Point::new(text_x - 1 - 5, 0)).draw(d);
     }
@@ -368,8 +371,13 @@ pub fn details<D: DrawTarget<Color = BinaryColor>>(d: &mut D, text: &str, scroll
         .enumerate()
     {
         let text_y = start_y + row as i32 * LINE_HEIGHT + LINE_HEIGHT / 2;
-        _ = Text::with_text_style(line, Point::new(PADDING_X, text_y), SMALL_FONT, TEXT_LEFT_MIDDLE)
-            .draw(d);
+        _ = Text::with_text_style(
+            line,
+            Point::new(PADDING_X, text_y),
+            SMALL_FONT,
+            TEXT_LEFT_MIDDLE,
+        )
+        .draw(d);
     }
 
     if scroll > 0 {
@@ -445,7 +453,8 @@ pub fn group_select<D: DrawTarget<Color = BinaryColor>>(d: &mut D, text: &str) {
         let t = Text::with_text_style(s, Point::zero(), TIMER_FONT, TEXT_CENTER);
         let bb = t.bounding_box();
         let x = if right {
-            MAIN_RECT.anchor_point(AnchorPoint::BottomRight).x - bb.anchor_point(AnchorPoint::BottomRight).x
+            MAIN_RECT.anchor_point(AnchorPoint::BottomRight).x
+                - bb.anchor_point(AnchorPoint::BottomRight).x
         } else {
             MAIN_RECT.top_left.x - bb.top_left.x
         };
@@ -462,7 +471,11 @@ pub fn finished<D: DrawTarget<Color = BinaryColor>>(
     inspection: Option<&str>,
     status: Option<&str>,
 ) {
-    let font = if time.len() > 13 { NORMAL_FONT } else { TIMER_FONT };
+    let font = if time.len() > 13 {
+        NORMAL_FONT
+    } else {
+        TIMER_FONT
+    };
     let main = Text::with_text_style(time, Point::zero(), font, TEXT_CENTER);
     let mb = main.bounding_box();
 
@@ -471,7 +484,10 @@ pub fn finished<D: DrawTarget<Color = BinaryColor>>(
             let it = Text::with_text_style(insp, Point::zero(), SMALL_TIMER_FONT, TEXT_CENTER);
             let ib = it.bounding_box();
             let width = mb.size.width.max(ib.size.width);
-            let group = Rectangle::new(Point::zero(), Size::new(width, mb.size.height + ib.size.height));
+            let group = Rectangle::new(
+                Point::zero(),
+                Size::new(width, mb.size.height + ib.size.height),
+            );
             let gx = center_offset(group, MAIN_RECT).x;
             let top = MAIN_RECT.top_left.y + 2;
             let mx = gx + (width as i32 - mb.size.width as i32) / 2;

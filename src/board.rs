@@ -1,6 +1,6 @@
-use esp_hal::gpio::Pin;
 #[cfg(any(feature = "v3", not(feature = "timer-func")))]
 use esp_hal::gpio::AnyPin;
+use esp_hal::gpio::Pin;
 use esp_hal::{
     gpio::{Input, InputConfig, Output, Pull},
     peripherals::{AES, BT, FLASH, FROM_CPU_INTR0, Peripherals, TIMG0, TIMG1, WIFI},
@@ -207,10 +207,7 @@ impl Board {
             0,
         );
         static SHIFT_REG: static_cell::StaticCell<
-            adv_shift_registers::AdvancedShiftRegister<
-                2,
-                Output<'static>,
-            >,
+            adv_shift_registers::AdvancedShiftRegister<2, Output<'static>>,
         > = static_cell::StaticCell::new();
         let adv_shift_reg = SHIFT_REG.init(adv_shift_reg);
 

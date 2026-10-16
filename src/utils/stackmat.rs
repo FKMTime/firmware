@@ -124,7 +124,9 @@ impl Parser {
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Event {
     /// Timer started; `at` = when it read 0 (same clock as the `now` passed in).
-    Start { at: u64 },
+    Start {
+        at: u64,
+    },
     /// Timer stopped showing this time (ms).
     Stop(u64),
     Reset,
@@ -212,8 +214,8 @@ pub fn generate_stackmat_data(state: StackmatTimerState, time_ms: u64) -> [u8; 8
 mod tests {
     extern crate std;
     use super::*;
-    use std::vec::Vec;
     use StackmatTimerState::*;
+    use std::vec::Vec;
 
     fn feed(parser: &mut Parser, bytes: &[u8]) -> Vec<Frame> {
         bytes.iter().filter_map(|&b| parser.push(b)).collect()
@@ -227,7 +229,13 @@ mod tests {
 
     fn gen3_line(state: StackmatTimerState, cs: u64) -> Vec<u8> {
         let d = |v: u64| b'0' + (v % 10) as u8;
-        let digits = [d(cs / 6000), d(cs % 6000 / 1000), d(cs % 1000 / 100), d(cs % 100 / 10), d(cs)];
+        let digits = [
+            d(cs / 6000),
+            d(cs % 6000 / 1000),
+            d(cs % 1000 / 100),
+            d(cs % 100 / 10),
+            d(cs),
+        ];
         let mut line = std::vec![state.to_u8()];
         line.extend_from_slice(&digits);
         line.push(checksum(&digits));
@@ -237,8 +245,17 @@ mod tests {
 
     #[test]
     fn frame_round_trip() {
-        for (state, ms) in [(Running, 0), (Running, 1), (Stopped, 12_345), (Running, 61_005), (Stopped, MAX_FRAME_MS)] {
-            assert_eq!(parse_stackmat_data(&generate_stackmat_data(state, ms)), Ok((state, ms)));
+        for (state, ms) in [
+            (Running, 0),
+            (Running, 1),
+            (Stopped, 12_345),
+            (Running, 61_005),
+            (Stopped, MAX_FRAME_MS),
+        ] {
+            assert_eq!(
+                parse_stackmat_data(&generate_stackmat_data(state, ms)),
+                Ok((state, ms))
+            );
         }
         // used to emit ':' as the minute digit from 10 minutes on
         let frame = generate_stackmat_data(Running, 11 * 60_000);
@@ -265,7 +282,10 @@ mod tests {
         stream.extend(gen4_line(Stopped, 9_876));
         stream.extend_from_slice(b" 12\n\r"); // partial frame
         stream.extend(gen4_line(Reset, 0).iter().flat_map(|&b| [b, 0])); // NULs in between
-        assert_eq!(feed(&mut p, &stream), [(Running, 1234), (Stopped, 9_876), (Reset, 0)]);
+        assert_eq!(
+            feed(&mut p, &stream),
+            [(Running, 1234), (Stopped, 9_876), (Reset, 0)]
+        );
 
         // gen4 frame that lost a '0' digit: valid gen3 checksum, but ignored after gen4
         let mut lost = gen4_line(Running, 12_345);
@@ -276,7 +296,10 @@ mod tests {
         let mut stream = b"x3\n\r".to_vec();
         stream.extend(gen3_line(Running, 1_234)); // 12.34 s
         stream.extend(gen3_line(Stopped, 59_999));
-        assert_eq!(feed(&mut gen3, &stream), [(Running, 12_340), (Stopped, 599_990)]);
+        assert_eq!(
+            feed(&mut gen3, &stream),
+            [(Running, 12_340), (Stopped, 599_990)]
+        );
 
         let mut bad = gen4_line(Running, 500);
         bad[3] = b'x';
@@ -289,7 +312,9 @@ mod tests {
     fn wire(until: u64, frame: impl Fn(u64) -> Option<Frame>, seed: u64) -> Vec<(u8, u64)> {
         let mut rng = seed;
         let mut rand = move |n: u64| {
-            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (rng >> 33) % n
         };
         let (mut out, mut t) = (Vec::new(), 0);
@@ -300,8 +325,8 @@ mod tests {
             };
             let mut line = gen4_line(state, ms);
             match rand(20) {
-                0 => line.clear(),          // dropped frame
-                1 => line[4] ^= 0x10,       // corrupted digit
+                0 => line.clear(),         // dropped frame
+                1 => line[4] ^= 0x10,      // corrupted digit
                 2 => line.insert(2, b'#'), // stray byte
                 _ => {}
             }
@@ -321,7 +346,9 @@ mod tests {
         let mut chunks: Vec<Vec<(u8, u64)>> = Vec::new();
         for &(b, at) in wire {
             match chunks.last_mut() {
-                Some(c) if c.len() < 3 && at - c[c.len() - 1].1 <= BYTE_US + 1_000 => c.push((b, at)),
+                Some(c) if c.len() < 3 && at - c[c.len() - 1].1 <= BYTE_US + 1_000 => {
+                    c.push((b, at))
+                }
                 _ => chunks.push(std::vec![(b, at)]),
             }
         }
@@ -349,17 +376,27 @@ mod tests {
 
             let mut tracker = Tracker::new(FRAME_RX_DELAY_US);
             let mut events = Vec::new();
-            receive(&wire(stop + 1_500_000, shown, seed), |at, f| events.extend(tracker.frame(at, f)));
+            receive(&wire(stop + 1_500_000, shown, seed), |at, f| {
+                events.extend(tracker.frame(at, f))
+            });
 
             // no spurious events from dropped/corrupted frames
             assert_eq!(events.len(), 3, "seed {seed}: {events:?}");
             assert_eq!(events[0], Event::Reset);
-            let Some(Event::Start { at }) = events.iter().find(|e| matches!(e, Event::Start { .. })).copied() else {
+            let Some(Event::Start { at }) = events
+                .iter()
+                .find(|e| matches!(e, Event::Start { .. }))
+                .copied()
+            else {
                 panic!("no start: {events:?}");
             };
             // start instant within 3 ms: 1 ms digit resolution + 1 ms delivery + up to 1 ms
             // of wire jitter inside a received chunk (bytes are timestamped as contiguous)
-            assert!(at.abs_diff(start) <= 3_000, "seed {seed}: start off by {} µs", at.abs_diff(start));
+            assert!(
+                at.abs_diff(start) <= 3_000,
+                "seed {seed}: start off by {} µs",
+                at.abs_diff(start)
+            );
             // the recorded solve time is exactly what the timer shows
             assert_eq!(events[2], Event::Stop(solve_ms), "seed {seed}");
         }
@@ -397,7 +434,10 @@ mod tests {
         assert_eq!(t.frame(160_000, (Running, 20)), None); // noise
         assert_eq!(t.frame(240_000, (Reset, 0)), None);
         assert_eq!(t.frame(320_000, (Running, 0)), None);
-        assert_eq!(t.frame(400_000, (Running, 80)), Some(Event::Start { at: 320_000 }));
+        assert_eq!(
+            t.frame(400_000, (Running, 80)),
+            Some(Event::Start { at: 320_000 })
+        );
     }
 
     #[test]

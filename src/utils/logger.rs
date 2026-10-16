@@ -146,7 +146,7 @@ struct HalfWriter<'a> {
 }
 
 impl HalfWriter<'_> {
-        fn write_raw(&mut self, bytes: &[u8]) {
+    fn write_raw(&mut self, bytes: &[u8]) {
         let len = bytes.len().min(self.buf.len() - self.pos);
         self.buf[self.pos..self.pos + len].copy_from_slice(&bytes[..len]);
         self.pos += len;

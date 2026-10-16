@@ -31,11 +31,27 @@ mod imp {
         RFID_POLL,
         LCD_FRAME,
     }
-    const NAMES: [&str; 5] = ["stackmat loop", "frame→publish", "pads event→state", "rfid poll", "lcd frame"];
+    const NAMES: [&str; 5] = [
+        "stackmat loop",
+        "frame→publish",
+        "pads event→state",
+        "rfid poll",
+        "lcd frame",
+    ];
 
     #[derive(Clone, Copy)]
-    struct Acc { min: u64, max: u64, sum: u64, n: u64 }
-    const EMPTY: Acc = Acc { min: u64::MAX, max: 0, sum: 0, n: 0 };
+    struct Acc {
+        min: u64,
+        max: u64,
+        sum: u64,
+        n: u64,
+    }
+    const EMPTY: Acc = Acc {
+        min: u64::MAX,
+        max: 0,
+        sum: 0,
+        n: 0,
+    };
 
     /// Accumulators and the time of the last report.
     static ACCS: Mutex<CriticalSectionRawMutex, Cell<([Acc; 5], u64)>> =
@@ -56,8 +72,13 @@ mod imp {
         });
 
         for (name, a) in NAMES.iter().zip(report.unwrap_or([EMPTY; 5])) {
-            if a.n > 0 {
-                log::info!("bench {name}: min {} avg {} max {} µs (n={})", a.min, a.sum / a.n, a.max, a.n);
+            if let Some(avg) = a.sum.checked_div(a.n) {
+                log::info!(
+                    "bench {name}: min {} avg {avg} max {} µs (n={})",
+                    a.min,
+                    a.max,
+                    a.n
+                );
             }
         }
     }

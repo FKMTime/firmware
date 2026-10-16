@@ -7,7 +7,10 @@ use crate::{
     state::{GlobalState, Scene, Solve},
 };
 // the e2e uart simulator replaces the timed read
-#[cfg_attr(all(feature = "e2e", not(feature = "timer-func")), allow(unused_imports))]
+#[cfg_attr(
+    all(feature = "e2e", not(feature = "timer-func")),
+    allow(unused_imports)
+)]
 use embassy_time::{Duration, Instant, Timer, with_timeout};
 
 /// Publishes the running time to the display, the BLE display and the logger.
@@ -37,14 +40,19 @@ type Pads = (esp_hal::gpio::Input<'static>, esp_hal::gpio::Input<'static>);
 pub async fn stackmat_task(global_state: GlobalState, mut pads: Pads) {
     use embassy_futures::select::{Either, select};
 
-    global_state.status.update(|s| s.stackmat_connected = Some(true));
+    global_state
+        .status
+        .update(|s| s.stackmat_connected = Some(true));
     // QA: the first touch of both pads stands in for "stackmat connected"
     #[cfg(feature = "qa")]
     let mut qa_touched = false;
 
     loop {
         heartbeat(TaskId::Stackmat);
-        if with_timeout(Duration::from_secs(10), both_pressed(&mut pads)).await.is_err() {
+        if with_timeout(Duration::from_secs(10), both_pressed(&mut pads))
+            .await
+            .is_err()
+        {
             continue;
         }
         #[cfg(feature = "qa")]
@@ -111,7 +119,10 @@ async fn wait_pad_release(pads: &mut Pads) {
     loop {
         heartbeat(TaskId::Stackmat);
         let released = select(pads.0.wait_for_low(), pads.1.wait_for_low());
-        if with_timeout(Duration::from_secs(10), released).await.is_ok() {
+        if with_timeout(Duration::from_secs(10), released)
+            .await
+            .is_ok()
+        {
             return;
         }
     }
@@ -144,7 +155,11 @@ pub async fn stackmat_task(
     #[cfg(feature = "e2e")]
     let mut sim = e2e::Sim::default();
     let mut parser = Parser::default();
-    let rx_delay = if cfg!(feature = "e2e") { 0 } else { FRAME_RX_DELAY_US };
+    let rx_delay = if cfg!(feature = "e2e") {
+        0
+    } else {
+        FRAME_RX_DELAY_US
+    };
     let mut tracker = Tracker::new(rx_delay);
     let mut connected: Option<bool> = None;
     let mut buf = [0u8; 16];
@@ -191,7 +206,9 @@ pub async fn stackmat_task(
             let at = now.saturating_sub((n - 1 - i) as u64 * BYTE_US);
             if connected != Some(true) {
                 connected = Some(true);
-                global_state.status.update(|s| s.stackmat_connected = Some(true));
+                global_state
+                    .status
+                    .update(|s| s.stackmat_connected = Some(true));
                 #[cfg(feature = "qa")]
                 crate::qa::send_qa_resp(crate::qa::QaSignal::StackmatConnected);
             }
@@ -208,7 +225,10 @@ pub async fn stackmat_task(
 
             match tracker.frame(at, frame) {
                 Some(Event::Start { at }) => {
-                    if global_state.solve.update(|s| start_timer(s, Instant::from_micros(at))) {
+                    if global_state
+                        .solve
+                        .update(|s| start_timer(s, Instant::from_micros(at)))
+                    {
                         global_state.timer_stop_signal.reset();
                     }
                 }
@@ -249,7 +269,9 @@ pub async fn stackmat_task(
         } else if connected != Some(false) {
             connected = Some(false);
             global_state.timer_stop_signal.reset();
-            global_state.status.update(|s| s.stackmat_connected = Some(false));
+            global_state
+                .status
+                .update(|s| s.stackmat_connected = Some(false));
             global_state.solve.update(|s| {
                 if s.scene == Scene::Timer {
                     s.scene = match s.current_competitor {
@@ -277,7 +299,8 @@ fn reset_from_timer(s: &mut Solve) {
         s.scene = Scene::Finished;
         s.solve_time = Some(0);
         s.penalty = Some(-1);
-        s.session_id.get_or_insert_with(crate::state::new_session_id);
+        s.session_id
+            .get_or_insert_with(crate::state::new_session_id);
         s.time_confirmed = true;
     }
 }
@@ -309,7 +332,8 @@ mod e2e {
         /// Writes the current frame into `buf`, returns its length.
         pub fn frame(&mut self, global_state: &GlobalState, buf: &mut [u8; 16]) -> usize {
             if let Some((state, ms)) = global_state.e2e.stackmat_sig.try_take() {
-                (self.state, self.target_ms, self.since) = (state, ms, embassy_time::Instant::now());
+                (self.state, self.target_ms, self.since) =
+                    (state, ms, embassy_time::Instant::now());
             }
 
             let ms = match self.state {
@@ -359,7 +383,8 @@ async fn time_end(time: u64, dnf: bool, global_state: &GlobalState) {
         } else {
             None
         };
-        s.session_id.get_or_insert_with(crate::state::new_session_id);
+        s.session_id
+            .get_or_insert_with(crate::state::new_session_id);
 
         if s.current_competitor.is_some() {
             s.scene = if s.possible_groups.len() > 1 && s.solve_group.is_none() {

@@ -54,7 +54,10 @@ mod tests {
 
     #[test]
     fn placeholders() {
-        assert_eq!(fill("of the competitor ({0})", &["12.34"]), "of the competitor (12.34)");
+        assert_eq!(
+            fill("of the competitor ({0})", &["12.34"]),
+            "of the competitor (12.34)"
+        );
         assert_eq!(fill("{1} {0} {0}", &["a", "b"]), "b a a");
         assert_eq!(fill("{2} {x} { {", &["a"]), "{2} {x} { {");
         assert_eq!(fill("", &["a"]), "");

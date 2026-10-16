@@ -140,8 +140,7 @@ pub fn screen<'a>(s: &'a Solve, ui: &'a Ui, status: &Status) -> Screen<'a> {
             Screen::Finished(Finished {
                 time: s.solve_time.unwrap_or(0),
                 penalty: s.penalty.unwrap_or(0),
-                inspection: inspection
-                    .filter(|&t| s.use_inspection() && t > INSPECTION_TIME_PLUS2),
+                inspection: inspection.filter(|&t| s.use_inspection() && t > INSPECTION_TIME_PLUS2),
                 status,
             })
         }
@@ -210,11 +209,19 @@ pub async fn next_event(
             Live::Signing => {
                 let result_end = async {
                     match local.sign_result {
-                        Some((_, at)) => Timer::at(at + Duration::from_millis(SIGN_RESULT_MS)).await,
+                        Some((_, at)) => {
+                            Timer::at(at + Duration::from_millis(SIGN_RESULT_MS)).await
+                        }
                         None => core::future::pending().await,
                     }
                 };
-                match select3(gs.sign_unsign_progress.wait(), result_end, Timer::after(idle_tick)).await {
+                match select3(
+                    gs.sign_unsign_progress.wait(),
+                    result_end,
+                    Timer::after(idle_tick),
+                )
+                .await
+                {
                     Either3::First(ok) => Event::SignResult(ok),
                     Either3::Second(()) => Event::SignResultEnd,
                     Either3::Third(()) => Event::Tick,

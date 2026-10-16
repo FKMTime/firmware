@@ -124,7 +124,10 @@ impl Scene {
     }
 
     pub fn can_sleep(&self) -> bool {
-        !matches!(self, Scene::Update | Scene::WifiConnect | Scene::AutoSetupWait)
+        !matches!(
+            self,
+            Scene::Update | Scene::WifiConnect | Scene::AutoSetupWait
+        )
     }
 }
 
@@ -226,7 +229,10 @@ impl Solve {
 
     /// Time limit the stackmat should stop at (hot path: a field read).
     pub fn time_limit(&self) -> Option<u64> {
-        self.solve_group.as_ref().and_then(|g| g.limit).filter(|_| self.limit_armed)
+        self.solve_group
+            .as_ref()
+            .and_then(|g| g.limit)
+            .filter(|_| self.limit_armed)
     }
 
     pub fn use_inspection(&self) -> bool {
@@ -406,7 +412,9 @@ pub fn epoch_known() -> bool {
 }
 
 pub fn current_epoch() -> u64 {
-    SESSION.read(|s| s.epoch_base).saturating_add(Instant::now().as_secs())
+    SESSION
+        .read(|s| s.epoch_base)
+        .saturating_add(Instant::now().as_secs())
 }
 
 #[cfg(feature = "e2e")]
@@ -553,7 +561,10 @@ impl SavedGlobalState {
             embassy_time::Timer::after_millis(5).await;
         }
 
-        let res = nvs.get::<alloc::vec::Vec<u8>>(&crate::consts::NVS_SAVED_STATE).await.ok()?;
+        let res = nvs
+            .get::<alloc::vec::Vec<u8>>(&crate::consts::NVS_SAVED_STATE)
+            .await
+            .ok()?;
         let res: SavedGlobalState = serde_json::from_slice(&res).ok()?;
 
         // 6hours
@@ -572,7 +583,9 @@ impl SavedGlobalState {
         let res = serde_json::to_vec(&self);
         if let Ok(vec) = res {
             // set replaces the old value atomically (deleting first could lose it on power loss)
-            let res = nvs.set(&crate::consts::NVS_SAVED_STATE, vec.as_slice()).await;
+            let res = nvs
+                .set(&crate::consts::NVS_SAVED_STATE, vec.as_slice())
+                .await;
             if let Err(e) = res {
                 log::error!("{e:?} Faile to write to nvs! (SAVED_STATE {})", vec.len());
                 crate::log_once!(crate::utils::error_log::codes::NVS_SAVED_STATE_WRITE_FAILED);

@@ -235,7 +235,7 @@ fn select_step(state: &GlobalState, right: bool) -> bool {
             let old = s.buzzer_volume;
             s.buzzer_volume = match right {
                 true => (old + 1).min(crate::consts::BUZZER_VOLUME_MAX),
-                false => old.saturating_sub(1).max(crate::consts::BUZZER_VOLUME_MIN),
+                false => old.saturating_sub(1), // BUZZER_VOLUME_MIN is 0
             };
             s.buzzer_volume != old
         });

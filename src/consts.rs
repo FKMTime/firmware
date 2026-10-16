@@ -1,6 +1,8 @@
 /// The device never sleeps without the `sleep` feature or in e2e/qa builds.
-pub const SLEEP_ENABLED: bool =
-    cfg!(all(feature = "sleep", not(any(feature = "e2e", feature = "qa"))));
+pub const SLEEP_ENABLED: bool = cfg!(all(
+    feature = "sleep",
+    not(any(feature = "e2e", feature = "qa"))
+));
 pub const SLEEP_AFTER_MS: u64 = 60000 * 5;
 pub const DEEPER_SLEEP_AFTER_MS: u64 = 60000 * 15;
 
@@ -33,7 +35,8 @@ pub const INSPECTION_TIME_DNF: u64 = 17000;
 pub const INSPECTION_TIME_PLUS2: u64 = 15000;
 
 #[cfg(feature = "v4")]
-pub const NVS_BUZZER_VOLUME: esp_hal_wifimanager::Key = esp_hal_wifimanager::Key::from_str("BUZZER_VOLUME");
+pub const NVS_BUZZER_VOLUME: esp_hal_wifimanager::Key =
+    esp_hal_wifimanager::Key::from_str("BUZZER_VOLUME");
 #[cfg(feature = "v4")]
 pub const BUZZER_VOLUME_MIN: u8 = 0;
 #[cfg(feature = "v4")]
@@ -41,7 +44,9 @@ pub const BUZZER_VOLUME_MAX: u8 = 25;
 #[cfg(feature = "v4")]
 pub const BUZZER_VOLUME_DEFAULT: u8 = 5;
 
-pub const NVS_BONDING_KEY: esp_hal_wifimanager::Key = esp_hal_wifimanager::Key::from_str("BONDING_KEY");
+pub const NVS_BONDING_KEY: esp_hal_wifimanager::Key =
+    esp_hal_wifimanager::Key::from_str("BONDING_KEY");
 pub const NVS_SIGN_KEY: esp_hal_wifimanager::Key = esp_hal_wifimanager::Key::from_str("SIGN_KEY");
-pub const NVS_SAVED_STATE: esp_hal_wifimanager::Key = esp_hal_wifimanager::Key::from_str("SAVED_STATE");
+pub const NVS_SAVED_STATE: esp_hal_wifimanager::Key =
+    esp_hal_wifimanager::Key::from_str("SAVED_STATE");
 pub const NVS_ERROR_LOG: esp_hal_wifimanager::Key = esp_hal_wifimanager::Key::from_str("ERROR_LOG");

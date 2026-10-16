@@ -131,7 +131,17 @@ pub async fn lcd_task(
 
         crate::watchdog::heartbeat(crate::watchdog::TaskId::Lcd);
         // bounded so the heartbeat keeps beating while a live screen waits for its signal
-        let event = with_timeout(EVENT_TIMEOUT, next_event(global_state, &mut timer, wifi_setup_sig, live, &local, Duration::from_millis(SCROLL_TICK_MS)));
+        let event = with_timeout(
+            EVENT_TIMEOUT,
+            next_event(
+                global_state,
+                &mut timer,
+                wifi_setup_sig,
+                live,
+                &local,
+                Duration::from_millis(SCROLL_TICK_MS),
+            ),
+        );
         let Ok(event) = event.await else {
             continue;
         };
@@ -160,7 +170,9 @@ pub async fn lcd_task(
                 rerender = true;
             }
             Event::WifiSetup => {
-                global_state.solve.update(|s| s.scene = Scene::AutoSetupWait);
+                global_state
+                    .solve
+                    .update(|s| s.scene = Scene::AutoSetupWait);
             }
             Event::Tick => {
                 if text.scroll_step() {
@@ -173,7 +185,12 @@ pub async fn lcd_task(
 }
 
 /// Sleep after `SLEEP_AFTER_MS` without state changes, "deeper sleep" after `DEEPER_SLEEP_AFTER_MS`.
-async fn sleep_check(text: &mut LcdText, lcd: &mut Lcd, global_state: GlobalState, last_update: Instant) {
+async fn sleep_check(
+    text: &mut LcdText,
+    lcd: &mut Lcd,
+    global_state: GlobalState,
+    last_update: Instant,
+) {
     use crate::consts::{DEEPER_SLEEP_AFTER_MS, SLEEP_AFTER_MS, SLEEP_ENABLED};
     if !SLEEP_ENABLED {
         return;
@@ -187,20 +204,24 @@ async fn sleep_check(text: &mut LcdText, lcd: &mut Lcd, global_state: GlobalStat
         show(text, lcd).await;
         lcd.backlight_off();
 
-        global_state.status.update(|s| s.server_connected = Some(false));
+        global_state
+            .status
+            .update(|s| s.server_connected = Some(false));
         power::request_sleep();
         crate::state::SESSION.write(|s| s.trust_server = false);
         CHANGED.reset(); // these changes must not wake the display again
     }
 
-    if power::is_sleeping() && !crate::power::is_deeper_sleeping() && idle_ms > DEEPER_SLEEP_AFTER_MS {
+    if power::is_sleeping()
+        && !crate::power::is_deeper_sleeping()
+        && idle_ms > DEEPER_SLEEP_AFTER_MS
+    {
         text.print(0, "Deep Sleep", Align::Center, true);
         text.print(1, "Press any key", Align::Center, true);
         show(text, lcd).await;
         power::enter_deep_sleep();
     }
 }
-
 
 fn tr(text: &mut LcdText, header: usize, footer: usize) {
     text.print(0, &get_translation(header), Align::Center, true);
@@ -226,7 +247,12 @@ fn render(s: &View, text: &mut LcdText, local: &Local) -> Live {
 
     match screen(s.solve, s.ui, &s.status) {
         Screen::Error(error) => {
-            text.print(0, &get_translation(TranslationKey::ERROR_HEADER), Align::Center, true);
+            text.print(
+                0,
+                &get_translation(TranslationKey::ERROR_HEADER),
+                Align::Center,
+                true,
+            );
             text.print(1, error, Align::Center, true);
         }
         Screen::Custom(l1, l2) => {
@@ -237,7 +263,10 @@ fn render(s: &View, text: &mut LcdText, local: &Local) -> Live {
             text.print(0, "<", Align::Left, false);
             text.print(0, ">", Align::Right, false);
             text.print(0, "Config Menu", Align::Center, false);
-            let item = crate::structs::CONFIG_MENU_ITEMS.get(sel).copied().unwrap_or("");
+            let item = crate::structs::CONFIG_MENU_ITEMS
+                .get(sel)
+                .copied()
+                .unwrap_or("");
             _ = write!(line, "{}. {item}", sel + 1);
             text.print(1, &line, Align::Left, true);
         }
@@ -270,11 +299,21 @@ fn render(s: &View, text: &mut LcdText, local: &Local) -> Live {
             Some(ErrorLogEntry::Code { timestamp, code }) => {
                 _ = write!(line, "Error E{code}");
                 text.print(0, &line, Align::Left, true);
-                text.print(1, &error_log::format_timestamp_full(timestamp), Align::Left, true);
+                text.print(
+                    1,
+                    &error_log::format_timestamp_full(timestamp),
+                    Align::Left,
+                    true,
+                );
             }
             Some(ErrorLogEntry::Stacktrace { timestamp, .. }) => {
                 text.print(0, "Panic (view logs for details)", Align::Left, true);
-                text.print(1, &error_log::format_timestamp_full(timestamp), Align::Left, true);
+                text.print(
+                    1,
+                    &error_log::format_timestamp_full(timestamp),
+                    Align::Left,
+                    true,
+                );
             }
             None => {
                 text.print(0, "Invalid log entry", Align::Center, true);
@@ -341,7 +380,12 @@ fn render(s: &View, text: &mut LcdText, local: &Local) -> Live {
             return Live::WifiConnect;
         }
         Screen::AutoSetup => {
-            text.print(0, &get_translation(TranslationKey::WIFI_SETUP_HEADER), Align::Center, true);
+            text.print(
+                0,
+                &get_translation(TranslationKey::WIFI_SETUP_HEADER),
+                Align::Center,
+                true,
+            );
             _ = write!(line, "FKM-{:X}", crate::utils::get_efuse_u32());
             text.print(1, &line, Align::Center, true);
         }
@@ -355,7 +399,12 @@ fn render(s: &View, text: &mut LcdText, local: &Local) -> Live {
                 text.print(row, "<", Align::Left, false);
                 text.print(row, ">", Align::Right, false);
             }
-            text.print(0, &get_translation(TranslationKey::SELECT_GROUP), Align::Center, false);
+            text.print(
+                0,
+                &get_translation(TranslationKey::SELECT_GROUP),
+                Align::Center,
+                false,
+            );
             text.print(1, name, Align::Center, false);
         }
         Screen::WaitingForCompetitor(solve_time) => {
@@ -379,7 +428,12 @@ fn render(s: &View, text: &mut LcdText, local: &Local) -> Live {
         }
         Screen::Inspection(start) => {
             text.print(1, "Inspection", Align::Center, true);
-            text.print(0, &time_str(start.elapsed().as_millis()), Align::Center, true);
+            text.print(
+                0,
+                &time_str(start.elapsed().as_millis()),
+                Align::Center,
+                true,
+            );
             return Live::Inspection(start);
         }
         Screen::Timer => {
@@ -390,7 +444,11 @@ fn render(s: &View, text: &mut LcdText, local: &Local) -> Live {
             return Live::Timer;
         }
         Screen::Finished(fin) => {
-            let time = if fin.time > 0 { time_str(fin.time) } else { heapless::String::new() };
+            let time = if fin.time > 0 {
+                time_str(fin.time)
+            } else {
+                heapless::String::new()
+            };
             _ = match fin.inspection {
                 Some(ms) => write!(line, "{time} ({}s)", ms / 1000),
                 None => write!(line, "{time}"),

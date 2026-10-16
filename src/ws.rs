@@ -245,7 +245,9 @@ pub async fn ws_task(
             Either::Second(false) => {}
         }
 
-        global_state.status.update(|s| s.server_connected = Some(false));
+        global_state
+            .status
+            .update(|s| s.server_connected = Some(false));
         Timer::after_millis(WS_RETRY_MS).await;
     }
 }
@@ -281,7 +283,9 @@ async fn run(
     bufs: &mut Buffers<'_>,
     wifi_conn_sig: &Signal<Cs, bool>,
 ) -> Result<core::convert::Infallible, WsError> {
-    global_state.status.update(|s| s.server_connected = Some(false));
+    global_state
+        .status
+        .update(|s| s.server_connected = Some(false));
 
     let ip = resolve(stack, url.hostname).await?;
     let mut tcp = TcpSocket::new(stack, &mut *bufs.tcp_rx, &mut *bufs.tcp_tx);
@@ -289,7 +293,9 @@ async fn run(
     if let Err(e) = tcp.connect((ip, url.port)).await {
         // a reconnected wifi clears the "wifi lost" message even if the server is down
         if wifi_conn_sig.signaled() && wifi_conn_sig.wait().await {
-            global_state.status.update(|s| s.wifi_connected = Some(true));
+            global_state
+                .status
+                .update(|s| s.wifi_connected = Some(true));
         }
         log::error!("connect error: {e:?}");
         return Err(WsError::Connect);
@@ -319,7 +325,11 @@ async fn run(
     handshake(global_state, url, &mut socket, &mut tx, &mut rx).await?;
 
     #[cfg(feature = "auto_add")]
-    if !global_state.status.read(|s| s.device_added).unwrap_or(false) {
+    if !global_state
+        .status
+        .read(|s| s.device_added)
+        .unwrap_or(false)
+    {
         _ = send(TimerPacket {
             tag: None,
             data: TimerPacketInner::Add {
@@ -343,12 +353,20 @@ async fn run(
         crate::watchdog::heartbeat(crate::watchdog::TaskId::Ws);
         flush(&mut socket, &mut tx, &mut owed).await?;
 
-        match select3(socket.read(rx.read_buf()), WAKE.wait(), wifi_conn_sig.wait()).await {
+        match select3(
+            socket.read(rx.read_buf()),
+            WAKE.wait(),
+            wifi_conn_sig.wait(),
+        )
+        .await
+        {
             Either3::First(Ok(0) | Err(_)) => return Err(WsError::Socket),
             Either3::First(Ok(n)) => rx.advance(n),
             Either3::Second(()) | Either3::Third(true) => continue,
             Either3::Third(false) => {
-                global_state.status.update(|s| s.wifi_connected = Some(false));
+                global_state
+                    .status
+                    .update(|s| s.wifi_connected = Some(false));
                 return Err(WsError::WifiDisconnected);
             }
         }
@@ -362,7 +380,9 @@ async fn run(
                         crate::log_once!(codes::WS_PACKET_PARSE_FAILED);
                     }
                 },
-                Ok(WsFrame::Binary(data)) => handle_ota_chunk(global_state, data, &mut ota, &mut owed)?,
+                Ok(WsFrame::Binary(data)) => {
+                    handle_ota_chunk(global_state, data, &mut ota, &mut owed)?
+                }
                 Ok(WsFrame::Ping(_)) => owed.pong = true,
                 Ok(WsFrame::Close(code, reason)) => {
                     log::warn!("server closed the connection: {code} {reason}");
@@ -381,7 +401,10 @@ async fn run(
     }
 }
 
-async fn resolve(stack: Stack<'static>, hostname: &str) -> Result<embassy_net::Ipv4Address, WsError> {
+async fn resolve(
+    stack: Stack<'static>,
+    hostname: &str,
+) -> Result<embassy_net::Ipv4Address, WsError> {
     if let Ok(addr) = embassy_net::Ipv4Address::from_str(hostname) {
         return Ok(addr);
     }
@@ -432,7 +455,10 @@ async fn handshake(
     let accept = tx.accept_key();
 
     let random_signed = loop {
-        let n = socket.read(rx.read_buf()).await.map_err(|_| WsError::Socket)?;
+        let n = socket
+            .read(rx.read_buf())
+            .await
+            .map_err(|_| WsError::Socket)?;
         if n == 0 {
             log::error!("error while reading http response");
             crate::log_once!(codes::WS_HTTP_UPGRADE_READ_FAILED);
@@ -472,7 +498,9 @@ async fn handshake(
         let (recv_random, token) = block.split_at(8);
         let recv_random = u64::from_be_bytes(recv_random.try_into().unwrap_or_default());
         let fkm_token = i32::from_be_bytes(token[..4].try_into().unwrap_or_default());
-        log::debug!("[trust] random: {random}, recv_random: {recv_random} | fkm_token: {fkm_token}");
+        log::debug!(
+            "[trust] random: {random}, recv_random: {recv_random} | fkm_token: {fkm_token}"
+        );
 
         if random == recv_random {
             crate::state::SESSION.write(|s| {
@@ -482,7 +510,9 @@ async fn handshake(
         } else {
             #[cfg(not(feature = "e2e"))]
             {
-                global_state.ui.update(|u| u.error_text = Some("Server Not Trusted!".into()));
+                global_state
+                    .ui
+                    .update(|u| u.error_text = Some("Server Not Trusted!".into()));
             }
         }
     }
@@ -594,7 +624,9 @@ async fn handle_packet(
             auto_setup,
             sound_enabled,
         } => {
-            global_state.status.update(|s| s.device_added = Some(*added));
+            global_state
+                .status
+                .update(|s| s.device_added = Some(*added));
             crate::translations::clear_locales();
             for locale in locales {
                 crate::translations::process_locale(&locale.locale, &locale.translations);
@@ -610,10 +642,14 @@ async fn handle_packet(
             });
         }
         TimerPacketInner::ApiError(e) => {
-            global_state.ui.update(|u| u.error_text = Some(e.error.clone()));
+            global_state
+                .ui
+                .update(|u| u.error_text = Some(e.error.clone()));
         }
         TimerPacketInner::CustomMessage { line1, line2 } => {
-            global_state.ui.update(|u| u.custom_message = Some((line1.clone(), line2.clone())));
+            global_state
+                .ui
+                .update(|u| u.custom_message = Some((line1.clone(), line2.clone())));
         }
         TimerPacketInner::EpochTime { current_epoch } => crate::state::set_epoch(*current_epoch),
         TimerPacketInner::StartUpdate {
@@ -670,9 +706,7 @@ async fn handle_packet(
         (_, tag) => tag,
     };
     if let Some(tag) = tag.filter(|&t| t != 0)
-        && let Some(slot) = SLOTS
-            .iter()
-            .find(|s| s.tag.load(Ordering::Acquire) == tag)
+        && let Some(slot) = SLOTS.iter().find(|s| s.tag.load(Ordering::Acquire) == tag)
     {
         slot.response.signal(packet);
     }
@@ -713,7 +747,10 @@ fn handle_ota_chunk(
 }
 
 #[cfg(feature = "e2e")]
-async fn parse_test_packet(test_packet: crate::structs::TestPacketData, global_state: &GlobalState) {
+async fn parse_test_packet(
+    test_packet: crate::structs::TestPacketData,
+    global_state: &GlobalState,
+) {
     use crate::structs::TestPacketData;
     use crate::utils::stackmat::StackmatTimerState;
 
@@ -740,6 +777,8 @@ async fn parse_test_packet(test_packet: crate::structs::TestPacketData, global_s
     }
 }
 
+// boxing the TLS connection would need the heap; only one Socket exists at a time
+#[allow(clippy::large_enum_variant)]
 enum Socket<'a, 'b> {
     Tls(TlsConnection<'b, TcpSocket<'a>, Aes128GcmSha256>),
     Raw(TcpSocket<'a>),

@@ -111,8 +111,8 @@ pub fn process_locale(locale: &str, records: &[TranslationRecord]) {
 
         let translations = &mut l.list[idx].translations;
         for record in records {
-            if let Some(slot) = TranslationKey::from_key_str(&record.key)
-                .and_then(|key| translations.get_mut(key))
+            if let Some(slot) =
+                TranslationKey::from_key_str(&record.key).and_then(|key| translations.get_mut(key))
             {
                 *slot = Some(TranslationText::truncated(&record.translation));
             }

@@ -39,7 +39,8 @@ pub async fn battery_read_task(
 
         let now = Instant::now();
         if !lcd_sent && battery_start <= now {
-            let percent = crate::utils::battery::percent(crate::utils::battery::adc_to_mv(read as f64));
+            let percent =
+                crate::utils::battery::percent(crate::utils::battery::adc_to_mv(read as f64));
             state.battery.write(|b| b.percent = percent);
             state.battery_ready.signal(());
 

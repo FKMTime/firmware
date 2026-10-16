@@ -5,8 +5,8 @@
 
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Instant};
-use portable_atomic::{AtomicBool, Ordering};
 use esp_hal_wifimanager::WifiManager;
+use portable_atomic::{AtomicBool, Ordering};
 
 pub type SleepSignal = Signal<CriticalSectionRawMutex, bool>;
 

@@ -302,7 +302,9 @@ async fn handle_card<I: Interface>(
     if let Some(card) = &card.selected {
         if !crate::state::SESSION.read(|s| s.trust_server) {
             log::error!("Skipping card scan. Server not trusted!");
-            global_state.ui.update(|u| u.error_text = Some("Server NOT Trusted!".into()));
+            global_state
+                .ui
+                .update(|u| u.error_text = Some("Server NOT Trusted!".into()));
             _ = mfrc522.halt().await;
             return;
         }
@@ -326,7 +328,9 @@ async fn handle_card<I: Interface>(
             return;
         }
 
-        if crate::state::SESSION.read(|s| s.secure_rfid) && !is_card_secured(mfrc522, card, card_uid).await {
+        if crate::state::SESSION.read(|s| s.secure_rfid)
+            && !is_card_secured(mfrc522, card, card_uid).await
+        {
             _ = mfrc522.halt().await;
             _ = mfrc522.stop_crypto1().await;
             return;
@@ -477,7 +481,9 @@ async fn process_card_info_response(resp: CardInfoResponsePacket, global_state: 
         CardAction::EmptyGroups => {
             global_state.reset_solve(false).await;
             let error = get_translation(TranslationKey::EMPTY_GROUPS_ERROR);
-            global_state.ui.update(|u| u.error_text = Some(error.as_str().into()));
+            global_state
+                .ui
+                .update(|u| u.error_text = Some(error.as_str().into()));
         }
         CardAction::SendSolve(packet, competitor) => {
             let resp = crate::ws::request::<SolveConfirmPacket>(

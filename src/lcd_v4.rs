@@ -107,7 +107,17 @@ pub async fn lcd_task(
 
         crate::watchdog::heartbeat(crate::watchdog::TaskId::Lcd);
         // bounded so the heartbeat keeps beating while a live screen waits for its signal
-        let event = with_timeout(EVENT_TIMEOUT, next_event(global_state, &mut timer, wifi_setup_sig, live, &local, IDLE_TICK));
+        let event = with_timeout(
+            EVENT_TIMEOUT,
+            next_event(
+                global_state,
+                &mut timer,
+                wifi_setup_sig,
+                live,
+                &local,
+                IDLE_TICK,
+            ),
+        );
         let Ok(event) = event.await else {
             continue;
         };
@@ -135,7 +145,9 @@ pub async fn lcd_task(
                 rerender = true;
             }
             Event::WifiSetup => {
-                global_state.solve.update(|s| s.scene = Scene::AutoSetupWait);
+                global_state
+                    .solve
+                    .update(|s| s.scene = Scene::AutoSetupWait);
             }
             Event::Tick => sleep_check(&mut oled, global_state, last_update).await,
         }
@@ -143,7 +155,11 @@ pub async fn lcd_task(
 }
 
 /// Sleep after `SLEEP_AFTER_MS` without state changes, deep sleep after `DEEPER_SLEEP_AFTER_MS`.
-async fn sleep_check(oled: &mut Ssd1309<SharedI2C>, global_state: GlobalState, last_update: Instant) {
+async fn sleep_check(
+    oled: &mut Ssd1309<SharedI2C>,
+    global_state: GlobalState,
+    last_update: Instant,
+) {
     use crate::consts::{DEEPER_SLEEP_AFTER_MS, SLEEP_AFTER_MS, SLEEP_ENABLED};
     if !SLEEP_ENABLED {
         return;
@@ -154,7 +170,10 @@ async fn sleep_check(oled: &mut Ssd1309<SharedI2C>, global_state: GlobalState, l
     if !power::is_sleeping() && idle_ms > SLEEP_AFTER_MS && can_sleep {
         enter_sleep(oled, global_state).await;
     }
-    if power::is_sleeping() && !crate::power::is_deeper_sleeping() && idle_ms > DEEPER_SLEEP_AFTER_MS {
+    if power::is_sleeping()
+        && !crate::power::is_deeper_sleeping()
+        && idle_ms > DEEPER_SLEEP_AFTER_MS
+    {
         oled.frame.clear();
         ui::centered_screen(&mut oled.frame, "Sleep", ui::SMALL_FONT);
         flush(oled).await;
@@ -242,9 +261,10 @@ fn render(s: &View, f: &mut Frame, local: &Local) -> Live {
 
     let mut text = Text::new();
     match screen(s.solve, s.ui, &s.status) {
-        Screen::Error(error) => {
-            ui::text_main(f, &two_lines(&get_translation(TranslationKey::ERROR_HEADER), error))
-        }
+        Screen::Error(error) => ui::text_main(
+            f,
+            &two_lines(&get_translation(TranslationKey::ERROR_HEADER), error),
+        ),
         Screen::Custom(l1, l2) => ui::text_main(f, &two_lines(l1, l2)),
         Screen::ConfigMenu(sel) => {
             let items = &crate::structs::CONFIG_MENU_ITEMS;
@@ -375,7 +395,12 @@ fn render(s: &View, f: &mut Frame, local: &Local) -> Live {
         }
         Screen::CompetitorInfo => {
             _ = text.push_str(s.solve.competitor_display.as_deref().unwrap_or("------"));
-            if let Some(secondary) = s.solve.solve_group.as_ref().and_then(|g| g.secondary_text.as_ref()) {
+            if let Some(secondary) = s
+                .solve
+                .solve_group
+                .as_ref()
+                .and_then(|g| g.secondary_text.as_ref())
+            {
                 _ = write!(text, "\n{secondary}");
             }
             ui::text_main(f, &text);
@@ -406,7 +431,12 @@ fn render(s: &View, f: &mut Frame, local: &Local) -> Live {
 
             let inspection = fin.inspection.map(|ms| {
                 let mut s = Line64::new();
-                _ = write!(s, "{}: {}", get_translation(TranslationKey::INSPECTION), crate::utils::text::time_str(ms));
+                _ = write!(
+                    s,
+                    "{}: {}",
+                    get_translation(TranslationKey::INSPECTION),
+                    crate::utils::text::time_str(ms)
+                );
                 s
             });
             let status = fin.status.map(get_translation);

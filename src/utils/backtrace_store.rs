@@ -69,8 +69,8 @@ fn record(kind: u32, task: u32, addrs: &[usize]) {
     let bytes = crate::version::VERSION.as_bytes();
     let len = bytes.len().min(version.len());
     version[..len].copy_from_slice(&bytes[..len]);
-    for (i, chunk) in version.chunks_exact(4).enumerate() {
-        set(W_VERSION + i, u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+    for (i, chunk) in version.as_chunks::<4>().0.iter().enumerate() {
+        set(W_VERSION + i, u32::from_le_bytes(*chunk));
     }
 
     let count = addrs.len().min(MAX_BACKTRACE_ADDRESSES);
@@ -100,8 +100,8 @@ pub fn report_saved_crash() {
     match get(W_KIND) {
         KIND_PANIC => {
             let mut version = [0u8; VERSION_WORDS * 4];
-            for (i, chunk) in version.chunks_exact_mut(4).enumerate() {
-                chunk.copy_from_slice(&get(W_VERSION + i).to_le_bytes());
+            for (i, chunk) in version.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+                *chunk = get(W_VERSION + i).to_le_bytes();
             }
             let version = core::str::from_utf8(&version)
                 .unwrap_or(crate::version::VERSION)

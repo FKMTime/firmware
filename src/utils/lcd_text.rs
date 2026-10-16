@@ -52,7 +52,11 @@ impl LcdText {
         let mut chars = [b' '; LINE];
         let mut len = 0;
         for (dst, c) in chars.iter_mut().zip(text.chars()) {
-            *dst = if c.is_ascii() && !c.is_ascii_control() { c as u8 } else { b'?' };
+            *dst = if c.is_ascii() && !c.is_ascii_control() {
+                c as u8
+            } else {
+                b'?'
+            };
             len += 1;
         }
 
@@ -76,7 +80,11 @@ impl LcdText {
 
     /// One scroll tick (every 500 ms); `true` if the visible text moved.
     pub fn scroll_step(&mut self) -> bool {
-        let max_scroll = self.sizes.iter().max().map_or(0, |s| s.saturating_sub(COLS));
+        let max_scroll = self
+            .sizes
+            .iter()
+            .max()
+            .map_or(0, |s| s.saturating_sub(COLS));
         if max_scroll == 0 {
             return false;
         }
@@ -103,7 +111,13 @@ impl LcdText {
             let Some(start) = visible.iter().zip(shown.iter()).position(|(a, b)| a != b) else {
                 continue;
             };
-            let end = COLS - visible.iter().zip(shown.iter()).rev().position(|(a, b)| a != b).unwrap_or(0);
+            let end = COLS
+                - visible
+                    .iter()
+                    .zip(shown.iter())
+                    .rev()
+                    .position(|(a, b)| a != b)
+                    .unwrap_or(0);
             // only ASCII is ever stored, so this can't fail
             if let Ok(text) = core::str::from_utf8(&visible[start..end]) {
                 write(row as u8, start as u8, text);
@@ -131,7 +145,10 @@ mod tests {
         t.print(1, "Inspection", Align::Center, true);
         assert_eq!(
             flush(&mut t),
-            [(0, 0, "     12.34      ".into()), (1, 0, "   Inspection   ".into())]
+            [
+                (0, 0, "     12.34      ".into()),
+                (1, 0, "   Inspection   ".into())
+            ]
         );
         assert!(flush(&mut t).is_empty());
 

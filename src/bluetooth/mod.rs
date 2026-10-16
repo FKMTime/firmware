@@ -12,7 +12,9 @@ use crate::{
 use alloc::vec::Vec;
 use core::cell::Cell;
 use embassy_futures::select::{Either, select, select3};
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, signal::Signal};
+use embassy_sync::{
+    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, signal::Signal,
+};
 use embassy_time::{Duration, Timer, with_timeout};
 use esp_hal::peripherals::BT;
 use esp_radio::ble::controller::BleConnector;
@@ -62,10 +64,7 @@ impl BleCommands {
 }
 
 #[embassy_executor::task]
-pub async fn bluetooth_timer_task(
-    bt: BT<'static>,
-    state: GlobalState,
-) {
+pub async fn bluetooth_timer_task(bt: BT<'static>, state: GlobalState) {
     loop {
         // sleeping drops the whole BLE stack
         select(run(&bt, state), wait_sleep(true)).await;
@@ -98,25 +97,41 @@ async fn run(bt: &BT<'static>, state: GlobalState) {
 }
 
 /// One controller + host stack, until the user picks/unpairs or the stack fails (`Err`).
-async fn session(bt: &BT<'static>, state: GlobalState, bond: Option<BondInformation>) -> Result<(), ()> {
+async fn session(
+    bt: &BT<'static>,
+    state: GlobalState,
+    bond: Option<BondInformation>,
+) -> Result<(), ()> {
     // SAFETY: only one session (and so one connector) exists at a time.
-    let connector = BleConnector::new(unsafe { bt.clone_unchecked() }, Default::default()).map_err(|e| {
-        log::error!("[ble] cannot init connector ({e:?})");
-        crate::log_once!(codes::BLE_INIT_FAILED);
-    })?;
-    let mac: [u8; 6] = esp_hal::efuse::base_mac_address().as_bytes().try_into().map_err(|_| {
-        log::error!("[ble] cannot read mac address");
-        crate::log_once!(codes::BLE_MAC_READ_FAILED);
-    })?;
+    let connector = BleConnector::new(unsafe { bt.clone_unchecked() }, Default::default())
+        .map_err(|e| {
+            log::error!("[ble] cannot init connector ({e:?})");
+            crate::log_once!(codes::BLE_INIT_FAILED);
+        })?;
+    let mac: [u8; 6] = esp_hal::efuse::base_mac_address()
+        .as_bytes()
+        .try_into()
+        .map_err(|_| {
+            log::error!("[ble] cannot read mac address");
+            crate::log_once!(codes::BLE_MAC_READ_FAILED);
+        })?;
 
     let mut resources: HostResources<Ctrl, Pool, 1, 3> = HostResources::new();
     let stack = trouble_host::new(ExternalController::new(connector), &mut resources)
         .set_random_address(Address::random(mac))
         .build();
     let mut runner = stack.runner();
-    let discovery = Discovery { state, scanning: Cell::new(false) };
+    let discovery = Discovery {
+        state,
+        scanning: Cell::new(false),
+    };
 
-    match select(runner.run_with_handler(&discovery), link(&stack, state, bond, &discovery)).await {
+    match select(
+        runner.run_with_handler(&discovery),
+        link(&stack, state, bond, &discovery),
+    )
+    .await
+    {
         Either::First(res) => {
             log::error!("[ble] host stopped ({res:?})");
             Err(())
@@ -171,11 +186,16 @@ async fn link(
 
     let config = ConnectConfig {
         connect_params: Default::default(),
-        scan_config: ScanConfig { filter_accept_list: &[target], ..Default::default() },
+        scan_config: ScanConfig {
+            filter_accept_list: &[target],
+            ..Default::default()
+        },
     };
     // re-pairing or unpairing from the menu ends the link; unpairing also forgets the bond
     let ended = async {
-        if COMMANDS.wait_for(|c| matches!(c, BleAction::Unpair | BleAction::StartScan)).await
+        if COMMANDS
+            .wait_for(|c| matches!(c, BleAction::Unpair | BleAction::StartScan))
+            .await
             == BleAction::Unpair
         {
             _ = state.nvs.delete(&NVS_BONDING_KEY).await;
@@ -219,7 +239,11 @@ async fn connect_once(
     };
 
     // bond only once; afterwards the stored keys just re-encrypt the link
-    if conn.set_bondable(bond.is_none()).and_then(|_| conn.request_security()).is_err() {
+    if conn
+        .set_bondable(bond.is_none())
+        .and_then(|_| conn.request_security())
+        .is_err()
+    {
         log::error!("[ble] cannot request security");
         crate::log_once!(codes::BLE_REQUEST_SECURITY_FAILED);
         return Some(false);
@@ -228,7 +252,10 @@ async fn connect_once(
     let paired = with_timeout(TIMEOUT, async {
         loop {
             match conn.next().await {
-                ConnectionEvent::PairingComplete { security_level, bond } => {
+                ConnectionEvent::PairingComplete {
+                    security_level,
+                    bond,
+                } => {
                     break Ok((security_level.encrypted(), bond));
                 }
                 ConnectionEvent::PairingFailed(e) => {
@@ -262,8 +289,13 @@ async fn connect_once(
 }
 
 /// Writes timer values until the link breaks; returns whether streaming started.
-async fn stream(stack: &Stack<'_, Ctrl, Pool>, conn: &Connection<'_, Pool>, state: GlobalState) -> bool {
-    let Ok(Ok(client)) = with_timeout(TIMEOUT, GattClient::<_, Pool, 10>::new(stack, conn)).await else {
+async fn stream(
+    stack: &Stack<'_, Ctrl, Pool>,
+    conn: &Connection<'_, Pool>,
+    state: GlobalState,
+) -> bool {
+    let Ok(Ok(client)) = with_timeout(TIMEOUT, GattClient::<_, Pool, 10>::new(stack, conn)).await
+    else {
         log::error!("[ble] gatt client failed");
         crate::log_once!(codes::BLE_GATT_CLIENT_FAILED);
         return false;
@@ -271,8 +303,11 @@ async fn stream(stack: &Stack<'_, Ctrl, Pool>, conn: &Connection<'_, Pool>, stat
 
     let streaming = Cell::new(false);
     let write = async {
-        let Ok(Ok(services)) =
-            with_timeout(TIMEOUT, client.services_by_uuid(&Uuid::from(DISPLAY_SERVICE))).await
+        let Ok(Ok(services)) = with_timeout(
+            TIMEOUT,
+            client.services_by_uuid(&Uuid::from(DISPLAY_SERVICE)),
+        )
+        .await
         else {
             log::warn!("[ble] service discovery failed");
             return;
@@ -300,14 +335,17 @@ async fn stream(stack: &Stack<'_, Ctrl, Pool>, conn: &Connection<'_, Pool>, stat
         streaming.set(true);
         loop {
             let ms = timer.changed().await;
-            if client.write_characteristic_without_response(&time, &ms.to_be_bytes()).await.is_err() {
+            if client
+                .write_characteristic_without_response(&time, &ms.to_be_bytes())
+                .await
+                .is_err()
+            {
                 return;
             }
         }
     };
-    let disconnected = async {
-        while !matches!(conn.next().await, ConnectionEvent::Disconnected { .. }) {}
-    };
+    let disconnected =
+        async { while !matches!(conn.next().await, ConnectionEvent::Disconnected { .. }) {} };
 
     select3(client.task(), disconnected, write).await;
     streaming.get()
@@ -326,10 +364,16 @@ impl EventHandler for Discovery {
         }
         while let Some(Ok(report)) = reports.next() {
             let addr = report.addr.into_inner();
-            let Some(name) = codec::parse_device_name(report.data).filter(|n| codec::is_fkm_display(n)) else {
+            let Some(name) =
+                codec::parse_device_name(report.data).filter(|n| codec::is_fkm_display(n))
+            else {
                 continue;
             };
-            if self.state.ui.read(|u| u.discovered_bluetooth_devices.iter().any(|d| d.addr == addr)) {
+            if self.state.ui.read(|u| {
+                u.discovered_bluetooth_devices
+                    .iter()
+                    .any(|d| d.addr == addr)
+            }) {
                 continue;
             }
 
@@ -338,7 +382,10 @@ impl EventHandler for Discovery {
                 // keep the cursor on "Unpair"/"Exit" (listed after the devices) when it's there
                 let after_list = u.selected_bluetooth_item > 0
                     && u.selected_bluetooth_item >= u.discovered_bluetooth_devices.len();
-                let device = BleDisplayDevice { name: name.into(), addr };
+                let device = BleDisplayDevice {
+                    name: name.into(),
+                    addr,
+                };
                 if u.discovered_bluetooth_devices.push(device) && after_list {
                     u.selected_bluetooth_item += 1;
                 }
@@ -353,7 +400,11 @@ async fn store_bond(state: GlobalState, bond: &BondInformation) {
         SecurityLevel::Encrypted => 1,
         SecurityLevel::EncryptedAuthenticated => 2,
     };
-    let record = codec::encode_bond(bond.identity.addr.addr.into_inner(), bond.ltk.to_le_bytes(), level);
+    let record = codec::encode_bond(
+        bond.identity.addr.addr.into_inner(),
+        bond.ltk.to_le_bytes(),
+        level,
+    );
     if let Err(e) = state.nvs.set(&NVS_BONDING_KEY, record.as_slice()).await {
         log::error!("[ble] storing bond failed ({e:?})");
         crate::log_once!(codes::NVS_BONDING_KEY_WRITE_FAILED);
@@ -364,7 +415,10 @@ async fn load_bond(state: GlobalState) -> Option<BondInformation> {
     let buf = state.nvs.get::<Vec<u8>>(&NVS_BONDING_KEY).await.ok()?;
     let (addr, ltk, level) = codec::decode_bond(&buf)?;
     Some(BondInformation {
-        identity: Identity { addr: Address::random(addr), irk: None },
+        identity: Identity {
+            addr: Address::random(addr),
+            irk: None,
+        },
         security_level: match level {
             0 => SecurityLevel::NoEncryption,
             1 => SecurityLevel::Encrypted,

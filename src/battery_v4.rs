@@ -4,7 +4,6 @@ use embassy_time::{Instant, Timer};
 const READ_INTERVAL_MS: u64 = 100;
 const MAX_RETRY_MS: u64 = 30_000;
 
-
 #[embassy_executor::task]
 pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState) {
     let Ok(mut gauge) = bq27441::Bq27441Async::new(i2c).await else {
