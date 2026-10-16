@@ -1172,15 +1172,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dns-protocol"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96e95919581371ae96cbf05b0aeec65cdc20bd3a2dca282ab6af808fbddaddb4"
-dependencies = [
- "memchr",
-]
-
-[[package]]
 name = "docsplay"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1944,11 +1935,10 @@ dependencies = [
 
 [[package]]
 name = "esp-hal-mdns"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1050471a978efb28602d6f3272398083195c2fc0a4105a8c9d50a53ad256a92d"
+checksum = "026c82351da6f49d57e8ad9513e8509e5be2e5e3b9aa2683577f29e237d60865"
 dependencies = [
- "dns-protocol",
  "heapless 0.9.3",
  "log",
 ]
@@ -1967,9 +1957,9 @@ dependencies = [
 
 [[package]]
 name = "esp-hal-ota"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fddbb7a4963e2151368db46b3e736a6e6ae692a1dad9de1663adba0e6c78219e"
+checksum = "dd36839a6fc2b86cc6152363c989ae624ba830cc726102547e7d4b4f3d4ad9ca"
 dependencies = [
  "embedded-storage",
  "esp-rom-sys",
