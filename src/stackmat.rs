@@ -212,7 +212,7 @@ pub async fn stackmat_task(
 
             #[cfg(feature = "e2e")]
             if sim.take_ack() {
-                crate::ws::send_test_ack(&global_state).await;
+                crate::ws::send_test_ack(&global_state);
             }
 
             show_time(&global_state, frame.1);

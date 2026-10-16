@@ -387,7 +387,7 @@ async fn main(spawner: Spawner) {
             last_error_log_save = Some(Instant::now());
         }
 
-        power.tick().await;
+        power.tick();
     }
 }
 

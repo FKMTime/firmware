@@ -94,14 +94,14 @@ async fn button_loop(state: GlobalState, mut inputs: ButtonInputs) {
 
             #[cfg(not(feature = "qa"))]
             if prev == 0 {
-                press = on_down(&state, Button::from_mask(next)).await;
+                press = on_down(&state, Button::from_mask(next));
             } else if let Some(p) = press.take() {
                 on_up(&state, p.button).await;
             }
 
             #[cfg(feature = "e2e")]
             if prev != 0 && send_ack {
-                crate::ws::send_test_ack(&state).await;
+                crate::ws::send_test_ack(&state);
                 send_ack = false;
             }
         }
@@ -121,7 +121,7 @@ async fn button_loop(state: GlobalState, mut inputs: ButtonInputs) {
 
 /// Returns the press to track, or `None` if the press was consumed (wake-up, list navigation,
 /// inspection start) or more than one button is down.
-async fn on_down(state: &GlobalState, button: Option<Button>) -> Option<Press> {
+fn on_down(state: &GlobalState, button: Option<Button>) -> Option<Press> {
     if wake_up() {
         return None;
     }

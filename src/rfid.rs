@@ -363,7 +363,7 @@ async fn handle_card<I: Interface>(
     #[cfg(feature = "e2e")]
     {
         let _ = mfrc522;
-        crate::ws::send_test_ack(global_state).await;
+        crate::ws::send_test_ack(global_state);
     }
 
     #[cfg(not(feature = "e2e"))]

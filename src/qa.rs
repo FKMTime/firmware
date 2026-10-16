@@ -24,7 +24,7 @@ pub async fn qa_processor(global_state: GlobalState) {
         "NOT GOOD"
     };
 
-    show(&global_state, "PERIPHERALS QA", result).await;
+    show(&global_state, "PERIPHERALS QA", result);
 }
 
 /// Walks the QA steps; any event other than the expected one fails the run.
@@ -34,51 +34,51 @@ async fn qa_inner(global_state: &GlobalState) -> bool {
         let mut line = heapless::String::<16>::new();
         _ = write!(line, "Button {}", i + 1);
 
-        show(global_state, &line, "Down").await;
+        show(global_state, &line, "Down");
         if !matches!(EVENTS.receive().await, QaSignal::ButtonDown(b) if Button::from_mask(b) == Some(button))
         {
             return false;
         }
 
-        show(global_state, &line, "Up").await;
+        show(global_state, &line, "Up");
         if !matches!(EVENTS.receive().await, QaSignal::ButtonUp(b) if Button::from_mask(b) == Some(button))
         {
             return false;
         }
     }
 
-    show(global_state, "Scan card", "1").await;
+    show(global_state, "Scan card", "1");
     let QaSignal::Rfid(first_card) = EVENTS.receive().await else {
         return false;
     };
 
-    show(global_state, "Scan card", "1 again").await;
+    show(global_state, "Scan card", "1 again");
     if EVENTS.receive().await != QaSignal::Rfid(first_card) {
         return false;
     }
 
-    show(global_state, "Scan card", "2").await;
+    show(global_state, "Scan card", "2");
     if !matches!(EVENTS.receive().await, QaSignal::Rfid(card) if card != first_card) {
         return false;
     }
 
-    show(global_state, "Connect", "Stackmat").await;
+    show(global_state, "Connect", "Stackmat");
     if EVENTS.receive().await != QaSignal::StackmatConnected {
         return false;
     }
 
-    show(global_state, "Stackmat solve", "> 1s").await;
+    show(global_state, "Stackmat solve", "> 1s");
     if !matches!(EVENTS.receive().await, QaSignal::Stackmat(time) if time > 1000) {
         return false;
     }
 
     let mut ap_name = heapless::String::<16>::new();
     _ = write!(ap_name, "FKM-{:X}", crate::utils::get_efuse_u32());
-    show(global_state, "Setup WIFI", &ap_name).await;
+    show(global_state, "Setup WIFI", &ap_name);
     EVENTS.receive().await == QaSignal::WifiSetup
 }
 
-async fn show(global_state: &GlobalState, line1: &str, line2: &str) {
+fn show(global_state: &GlobalState, line1: &str, line2: &str) {
     global_state
         .ui
         .update(|u| u.custom_message = Some((line1.into(), line2.into())));

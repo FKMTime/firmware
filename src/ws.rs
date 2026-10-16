@@ -105,7 +105,7 @@ pub fn close(code: u16, reason: &'static str) {
 }
 
 #[cfg(feature = "e2e")]
-pub async fn send_test_ack(global_state: &GlobalState) {
+pub fn send_test_ack(global_state: &GlobalState) {
     let data = TimerPacketInner::TestAck(global_state.solve.read(|s| s.snapshot_data()));
     _ = send(TimerPacket { tag: None, data });
 }
@@ -723,7 +723,7 @@ async fn parse_test_packet(test_packet: crate::structs::TestPacketData, global_s
         TestPacketData::ResetState => {
             global_state.reset_solve(false).await;
             e2e.stackmat_sig.signal((StackmatTimerState::Reset, 0));
-            send_test_ack(global_state).await;
+            send_test_ack(global_state);
         }
         TestPacketData::HardStateReset => {
             e2e.stackmat_sig.signal((StackmatTimerState::Reset, 0));

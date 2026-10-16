@@ -92,7 +92,7 @@ impl<'a> Supervisor<'a> {
     }
 
     /// Call periodically (never blocks for long).
-    pub async fn tick(&mut self) {
+    pub fn tick(&mut self) {
         let sleeping = is_sleeping();
 
         if let Some(since) = self.settling_since {
