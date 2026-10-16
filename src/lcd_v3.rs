@@ -252,11 +252,12 @@ async fn scroll_tick() {
     Timer::after_millis(SCROLL_TICKER_INVERVAL_MS).await;
 }
 
-/// Sleep after `SLEEP_AFTER_MS` without state changes, "deeper sleep" after
-/// `DEEPER_SLEEP_AFTER_MS` (logic unchanged; WP5's power module takes it over later).
-#[cfg(not(any(feature = "e2e", feature = "qa")))]
+/// Sleep after `SLEEP_AFTER_MS` without state changes, "deeper sleep" after `DEEPER_SLEEP_AFTER_MS`.
 async fn sleep_check(text: &mut LcdText, lcd: &mut Lcd, global_state: GlobalState, last_update: Instant) {
-    use crate::consts::{DEEPER_SLEEP_AFTER_MS, SLEEP_AFTER_MS};
+    use crate::consts::{DEEPER_SLEEP_AFTER_MS, SLEEP_AFTER_MS, SLEEP_ENABLED};
+    if !SLEEP_ENABLED {
+        return;
+    }
 
     let idle_ms = last_update.elapsed().as_millis();
     let can_sleep = global_state.solve.read(|s| s.scene.can_sleep());
@@ -280,8 +281,6 @@ async fn sleep_check(text: &mut LcdText, lcd: &mut Lcd, global_state: GlobalStat
     }
 }
 
-#[cfg(any(feature = "e2e", feature = "qa"))]
-async fn sleep_check(_: &mut LcdText, _: &mut Lcd, _: GlobalState, _: Instant) {}
 
 fn tr(text: &mut LcdText, header: usize, footer: usize) {
     text.print(0, &get_translation(header), Align::Center, true);

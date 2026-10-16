@@ -6,6 +6,8 @@ use crate::{
     consts::{INSPECTION_TIME_DNF, INSPECTION_TIME_PLUS2},
     state::{GlobalState, Scene, Solve},
 };
+// the e2e uart simulator replaces the timed read
+#[cfg_attr(all(feature = "e2e", not(feature = "timer-func")), allow(unused_imports))]
 use embassy_time::{Duration, Instant, Timer, with_timeout};
 
 /// Publishes the running time to the display, the BLE display and the logger.
@@ -371,7 +373,6 @@ async fn time_end(time: u64, dnf: bool, global_state: &GlobalState) {
     }
 
     // the flash write happens after the state is released
-    #[cfg(not(feature = "qa"))]
     if let Some(Some(saved)) = recorded {
         saved.to_nvs(global_state.nvs).await;
     }

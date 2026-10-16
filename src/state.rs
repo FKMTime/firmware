@@ -127,7 +127,6 @@ impl Scene {
         self as usize
     }
 
-    #[cfg_attr(any(feature = "e2e", feature = "qa"), allow(dead_code))]
     pub fn can_sleep(&self) -> bool {
         !matches!(self, Scene::Update | Scene::WifiConnect | Scene::AutoSetupWait)
     }
@@ -566,9 +565,14 @@ pub struct SavedGlobalState {
     pub solve_group: PossibleGroup,
 }
 
-#[cfg(not(feature = "e2e"))]
+/// e2e/qa runs never persist an unfinished solve.
+const PERSIST_SOLVES: bool = !cfg!(any(feature = "e2e", feature = "qa"));
+
 impl SavedGlobalState {
     pub async fn from_nvs(nvs: &Nvs) -> Option<Self> {
+        if !PERSIST_SOLVES {
+            return None;
+        }
         while !epoch_known() {
             embassy_time::Timer::after_millis(5).await;
         }
@@ -586,6 +590,9 @@ impl SavedGlobalState {
     }
 
     pub async fn to_nvs(&self, nvs: &Nvs) {
+        if !PERSIST_SOLVES {
+            return;
+        }
         let res = serde_json::to_vec(&self);
         if let Ok(vec) = res {
             // set replaces the old value atomically (deleting first could lose it on power loss)
@@ -598,21 +605,13 @@ impl SavedGlobalState {
     }
 
     pub async fn clear_saved_global_state(nvs: &Nvs) {
+        if !PERSIST_SOLVES {
+            return;
+        }
         let res = nvs.delete(&crate::consts::NVS_SAVED_STATE).await;
         if let Err(e) = res {
             log::error!("{e:?} Faile to delete nvs key! (SAVED_STATE)",);
             crate::log_once!(crate::utils::error_log::codes::NVS_SAVED_STATE_DELETE_FAILED);
         }
     }
-}
-
-#[cfg(feature = "e2e")]
-impl SavedGlobalState {
-    pub async fn from_nvs(_nvs: &Nvs) -> Option<Self> {
-        None
-    }
-
-    pub async fn to_nvs(&self, _nvs: &Nvs) {}
-
-    pub async fn clear_saved_global_state(_nvs: &Nvs) {}
 }

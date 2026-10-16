@@ -1,12 +1,8 @@
-#[cfg(feature = "sleep")]
+/// The device never sleeps without the `sleep` feature or in e2e/qa builds.
+pub const SLEEP_ENABLED: bool =
+    cfg!(all(feature = "sleep", not(any(feature = "e2e", feature = "qa"))));
 pub const SLEEP_AFTER_MS: u64 = 60000 * 5;
-#[cfg(feature = "sleep")]
 pub const DEEPER_SLEEP_AFTER_MS: u64 = 60000 * 15;
-
-#[cfg(not(feature = "sleep"))]
-pub const SLEEP_AFTER_MS: u64 = 60000 * 9999;
-#[cfg(not(feature = "sleep"))]
-pub const DEEPER_SLEEP_AFTER_MS: u64 = 60000 * 99999;
 
 pub const PRINT_HEAP_INTERVAL_MS: u64 = 30000;
 pub const LOG_SEND_INTERVAL_MS: u64 = 1000;

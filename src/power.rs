@@ -26,7 +26,6 @@ pub fn is_deeper_sleeping() -> bool {
     DEEPER.load(Ordering::Relaxed)
 }
 
-#[cfg_attr(any(feature = "e2e", feature = "qa"), allow(dead_code))] // sleep is off in e2e/qa
 pub fn request_sleep() {
     SLEEPING.store(true, Ordering::Relaxed);
 }
@@ -37,7 +36,6 @@ pub fn wake() {
 
 /// Powers the chip down until one of the four buttons is pressed (wake = reset).
 #[cfg(feature = "v4")]
-#[cfg_attr(any(feature = "e2e", feature = "qa"), allow(dead_code))]
 pub fn enter_deep_sleep() -> ! {
     use esp_hal::gpio::{Event, Input, InputConfig, Pin, Pull, WakeupConfig};
     use esp_hal::rtc_cntl::sleep::{LowPower, RtcSleepConfig};
@@ -71,7 +69,6 @@ pub fn enter_deep_sleep() -> ! {
 
 /// v3 has no wakeable deep sleep: the cpu clock drops to 10 MHz until the next reset.
 #[cfg(feature = "v3")]
-#[cfg_attr(any(feature = "e2e", feature = "qa"), allow(dead_code))]
 pub fn enter_deep_sleep() {
     crate::utils::deeper_sleep();
     DEEPER.store(true, Ordering::Relaxed);

@@ -14,7 +14,6 @@ use embedded_graphics::{
 };
 
 pub const MAIN_RECT: Rectangle = Rectangle::new(Point::new(0, 11), Size::new(128, 53));
-#[cfg_attr(any(feature = "e2e", feature = "qa"), allow(dead_code))]
 const SCREEN_RECT: Rectangle = Rectangle::new(Point::zero(), Size::new(128, 64));
 /// Timer/inspection digits area (cleared before every digit redraw).
 const DIGITS_RECT: Rectangle = Rectangle::new(Point::new(0, 28), Size::new(128, 17));
@@ -160,7 +159,6 @@ pub fn centered_main<D: DrawTarget<Color = BinaryColor>>(d: &mut D, text: &str) 
     centered(d, text, NORMAL_FONT, MAIN_RECT);
 }
 
-#[cfg_attr(any(feature = "e2e", feature = "qa"), allow(dead_code))]
 pub fn centered_screen<D: DrawTarget<Color = BinaryColor>>(
     d: &mut D,
     text: &str,
