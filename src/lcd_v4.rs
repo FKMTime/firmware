@@ -1,8 +1,7 @@
 use crate::{
     consts::LCD_INSPECTION_FRAME_TIME,
-    state::{
-        ErrorLogEntryStage, GlobalState, MenuScene, Scene, SignaledGlobalStateInner, sleep_state,
-    },
+    power,
+    state::{ErrorLogEntryStage, GlobalState, MenuScene, Scene, SignaledGlobalStateInner},
     translations::{TranslationKey, get_translation, get_translation_params},
     utils::{
         error_log::{self, ErrorLogEntry, codes},
@@ -44,6 +43,7 @@ struct Local {
 }
 
 const SIGN_RESULT_MS: u64 = 300;
+const EVENT_TIMEOUT: Duration = Duration::from_secs(30);
 
 async fn flush(oled: &mut Ssd1309<SharedI2C>) {
     match with_timeout(Duration::from_millis(1500), oled.flush()).await {
@@ -106,8 +106,8 @@ pub async fn lcd_task(
             state_changed = false;
             rerender = true;
             last_update = Instant::now();
-            if sleep_state() {
-                crate::state::set_sleep_state(false);
+            if power::is_sleeping() {
+                power::wake();
                 log::warn!("Sleep wakeup!");
             }
         }
@@ -124,7 +124,13 @@ pub async fn lcd_task(
             flush(&mut oled).await;
         }
 
-        match next_event(global_state, wifi_setup_sig, live, &local).await {
+        crate::watchdog::heartbeat(crate::watchdog::TaskId::Lcd);
+        // bounded so the heartbeat keeps beating while a live screen waits for its signal
+        let event = with_timeout(EVENT_TIMEOUT, next_event(global_state, wifi_setup_sig, live, &local));
+        let Ok(event) = event.await else {
+            continue;
+        };
+        match event {
             Event::State => state_changed = true,
             Event::TimerValue(ms) => {
                 local.timer_ms = Some(ms);
@@ -223,11 +229,14 @@ async fn sleep_check(oled: &mut Ssd1309<SharedI2C>, global_state: GlobalState, l
 
     let idle_ms = last_update.elapsed().as_millis();
     let can_sleep = global_state.state.value().await.scene.can_sleep();
-    if !sleep_state() && idle_ms > SLEEP_AFTER_MS && can_sleep {
+    if !power::is_sleeping() && idle_ms > SLEEP_AFTER_MS && can_sleep {
         enter_sleep(oled, global_state).await;
     }
-    if sleep_state() && !crate::state::deeper_sleep_state() && idle_ms > DEEPER_SLEEP_AFTER_MS {
-        deep_sleep(oled).await;
+    if power::is_sleeping() && !crate::state::deeper_sleep_state() && idle_ms > DEEPER_SLEEP_AFTER_MS {
+        oled.frame.clear();
+        ui::centered_screen(&mut oled.frame, "Sleep", ui::SMALL_FONT);
+        flush(oled).await;
+        power::enter_deep_sleep();
     }
 }
 
@@ -247,42 +256,9 @@ async fn enter_sleep(oled: &mut Ssd1309<SharedI2C>, global_state: GlobalState) {
         state.wifi_connected = Some(false);
     }
 
-    crate::state::set_sleep_state(true);
+    power::request_sleep();
     crate::state::set_trust_server(false);
     global_state.state.signal_reset();
-}
-
-/// Deep sleep until a button (GPIO0-3) goes high; returns only if the wakeup can't be armed.
-#[cfg(not(any(feature = "e2e", feature = "qa")))]
-async fn deep_sleep(oled: &mut Ssd1309<SharedI2C>) {
-    use esp_hal::gpio::{Event, Input, InputConfig, Pull, WakeupConfig};
-    use esp_hal::rtc_cntl::sleep::{LowPower, RtcSleepConfig};
-
-    oled.frame.clear();
-    ui::centered_screen(&mut oled.frame, "Sleep", ui::SMALL_FONT);
-    flush(oled).await;
-
-    // SAFETY: the buttons task is idle while sleeping and the chip never returns from deep sleep
-    unsafe {
-        // pull-down like the old RtcioWakeupSource did for a high-level wake
-        let input_config = InputConfig::default().with_pull(Pull::Down);
-        let wakeup_config = WakeupConfig::default().with_low_power_path(true);
-        let mut wakeup_pins = [
-            Input::new(esp_hal::peripherals::GPIO0::steal(), input_config),
-            Input::new(esp_hal::peripherals::GPIO1::steal(), input_config),
-            Input::new(esp_hal::peripherals::GPIO2::steal(), input_config),
-            Input::new(esp_hal::peripherals::GPIO3::steal(), input_config),
-        ];
-        for pin in &mut wakeup_pins {
-            if let Err(e) = pin.apply_wakeup_config(&wakeup_config) {
-                // without a wake source the chip would never wake up again
-                log::error!("Deep sleep wakeup config failed: {e:?}");
-                return;
-            }
-            pin.listen(Event::HighLevel);
-        }
-        LowPower::new(esp_hal::peripherals::LPWR::steal()).sleep_deep(RtcSleepConfig::deep());
-    }
 }
 
 /// Out-of-range menu selections reset to the first item (was done mid-render before).

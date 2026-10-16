@@ -1,6 +1,7 @@
 use crate::{
     consts::{LCD_INSPECTION_FRAME_TIME, SCROLL_TICKER_INVERVAL_MS},
-    state::{GlobalState, MenuScene, Scene, SignaledGlobalStateInner, sleep_state},
+    power,
+    state::{GlobalState, MenuScene, Scene, SignaledGlobalStateInner},
     translations::{TranslationKey, get_translation, get_translation_params},
     utils::{
         error_log::{self, ErrorLogEntry},
@@ -14,12 +15,13 @@ use ag_lcd_async::LcdDisplay;
 use core::fmt::Write;
 use embassy_futures::select::{Either, Either3, select, select3};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
-use embassy_time::{Delay, Duration, Instant, Timer};
+use embassy_time::{Delay, Duration, Instant, Timer, with_timeout};
 
 type Lcd = LcdDisplay<ShifterPin, Delay>;
 type Text = heapless::String<96>;
 
 const SIGN_RESULT_MS: u64 = 300;
+const EVENT_TIMEOUT: Duration = Duration::from_secs(30);
 
 async fn new_lcd(lcd_shifter: ShifterValue) -> Lcd {
     let mut lcd = LcdDisplay::new(
@@ -119,9 +121,9 @@ pub async fn lcd_task(
             state_changed = false;
             rerender = true;
             last_update = Instant::now();
-            if sleep_state() {
+            if power::is_sleeping() {
                 lcd.backlight_on();
-                crate::state::set_sleep_state(false);
+                power::wake();
             }
         }
 
@@ -141,7 +143,13 @@ pub async fn lcd_task(
             show(&mut text, &mut lcd).await;
         }
 
-        match next_event(global_state, wifi_setup_sig, live, &local).await {
+        crate::watchdog::heartbeat(crate::watchdog::TaskId::Lcd);
+        // bounded so the heartbeat keeps beating while a live screen waits for its signal
+        let event = with_timeout(EVENT_TIMEOUT, next_event(global_state, wifi_setup_sig, live, &local));
+        let Ok(event) = event.await else {
+            continue;
+        };
+        match event {
             Event::State => state_changed = true,
             Event::TimerValue(ms) => {
                 local.timer_ms = Some(ms);
@@ -246,23 +254,23 @@ async fn sleep_check(text: &mut LcdText, lcd: &mut Lcd, global_state: GlobalStat
 
     let idle_ms = last_update.elapsed().as_millis();
     let can_sleep = global_state.state.value().await.scene.can_sleep();
-    if !sleep_state() && idle_ms > SLEEP_AFTER_MS && can_sleep {
+    if !power::is_sleeping() && idle_ms > SLEEP_AFTER_MS && can_sleep {
         text.print(0, "Sleep", Align::Center, true);
         text.print(1, "Press any key", Align::Center, true);
         show(text, lcd).await;
         lcd.backlight_off();
 
         global_state.state.lock().await.server_connected = Some(false);
-        crate::state::set_sleep_state(true);
+        power::request_sleep();
         crate::state::set_trust_server(false);
         global_state.state.signal_reset();
     }
 
-    if sleep_state() && !crate::state::deeper_sleep_state() && idle_ms > DEEPER_SLEEP_AFTER_MS {
+    if power::is_sleeping() && !crate::state::deeper_sleep_state() && idle_ms > DEEPER_SLEEP_AFTER_MS {
         text.print(0, "Deep Sleep", Align::Center, true);
         text.print(1, "Press any key", Align::Center, true);
         show(text, lcd).await;
-        crate::utils::deeper_sleep();
+        power::enter_deep_sleep();
     }
 }
 

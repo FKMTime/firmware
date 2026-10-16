@@ -17,19 +17,18 @@ pub fn is_sleeping() -> bool {
     crate::state::sleep_state()
 }
 
-#[allow(dead_code)] // called by the display code once its sleep entry moves here
+#[cfg_attr(any(feature = "e2e", feature = "qa"), allow(dead_code))] // sleep is off in e2e/qa
 pub fn request_sleep() {
     crate::state::set_sleep_state(true);
 }
 
-#[allow(dead_code)] // called by the display/buttons code once its wake path moves here
 pub fn wake() {
     crate::state::set_sleep_state(false);
 }
 
 /// Powers the chip down until one of the four buttons is pressed (wake = reset).
 #[cfg(feature = "v4")]
-#[allow(dead_code)] // called by the display code once its deep sleep entry moves here
+#[cfg_attr(any(feature = "e2e", feature = "qa"), allow(dead_code))]
 pub fn enter_deep_sleep() -> ! {
     use esp_hal::gpio::{Event, Input, InputConfig, Pin, Pull, WakeupConfig};
     use esp_hal::rtc_cntl::sleep::{LowPower, RtcSleepConfig};
@@ -63,7 +62,7 @@ pub fn enter_deep_sleep() -> ! {
 
 /// v3 has no wakeable deep sleep: the cpu clock drops to 10 MHz until the next reset.
 #[cfg(feature = "v3")]
-#[allow(dead_code)] // called by the display code once its deeper sleep entry moves here
+#[cfg_attr(any(feature = "e2e", feature = "qa"), allow(dead_code))]
 pub fn enter_deep_sleep() {
     crate::utils::deeper_sleep();
 }
