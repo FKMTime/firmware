@@ -62,12 +62,18 @@ async fn qa_inner(global_state: &GlobalState) -> bool {
         return false;
     }
 
-    show(global_state, "Connect", "Stackmat");
+    // pads builds: touching both pads stands in for connecting the stackmat
+    let (connect, solve) = if cfg!(feature = "timer-func") {
+        (("Touch both", "pads"), "Pads solve")
+    } else {
+        (("Connect", "Stackmat"), "Stackmat solve")
+    };
+    show(global_state, connect.0, connect.1);
     if EVENTS.receive().await != QaSignal::StackmatConnected {
         return false;
     }
 
-    show(global_state, "Stackmat solve", "> 1s");
+    show(global_state, solve, "> 1s");
     if !matches!(EVENTS.receive().await, QaSignal::Stackmat(time) if time > 1000) {
         return false;
     }

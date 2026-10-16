@@ -38,11 +38,18 @@ pub async fn stackmat_task(global_state: GlobalState, mut pads: Pads) {
     use embassy_futures::select::{Either, select};
 
     global_state.status.update(|s| s.stackmat_connected = Some(true));
+    // QA: the first touch of both pads stands in for "stackmat connected"
+    #[cfg(feature = "qa")]
+    let mut qa_touched = false;
 
     loop {
         heartbeat(TaskId::Stackmat);
         if with_timeout(Duration::from_secs(10), both_pressed(&mut pads)).await.is_err() {
             continue;
+        }
+        #[cfg(feature = "qa")]
+        if !core::mem::replace(&mut qa_touched, true) {
+            crate::qa::send_qa_resp(crate::qa::QaSignal::StackmatConnected);
         }
         wait_pad_release(&mut pads).await;
         let timer_start = Instant::now();
