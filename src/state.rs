@@ -277,7 +277,7 @@ pub struct GlobalStateInner {
     #[cfg(feature = "v4")]
     pub buzzer_sound_test: Signal<CriticalSectionRawMutex, ()>,
 
-    pub nvs: Nvs,
+    pub nvs: &'static Nvs,
     pub aes: Mutex<NoopRawMutex, Aes<'static>>,
 
     #[cfg(feature = "e2e")]
@@ -285,7 +285,7 @@ pub struct GlobalStateInner {
 }
 
 impl GlobalStateInner {
-    pub fn new(nvs: &Nvs, aes: esp_hal::peripherals::AES<'static>) -> Self {
+    pub fn new(nvs: &'static Nvs, aes: esp_hal::peripherals::AES<'static>) -> Self {
         Self {
             state: SignaledMutex::new(SignaledGlobalStateInner::new()),
             timer_signal: Signal::new(),
@@ -298,7 +298,7 @@ impl GlobalStateInner {
             #[cfg(feature = "v4")]
             buzzer_sound_test: Signal::new(),
 
-            nvs: nvs.clone(),
+            nvs,
             aes: Mutex::new(Aes::new(aes)),
 
             #[cfg(feature = "e2e")]
@@ -566,7 +566,7 @@ impl SavedGlobalState {
             Timer::after_millis(5).await;
         }
 
-        let res = nvs.get::<alloc::vec::Vec<u8>>(NVS_SAVED_STATE).await.ok()?;
+        let res = nvs.get::<alloc::vec::Vec<u8>>(&NVS_SAVED_STATE).await.ok()?;
         let res: SavedGlobalState = serde_json::from_slice(&res).ok()?;
 
         // 6hours
@@ -583,7 +583,7 @@ impl SavedGlobalState {
         let res = serde_json::to_vec(&self);
         if let Ok(vec) = res {
             // set replaces the old value atomically (deleting first could lose it on power loss)
-            let res = nvs.set(NVS_SAVED_STATE, vec.as_slice()).await;
+            let res = nvs.set(&NVS_SAVED_STATE, vec.as_slice()).await;
             if let Err(e) = res {
                 log::error!("{e:?} Faile to write to nvs! (SAVED_STATE {})", vec.len());
                 crate::log_once!(crate::utils::error_log::codes::NVS_SAVED_STATE_WRITE_FAILED);
@@ -593,7 +593,7 @@ impl SavedGlobalState {
 
     pub async fn clear_saved_global_state(nvs: &Nvs) {
 
-        let res = nvs.delete(NVS_SAVED_STATE).await;
+        let res = nvs.delete(&NVS_SAVED_STATE).await;
         if let Err(e) = res {
             log::error!("{e:?} Faile to delete nvs key! (SAVED_STATE)",);
             crate::log_once!(crate::utils::error_log::codes::NVS_SAVED_STATE_DELETE_FAILED);

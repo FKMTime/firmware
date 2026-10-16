@@ -1,6 +1,5 @@
 use ag_lcd_async::LcdDisplay;
-use alloc::rc::Rc;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Delay, Duration, Instant, Timer};
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::delay::DelayNs;
@@ -58,7 +57,7 @@ pub async fn lcd_show_critical_code(
 pub async fn lcd_task(
     lcd_shifter: adv_shift_registers::wrappers::ShifterValue,
     global_state: GlobalState,
-    wifi_setup_sig: Rc<Signal<NoopRawMutex, ()>>,
+    wifi_setup_sig: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {
     let mut lcd = {
         let bl_pin = lcd_shifter.get_pin_mut(1, true);
@@ -188,7 +187,7 @@ async fn process_lcd<T: OutputPin, D: DelayNs>(
     global_state: &GlobalState,
     lcd_driver: &mut LcdAbstract<80, 16, 2, 3>,
     lcd: &mut LcdDisplay<T, D>,
-    wifi_setup_sig: &Signal<NoopRawMutex, ()>,
+    wifi_setup_sig: &Signal<CriticalSectionRawMutex, ()>,
 ) -> Option<()> {
     #[cfg(feature = "bat_dev_lcd")]
     {

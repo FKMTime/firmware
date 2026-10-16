@@ -15,13 +15,12 @@ use crate::{
 };
 use alloc::{
     format,
-    rc::Rc,
     string::{String, ToString},
     vec::Vec,
 };
 use anyhow::{Result, anyhow};
 use display_interface_i2c::I2CInterface;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Delay, Instant, Timer};
 use embedded_graphics::{
     Drawable,
@@ -361,7 +360,7 @@ pub async fn lcd_task(
     i2c: SharedI2C,
     mut display_rst: Output<'static>,
     global_state: GlobalState,
-    wifi_setup_sig: Rc<Signal<NoopRawMutex, ()>>,
+    wifi_setup_sig: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {
     let di = display_interface_i2c::I2CInterface::new(i2c, 0x3C, 0x40);
     let raw_disp =
@@ -646,7 +645,7 @@ async fn process_top_bar(
 async fn process_main(
     current_state: &SignaledGlobalStateInner,
     global_state: &GlobalState,
-    wifi_setup_sig: &Signal<NoopRawMutex, ()>,
+    wifi_setup_sig: &Signal<CriticalSectionRawMutex, ()>,
     oled: &mut OledData<'_>,
 ) -> Result<()> {
     if let Some(ref error_text) = current_state.error_text {

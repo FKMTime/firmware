@@ -187,7 +187,7 @@ pub fn with_error_log<R>(f: impl FnOnce(&[u8]) -> R) -> R {
 
 /// Restores the log saved in NVS, keeping only the valid prefix.
 pub async fn load_error_log(nvs: &Nvs) {
-    let Ok(saved) = nvs.get::<alloc::vec::Vec<u8>>(NVS_ERROR_LOG).await else {
+    let Ok(saved) = nvs.get::<alloc::vec::Vec<u8>>(&NVS_ERROR_LOG).await else {
         return;
     };
 
@@ -202,7 +202,7 @@ pub async fn load_error_log(nvs: &Nvs) {
 pub async fn save_error_log(nvs: &Nvs) {
     // shortcut: copies the log to the heap for the NVS write (rare, throttled by the caller)
     let bytes = with_error_log(|b| b.to_vec());
-    if let Err(e) = nvs.set(NVS_ERROR_LOG, bytes.as_slice()).await {
+    if let Err(e) = nvs.set(&NVS_ERROR_LOG, bytes.as_slice()).await {
         log::error!("errorlog save error: {e:?}");
     }
 }

@@ -42,7 +42,7 @@ pub async fn ws_task(
     ws_url: WsUrlOwned,
     global_state: GlobalState,
     ws_sleep_sig: Rc<Signal<CriticalSectionRawMutex, bool>>,
-    wifi_conn_sig: Rc<Signal<CriticalSectionRawMutex, bool>>,
+    wifi_conn_sig: &'static Signal<CriticalSectionRawMutex, bool>,
 ) {
     log::debug!("ws_url: {ws_url:?}");
 
@@ -80,7 +80,7 @@ pub async fn ws_task(
             &mut *ws_tx_buf,
             &mut *ssl_rx_buf,
             &mut *ssl_tx_buf,
-            &wifi_conn_sig,
+            wifi_conn_sig,
         );
 
         let res = embassy_futures::select::select(ws_fut, ws_sleep_sig.wait()).await;
@@ -119,7 +119,7 @@ async fn ws_loop(
     ws_tx_buf: &mut [u8],
     ssl_rx_buf: &mut [u8],
     ssl_tx_buf: &mut [u8],
-    wifi_conn_sig: &Rc<Signal<CriticalSectionRawMutex, bool>>,
+    wifi_conn_sig: &Signal<CriticalSectionRawMutex, bool>,
 ) -> Result<(), ()> {
     loop {
         {
@@ -330,7 +330,7 @@ async fn ws_rw(
     framer_tx: &mut WsTxFramer<'_>,
     global_state: GlobalState,
     socket: &mut WsSocket<'_, '_>,
-    wifi_conn_sig: &Rc<Signal<CriticalSectionRawMutex, bool>>,
+    wifi_conn_sig: &Signal<CriticalSectionRawMutex, bool>,
 ) -> Result<(), WsRwError> {
     let mut ota = Ota::new(FlashStorage::new(unsafe {
         esp_hal::peripherals::FLASH::steal()
@@ -501,7 +501,7 @@ async fn ws_rw(
 
                                     if let Err(e) = global_state
                                         .nvs
-                                        .set(crate::consts::NVS_BUZZER_VOLUME, volume)
+                                        .set(&crate::consts::NVS_BUZZER_VOLUME, volume)
                                         .await
                                     {
                                         log::error!("Cannot save buzzer volume to NVS: {e:?}");

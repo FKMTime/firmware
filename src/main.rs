@@ -72,7 +72,8 @@ async fn main(spawner: Spawner) {
         config
     });
 
-    esp_alloc::heap_allocator!(size: 120 * 1024);
+    // wifimanager 0.5+ keeps its signals/buffers in statics instead of the heap
+    esp_alloc::heap_allocator!(size: 112 * 1024);
     /*
     {
         const HEAP_SIZE: usize = 8 * 1024;
@@ -110,7 +111,7 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "release_build")]
     crate::utils::backtrace_store::verify_panic_flag();
 
-    let Ok(nvs) = Nvs::new_from_part_table(unsafe { board.flash.clone_unchecked() }) else {
+    let Ok(nvs) = Nvs::new(unsafe { board.flash.clone_unchecked() }) else {
         utils::error_log::add_error(utils::error_log::codes::WRONG_PARTITION_TABLE);
         #[cfg(feature = "v3")]
         lcd_v3::lcd_show_critical_code(board.lcd, utils::error_log::codes::WRONG_PARTITION_TABLE)
@@ -134,18 +135,18 @@ async fn main(spawner: Spawner) {
     let wake_reason = esp_hal::rtc_cntl::wakeup_cause();
     log::info!("Wake reason: {:?} {:?}", reason, wake_reason);
 
-    utils::error_log::load_error_log(&nvs).await;
+    utils::error_log::load_error_log(nvs).await;
 
     static GLOBAL_STATE: static_cell::StaticCell<GlobalStateInner> = static_cell::StaticCell::new();
-    let global_state: GlobalState = GLOBAL_STATE.init(GlobalStateInner::new(&nvs, board.aes));
-    let wifi_setup_sig = Rc::new(Signal::new());
-    let wifi_conn_sig = Rc::new(Signal::new());
+    let global_state: GlobalState = GLOBAL_STATE.init(GlobalStateInner::new(nvs, board.aes));
+    static WIFI_SETUP_SIG: esp_hal_wifimanager::ProvisioningSignal = Signal::new();
+    static WIFI_CONN_SIG: esp_hal_wifimanager::ConnSignal = Signal::new();
 
-    if let Ok(sign_key) = nvs.get::<u32>(NVS_SIGN_KEY).await {
+    if let Ok(sign_key) = nvs.get::<u32>(&NVS_SIGN_KEY).await {
         crate::state::set_sign_key(sign_key);
     }
     #[cfg(feature = "v4")]
-    if let Ok(saved_volume) = nvs.get::<u8>(crate::consts::NVS_BUZZER_VOLUME).await {
+    if let Ok(saved_volume) = nvs.get::<u8>(&crate::consts::NVS_BUZZER_VOLUME).await {
         if (crate::consts::BUZZER_VOLUME_MIN..=crate::consts::BUZZER_VOLUME_MAX)
             .contains(&saved_volume)
         {
@@ -164,7 +165,7 @@ async fn main(spawner: Spawner) {
     spawn_task(
         &spawner,
         "lcd_v3::lcd_task",
-        lcd_v3::lcd_task(board.lcd, global_state, wifi_setup_sig.clone()),
+        lcd_v3::lcd_task(board.lcd, global_state, &WIFI_SETUP_SIG),
     );
     #[cfg(feature = "v4")]
     spawn_task(
@@ -174,7 +175,7 @@ async fn main(spawner: Spawner) {
             board.i2c.clone(),
             board.display_rst,
             global_state,
-            wifi_setup_sig.clone(),
+            &WIFI_SETUP_SIG,
         ),
     );
 
@@ -249,8 +250,9 @@ async fn main(spawner: Spawner) {
     );
 
     let mut wm_settings = esp_hal_wifimanager::WmSettings {
-        wifi_panel: esp_hal_wifimanager::include_minified!("src/panel.html"),
-        wifi_conn_signal: Some(wifi_conn_sig.clone()),
+        wifi_panel: esp_hal_wifimanager::include_panel!("src/panel.html"),
+        wifi_conn_signal: Some(&WIFI_CONN_SIG),
+        provisioning_signal: Some(&WIFI_SETUP_SIG),
         ..Default::default()
     };
 
@@ -280,17 +282,16 @@ async fn main(spawner: Spawner) {
         #[cfg(feature = "qa")]
         None,
         #[cfg(not(feature = "qa"))]
-        Some(&nvs),
+        Some(nvs),
         board.wifi,
         unsafe { board.bt.clone_unchecked() },
-        Some(wifi_setup_sig),
     )
     .await;
 
-    let Ok(mut wifi_res) = wifi_res else {
+    let Ok(wifi_res) = wifi_res else {
         log::error!("WifiManager failed!!! Restarting in 1s!");
         utils::error_log::add_error(utils::error_log::codes::WIFI_MANAGER_FAILED);
-        utils::error_log::save_error_log(&nvs).await;
+        utils::error_log::save_error_log(nvs).await;
         Timer::after_millis(1000).await;
         esp_hal::system::software_reset();
     };
@@ -303,9 +304,8 @@ async fn main(spawner: Spawner) {
     crate::qa::send_qa_resp(crate::qa::QaSignal::WifiSetup);
 
     let conn_settings: ConnSettings = wifi_res
-        .data
-        .take()
-        .and_then(|d| serde_json::from_value(d).ok())
+        .data()
+        .and_then(|d| serde_json::from_str(d).ok())
         .unwrap_or_default();
 
     let mut parse_retry_count = 0;
@@ -313,7 +313,7 @@ async fn main(spawner: Spawner) {
         let url = if conn_settings.mdns || conn_settings.ws_url.is_none() || parse_retry_count > 0 {
             log::info!("Starting mdns lookup...");
             global_state.state.lock().await.scene = Scene::MdnsWait;
-            let mdns_res = mdns::mdns_query(wifi_res.sta_stack).await;
+            let mdns_res = mdns::mdns_query(wifi_res.stack()).await;
             log::info!("Mdns result: {mdns_res:?}");
 
             mdns_res.to_string()
@@ -331,8 +331,8 @@ async fn main(spawner: Spawner) {
                 if parse_retry_count > 3 {
                     log::error!("Cannot parse wsurl! Reseting wifi configuration!");
                     utils::error_log::add_error(utils::error_log::codes::MDNS_WS_URL_PARSE_FAILED);
-                    utils::error_log::save_error_log(&nvs).await;
-                    _ = nvs.delete(WIFI_NVS_KEY).await;
+                    utils::error_log::save_error_log(nvs).await;
+                    _ = nvs.delete(&WIFI_NVS_KEY).await;
                     Timer::after_millis(1000).await;
 
                     esp_hal::system::software_reset();
@@ -350,11 +350,11 @@ async fn main(spawner: Spawner) {
         &spawner,
         "ws::ws_task",
         ws::ws_task(
-            wifi_res.sta_stack,
+            wifi_res.stack(),
             ws_url,
             global_state,
             ws_sleep_sig.clone(),
-            wifi_conn_sig,
+            &WIFI_CONN_SIG,
         ),
     );
     spawn_task(&spawner, "logger_task", logger_task(global_state));
@@ -368,7 +368,7 @@ async fn main(spawner: Spawner) {
 
     set_brownout_detection(true);
     global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
-    if let Some(saved_state) = SavedGlobalState::from_nvs(&nvs).await {
+    if let Some(saved_state) = SavedGlobalState::from_nvs(nvs).await {
         global_state
             .state
             .lock()
@@ -380,7 +380,7 @@ async fn main(spawner: Spawner) {
     'outer: loop {
         Timer::after_millis(100).await;
         if utils::error_log::is_save_ready() {
-            utils::error_log::save_error_log(&nvs).await;
+            utils::error_log::save_error_log(nvs).await;
             utils::error_log::clear_save_ready();
         }
 
