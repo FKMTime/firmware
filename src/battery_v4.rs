@@ -14,6 +14,8 @@ const BATTERY_CURVE: [(f64, u8); 11] = [
     (4000.0, 88),
     (4100.0, 100),
 ];
+const READ_INTERVAL_MS: u64 = 100;
+const MAX_RETRY_MS: u64 = 30_000;
 const BAT_MIN: f64 = BATTERY_CURVE[0].0;
 const BAT_MAX: f64 = BATTERY_CURVE[BATTERY_CURVE.len() - 1].0;
 
@@ -33,56 +35,41 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
 
     let mut last_soc = 0;
     let mut last_charging = true;
-    let mut last_mv = 0.0;
-    let mut last_ma = 0;
     let mut last_sent = Instant::now();
+    let mut outage = false;
+    let mut retry_ms = READ_INTERVAL_MS;
     loop {
         if sleep_state() {
             Timer::after_millis(500).await;
             continue;
         }
 
-        let mut soc = last_soc;
-        match embassy_time::with_timeout(
-            embassy_time::Duration::from_millis(1500),
-            gauge.state_of_charge(),
-        )
-        .await
-        {
-            Ok(Ok(val)) => soc = val as u8,
-            _ => {
+        let soc = read(gauge.state_of_charge()).await;
+        let mv = read(gauge.voltage()).await;
+        let ma = read(gauge.average_current()).await;
+        let (Some(soc), Some(mv), Some(ma)) = (soc, mv, ma) else {
+            // a missing/broken gauge must not flood the error log or the shared i2c bus
+            if !outage {
+                outage = true;
+                log::warn!("Battery gauge not responding");
                 crate::utils::error_log::add_error(
                     crate::utils::error_log::codes::BATTERY_I2C_TIMEOUT,
                 );
             }
+            retry_ms = (retry_ms * 2).min(MAX_RETRY_MS);
+            Timer::after_millis(retry_ms).await;
+            continue;
         };
-        let mut mv = last_mv;
-        match embassy_time::with_timeout(embassy_time::Duration::from_millis(1500), gauge.voltage())
-            .await
-        {
-            Ok(Ok(val)) => mv = val as f64,
-            _ => {
-                crate::utils::error_log::add_error(
-                    crate::utils::error_log::codes::BATTERY_I2C_TIMEOUT,
-                );
-            }
-        };
-        if soc == 0 {
-            soc = bat_percentage(calculate(mv));
+        if outage {
+            outage = false;
+            log::info!("Battery gauge responding again");
         }
-        let mut ma = last_ma;
-        match embassy_time::with_timeout(
-            embassy_time::Duration::from_millis(1500),
-            gauge.average_current(),
-        )
-        .await
-        {
-            Ok(Ok(val)) => ma = val,
-            _ => {
-                crate::utils::error_log::add_error(
-                    crate::utils::error_log::codes::BATTERY_I2C_TIMEOUT,
-                );
-            }
+        retry_ms = READ_INTERVAL_MS;
+
+        let mv = mv as f64;
+        let soc = match soc as u8 {
+            0 => bat_percentage(calculate(mv)),
+            soc => soc,
         };
         let charging = ma >= 0;
 
@@ -112,11 +99,16 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
             last_sent = Instant::now();
         }
 
-        last_mv = mv;
-        last_ma = ma;
-
-        Timer::after_millis(100).await;
+        Timer::after_millis(READ_INTERVAL_MS).await;
     }
+}
+
+/// One gauge read; `None` on error or timeout.
+async fn read<T, E>(fut: impl core::future::Future<Output = Result<T, E>>) -> Option<T> {
+    embassy_time::with_timeout(embassy_time::Duration::from_millis(1500), fut)
+        .await
+        .ok()?
+        .ok()
 }
 
 fn interpolate(v1: f64, p1: u8, v2: f64, p2: u8, voltage: f64) -> u8 {

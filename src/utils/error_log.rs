@@ -128,9 +128,9 @@ pub mod codes {
     pub const SHARED_I2C_TIMEOUT: u8 = 81;
 
     // Crash recovery (90-99)
-    #[cfg(feature = "release_build")]
-    pub const DOUBLE_PANIC_RECOVERY: u8 = 90;
-    pub const BACKTRACE_READ_FAILED: u8 = 91;
+    /// Several crashes / watchdog resets in a row (was "double panic recovery").
+    pub const REPEATED_CRASHES: u8 = 90;
+    pub const WATCHDOG_RESET: u8 = 92;
 }
 
 fn push_record(log: &mut ErrorLog, buf: &mut [u8; CAPACITY], record: &[u8]) {

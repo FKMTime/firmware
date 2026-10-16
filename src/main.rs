@@ -23,6 +23,7 @@ mod board;
 mod buttons;
 mod consts;
 mod mdns;
+mod power;
 mod rfid;
 mod stackmat;
 mod state;
@@ -30,6 +31,7 @@ mod structs;
 mod translations;
 mod utils;
 mod version;
+mod watchdog;
 mod ws;
 
 #[cfg(feature = "v3")]
@@ -60,6 +62,11 @@ pub fn custom_rng(buf: &mut [u8]) -> Result<(), getrandom::Error> {
 }
 getrandom::register_custom_getrandom!(custom_rng);
 esp_bootloader_esp_idf::esp_app_desc!();
+
+/// Uptime after which a crash no longer counts as part of a crash loop.
+const HEALTHY_AFTER_SECS: u64 = 60;
+/// Error log flash writes are throttled (repeating errors must not wear the flash).
+const ERROR_LOG_SAVE_INTERVAL: embassy_time::Duration = embassy_time::Duration::from_secs(60);
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) {
@@ -95,6 +102,11 @@ async fn main(spawner: Spawner) {
     let board = Board::init(peripherals);
     esp_rtos::start(board.timg1.timer0, board.sw_interrupt);
     FkmLogger::set_logger();
+    spawn_task(
+        &spawner,
+        "watchdog::watchdog_task",
+        watchdog::watchdog_task(board.timg0.wdt),
+    );
 
     log::info!("Version: {}", version::VERSION);
     log::info!("Hardware Rev: {}", version::HW_VER);
@@ -105,9 +117,6 @@ async fn main(spawner: Spawner) {
 
     #[cfg(feature = "qa")]
     log::info!("This firmware is in QA mode!");
-
-    #[cfg(feature = "release_build")]
-    crate::utils::backtrace_store::verify_panic_flag();
 
     let Ok(nvs) = Nvs::new(unsafe { board.flash.clone_unchecked() }) else {
         utils::error_log::add_error(utils::error_log::codes::WRONG_PARTITION_TABLE);
@@ -134,6 +143,7 @@ async fn main(spawner: Spawner) {
     log::info!("Wake reason: {:?} {:?}", reason, wake_reason);
 
     utils::error_log::load_error_log(nvs).await;
+    utils::backtrace_store::report_saved_crash();
 
     static GLOBAL_STATE: static_cell::StaticCell<GlobalStateInner> = static_cell::StaticCell::new();
     let global_state: GlobalState = GLOBAL_STATE.init(GlobalStateInner::new(nvs, board.aes));
@@ -170,7 +180,7 @@ async fn main(spawner: Spawner) {
         &spawner,
         "lcd_v4::lcd_task",
         lcd_v4::lcd_task(
-            board.i2c.clone(),
+            board.i2c,
             board.display_rst,
             global_state,
             &WIFI_SETUP_SIG,
@@ -187,7 +197,7 @@ async fn main(spawner: Spawner) {
     spawn_task(
         &spawner,
         "battery_v4::battery_read_task",
-        battery_v4::battery_read_task(board.i2c.clone(), global_state),
+        battery_v4::battery_read_task(board.i2c, global_state),
     );
 
     spawn_task(
@@ -221,7 +231,7 @@ async fn main(spawner: Spawner) {
         "rfid::rfid_task",
         rfid::rfid_task(
             #[cfg(feature = "v4")]
-            board.i2c.clone(),
+            board.i2c,
             #[cfg(feature = "v4")]
             board.buzzer,
             #[cfg(feature = "v3")]
@@ -345,9 +355,7 @@ async fn main(spawner: Spawner) {
         }
     };
 
-    utils::backtrace_store::read_saved_backtrace().await;
-
-    let ws_sleep_sig = Rc::new(Signal::new());
+    let ws_sleep_sig: Rc<power::SleepSignal> = Rc::new(Signal::new());
     spawn_task(
         &spawner,
         "ws::ws_task",
@@ -361,7 +369,7 @@ async fn main(spawner: Spawner) {
     );
     spawn_task(&spawner, "logger_task", logger_task(global_state));
 
-    let ble_sleep_sig = Rc::new(Signal::new());
+    let ble_sleep_sig: Rc<power::SleepSignal> = Rc::new(Signal::new());
     spawn_task(
         &spawner,
         "bluetooth::bluetooth_timer_task",
@@ -370,57 +378,51 @@ async fn main(spawner: Spawner) {
 
     set_brownout_detection(true);
     global_state.state.lock().await.scene = Scene::WaitingForCompetitor;
-    if let Some(saved_state) = SavedGlobalState::from_nvs(nvs).await {
-        global_state
-            .state
-            .lock()
-            .await
-            .parse_saved_state(saved_state);
-    }
+    spawn_task(
+        &spawner,
+        "restore_saved_state_task",
+        restore_saved_state_task(global_state, nvs),
+    );
 
-    let mut last_sleep = false;
-    'outer: loop {
+    let mut power = power::Supervisor::new(&wifi_res, ws_sleep_sig, ble_sleep_sig);
+    let boot = Instant::now();
+    let mut healthy = false;
+    let mut last_error_log_save: Option<Instant> = None;
+    loop {
         Timer::after_millis(100).await;
-        if utils::error_log::is_save_ready() {
-            utils::error_log::save_error_log(nvs).await;
-            utils::error_log::clear_save_ready();
+        watchdog::heartbeat(watchdog::TaskId::Main);
+        if !healthy && boot.elapsed().as_secs() >= HEALTHY_AFTER_SECS {
+            utils::backtrace_store::mark_healthy();
+            healthy = true;
         }
 
-        if sleep_state() != last_sleep {
-            last_sleep = sleep_state();
-            ble_sleep_sig.signal(last_sleep);
-            if last_sleep {
-                log::warn!("Entering sleep mode!");
-                ws::close(4000, "Going into sleep mode");
+        if utils::error_log::is_save_ready()
+            && last_error_log_save.is_none_or(|t| t.elapsed() >= ERROR_LOG_SAVE_INTERVAL)
+        {
+            // cleared first so errors added while saving trigger the next save
+            utils::error_log::clear_save_ready();
+            utils::error_log::save_error_log(nvs).await;
+            last_error_log_save = Some(Instant::now());
+        }
 
-                // only wait that 15s when going into sleep mode (to make sure close is sent and to
-                // debounce sleeps)
-                let start = Instant::now();
-                while start.elapsed().as_millis() < 15000 {
-                    if sleep_state() != last_sleep {
-                        // send sleep to ws to make sure clean state of
-                        // ws is reached in next outer loop iteration
-                        ws_sleep_sig.signal(true);
+        power.tick().await;
+    }
+}
 
-                        continue 'outer;
-                    }
-
-                    Timer::after_millis(100).await;
-                }
-            }
-
-            ws_sleep_sig.signal(last_sleep);
-            match last_sleep {
-                true => wifi_res.stop_radio(),
-                false => wifi_res.restart_radio(),
-            }
+/// Restores an unfinished solve; waits for the server time, so it can't run in the main loop.
+#[embassy_executor::task]
+async fn restore_saved_state_task(global_state: GlobalState, nvs: &'static Nvs) {
+    if let Some(saved_state) = SavedGlobalState::from_nvs(nvs).await {
+        let mut state = global_state.state.lock().await;
+        // a new solve may have started while waiting for the server time
+        if state.scene == Scene::WaitingForCompetitor {
+            state.parse_saved_state(saved_state);
         }
     }
 }
 
 #[embassy_executor::task]
 async fn logger_task(global_state: GlobalState) {
-    #[cfg(not(feature = "release_build"))]
     let mut heap_start = Instant::now();
 
     loop {
@@ -445,12 +447,14 @@ async fn logger_task(global_state: GlobalState) {
             _ = ws::send_logs(logs);
         }
 
-        #[cfg(not(feature = "release_build"))]
-        if (Instant::now() - heap_start).as_millis() >= consts::PRINT_HEAP_INTERVAL_MS {
-            if global_state.state.lock().await.server_connected == Some(true) {
-                log::info!("{}", esp_alloc::HEAP.stats());
-            }
-
+        if heap_start.elapsed().as_millis() >= consts::PRINT_HEAP_INTERVAL_MS {
+            let stats = esp_alloc::HEAP.stats();
+            log::info!(
+                "Heap: used {} max {} of {} bytes",
+                stats.current_usage,
+                stats.max_usage,
+                stats.size
+            );
             heap_start = Instant::now();
         }
     }

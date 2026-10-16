@@ -1,3 +1,5 @@
+cargo-features = ["profile-rustflags"]
+
 [package]
 name = "fkm-firmware"
 version = "0.1.0"
@@ -8,7 +10,7 @@ edition = "2024"
 esp-backtrace = { version = "0.20.0", features = [ "panic-handler", "println", "custom-pre-backtrace", "custom-halt", "esp32c3" ] }
 esp-hal = { version = "1.2.2", features = [ "esp32c3" ] }
 esp-println = { version = "0.18.0", features = ["log-04", "esp32c3"] }
-log = { version = "0.4.34" }
+log = { version = "0.4.34", features = ["release_max_level_info"] }
 esp-radio = { version = "1.0.0-beta.1", features = ["coex", "esp32c3"] }
 esp-rtos = { version = "0.4.0", features = ["esp32c3", "embassy", "esp-radio"] }
 embassy-executor = { version = "0.10.0", features = ["nightly"] }
@@ -18,7 +20,7 @@ esp-storage = { version = "0.10.0", features = ["esp32c3", "embedded-storage"] }
 embedded-storage = "0.3.2"
 static_cell = { version = "2.1.1", features = ["nightly"] }
 heapless = { version = "0.9.3", default-features = false }
-esp-alloc = "0.11.0"
+esp-alloc = { version = "0.11.0", features = ["internal-heap-stats"] }
 
 esp-hal-wifimanager = { version = "0.6.0", default-features = false, features = ["ap", "ble", "esp32c3", "ota", "custom_panel"] }
 serde = { version = "1.0.229", features = ["alloc", "derive"], default-features = false }
@@ -88,8 +90,11 @@ debug = 2
 debug-assertions = false
 incremental = false
 lto = 'fat'
-opt-level = 's'
+# size first; the radio and HAL drivers (I2C/SPI used by the display) stay at speed below
+opt-level = 'z'
 overflow-checks = false
+# panics keep their message; crash reports use the backtrace addresses (addr2line), not file:line
+rustflags = ["-Zlocation-detail=none"]
 
 [profile.dev.package.esp-radio]
 opt-level = 3
