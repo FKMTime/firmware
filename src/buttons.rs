@@ -514,7 +514,8 @@ fn inspection_start(state: &GlobalState) -> bool {
         return false;
     }
 
-    // the stackmat must show 0 (no time, or no stackmat reading yet, blocks it)
+    // a stackmat must be reset (showing 0) first; the pads have no display of their own to reset
+    #[cfg(not(feature = "timer-func"))]
     if state.timer.try_get() != Some(0) {
         log::warn!("Skipping inspection start because current timer time is not 0");
         return false;
