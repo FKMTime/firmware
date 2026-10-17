@@ -483,6 +483,15 @@ impl GlobalStateInner {
         crate::translations::restore_default_locale();
     }
 
+    /// Shows a failed request's error; the server may also ask to drop the attempt.
+    pub async fn show_api_error(&self, e: crate::structs::ApiError) {
+        log::error!("Request error ({}): {:?}", e.should_reset_time, e.error);
+        self.ui.update(|u| u.error_text = Some(e.error));
+        if e.should_reset_time {
+            self.reset_solve(false).await;
+        }
+    }
+
     /// e2e: back to a clean attempt and no messages.
     #[cfg(feature = "e2e")]
     pub fn hard_reset(&self) {

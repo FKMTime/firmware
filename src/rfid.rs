@@ -355,18 +355,7 @@ async fn handle_card<I: Interface>(
 
     match resp {
         Ok(resp) => process_card_info_response(resp, global_state).await,
-        Err(e) => {
-            log::error!(
-                "[RFID] Resp_error: ({}): {:?}",
-                e.should_reset_time,
-                e.error
-            );
-
-            global_state.ui.update(|u| u.error_text = Some(e.error));
-            if e.should_reset_time {
-                global_state.reset_solve(false).await;
-            }
-        }
+        Err(e) => global_state.show_api_error(e).await,
     }
 
     if card.selected.is_some() {
@@ -384,7 +373,7 @@ async fn handle_card<I: Interface>(
 enum CardAction {
     Nothing,
     EmptyGroups,
-    SendSolve(crate::structs::TimerPacketInner, u64),
+    SendSolve(crate::structs::TimerPacketInner),
     SameCards,
 }
 
@@ -459,21 +448,18 @@ async fn process_card_info_response(resp: CardInfoResponsePacket, global_state: 
                     .get_or_insert_with(crate::state::new_session_id)
                     .clone();
 
-                return CardAction::SendSolve(
-                    crate::structs::TimerPacketInner::Solve {
-                        solve_time,
-                        penalty: s.penalty.unwrap_or(0) as i64,
-                        competitor_id: resp.card_id,
-                        judge_id: current_judge,
-                        timestamp: current_epoch(),
-                        session_id,
-                        delegate: false,
-                        inspection_time,
-                        group_id,
-                        sign_key: crate::state::SETTINGS.read(|s| s.sign_key),
-                    },
-                    resp.card_id,
-                );
+                return CardAction::SendSolve(crate::structs::TimerPacketInner::Solve {
+                    solve_time,
+                    penalty: s.penalty.unwrap_or(0) as i64,
+                    competitor_id: resp.card_id,
+                    judge_id: current_judge,
+                    timestamp: current_epoch(),
+                    session_id,
+                    delegate: false,
+                    inspection_time,
+                    group_id,
+                    sign_key: crate::state::SETTINGS.read(|s| s.sign_key),
+                });
             }
             CardAction::Nothing
         }
@@ -489,19 +475,30 @@ async fn process_card_info_response(resp: CardInfoResponsePacket, global_state: 
                 .ui
                 .update(|u| u.error_text = Some(error.as_str().into()));
         }
-        CardAction::SendSolve(packet, competitor) => {
+        CardAction::SendSolve(packet) => {
+            let session_id = match &packet {
+                crate::structs::TimerPacketInner::Solve { session_id, .. } => {
+                    Some(session_id.clone())
+                }
+                _ => None,
+            };
             let resp = crate::ws::request::<SolveConfirmPacket>(
                 packet,
                 Duration::from_millis(crate::consts::WS_REQUEST_TIMEOUT_MS),
             )
             .await;
-            let Ok(resp) = resp else {
-                return;
+            // the solve may have been reset meanwhile (e.g. competitor reset hold)
+            let same_attempt = global_state
+                .solve
+                .read(|s| session_id.is_some() && s.session_id == session_id);
+            let resp = match resp {
+                Ok(resp) => resp,
+                Err(e) if same_attempt => return global_state.show_api_error(e).await,
+                Err(e) => return log::warn!("Solve error for a reset attempt: {:?}", e.error),
             };
             log::warn!("solve_resp: {resp:?}");
 
-            // the solve may have been reset meanwhile (e.g. competitor reset hold)
-            if global_state.solve.read(|s| s.current_competitor) == Some(competitor) {
+            if same_attempt {
                 global_state.reset_solve(true).await;
             }
 
