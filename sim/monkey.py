@@ -34,8 +34,9 @@ KNOWN_CARDS = {COMPETITOR, JUDGE, MULTI}
 HOLDS = [5, 20, 29, 31, 80, 150, 400, 990, 1010, 1500, 2990, 3010, 4500, 9990, 10010, 12500]
 BUTTON_NAMES = {1: "inspect", 2: "delegate", 3: "submit", 4: "penalty"}
 SLOW = 3  # emulated time runs up to ~3x slower than real time with several instances
+SRV_PORT = 18100  # per-job server port base, away from the default 8080 other sims use
 HEAP_LIMIT = 0.92  # of the heap size printed by the firmware
-IDLE = dict(scene="WaitingForCompetitor", comp="-1", menu="None", cfg="-1", err="0")
+IDLE = dict(scene="WaitingForCompetitor", comp="-1", time="-1", menu="None", cfg="-1", err="0")
 
 
 # ── action generation (pure: same seed ⇒ same list) ─────────────────────────────────────────
@@ -117,7 +118,8 @@ def check_invariants(s: dict):
         bad.append("a menu and the config menu at once")
     if s.get("scene") == "Finished" and s.get("time") == "-1":
         bad.append("Finished without a time")
-    if s.get("conf") == "1" and s.get("scene") != "Finished":
+    # a DNF from inspection is confirmed right away, also before the competitor is known
+    if s.get("conf") == "1" and s.get("scene") != "Finished" and s.get("pen") != "-1":
         bad.append("confirmed time outside Finished")
     if s.get("judge") not in ("-1", None) and s.get("judge") == s.get("comp"):
         bad.append("judge is the competitor")
@@ -299,7 +301,7 @@ class Run:
         self.dir.mkdir(parents=True)
         base = 20000 + job * 10
         self.ports = dict(http=base, uart1=base + 1, control=base + 2)
-        self.server = Server(Path(args.mc).expanduser(), 8080 + job, self.dir)
+        self.server = Server(Path(args.mc).expanduser(), SRV_PORT + job, self.dir)
         self.image = image
         self.executed = []
         self.expected_boots = 1
@@ -386,9 +388,16 @@ class Run:
             time.sleep(a[0] / 1000)
             self.server.start()
         elif kind == "power":
+            before = self.state(timeout=6).get("time")
             self.expected_boots += 1
             self.emu.power_cycle()
             time.sleep(2)
+            # the timer still shows its last time after a reboot: that must not become a solve
+            if before == "-1":
+                self.wait_for(lambda s: s.get("stk") == "Some(true)", 60, "stackmat after reboot")
+                time.sleep(1)
+                if (after := self.state(timeout=6).get("time")) != "-1":
+                    raise Failure(f"a solve ({after} ms) appeared after a reboot")
         # a button press lasts `ms`; don't send the next action for the same press into it
         if kind == "btn" and a[1] > 3000:
             time.sleep(a[1] / 1000)
@@ -616,8 +625,8 @@ def main():
     images = {}
     for j in range(jobs):
         t = ROOT / "target/sim"
-        images[j] = ((t / f"monkey-{8080 + j}.bin", t / f"monkey-{8080 + j}.elf")
-                     if args.no_build else build(8080 + j))
+        images[j] = ((t / f"monkey-{SRV_PORT + j}.bin", t / f"monkey-{SRV_PORT + j}.elf")
+                     if args.no_build else build(SRV_PORT + j))
 
     results, queue, lock = [], list(work), threading.Lock()
 
