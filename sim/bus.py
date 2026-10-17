@@ -178,7 +178,7 @@ class Board:
             else:  # from the firmware's clock as of its last frame (one every ~1 ms on v3)
                 self.held[b] = (self.emu_us, self.emu_us + ms * 1000)
         elif w[0] == "card" and num(1) is not None:
-            uid = num(1) & 0xFFFFFFFF
+            uid = num(1) & ((1 << 56) - 1)
             self.rfid.card = self.cards.setdefault(uid, Card(uid))
             self.rfid.card.state = "idle"
             self.card_since = time.monotonic()

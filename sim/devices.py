@@ -216,7 +216,10 @@ def crc_a(data) -> bytes:
 
 class Card:
     def __init__(self, uid: int):
-        self.uid = uid.to_bytes(16, "little")[:4]  # esp-hal-mfrc522's to_u128: little endian
+        # esp-hal-mfrc522's to_u128: little endian. A 4-byte UID can't start with the cascade
+        # tag 0x88, so such (and longer) numbers are 7-byte (double size) UIDs.
+        n = 4 if uid < 1 << 32 and uid & 0xFF != 0x88 else 7
+        self.uid = uid.to_bytes(16, "little")[:n]
         self.blocks = [bytearray(16) for _ in range(64)]
         self.blocks[0][:4] = self.uid
         for t in range(3, 64, 4):
@@ -224,8 +227,11 @@ class Card:
         self.state = "idle"  # idle, ready, active, halt
         self.pending_write = None
 
-    def bcc(self):
-        return self.uid[0] ^ self.uid[1] ^ self.uid[2] ^ self.uid[3]
+    def level(self, sel: int):
+        """UID bytes answered at cascade level SEL (0x93, 0x95) and the SAK after selecting."""
+        if len(self.uid) == 4:
+            return (self.uid, 0x08) if sel == 0x93 else (None, 0)
+        return {0x93: (b"\x88" + self.uid[:3], 0x04), 0x95: (self.uid[3:7], 0x08)}.get(sel, (None, 0))
 
 
 COMMAND, COMIRQ, DIVIRQ, ERROR, STATUS2, FIFODATA, FIFOLEVEL, CONTROL, BITFRAMING, COLL = \
@@ -289,7 +295,7 @@ class MFRC522:
             f, card = bytes(self.fifo), self.card
             self.fifo.clear()
             ok = (card is not None and card.state == "active" and len(f) == 12
-                  and f[8:12] == card.uid and f[1] < 64)
+                  and f[8:12] == card.uid[-4:] and f[1] < 64)
             if ok:
                 trailer = card.blocks[f[1] // 4 * 4 + 3]
                 key = trailer[:6] if f[0] == 0x60 else trailer[10:16]
@@ -333,12 +339,14 @@ class MFRC522:
                 c.state = "ready"
                 return b"\x04\x00", 0
             return None
-        if f[0] == 0x93 and len(f) == 2 and f[1] == 0x20 and c.state == "ready":
-            return c.uid + bytes([c.bcc()]), 0
-        if f[0] == 0x93 and len(f) == 9 and f[1] == 0x70 and c.state == "ready":
-            if f[2:6] == c.uid and crc_a(f[:7]) == f[7:9]:
-                c.state = "active"
-                return bytes([0x08]) + crc_a(b"\x08"), 0
+        part, sak = c.level(f[0])
+        if part is not None and len(f) == 2 and f[1] == 0x20 and c.state == "ready":
+            return part + bytes([part[0] ^ part[1] ^ part[2] ^ part[3]]), 0  # + BCC
+        if part is not None and len(f) == 9 and f[1] == 0x70 and c.state == "ready":
+            if f[2:6] == part and crc_a(f[:7]) == f[7:9]:
+                if not sak & 0x04:  # UID complete
+                    c.state = "active"
+                return bytes([sak]) + crc_a(bytes([sak])), 0
             return None
         if f[0] == 0x50 and c.state == "active":  # HLTA
             c.state = "halt"
@@ -436,4 +444,7 @@ if __name__ == "__main__":
     rc.write(COMMAND, TRANSCEIVE)
     rc.write(BITFRAMING, 0x87)
     assert rc.regs[COMIRQ] & 0x30 and bytes(rc.fifo) == b"\x04\x00"
+    # a 7-byte UID through both cascade levels (CL1 starts with the cascade tag)
+    c = Card(3319564424)
+    assert len(c.uid) == 7 and c.level(0x93)[0][0] == 0x88 and int.from_bytes(c.uid, "little") == 3319564424
     print("devices self-check ok")
