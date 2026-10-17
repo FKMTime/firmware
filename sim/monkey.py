@@ -247,14 +247,16 @@ class Stackmat:
 
 
 class Emu:
-    def __init__(self, bin_: Path, elf: Path, ports: dict, log: Path):
+    def __init__(self, bin_: Path, elf: Path, ports: dict, log: Path, efuse: Path = None):
         self.log = open(log, "w", buffering=1)
         self.lines, self.lock = [], threading.Lock()
+        # a station of several needs its own MAC (device id); esp-emu writes the file back
+        extra = ["--efuse", str(efuse)] if efuse else []
         self.proc = subprocess.Popen(
             [EMU, "--chip", "esp32c3", "--firmware", str(bin_), "--elf", str(elf),
              "--net", f"user,hostfwd=tcp:127.0.0.1:{ports['http']}-:80",
              "--uart1-tcp", f"127.0.0.1:{ports['uart1']}",
-             "--control-tcp", f"127.0.0.1:{ports['control']}"],
+             "--control-tcp", f"127.0.0.1:{ports['control']}", *extra],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0)
         self.control = ports["control"]
         threading.Thread(target=self.read, daemon=True).start()
@@ -310,6 +312,7 @@ class Run:
         if self.dir.exists():
             shutil.rmtree(self.dir)
         self.dir.mkdir(parents=True)
+        job += args.job_base
         base = 20000 + job * 10
         self.ports = dict(http=base, uart1=base + 1, control=base + 2)
         self.server = Server(Path(args.mc).expanduser(), SRV_PORT + job, self.dir)
@@ -633,7 +636,18 @@ def main():
     p.add_argument("--shrink", action="store_true")
     p.add_argument("--shrink-runs", type=int, default=12)
     p.add_argument("--no-build", action="store_true")
+    p.add_argument("--job-base", type=int, default=0,
+                   help="first job number: emulator ports 20000+10*N.., server port 18100+N..")
+    p.add_argument("--mode", choices=["fuzz", "competition"], default="fuzz")
+    p.add_argument("--devices", type=int, default=1, help="competition: stations on one server")
+    p.add_argument("--max-attempts", type=int, default=40, help="competition: attempts in the day")
+    p.add_argument("--time-scale", type=float, default=0.5, help="competition: solve lengths")
+    p.add_argument("--slip-rate", type=float, default=1.0, help="competition: slip rate factor")
     args = p.parse_args()
+
+    if args.mode == "competition" or (args.replay_file and "day" in json.load(open(args.replay_file))):
+        import competition
+        sys.exit(competition.main(args))
 
     if args.replay_file:
         d = json.load(open(args.replay_file))
@@ -656,8 +670,9 @@ def main():
     images = {}
     for j in range(jobs):
         t = ROOT / "target/sim"
-        images[j] = ((t / f"monkey-{SRV_PORT + j}.bin", t / f"monkey-{SRV_PORT + j}.elf")
-                     if args.no_build else build(SRV_PORT + j))
+        port = SRV_PORT + args.job_base + j
+        images[j] = ((t / f"monkey-{port}.bin", t / f"monkey-{port}.elf")
+                     if args.no_build else build(port))
 
     results, queue, lock = [], list(work), threading.Lock()
 

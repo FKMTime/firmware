@@ -96,6 +96,33 @@ for f in sim/scenarios/*.json; do python3 sim/monkey.py --replay-file $f; done  
 `sim/scenarios/` holds scripted regressions for bugs the monkey found (same format as
 `actions.json`, plus `expect` steps that wait for a `state` field to reach a value).
 
+### Competition day (`--mode competition`)
+
+A seeded, realistic competition instead of abuse: 20–40 competitors (some in several events, so
+they pick their group), staff and competitor judges, the first group of 3–4 events (one
+blindfolded: no inspection, 25 s time limit), each cut to a share of `--max-attempts`. Every attempt
+is acted out like a person would (scan, group select, inspection 5–12 s, sometimes 15–17 s (+2) or
+over 17 s (DNF), solve, judge's penalty, confirm, judge and competitor cards), with clumsy slips at
+a few % each (wrong card first, double taps, forgotten/restarted inspection, fumbled timer, +2
+applied and corrected, DNF hold, long/double submit, wrong button, scrolling past the group,
+delegate call, Wi-Fi blip, abandoned attempt, solve over the limit) plus server restarts mid-group
+and a draining battery. Each step's effect is checked on the device; after each attempt the
+server's `EnterAttempt` log (`srv/logs/unix.log`) must hold exactly one solve with the intended
+station, competitor, time, penalty, judge, group and inspection; at the end the whole list must
+match. `--devices N` runs N stations (own esp-emu, eFuse MAC from `sim/make-efuse.py`, stackmat)
+on one server, round by round, a competitor never at two stations at once.
+
+```sh
+python3 sim/monkey.py --mode competition --seeds 1-6 --jobs 3 --job-base 20 --max-attempts 36
+python3 sim/monkey.py --mode competition --seed 4 --devices 3 --job-base 20 --slip-rate 2
+python3 sim/monkey.py --replay-file sim/out/comp-d1/4/day.json            # same day again
+```
+
+`--job-base N` moves ports (emulators 20000+10·N.., servers 18100+N..) away from other runs;
+`--time-scale` shortens solves (never inspection or holds). Logs: `sim/out/comp-d<N>/<seed>/`
+(`day.json` = plan, intended results, mismatches, executed steps). Not covered: sleep (off in sim
+builds), delegate answers (micro-connector's e2e never resolves an incident), BLE.
+
 Failures land in `sim/out/<seed>/` (actions, firmware log with timestamps, server log). Needs a
 built micro-connector (`cargo build --bins` in it; `--mc` path). The `state` sim command prints the
 machine-readable line the monkey reads. Not covered: pads (`timer-func`), BLE, Wi-Fi drops (esp-emu

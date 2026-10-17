@@ -257,10 +257,11 @@ fn print_state(state: GlobalState) {
     }
     _ = write!(
         line,
-        " timer={:?} held={} up={}",
+        " timer={:?} held={} up={} id={:X}",
         state.timer.try_get(),
         button_mask(),
-        Instant::now().as_millis()
+        Instant::now().as_millis(),
+        crate::utils::get_efuse_u32()
     );
     print(format_args!("{line}"));
 }
@@ -279,7 +280,11 @@ pub async fn command_task(mut rx: UartRx<'static, Async>, state: GlobalState) {
         match select(
             rx.read_async(&mut buf),
             Timer::after(Duration::from_millis(
-                if OLED_RAW.load(portable_atomic::Ordering::Relaxed) { 20 } else { 200 },
+                if OLED_RAW.load(portable_atomic::Ordering::Relaxed) {
+                    20
+                } else {
+                    200
+                },
             )),
         )
         .await
