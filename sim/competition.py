@@ -761,9 +761,14 @@ class Station(M.Run):
                 if s and s.get("err") != "1":
                     break
                 if on_server():
-                    # entered, but the answer got lost: a retap is refused ("already entered")
+                    # entered, but the answer got lost: a retap is refused ("already entered"),
+                    # unless it confirms a resolved incident (FKMTime takes the judge again)
                     self.dismiss(self.st())
+                    self.connected()
                     self.tap(C)
+                    if row:
+                        self.poll(self.idle, 16000, "resend of a resolved incident accepted")
+                        break
                     self.poll(lambda s: s.get("err") == "1", 16000, "resend refused (already entered)")
                     self.dismiss(self.st())
                     self.to_idle()
