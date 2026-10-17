@@ -172,7 +172,8 @@ class Server:
         env = dict(os.environ, SOCKET_PATH=self.sock)
         if self.e2e is None:
             os.unlink(self.sock) if os.path.exists(self.sock) else None
-            env.update(E2E_CONTROL=self.ctl_path, E2E_LOG=str(srv / "e2e.jsonl"))
+            # Older connector builds select fake FKMTime with this flag; newer ones always use it.
+            env.update(E2E_SIM="1", E2E_CONTROL=self.ctl_path, E2E_LOG=str(srv / "e2e.jsonl"))
             self.e2e = subprocess.Popen([self.mc / "target/debug/e2e"], cwd=srv, env=env,
                                         stdout=self.log_file, stderr=self.log_file)
             time.sleep(0.8)
@@ -559,7 +560,7 @@ class Run:
             self.boot()
             self.probe()
             for i, act in enumerate(self.actions):
-                if time.monotonic() > deadline:
+                if not self.args.replay_file and time.monotonic() > deadline:
                     break
                 self.do(act)
                 if i % 10 == 0:
@@ -577,8 +578,9 @@ class Run:
             self.stackmat.alive = False
             self.emu.stop()
             self.server.stop()
-            json.dump({"seed": self.seed, "actions": self.actions, "executed": self.executed},
-                      open(self.dir / "actions.json", "w"), indent=0)
+            with (self.dir / "actions.json").open("w") as out:
+                json.dump({"seed": self.seed, "actions": self.actions, "executed": self.executed},
+                          out, indent=0)
 
 
 # ── driver ──────────────────────────────────────────────────────────────────────────────────
@@ -641,7 +643,8 @@ def main():
     p.add_argument("--replay", type=int)
     p.add_argument("--replay-file")
     p.add_argument("--jobs", type=int, default=1)
-    p.add_argument("--minutes", type=float, default=4)
+    p.add_argument("--minutes", type=float, default=4,
+                   help="fuzz duration; replay files always run every step")
     p.add_argument("--actions", type=int, default=400)
     p.add_argument("--chunk", type=int, default=40, help="recovery probe every N actions")
     p.add_argument("--hw", choices=["v3", "v4"], default=os.environ.get("SIM_HW", "v4"))

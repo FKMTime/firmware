@@ -11,7 +11,7 @@ cp "$MC/tests.json" "$D/tests.json"
 (cd "$MC" && cargo build -q --bins)
 export SOCKET_PATH="$D/socket.sock"
 rm -f "$SOCKET_PATH"
-(cd "$D" && exec "$MC/target/debug/e2e") >"$D/backend.log" 2>&1 &
+(cd "$D" && exec env E2E_SIM=1 "$MC/target/debug/e2e") >"$D/backend.log" 2>&1 &
 BACKEND=$!
 trap 'kill $BACKEND' EXIT
 sleep 1

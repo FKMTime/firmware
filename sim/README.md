@@ -104,7 +104,8 @@ does use the patched copy.
 it with a seeded, weighted random action list: button mashing, odd hold lengths around the real
 thresholds, several buttons at once, card spam in every phase (competitor, judge, multi-group,
 unknown), stackmat chaos (start/stop at wrong times, unplug, garbage bytes), battery changes,
-menu walks, server restarts and power cycles. Same seed ⇒ same actions.
+menu walks, server restarts and power cycles. Same seed ⇒ same actions. Replay files always run every step, including assertions after a long
+delegate timeout; `--minutes` limits generated fuzz runs only.
 
 Every few actions it checks liveness (answers `state`, no unexpected reboot/panic, heap bound) and
 state invariants; every `--chunk` actions it runs a recovery probe: get back to idle the way a user
