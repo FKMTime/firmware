@@ -38,7 +38,8 @@ SRV_PORT = 18100  # per-job server port base, away from the default 8080 other s
 HEAP_LIMIT = 0.92  # of the heap size printed by the firmware
 # v3: the emulated LCD may differ from what the firmware wrote only this long (emulated ms)
 LCD_STALE_MS = 4000
-IDLE = dict(scene="WaitingForCompetitor", comp="-1", time="-1", menu="None", cfg="-1", err="0")
+IDLE = dict(scene="WaitingForCompetitor", comp="-1", time="-1", menu="None", cfg="-1", err="0",
+            srv="Some(true)", stk="Some(true)", added="Some(true)")
 
 
 # ── action generation (pure: same seed ⇒ same list) ─────────────────────────────────────────
@@ -462,8 +463,9 @@ class Run:
             if all(s.get(k) == v for k, v in IDLE.items()) and s.get("msg") == "0":
                 # a card lookup sent during the abuse phase may still answer: idle must hold
                 time.sleep(3)
-                if all(self.state().get(k) == v for k, v in IDLE.items()):
-                    return s
+                stable = self.state()
+                if all(stable.get(k) == v for k, v in IDLE.items()) and stable.get("msg") == "0":
+                    return stable
                 continue
             # reconnecting / timer replugged above: the device must come back by itself
             # (while it shows the disconnected screen it ignores input by design)

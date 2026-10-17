@@ -37,6 +37,19 @@ class ReplayExecution(unittest.TestCase):
     def test_fuzz_stops_at_deadline(self):
         self.assertEqual(self.run_expired(None)["executed"], [])
 
+    def test_recovery_waits_for_connection_before_tapping_a_card(self):
+        run = monkey.Run.__new__(monkey.Run)
+        run.stackmat = Mock()
+        run.wait_for = Mock()
+        run.check_alive = Mock()
+        run.press = Mock()
+        ready = dict(monkey.IDLE, msg="0")
+        run.state = Mock(side_effect=[dict(ready, srv="Some(false)"), ready, ready])
+        with patch.object(monkey.time, "sleep"):
+            self.assertEqual(run.recover(), ready)
+        self.assertEqual(run.state.call_count, 3)
+        run.press.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
