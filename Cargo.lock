@@ -1507,9 +1507,9 @@ dependencies = [
 
 [[package]]
 name = "esp-hal-wifimanager"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31042c6caf833fb6fe14c8c4a688f4de820f9ca19ac90db1eb62a3b71aeb580d"
+checksum = "f150a502c6253f3f77c8f9d93981e466f06acabd709608ff9ae9e301b0dd8da0"
 dependencies = [
  "edge-dhcp",
  "edge-nal",
