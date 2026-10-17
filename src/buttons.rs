@@ -440,7 +440,7 @@ async fn submit(state: &GlobalState) {
 }
 
 /// Registers this device on the server with a fresh sign key.
-async fn add_device(state: &GlobalState) {
+pub async fn add_device(state: &GlobalState) {
     let mut sign_key = [0; 4];
     _ = getrandom::getrandom(&mut sign_key);
     let sign_key = u32::from_be_bytes(sign_key) >> 1;
@@ -475,6 +475,7 @@ async fn submit_config_item(state: &GlobalState, sel: usize) {
     let menu = match sel {
         0 => {
             // reset settings
+            log::warn!("Reset settings: rebooting");
             _ = state.nvs.delete(&esp_hal_wifimanager::WIFI_NVS_KEY).await;
             _ = state.nvs.delete(&NVS_SIGN_KEY).await;
             _ = state.nvs.delete(&NVS_BONDING_KEY).await;
