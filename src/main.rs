@@ -390,6 +390,12 @@ async fn main(spawner: Spawner) {
     loop {
         Timer::after_millis(100).await;
         watchdog::heartbeat(watchdog::TaskId::Main);
+        #[cfg(feature = "sim")]
+        match sim::WIFI.try_take() {
+            Some(true) => wifi_res.stop_radio(),
+            Some(false) => wifi_res.restart_radio(),
+            None => {}
+        }
         if !healthy && boot.elapsed().as_secs() >= HEALTHY_AFTER_SECS {
             utils::backtrace_store::mark_healthy();
             healthy = true;

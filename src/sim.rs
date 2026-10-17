@@ -21,6 +21,8 @@ use esp_hal::{
 
 /// Scanned by the fake RFID reader (`card <uid>`).
 pub static CARD: Signal<CriticalSectionRawMutex, u128> = Signal::new();
+/// `wifi off|on`: `true` stops the radio (driver torn down), `false` restarts it
+pub static WIFI: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 
 static TX: CriticalSectionMutex<RefCell<Option<UartTx<'static, Blocking>>>> =
     CriticalSectionMutex::new(RefCell::new(None));
@@ -187,7 +189,7 @@ fn print_oled() {
     print(format_args!("└{:─<128}┘", ""));
 }
 
-const HELP: &str = "sim commands: btn <1-4> [ms] | card <uid> | bat <0-100> | screen | state | help (btn 3 = submit)";
+const HELP: &str = "sim commands: btn <1-4> [ms] | card <uid> | bat <0-100> | screen | state | wifi off|on | help (btn 3 = submit)";
 
 /// One machine-readable line for sim/monkey.py: `@state key=value ...` (`-` = none).
 fn print_state(state: GlobalState) {
@@ -303,6 +305,8 @@ fn command(line: &str, state: GlobalState) {
             print_oled();
         }
         (Some("state"), _) => print_state(state),
+        (Some("wifi"), _) if a == Some("off") => WIFI.signal(true),
+        (Some("wifi"), _) if a == Some("on") => WIFI.signal(false),
         _ => print(format_args!("? {line}\r\n{HELP}")),
     }
 }

@@ -52,7 +52,7 @@ def generate(seed: int, count: int) -> list:
     weights = {
         "btn": 26, "mash": 8, "multi": 5, "card": 14, "spam": 6,
         "stk": 14, "stk_chaos": 5, "bat": 2, "wait": 8, "flow": 10,
-        "server": 1, "power": 1, "menu": 3,
+        "server": 1, "power": 1, "menu": 3, "wifi": 2, "outage": 1,
     }
     kinds, w = zip(*weights.items())
     while len(acts) < count:
@@ -108,6 +108,14 @@ def generate(seed: int, count: int) -> list:
             add(gap, "server", r.randint(1500, 9000))
         elif kind == "power":
             add(gap, "power", 0)
+        elif kind == "wifi":
+            if r.random() < 0.5:  # one outage, up to minutes
+                add(gap, "wifi", r.choice([1500, 5000, 20000, 60000, 150000]))
+            else:  # flapping link
+                for _ in range(r.randint(3, 10)):
+                    add(r.choice([0, 100, 500, 3000]), "wifi", r.choice([100, 400, 1500, 3000]))
+        elif kind == "outage":  # server gone for minutes
+            add(gap, "server", r.choice([30_000, 90_000, 180_000]))
     return acts[:count]
 
 
@@ -388,6 +396,10 @@ class Run:
             pass
         elif kind == "expect":  # scripted scenarios only: state field reaches a value
             self.wait_for(lambda s: s.get(a[0]) == str(a[1]), 15, f"{a[0]}={a[1]}")
+        elif kind == "wifi":  # radio torn down for a[0] ms
+            self.emu.send("wifi off")
+            time.sleep(a[0] / 1000)
+            self.emu.send("wifi on")
         elif kind == "server":
             self.server.stop()
             time.sleep(a[0] / 1000)
