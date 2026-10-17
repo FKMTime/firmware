@@ -30,10 +30,10 @@ DELEGATE_TIMEOUT = 5 * 60_000  # src/consts.rs: the device waits this long for t
 DECISIONS = {
     "accept": 3,     # resolved, time stands; the cards confirm it
     "change": 3,     # resolved with another time / penalty; the cards confirm it
-    "no_cards": 1.5,  # resolved, "do not require cards": the device resets
+    "no_cards": 2,   # resolved, "do not require cards": the device resets
     "extra": 2,      # extra attempt given: the device resets, the competitor solves again
     "delete": 1,     # incident deleted: the device resets, the attempt is redone
-    "late": 0.4,     # answers only after the device gave up (5 min): the device ignores it
+    "late": 1,       # answers only after the device gave up (5 min): the device ignores it
 }
 EVENTS = [  # id, name, inspection, time limit (ms), attempts, solve mean/sd (s, before --time-scale)
     ("333", "3x3x3 Cube", True, None, 5, 13.0, 3.0),
