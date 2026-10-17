@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The sim device in a browser: display, buttons, cards, stackmat, battery, Wi-Fi/server/power.
 
-    python3 sim/web.py [--hw v3|v4] [--mc ~/projects/micro-connector] [--no-server] [--port 8000]
+    python3 sim/web.py [--hw v3|v4] [--job N] [--mc ~/projects/micro-connector] [--no-server] [--port 8000]
 
 Builds the sim image, starts esp-emu, the fake stackmat and (unless --no-server) a local
 micro-connector, then serves http://127.0.0.1:8000. Stdlib only: events go out as SSE,
@@ -18,7 +18,7 @@ from pathlib import Path
 
 import monkey
 
-JOB = 9  # monkey jobs use 0..; keep ports apart so a campaign can run next to this
+JOB = 9  # default port block; monkey jobs use 0..: a campaign can run next to this
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
@@ -64,11 +64,12 @@ def main():
     p.add_argument("--no-server", action="store_true")
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--hw", choices=["v3", "v4"], default="v4")
+    p.add_argument("--job", type=int, default=JOB, help="port block, as monkey.py's --job-base")
     args = p.parse_args()
 
     out = monkey.ROOT / "sim/out/web"
     out.mkdir(parents=True, exist_ok=True)
-    srv_port = monkey.SRV_PORT + JOB
+    srv_port = monkey.SRV_PORT + args.job
     print("building the sim image…")
     bin_, elf = monkey.build(srv_port, args.hw)
 
@@ -76,7 +77,7 @@ def main():
     if not args.no_server:
         server = monkey.Server(Path(args.mc).expanduser(), srv_port, out)
         server.start()
-    base = 20000 + JOB * 10
+    base = 20000 + args.job * 10
     ports = dict(http=base, uart1=base + 1, control=base + 2, tap=base + 3)
     stackmat = monkey.Stackmat(ports["uart1"])
     emu = monkey.Emu(bin_, elf, ports, out / "firmware.log", hw=args.hw)
