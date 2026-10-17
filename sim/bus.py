@@ -7,7 +7,7 @@ boards here wire the device models of sim/devices.py to it like the real PCBs do
   python3 sim/bus.py nvs <image.bin> [ws_url]                           # seed Wi-Fi into NVS
 
 Interactive commands: btn <1-4> [ms] | card <uid> | bat <0-100> | screen | lcd|oled raw |
-lcd glitch|drop|reset|slow <n>|stats | rfid error [n] | i2c nack <addr hex> [n]; anything else
+lcd glitch|drop|reset|cpu <n>|stats | rfid error [n] | i2c nack <addr hex> [n]; anything else
 (state, wifi off|on) goes to the firmware's console.
 """
 import argparse
@@ -51,6 +51,9 @@ class Board:
         self.nack = {}  # i2c address → NACKs left
         if hw == "v3":
             self.chain, self.lcd, self.levels, self.cs_low = Chain595(2), HD44780(), {}, False
+            # the LCD's clock: emulated µs with back-to-back pin writes (< 50 µs apart: no wait
+            # in between) `cpu`× closer, as fast as a real C3 bit-bangs them
+            self.cpu, self.lcd_t, self.last_t = 1, 0.0, 0
         else:
             self.oled, self.gauge = SSD1309(), BQ27441()
 
@@ -72,18 +75,30 @@ class Board:
             self.chain = Chain595(2)
 
     # bus traffic
-    def gpio(self, t_us: int, pin: int, high: bool):
+    def gpio_batch(self, t: int, p: bytes) -> int:
+        """A `G` frame's changes (`p` = its payload, `t` = the first change's µs); returns the
+        last change's µs. v3: GPIO10/21/1 = shift register data/clock/latch."""
         if self.hw != "v3":
-            return
-        if pin == 10:
-            self.chain.data = high
-        elif high and not self.levels.get(pin, False):
-            if pin == 21:
-                self.chain.clock()
-            elif pin == 1:
-                self.chain.latch()
-                self.latched(t_us)
-        self.levels[pin] = high
+            return t + sum(p[5::2])
+        chain, levels, cpu = self.chain, self.levels, self.cpu
+        dt = t - self.last_t
+        for i in range(4, len(p) - 1, 2):
+            if i > 4:
+                dt = p[i + 1]
+                t += dt
+            self.lcd_t += dt / cpu if dt < 50 else dt
+            pin, high = p[i] & 0x7F, p[i] >> 7
+            if pin == 10:
+                chain.data = high
+            elif high and not levels.get(pin):
+                if pin == 21:
+                    chain.sr = (chain.sr >> 1) | (chain.data << 15)  # Chain595.clock, inlined
+                elif pin == 1:
+                    chain.latch()
+                    self.latched(self.lcd_t)
+            levels[pin] = high
+        self.last_t = t
+        return t
 
     def latched(self, t_us):
         # LCD register: ShifterPin bit b = mask 0x80 >> b: CS, backlight, RS, E, DB4..DB7
@@ -173,8 +188,8 @@ class Board:
                 self.lcd.skip_transfers = 1  # one write lost
             elif w[1] == "reset":
                 self.lcd.reset()  # module brownout while the MCU runs on
-            elif w[1] == "slow" and num(2):
-                self.lcd.slow = num(2)
+            elif w[1] == "cpu" and num(2):
+                self.cpu = num(2)
             elif w[1] == "stats":
                 self.emit(f"lcd: {self.lcd.busy_drops} writes ignored while busy (last: {self.lcd.last_drop} "
                           f"= (RS, byte, us early)), least slack {self.lcd.min_slack} us (since the last stats)")
@@ -312,10 +327,13 @@ class Tap:
                     t_last = t32
                     return t_hi + t32
 
+                seq = b""
+                if ty != ord("G") and payload:  # requests start with their sequence byte
+                    seq, payload = payload[:1], payload[1:]
                 with self.board.lock:
                     reply = self.frame(ty, payload, unwrap)
                 if reply is not None:
-                    self.send(b"r", reply)
+                    self.send(b"r", seq + reply)
 
     def frame(self, ty, p, unwrap):
         b = self.board
@@ -326,9 +344,7 @@ class Tap:
                 self.last_q = None
             self.gap_sum += sum(p[i + 1] for i in range(6, len(p) - 1, 2))
             self.gaps += max(0, (len(p) - 6) // 2)
-            for i in range(4, len(p) - 1, 2):
-                t += p[i + 1]
-                b.gpio(t, p[i] & 0x7F, bool(p[i] & 0x80))
+            t = b.gpio_batch(t, p)
             self.stats["gpio"] += (len(p) - 4) // 2
             b.saw_time(t)
         elif ty == ord("Q"):
@@ -376,6 +392,8 @@ class Emu:
         self.lines, self.lock = [], threading.Lock()
         self.lcd_bad_since, self.lcd_sampled = None, 0.0
         extra = ["--efuse", str(efuse)] if efuse else []
+        # esp-emu serves sockets between instruction batches: smaller batches, quicker replies
+        extra += ["--batch-size", os.environ.get("SIM_BATCH", "5000")]
         if os.environ.get("SIM_BLE"):  # e.g. tcp:localhost:9544, a Bumble controller
             extra += ["--ble-hci", os.environ["SIM_BLE"]]
         self.proc = subprocess.Popen(
@@ -413,7 +431,7 @@ class Emu:
                 now = time.monotonic()
                 if shown == kv["lcdtext"]:
                     self.lcd_bad_since = None
-                elif self.lcd_bad_since is None or now - self.lcd_sampled > 1.0:
+                elif self.lcd_bad_since is None or now - self.lcd_sampled > 3.0:
                     # only back-to-back samples tell it stayed wrong (scrolling rewrites briefly)
                     self.lcd_bad_since = now
                 self.lcd_sampled = now

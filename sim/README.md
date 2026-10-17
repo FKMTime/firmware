@@ -55,7 +55,7 @@ which doesn't get answers through esp-emu's relay on macOS. Cards in micro-conne
 | `lcd glitch` | one E edge lost (noise): every later byte pairs the wrong nibbles |
 | `lcd drop` | one write lost |
 | `lcd reset` | module brownout: back to 8-bit, display off, while the MCU keeps running |
-| `lcd slow <n>` | controller execution times ×n: the emulated bit-banging (through the tap) is slower than a real C3's, so n puts the short gaps where real hardware has them |
+| `lcd cpu <n>` | back-to-back pin writes (no wait between them, < 50 µs apart) count n× closer for the LCD's timing. Through the tap one pin change costs ~2.6 µs of emulated time, ~20× a real C3's bit-banging, so `lcd cpu 20` puts the gap between a character and the next command where real hardware has it (~20 µs, inside the controller's 37–41 µs busy time) |
 | `lcd stats` | writes lost to the busy time and the least slack seen since the last `stats` |
 
 The fuzzer injects the first three on v3; `sim/scenarios/lcd-heal.json` checks each heals.

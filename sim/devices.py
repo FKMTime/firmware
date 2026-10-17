@@ -11,10 +11,10 @@ class HD44780:
     """The controller as seen from RS/E/DB7..DB4: 8-bit power-on state, 4-bit nibble pairing,
     DDRAM/CGRAM, entry mode/shift, and transfers that start while it is busy are lost (the
     datasheet allows no writes while BF = 1). Faults: `skip_edges` (lost E edge → nibble
-    desync), `skip_transfers` (lost write), `reset()` (module brownout), `slow` (×exec times)."""
+    desync), `skip_transfers` (lost write), `reset()` (module brownout)."""
 
     def __init__(self):
-        self.slow, self.busy_drops, self.last_drop, self.min_slack = 1, 0, None, None
+        self.busy_drops, self.last_drop, self.min_slack = 0, None, None
         self.skip_edges = self.skip_transfers = 0
         self.reset()
 
@@ -62,7 +62,7 @@ class HD44780:
             ex = EXEC_DATA_US
         else:
             ex = self.instruction(v)
-        self.busy_until = now_us + ex * self.slow
+        self.busy_until = now_us + ex
 
     def instruction(self, v):
         if v >= 0x80:
