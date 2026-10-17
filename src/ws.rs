@@ -324,21 +324,6 @@ async fn run(
     let mut rx = WsRxFramer::new(&mut *bufs.ws_rx);
     handshake(global_state, url, &mut socket, &mut tx, &mut rx).await?;
 
-    #[cfg(feature = "auto_add")]
-    if !global_state
-        .status
-        .read(|s| s.device_added)
-        .unwrap_or(false)
-    {
-        _ = send(TimerPacket {
-            tag: None,
-            data: TimerPacketInner::Add {
-                firmware: crate::version::FIRMWARE.into(),
-                sign_key: crate::state::SETTINGS.read(|s| s.sign_key),
-            },
-        });
-    }
-
     let mut ota = Ota::new(FlashStorage::new(unsafe {
         esp_hal::peripherals::FLASH::steal()
     }))
@@ -627,6 +612,11 @@ async fn handle_packet(
             global_state
                 .status
                 .update(|s| s.device_added = Some(*added));
+            // auto_add registers like a submit press would (fresh sign key, server trusted)
+            #[cfg(feature = "auto_add")]
+            if !*added {
+                crate::buttons::add_device(&global_state).await;
+            }
             crate::translations::clear_locales();
             for locale in locales {
                 crate::translations::process_locale(&locale.locale, &locale.translations);
