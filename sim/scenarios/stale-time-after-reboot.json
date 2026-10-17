@@ -1,0 +1,3 @@
+{"seed": 90001, "note": "regression: a time discarded with a submit hold came back as a new solve after a reboot (the timer still showed it)", "actions": [
+[500, "stk", "start"], [3000, "stk", "stop"], [2000, "btn", 3, 3400], [5000, "wait", 0], [10, "power", 0], [5000, "wait", 0]
+]}

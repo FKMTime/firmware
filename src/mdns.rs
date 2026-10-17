@@ -1,59 +1,32 @@
 use crate::consts::MDNS_RESEND_INTERVAL;
-use embassy_net::{
-    IpAddress, IpEndpoint, Stack,
-    udp::{PacketMetadata, UdpSocket},
-};
+use embassy_net::Stack;
 use embassy_time::{Duration, Timer};
-use esp_hal_mdns::MdnsQuery;
 
 const FKMTIME_MDNS: &str = "_fkmtime._tcp.local.";
 
+/// Resolves the `ws` TXT value of the fkmtime service, retrying until found.
 pub async fn mdns_query(stack: Stack<'static>) -> heapless::String<255> {
-    let mut rx_buffer = [0; 1024];
-    let mut tx_buffer = [0; 1024];
-    let mut rx_meta = [PacketMetadata::EMPTY; 16];
-    let mut tx_meta = [PacketMetadata::EMPTY; 16];
-    let mut sock = UdpSocket::new(
-        stack,
-        &mut rx_meta,
-        &mut rx_buffer,
-        &mut tx_meta,
-        &mut tx_buffer,
-    );
-
-    let ip_addr = IpAddress::v4(224, 0, 0, 251);
-    let ip_endpoint = IpEndpoint::new(ip_addr, 5353);
-    _ = sock.bind(5353);
-    _ = stack.join_multicast_group(ip_addr);
-
-    let mut mdns = MdnsQuery::new(FKMTIME_MDNS, MDNS_RESEND_INTERVAL, || {
-        esp_hal::time::Instant::now()
-            .duration_since_epoch()
-            .as_millis()
-    });
-    let mut data_buf = [0; 1024];
-
-    let tmp;
+    let mut buf = [0; 1024];
     loop {
-        if let Some(data) = mdns.should_send_mdns_packet() {
-            _ = sock.send_to(data, ip_endpoint).await;
-        }
-
-        if sock.may_recv() {
-            let res = sock.recv_from(&mut data_buf).await;
-            if let Ok((n, _endpoint)) = res {
-                let resp = mdns.parse_mdns_query(&data_buf[..n], Some("ws"));
-
-                if let Some(value) = resp.2 {
-                    tmp = value;
-                    break;
+        match esp_hal_mdns::resolve(
+            stack,
+            FKMTIME_MDNS,
+            &mut buf,
+            Duration::from_millis(MDNS_RESEND_INTERVAL),
+            Duration::from_secs(30),
+        )
+        .await
+        {
+            Ok(info) => {
+                if let Some(ws) = info.txt.get("ws").and_then(|w| w.try_into().ok()) {
+                    return ws;
                 }
             }
+            Err(e) => {
+                log::warn!("mdns: {e:?}");
+                // a bind error returns immediately; don't spin
+                Timer::after(Duration::from_secs(1)).await;
+            }
         }
-
-        Timer::after(Duration::from_millis(50)).await;
     }
-    _ = stack.leave_multicast_group(ip_addr);
-
-    tmp
 }

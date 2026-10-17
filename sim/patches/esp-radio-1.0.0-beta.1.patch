@@ -1,0 +1,188 @@
+diff --color -ru a/src/ble/btdm.rs b/src/ble/btdm.rs
+--- a/src/ble/btdm.rs	2026-10-17 01:28:38
++++ b/src/ble/btdm.rs	2026-10-17 01:28:38
+@@ -60,6 +60,8 @@
+     fn coex_pti_v2();
+ }
+ 
++// in RAM like ESP-IDF's: esp-emu reads the callbacks from RAM when they get registered
++#[ram]
+ static VHCI_HOST_CALLBACK: VhciHostCallbacks = VhciHostCallbacks {
+     notify_host_send_available,
+     notify_host_recv,
+@@ -315,20 +317,42 @@
+             g_bt_plf_log_level = 10;
+         }
+ 
+-        // esp32_bt_controller_init
+-        ble_os_adapter_chip_specific::btdm_controller_mem_init();
+-
+-        let mut cfg = ble_os_adapter_chip_specific::create_ble_config(config);
+-
+-        let res = btdm_osi_funcs_register(addr_of!(G_OSI_FUNCS));
+-        assert!(res == 0, "btdm_osi_funcs_register returned {}", res);
+-
++        // software only (creates the coex locks): runs even where esp-emu stubs the controller
+         #[cfg(feature = "coex")]
+         {
+             let res = crate::wifi::coex_init();
+             assert!(res == 0, "coex_init failed");
+         }
+ 
++        let mut cfg = ble_os_adapter_chip_specific::create_ble_config(config);
++        let res = esp_bt_controller_init(&mut cfg);
++        assert!(res == 0, "esp_bt_controller_init returned {}", res);
++
++        phy_init_guard = esp_phy::enable_phy();
++
++        let res = esp_bt_controller_enable(esp_bt_mode_t_ESP_BT_MODE_BLE);
++        assert!(res == 0, "esp_bt_controller_enable returned {}", res);
++
++        esp_vhci_host_register_callback(&VHCI_HOST_CALLBACK);
++    }
++
++    // At some point the "High-speed ADC" entropy source became available.
++    unsafe { esp_hal::rng::TrngSource::increase_entropy_source_counter() };
++    phy_init_guard
++}
++
++// esp-emu has no BT radio: it intercepts these ESP-IDF names and swaps in its own controller,
++// so the blob bring-up lives behind them exactly as in ESP-IDF's esp_bt.c.
++#[unsafe(no_mangle)]
++#[inline(never)]
++unsafe extern "C" fn esp_bt_controller_init(cfg: *mut esp_bt_controller_config_t) -> i32 {
++    unsafe {
++        // esp32_bt_controller_init
++        ble_os_adapter_chip_specific::btdm_controller_mem_init();
++
++        let res = btdm_osi_funcs_register(addr_of!(G_OSI_FUNCS));
++        assert!(res == 0, "btdm_osi_funcs_register returned {}", res);
++
+         let version = btdm_controller_get_compile_version();
+         let version_str = str_from_c(version);
+         debug!("BT controller compile version {}", version_str);
+@@ -338,23 +362,25 @@
+         ble_os_adapter_chip_specific::disable_sleep_mode();
+ 
+         #[cfg(any(esp32c3, esp32s3))]
+-        let res = btdm_controller_init(&mut cfg as *mut esp_bt_controller_config_t);
++        let res = btdm_controller_init(cfg);
+ 
+         #[cfg(esp32)]
+-        let res = btdm_controller_init(
+-            (1 << 3) | (1 << 4),
+-            &mut cfg as *mut esp_bt_controller_config_t,
+-        ); // see btdm_config_mask_load for mask
++        let res = btdm_controller_init((1 << 3) | (1 << 4), cfg); // see btdm_config_mask_load for mask
+ 
+-        assert!(res == 0, "btdm_controller_init returned {}", res);
++        debug!("btdm_controller_init returned {}", res);
+ 
+-        debug!("The btdm_controller_init was initialized");
+-
+         #[cfg(feature = "coex")]
+-        crate::sys::include::coex_enable();
++        if res == 0 {
++            crate::sys::include::coex_enable();
++        }
++        res
++    }
++}
+ 
+-        phy_init_guard = esp_phy::enable_phy();
+-
++#[unsafe(no_mangle)]
++#[inline(never)]
++unsafe extern "C" fn esp_bt_controller_enable(mode: esp_bt_mode_t) -> i32 {
++    unsafe {
+         cfg_select! {
+             esp32 => {
+                 unsafe extern "C" {
+@@ -372,27 +398,46 @@
+         #[cfg(feature = "coex")]
+         coex_enable();
+ 
+-        btdm_controller_enable(esp_bt_mode_t_ESP_BT_MODE_BLE);
+-
+-        API_vhci_host_register_callback(&VHCI_HOST_CALLBACK);
++        btdm_controller_enable(mode);
+     }
++    0
++}
+ 
+-    // At some point the "High-speed ADC" entropy source became available.
+-    unsafe { esp_hal::rng::TrngSource::increase_entropy_source_counter() };
+-    phy_init_guard
++#[unsafe(no_mangle)]
++#[inline(never)]
++unsafe extern "C" fn esp_vhci_host_register_callback(callback: *const VhciHostCallbacks) -> i32 {
++    unsafe { API_vhci_host_register_callback(callback) }
+ }
+ 
+-pub(crate) fn ble_deinit() {
+-    esp_hal::rng::TrngSource::decrease_entropy_source_counter(unsafe {
+-        esp_hal::Internal::conjure()
+-    });
++#[unsafe(no_mangle)]
++#[inline(never)]
++unsafe extern "C" fn esp_vhci_host_check_send_available() -> bool {
++    unsafe { API_vhci_host_check_send_available() }
++}
+ 
++#[unsafe(no_mangle)]
++#[inline(never)]
++unsafe extern "C" fn esp_vhci_host_send_packet(data: *const u8, len: u16) {
++    unsafe { API_vhci_host_send_packet(data, len) }
++}
++
++#[unsafe(no_mangle)]
++#[inline(never)]
++unsafe extern "C" fn esp_bt_controller_deinit() -> i32 {
+     unsafe extern "C" {
+         fn btdm_controller_deinit();
+     }
++    unsafe { btdm_controller_deinit() };
++    0
++}
+ 
++pub(crate) fn ble_deinit() {
++    esp_hal::rng::TrngSource::decrease_entropy_source_counter(unsafe {
++        esp_hal::Internal::conjure()
++    });
++
+     unsafe {
+-        btdm_controller_deinit();
++        esp_bt_controller_deinit();
+     }
+     // Disabling the PHY happens automatically, when the BLEController gets dropped.
+ }
+@@ -404,7 +449,7 @@
+ pub(crate) fn send_hci(data: &[u8]) -> usize {
+     // make sure the packet buffer doesn't get touched until sent
+     while PACKET_IN_FLIGHT.load(Ordering::Acquire) {}
+-    while unsafe { !API_vhci_host_check_send_available() } {
++    while unsafe { !esp_vhci_host_check_send_available() } {
+         trace!("can_send is false");
+     }
+ 
+@@ -416,7 +461,7 @@
+     core::future::poll_fn(|cx| {
+         PACKET_SENT_WAKER.register(cx.waker());
+         if PACKET_IN_FLIGHT.load(Ordering::Acquire)
+-            || unsafe { !API_vhci_host_check_send_available() }
++            || unsafe { !esp_vhci_host_check_send_available() }
+         {
+             core::task::Poll::Pending
+         } else {
+@@ -437,7 +482,10 @@
+             ble_os_adapter_chip_specific::BTDM_ASYNC_WAKEUP_REQ_HCI,
+         );
+ 
+-        API_vhci_host_send_packet(packet.as_ptr(), packet.len() as u16);
++        esp_vhci_host_send_packet(packet.as_ptr(), packet.len() as u16);
++        // esp-emu copies the packet synchronously and never calls notify_host_send_available
++        // (ESP-IDF hosts don't wait for it), so the buffer is free again right away
++        PACKET_IN_FLIGHT.store(false, Ordering::Release);
+ 
+         #[cfg(all(esp32, feature = "coex"))]
+         ble_os_adapter_chip_specific::async_wakeup_request_end(

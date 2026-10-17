@@ -1,32 +1,50 @@
+// qa builds report button edges to the QA flow and never run these actions
+#![cfg_attr(feature = "qa", allow(dead_code))]
+
+use crate::bluetooth::BleAction;
 use crate::{
     consts::{NVS_BONDING_KEY, NVS_ERROR_LOG, NVS_SIGN_KEY},
-    state::{
-        BleAction, ErrorLogEntryStage, GlobalState, MenuScene, Scene, current_epoch,
-        deeper_sleep_state, sleep_state,
-    },
-    structs::DelegateResponsePacket,
-    utils::buttons::{Button, ButtonTrigger, ButtonsHandler},
+    state::{ErrorLogEntryStage, GlobalState, MenuScene, Scene, Ui, current_epoch},
+    utils::buttons::{Button, ButtonInputs},
+    watchdog::{TaskId, heartbeat},
 };
-use alloc::string::ToString;
-use embassy_time::{Instant, Timer};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
+use embassy_time::{Duration, Instant, Timer};
 use esp_hal::gpio::Input;
+use portable_atomic::{AtomicBool, Ordering};
 
-macros::generate_button_handler_enum!(triggered: &ButtonTrigger, hold_time: u64, state: &GlobalState);
-
-static ERROR_LOG_PARSE_FAILED_LOGGED: core::sync::atomic::AtomicBool =
-    core::sync::atomic::AtomicBool::new(false);
+const INSPECTION_STOP_HOLD_MS: u64 = 1000;
+const DNF_HOLD_MS: u64 = 1000;
+const RESET_COMPETITOR_HOLD_MS: u64 = 3000;
+const CONFIG_MENU_HOLD_MS: u64 = 10000;
+const DELEGATE_HOLD_MS: u64 = 3000;
 
 #[cfg(feature = "v3")]
 const CONFIG_MENU_ERROR_LOG_IDX: usize = 4;
-#[cfg(feature = "v3")]
-const CONFIG_MENU_EXIT_IDX: usize = 5;
-
 #[cfg(feature = "v4")]
 const CONFIG_MENU_BUZZER_IDX: usize = 4;
 #[cfg(feature = "v4")]
 const CONFIG_MENU_ERROR_LOG_IDX: usize = 5;
-#[cfg(feature = "v4")]
-const CONFIG_MENU_EXIT_IDX: usize = 6;
+
+/// Delegate solve waiting to be sent; the reply can take minutes, so it is awaited next to
+/// (not inside) the button loop.
+static DELEGATE_REQUEST: Signal<CriticalSectionRawMutex, crate::structs::TimerPacketInner> =
+    Signal::new();
+static DELEGATE_PENDING: AtomicBool = AtomicBool::new(false);
+
+/// A delegate call waits for its answer: the attempt shows "waiting for delegate" and takes no
+/// input until then, so the answer can't meet a changed (or the next) attempt.
+pub fn delegate_pending() -> bool {
+    DELEGATE_PENDING.load(Ordering::Relaxed)
+}
+
+/// The single button being held. Dropped when an action consumes the press, so it gets no
+/// further hold/up actions.
+struct Press {
+    button: Button,
+    since: Instant,
+    last_ms: u64,
+}
 
 #[embassy_executor::task]
 pub async fn buttons_task(
@@ -35,811 +53,669 @@ pub async fn buttons_task(
     #[cfg(feature = "v3")] button_input: Input<'static>,
     #[cfg(feature = "v3")] button_reg: adv_shift_registers::wrappers::ShifterValue,
 ) {
-    let mut handler = ButtonsHandler::new(Some(wakeup_button()));
-    handler.add_handler(Button::Third, ButtonTrigger::Up, submit_up());
-    handler.add_handler(
-        Button::Third,
-        ButtonTrigger::HoldOnce(3000),
-        submit_reset_competitor(),
-    );
-    handler.add_handler(
-        Button::Third,
-        ButtonTrigger::HoldOnce(10000),
-        submit_config_menu(),
-    );
-
-    handler.add_handler(Button::First, ButtonTrigger::Down, sel_left());
-    handler.add_handler(Button::First, ButtonTrigger::Down, inspection_start());
-    handler.add_handler(
-        Button::First,
-        ButtonTrigger::HoldOnce(1000),
-        inspection_hold_stop(),
-    );
-
-    handler.add_handler(Button::Fourth, ButtonTrigger::Down, sel_right());
-    handler.add_handler(Button::Fourth, ButtonTrigger::HoldOnce(1000), dnf_button());
-    handler.add_handler(Button::Fourth, ButtonTrigger::Up, penalty_button());
-
-    handler.add_handler(
-        Button::Second,
-        ButtonTrigger::HoldTimed(0, 1000),
-        delegate_hold(),
-    );
-    handler.add_handler(
-        Button::Second,
-        ButtonTrigger::HoldOnce(3000),
-        delegate_hold(),
-    );
-    handler.add_handler(Button::Second, ButtonTrigger::Up, delegate_hold());
-
+    #[cfg(feature = "v4")]
+    let inputs = ButtonInputs::new(button_inputs);
     #[cfg(feature = "v3")]
-    handler.run(&state, &button_input, &button_reg).await;
-    #[cfg(feature = "v4")]
-    handler.run(&state, &button_inputs).await;
+    let inputs = ButtonInputs::new(button_input, button_reg);
+
+    embassy_futures::join::join(button_loop(state, inputs), delegate_loop(state)).await;
 }
 
-#[macros::button_handler]
-async fn button_test(
-    triggered: &ButtonTrigger,
-    hold_time: u64,
-    _state: &GlobalState,
-) -> Result<bool, ()> {
-    log::info!("Triggered: {triggered:?} - {hold_time}");
-    Ok(false)
-}
+async fn button_loop(state: GlobalState, mut inputs: ButtonInputs) {
+    let mut press: Option<Press> = None;
 
-#[macros::button_handler]
-async fn wakeup_button(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
-    if sleep_state() {
-        state.state.signal();
-        if deeper_sleep_state() {
-            esp_hal::system::software_reset();
-        }
+    // simulated press: (start, length ms, button index)
+    #[cfg(feature = "e2e")]
+    let mut e2e_press = (Instant::now(), 0, 0);
+    #[cfg(feature = "e2e")]
+    let mut send_ack = false;
+    #[cfg(feature = "qa")]
+    let mut qa_down = None;
 
-        return Ok(true);
-    }
+    loop {
+        heartbeat(TaskId::Buttons);
 
-    Ok(false)
-}
-
-#[macros::button_handler]
-async fn sel_left(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
-    let mut state_val = state.state.lock().await;
-    #[cfg(feature = "v4")]
-    if state_val.menu_scene == Some(MenuScene::BuzzerVolume) {
-        let old_volume = crate::state::buzzer_volume();
-        if old_volume > crate::consts::BUZZER_VOLUME_MIN {
-            let new_volume = old_volume.saturating_sub(1);
-            crate::state::set_buzzer_volume(new_volume);
-            drop(state_val);
-            state.state.signal();
-            state.buzzer_sound_test.signal(());
-        }
-
-        return Ok(true);
-    }
-
-    if state_val.menu_scene == Some(MenuScene::ErrorLog) {
-        #[cfg(feature = "v4")]
-        if state_val.error_log_entry_stage == Some(ErrorLogEntryStage::Details) {
-            state_val.error_log_details_scroll =
-                state_val.error_log_details_scroll.saturating_sub(1);
-            state.state.signal();
-            return Ok(true);
-        }
-
-        if state_val.selected_error_log_entry.is_some() {
-            return Ok(true);
-        }
-
-        let total_items = state_val.error_log_entries.len() + 1; // + Exit
-        state_val.selected_error_log_item = state_val
-            .selected_error_log_item
-            .wrapping_sub(1)
-            .min(total_items - 1);
-
-        return Ok(true);
-    }
-
-    if let Some(sel) = state_val.selected_config_menu.as_mut() {
-        *sel = sel
-            .wrapping_sub(1)
-            .min(crate::structs::CONFIG_MENU_ITEMS.len() - 1);
-
-        return Ok(true);
-    }
-
-    if state_val.menu_scene == Some(MenuScene::BtDisplay) {
-        state_val.selected_bluetooth_item = state_val.selected_bluetooth_item.saturating_sub(1);
-
-        return Ok(true);
-    }
-
-    if state_val.scene == Scene::GroupSelect {
-        state_val.group_selected_idx = state_val
-            .group_selected_idx
-            .wrapping_sub(1)
-            .min(state_val.possible_groups.len() - 1);
-
-        return Ok(true);
-    }
-
-    Ok(false)
-}
-
-#[macros::button_handler]
-async fn sel_right(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
-    let mut state_val = state.state.lock().await;
-    #[cfg(feature = "v4")]
-    if state_val.menu_scene == Some(MenuScene::BuzzerVolume) {
-        let old_volume = crate::state::buzzer_volume();
-        if old_volume < crate::consts::BUZZER_VOLUME_MAX {
-            let new_volume = (old_volume + 1).min(crate::consts::BUZZER_VOLUME_MAX);
-            crate::state::set_buzzer_volume(new_volume);
-            drop(state_val);
-            state.state.signal();
-            state.buzzer_sound_test.signal(());
-        }
-
-        return Ok(true);
-    }
-
-    if state_val.menu_scene == Some(MenuScene::ErrorLog) {
-        #[cfg(feature = "v4")]
-        if state_val.error_log_entry_stage == Some(ErrorLogEntryStage::Details) {
-            if let Some(entry_idx) = state_val.selected_error_log_entry
-                && let Some(entry) = state_val.error_log_entries.get(entry_idx)
-            {
-                let text = crate::lcd_v4::error_log_entry_details_text(entry);
-                let max_scroll = text
-                    .split('\n')
-                    .count()
-                    .saturating_sub(crate::lcd_v4::DETAILS_VISIBLE_LINES);
-                if state_val.error_log_details_scroll < max_scroll {
-                    state_val.error_log_details_scroll += 1;
-                    state.state.signal();
-                }
+        #[allow(unused_mut)]
+        let mut extra = 0u8;
+        #[cfg(feature = "e2e")]
+        {
+            if let Some((btn_idx, press_ms)) = state.e2e.buttons_sig.try_take() {
+                e2e_press = (Instant::now(), press_ms, btn_idx);
+                send_ack = true;
+                log::debug!("[E2E] Button pressed: {btn_idx} for {press_ms}ms");
             }
-            return Ok(true);
+            if e2e_press.0.elapsed().as_millis() <= e2e_press.1 {
+                extra |= 1 << e2e_press.2;
+            }
         }
 
-        if state_val.selected_error_log_entry.is_some() {
-            return Ok(true);
+        if let Some((prev, next)) = inputs.poll(extra) {
+            #[cfg(feature = "qa")]
+            if prev == 0 {
+                crate::qa::send_qa_resp(crate::qa::QaSignal::ButtonDown(next));
+                qa_down = Some(next);
+            } else if let Some(button) = qa_down.take() {
+                crate::qa::send_qa_resp(crate::qa::QaSignal::ButtonUp(button));
+            }
+
+            #[cfg(not(feature = "qa"))]
+            if prev == 0 {
+                press = on_down(&state, Button::from_mask(next));
+            } else if let Some(p) = press.take() {
+                on_up(&state, p.button).await;
+            }
+
+            #[cfg(feature = "e2e")]
+            if prev != 0 && send_ack {
+                crate::ws::send_test_ack(&state);
+                send_ack = false;
+            }
         }
 
-        let total_items = state_val.error_log_entries.len() + 1; // + Exit
-        state_val.selected_error_log_item = (state_val.selected_error_log_item + 1) % total_items;
+        if let Some(p) = press.as_mut() {
+            let ms = p.since.elapsed().as_millis();
+            let consumed = on_hold(&state, p.button, p.last_ms, ms).await;
+            p.last_ms = ms;
+            if consumed {
+                press = None;
+            }
+        }
 
-        return Ok(true);
+        Timer::after_millis(5).await;
     }
-
-    if let Some(sel) = state_val.selected_config_menu.as_mut() {
-        *sel += 1;
-        if *sel == crate::structs::CONFIG_MENU_ITEMS.len() {
-            *sel = 0;
-        }
-
-        return Ok(true);
-    }
-
-    if state_val.menu_scene == Some(MenuScene::BtDisplay) {
-        if state_val.selected_bluetooth_item < state_val.discovered_bluetooth_devices.len() + 1 {
-            state_val.selected_bluetooth_item += 1;
-        }
-
-        return Ok(true);
-    }
-
-    if state_val.scene == Scene::GroupSelect {
-        state_val.group_selected_idx += 1;
-        if state_val.group_selected_idx == state_val.possible_groups.len() {
-            state_val.group_selected_idx = 0;
-        }
-
-        return Ok(true);
-    }
-
-    Ok(false)
 }
 
-#[macros::button_handler]
-async fn submit_up(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
-    let mut state_val = state.state.value().await;
-
-    // Clear error (text)
-    if state_val.error_text.is_some() {
-        state_val.error_text = None;
-        state.state.signal();
-
-        return Ok(true);
+/// Returns the press to track, or `None` if the press was consumed (wake-up, list navigation,
+/// inspection start) or more than one button is down.
+fn on_down(state: &GlobalState, button: Option<Button>) -> Option<Press> {
+    if wake_up() {
+        return None;
     }
 
-    match state_val.menu_scene {
-        Some(MenuScene::Signing) | Some(MenuScene::Unsigning) => {
-            state_val.menu_scene = None;
-            state_val.selected_config_menu = Some(0);
-            state.state.signal();
-            return Ok(true);
+    let button = button?;
+    let consumed = match button {
+        Button::First => select_step(state, false) || inspection_start(state),
+        Button::Fourth => select_step(state, true),
+        Button::Second | Button::Third => false,
+    };
+
+    (!consumed).then(|| Press {
+        button,
+        since: Instant::now(),
+        last_ms: 0,
+    })
+}
+
+/// Called every loop tick while `button` is held for `ms` (`prev_ms` at the last tick).
+/// Returns true if the press was consumed.
+async fn on_hold(state: &GlobalState, button: Button, prev_ms: u64, ms: u64) -> bool {
+    let crossed = |threshold: u64| prev_ms <= threshold && ms > threshold;
+
+    match button {
+        Button::First if crossed(INSPECTION_STOP_HOLD_MS) => inspection_hold_stop(state),
+        Button::Fourth if crossed(DNF_HOLD_MS) => dnf(state),
+        Button::Third if crossed(RESET_COMPETITOR_HOLD_MS) => {
+            if !state.should_skip_other_actions() {
+                state.timer_stop_signal.signal(());
+                state.reset_solve(false).await;
+            }
+            false
+        }
+        Button::Third if crossed(CONFIG_MENU_HOLD_MS) => {
+            // consumed: releasing the button must not also submit. Inside a menu (which is
+            // part of the config menu) it stays put, so both are never shown at once.
+            state.ui.update(|u| {
+                if u.menu_scene.is_none() {
+                    u.selected_config_menu = Some(0);
+                }
+            });
+            true
+        }
+        Button::Second => {
+            // hold indicator: once per started second
+            if prev_ms == 0 || prev_ms / 1000 != ms / 1000 {
+                delegate_progress(state, ms);
+            }
+            if crossed(DELEGATE_HOLD_MS) {
+                delegate_send(state);
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+async fn on_up(state: &GlobalState, button: Button) {
+    if wake_up() {
+        return;
+    }
+
+    match button {
+        Button::Third => submit(state).await,
+        Button::Fourth => penalty(state),
+        // a sent call keeps its "waiting for delegate" screen until the answer
+        Button::Second if !delegate_pending() => state.solve.update(|s| s.delegate_hold = None),
+        Button::Second => {}
+        Button::First => {}
+    }
+}
+
+/// Any button wakes the device first; returns true if it was asleep (the press is consumed).
+fn wake_up() -> bool {
+    if !crate::power::is_sleeping() {
+        return false;
+    }
+
+    crate::state::notify();
+    if crate::power::is_deeper_sleeping() {
+        esp_hal::system::software_reset();
+    }
+    true
+}
+
+/// Index after moving one step left/right in a list of `len` items, wrapping around.
+const fn wrap_step(idx: usize, len: usize, right: bool) -> usize {
+    if len == 0 {
+        return 0;
+    }
+
+    let idx = if idx < len { idx } else { len - 1 };
+    if right {
+        (idx + 1) % len
+    } else if idx == 0 {
+        len - 1
+    } else {
+        idx - 1
+    }
+}
+
+const _: () = assert!(
+    wrap_step(0, 3, false) == 2
+        && wrap_step(2, 3, true) == 0
+        && wrap_step(1, 3, true) == 2
+        && wrap_step(9, 3, true) == 0
+        && wrap_step(5, 3, false) == 1
+        && wrap_step(4, 0, true) == 0
+        && wrap_step(0, 1, false) == 0
+);
+
+/// Moves the cursor of whatever list is shown one step left/right. Returns false if no list
+/// is shown.
+fn select_step(state: &GlobalState, right: bool) -> bool {
+    #[cfg(feature = "v4")]
+    if state.ui.read(|u| u.menu_scene) == Some(MenuScene::BuzzerVolume) {
+        let changed = crate::state::SETTINGS.write(|s| {
+            let old = s.buzzer_volume;
+            s.buzzer_volume = match right {
+                true => (old + 1).min(crate::consts::BUZZER_VOLUME_MAX),
+                false => old.saturating_sub(1), // BUZZER_VOLUME_MIN is 0
+            };
+            s.buzzer_volume != old
+        });
+        if changed {
+            crate::state::notify();
+            state.buzzer_sound_test.signal(());
+        }
+        return true;
+    }
+
+    let handled = state.ui.update(|u| {
+        if u.menu_scene == Some(MenuScene::ErrorLog) {
+            #[cfg(feature = "v4")]
+            if u.error_log_entry_stage == Some(ErrorLogEntryStage::Details) {
+                u.error_log_details_scroll = match right {
+                    true => (u.error_log_details_scroll + 1).min(details_max_scroll(u)),
+                    false => u.error_log_details_scroll.saturating_sub(1),
+                };
+                return true;
+            }
+
+            if u.selected_error_log_entry.is_none() {
+                let items = crate::utils::error_log::entry_count() + 1; // + Exit
+                u.selected_error_log_item = wrap_step(u.selected_error_log_item, items, right);
+            }
+            return true;
+        }
+
+        if let Some(sel) = u.selected_config_menu.as_mut() {
+            *sel = wrap_step(*sel, crate::structs::CONFIG_MENU_ITEMS.len(), right);
+            return true;
+        }
+
+        if u.menu_scene == Some(MenuScene::BtDisplay) {
+            // devices + "Unpair" + "Exit"
+            let last = u.discovered_bluetooth_devices.len() + 1;
+            u.selected_bluetooth_item = match right {
+                true => (u.selected_bluetooth_item + 1).min(last),
+                false => u.selected_bluetooth_item.saturating_sub(1),
+            };
+            return true;
+        }
+
+        false
+    });
+
+    handled
+        || state.solve.update(|s| {
+            if s.scene != Scene::GroupSelect {
+                return false;
+            }
+            s.group_selected_idx = wrap_step(s.group_selected_idx, s.possible_groups.len(), right);
+            true
+        })
+}
+
+/// Last scroll position of the error log details view.
+#[cfg(feature = "v4")]
+fn details_max_scroll(u: &Ui) -> usize {
+    u.selected_error_log_entry
+        .and_then(crate::utils::error_log::entry)
+        .map_or(0, |entry| {
+            crate::lcd_v4::error_log_entry_details_text(&entry)
+                .split('\n')
+                .count()
+                .saturating_sub(crate::lcd_v4::DETAILS_VISIBLE_LINES)
+        })
+}
+
+fn close_error_log_entry(u: &mut Ui) {
+    u.selected_error_log_entry = None;
+    u.error_log_entry_stage = None;
+    u.error_log_details_scroll = 0;
+}
+
+/// Third button release: dismiss / confirm whatever is shown.
+async fn submit(state: &GlobalState) {
+    if state.ui.update(|u| u.error_text.take().is_some()) {
+        return;
+    }
+
+    match state.ui.read(|u| u.menu_scene) {
+        Some(MenuScene::Signing | MenuScene::Unsigning) => {
+            state.ui.update(|u| {
+                u.menu_scene = None;
+                u.selected_config_menu = Some(0);
+            });
+            return;
         }
         Some(MenuScene::BtDisplay) => {
-            if state_val.selected_bluetooth_item < state_val.discovered_bluetooth_devices.len() {
-                log::debug!(
-                    "[BtD] Try to connect to: {:?}",
-                    state_val.discovered_bluetooth_devices[state_val.selected_bluetooth_item]
-                );
-
-                _ = state.nvs.delete(NVS_BONDING_KEY).await;
-                state.ble_sig.signal(
-                    BleAction::Connect(
-                        state_val.discovered_bluetooth_devices[state_val.selected_bluetooth_item]
-                            .clone(),
-                    )
-                    .clone(),
-                );
-            } else if state_val.selected_bluetooth_item
-                == state_val.discovered_bluetooth_devices.len()
-            {
+            let (selected, device, count) = state.ui.read(|u| {
+                let devices = &u.discovered_bluetooth_devices;
+                let sel = u.selected_bluetooth_item;
+                (sel, devices.get(sel).cloned(), devices.len())
+            });
+            if let Some(device) = device {
+                log::debug!("[BtD] Try to connect to: {device:?}");
+                crate::bluetooth::COMMANDS.signal(BleAction::Connect(device));
+            } else if selected == count {
                 log::debug!("[BtD] Unpair current device");
-                _ = state.nvs.delete(NVS_BONDING_KEY).await;
-                state.ble_sig.signal(BleAction::Unpair);
-            } else if state_val.selected_bluetooth_item
-                == state_val.discovered_bluetooth_devices.len() + 1
-            {
-                log::debug!("[BtD] Exit");
+                crate::bluetooth::COMMANDS.signal(BleAction::Unpair);
             }
 
-            state_val.menu_scene = None;
-            state_val.selected_bluetooth_item = 0;
-            state_val.selected_config_menu = Some(0);
-            state.state.signal();
-            return Ok(true);
+            state.ui.update(|u| {
+                u.menu_scene = None;
+                u.selected_bluetooth_item = 0;
+                u.selected_config_menu = Some(0);
+            });
+            return;
         }
         Some(MenuScene::ErrorLog) => {
-            if state_val.selected_error_log_entry.is_some() {
-                #[cfg(feature = "v4")]
-                if state_val.error_log_entry_stage == Some(ErrorLogEntryStage::Qr) {
-                    state_val.error_log_entry_stage = Some(ErrorLogEntryStage::Details);
-                    state_val.error_log_details_scroll = 0;
-                    state.state.signal();
-                    return Ok(true);
+            state.ui.update(|u| {
+                if u.selected_error_log_entry.is_some() {
+                    // v4: QR → details → back to the list; v3 has no QR stage
+                    #[cfg(feature = "v4")]
+                    if u.error_log_entry_stage == Some(ErrorLogEntryStage::Qr) {
+                        u.error_log_entry_stage = Some(ErrorLogEntryStage::Details);
+                        u.error_log_details_scroll = 0;
+                        return;
+                    }
+                    close_error_log_entry(u);
+                } else if u.selected_error_log_item == crate::utils::error_log::entry_count() {
+                    // "Exit"
+                    close_error_log_entry(u);
+                    u.menu_scene = None;
+                    u.selected_error_log_item = 0;
+                    u.selected_config_menu = Some(CONFIG_MENU_ERROR_LOG_IDX);
+                } else {
+                    u.selected_error_log_entry = Some(u.selected_error_log_item);
+                    u.error_log_details_scroll = 0;
+                    #[cfg(feature = "v4")]
+                    let stage = ErrorLogEntryStage::Qr;
+                    #[cfg(feature = "v3")]
+                    let stage = ErrorLogEntryStage::Details;
+                    u.error_log_entry_stage = Some(stage);
                 }
-
-                state_val.selected_error_log_entry = None;
-                state_val.error_log_entry_stage = None;
-                state_val.error_log_details_scroll = 0;
-                state.state.signal();
-                return Ok(true);
-            }
-
-            let exit_idx = state_val.error_log_entries.len();
-            if state_val.selected_error_log_item == exit_idx {
-                state_val.menu_scene = None;
-                state_val.selected_error_log_item = 0;
-                state_val.selected_error_log_entry = None;
-                state_val.error_log_entry_stage = None;
-                state_val.error_log_details_scroll = 0;
-                state_val.selected_config_menu = Some(CONFIG_MENU_ERROR_LOG_IDX);
-                state_val.error_log_entries.clear();
-            } else {
-                state_val.selected_error_log_entry = Some(state_val.selected_error_log_item);
-                state_val.error_log_details_scroll = 0;
-                #[cfg(feature = "v3")]
-                {
-                    state_val.error_log_entry_stage = Some(ErrorLogEntryStage::Details);
-                }
-                #[cfg(feature = "v4")]
-                {
-                    state_val.error_log_entry_stage = Some(ErrorLogEntryStage::Qr);
-                }
-            }
-
-            state.state.signal();
-            return Ok(true);
+            });
+            return;
         }
         #[cfg(feature = "v4")]
         Some(MenuScene::BuzzerVolume) => {
-            let current_volume = crate::state::buzzer_volume();
+            let volume = crate::state::SETTINGS.read(|s| s.buzzer_volume);
             if let Err(e) = state
                 .nvs
-                .set(crate::consts::NVS_BUZZER_VOLUME, current_volume)
+                .set(&crate::consts::NVS_BUZZER_VOLUME, volume)
                 .await
             {
                 log::error!("Cannot save buzzer volume to NVS: {e:?}");
-                static LOGGED: core::sync::atomic::AtomicBool =
-                    core::sync::atomic::AtomicBool::new(false);
-                if !LOGGED.load(core::sync::atomic::Ordering::Relaxed) {
-                    crate::utils::error_log::add_error(
-                        crate::utils::error_log::codes::NVS_BUZZER_VOLUME_WRITE_FAILED,
-                    )
-                    .await;
-
-                    LOGGED.store(true, core::sync::atomic::Ordering::Relaxed);
-                }
+                crate::log_once!(crate::utils::error_log::codes::NVS_BUZZER_VOLUME_WRITE_FAILED);
             }
 
-            state_val.menu_scene = None;
-            state_val.selected_config_menu = Some(CONFIG_MENU_BUZZER_IDX);
-            state.state.signal();
-            return Ok(true);
+            state.ui.update(|u| {
+                u.menu_scene = None;
+                u.selected_config_menu = Some(CONFIG_MENU_BUZZER_IDX);
+            });
+            return;
         }
-        _ => {}
+        None => {}
     }
 
-    if let Some(sel) = state_val.selected_config_menu {
-        #[cfg(feature = "v3")]
-        {
-            match sel {
-                0 => {
-                    // Reset settings
+    if let Some(sel) = state.ui.read(|u| u.selected_config_menu) {
+        submit_config_item(state, sel).await;
+        return;
+    }
 
-                    _ = state.nvs.delete(esp_hal_wifimanager::WIFI_NVS_KEY).await;
-                    _ = state.nvs.delete(NVS_SIGN_KEY).await;
-                    _ = state.nvs.delete(NVS_BONDING_KEY).await;
-                    _ = state.nvs.delete(NVS_ERROR_LOG).await;
+    if !state.status.read(|s| s.device_added).unwrap_or(false) {
+        add_device(state).await;
+        return;
+    }
 
-                    Timer::after_millis(250).await;
-                    esp_hal::system::software_reset();
-                }
-                1 => {
-                    state_val.menu_scene = Some(MenuScene::BtDisplay);
-                    state.ble_sig.signal(BleAction::StartScan);
-                }
-                2 => {
-                    if unsafe { !crate::state::AUTO_SETUP } {
-                        state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
-                        state.state.signal();
-                        return Ok(true);
-                    }
+    if state.should_skip_other_actions() {
+        return;
+    }
 
-                    state_val.menu_scene = Some(MenuScene::Signing);
+    let stop_timer = state.solve.update(|s| match s.scene {
+        Scene::GroupSelect => {
+            match s.possible_groups.get(s.group_selected_idx).cloned() {
+                Some(group) => {
+                    s.set_group(group);
+                    s.scene = if s.solve_time.is_some() {
+                        Scene::Finished
+                    } else {
+                        Scene::CompetitorInfo
+                    };
                 }
-                3 => {
-                    if unsafe { !crate::state::AUTO_SETUP } {
-                        state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
-                        state.state.signal();
-                        return Ok(true);
-                    }
-
-                    state_val.menu_scene = Some(MenuScene::Unsigning);
-                }
-                CONFIG_MENU_ERROR_LOG_IDX => {
-                    state_val.error_log_entries =
-                        match crate::utils::error_log::parse_error_log_entries() {
-                            Ok(entries) => entries,
-                            Err(e) => {
-                                log::error!("Parse error log failed: {e:?}");
-                                if !ERROR_LOG_PARSE_FAILED_LOGGED
-                                    .load(core::sync::atomic::Ordering::Relaxed)
-                                {
-                                    crate::utils::error_log::add_error(
-                                        crate::utils::error_log::codes::ERROR_LOG_PARSE_FAILED,
-                                    )
-                                    .await;
-
-                                    ERROR_LOG_PARSE_FAILED_LOGGED
-                                        .store(true, core::sync::atomic::Ordering::Relaxed);
-                                }
-                                alloc::vec![]
-                            }
-                        };
-                    state_val.selected_error_log_item = 0;
-                    state_val.selected_error_log_entry = None;
-                    state_val.error_log_entry_stage = None;
-                    state_val.menu_scene = Some(MenuScene::ErrorLog);
-                }
-                CONFIG_MENU_EXIT_IDX => {} // Exit
-                _ => {}
+                None => log::error!("Group select: no group at {}", s.group_selected_idx),
             }
+            false
         }
-
-        #[cfg(feature = "v4")]
-        {
-            match sel {
-                0 => {
-                    // Reset settings
-
-                    _ = state.nvs.delete(esp_hal_wifimanager::WIFI_NVS_KEY).await;
-                    _ = state.nvs.delete(NVS_SIGN_KEY).await;
-                    _ = state.nvs.delete(NVS_BONDING_KEY).await;
-                    _ = state.nvs.delete(NVS_ERROR_LOG).await;
-
-                    Timer::after_millis(250).await;
-                    esp_hal::system::software_reset();
-                }
-                1 => {
-                    state_val.menu_scene = Some(MenuScene::BtDisplay);
-                    state.ble_sig.signal(BleAction::StartScan);
-                }
-                2 => {
-                    if unsafe { !crate::state::AUTO_SETUP } {
-                        state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
-                        state.state.signal();
-                        return Ok(true);
-                    }
-
-                    state_val.menu_scene = Some(MenuScene::Signing);
-                }
-                3 => {
-                    if unsafe { !crate::state::AUTO_SETUP } {
-                        state_val.error_text = Some("AutoSetup Mode Disabled".to_string());
-                        state.state.signal();
-                        return Ok(true);
-                    }
-
-                    state_val.menu_scene = Some(MenuScene::Unsigning);
-                }
-                4 => {
-                    state_val.menu_scene = Some(MenuScene::BuzzerVolume);
-                }
-                CONFIG_MENU_ERROR_LOG_IDX => {
-                    state_val.error_log_entries =
-                        match crate::utils::error_log::parse_error_log_entries() {
-                            Ok(entries) => entries,
-                            Err(e) => {
-                                log::error!("Parse error log failed: {e:?}");
-                                if !ERROR_LOG_PARSE_FAILED_LOGGED
-                                    .load(core::sync::atomic::Ordering::Relaxed)
-                                {
-                                    crate::utils::error_log::add_error(
-                                        crate::utils::error_log::codes::ERROR_LOG_PARSE_FAILED,
-                                    )
-                                    .await;
-
-                                    ERROR_LOG_PARSE_FAILED_LOGGED
-                                        .store(true, core::sync::atomic::Ordering::Relaxed);
-                                }
-                                alloc::vec![]
-                            }
-                        };
-                    state_val.selected_error_log_item = 0;
-                    state_val.selected_error_log_entry = None;
-                    state_val.error_log_entry_stage = None;
-                    state_val.menu_scene = Some(MenuScene::ErrorLog);
-                }
-                CONFIG_MENU_EXIT_IDX => {} // Exit
-                _ => {}
-            }
+        Scene::Timer => true,
+        Scene::Finished => {
+            s.time_confirmed = true;
+            false
         }
+        _ => false,
+    });
 
-        state_val.selected_config_menu = None;
-        state.state.signal();
-
-        return Ok(true);
-    }
-
-    // Device add
-    if !state_val.device_added.unwrap_or(false) {
-        let mut sign_key = [0; 4];
-        _ = getrandom::getrandom(&mut sign_key);
-        let sign_key = u32::from_be_bytes(sign_key) >> 1;
-
-        _ = state.nvs.delete(NVS_SIGN_KEY).await;
-        _ = state.nvs.set(NVS_SIGN_KEY, sign_key).await;
-        unsafe { crate::state::SIGN_KEY = sign_key };
-        unsafe { crate::state::TRUST_SERVER = true };
-
-        crate::ws::send_packet(crate::structs::TimerPacket {
-            tag: None,
-            data: crate::structs::TimerPacketInner::Add {
-                firmware: alloc::string::ToString::to_string(crate::version::FIRMWARE),
-                sign_key: unsafe { crate::state::SIGN_KEY },
-            },
-        })
-        .await;
-
-        return Ok(true);
-    }
-
-    if state_val.should_skip_other_actions() {
-        return Ok(false);
-    }
-
-    if state_val.scene == Scene::GroupSelect {
-        state_val.solve_group =
-            Some(state_val.possible_groups[state_val.group_selected_idx].clone());
-        if state_val.solve_time.is_some() {
-            state_val.scene = crate::state::Scene::Finished;
-        } else {
-            state_val.scene = crate::state::Scene::CompetitorInfo;
-        }
-
-        unsafe {
-            crate::state::GROUP_LIMIT =
-                state_val.possible_groups[state_val.group_selected_idx].limit;
-
-            crate::state::CURRENT_GROUP_ID = Some(
-                state_val.possible_groups[state_val.group_selected_idx]
-                    .group_id
-                    .clone(),
-            );
-        }
-
-        state.state.signal();
-
-        return Ok(false);
-    } else if state_val.scene == Scene::Timer {
-        #[cfg(not(feature = "timer-func"))]
+    // the pads stop on their own; a stackmat solve can be stopped from here
+    if stop_timer && !cfg!(feature = "timer-func") {
         state.timer_stop_signal.signal(());
     }
-
-    if state_val.scene == Scene::Finished && !state_val.time_confirmed {
-        state_val.time_confirmed = true;
-        state.state.signal();
-
-        return Ok(false);
-    }
-
-    Ok(false)
 }
 
-#[macros::button_handler]
-async fn inspection_start(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
-    let mut state_val = state.state.value().await;
-    if !state_val.use_inspection() || state_val.should_skip_other_actions() {
-        return Ok(false);
+/// Registers this device on the server, with a fresh sign key if it has none yet.
+///
+/// An existing key is kept: the server ignores an `Add` for a device it already knows, so a
+/// second `Add` with a new key (submit pressed twice, or a stale "not added" push that crossed
+/// the first `Add`) would leave the device with a key the server rejects.
+pub async fn add_device(state: &GlobalState) {
+    let mut sign_key = crate::state::SETTINGS.read(|s| s.sign_key);
+    if sign_key == 0 {
+        let mut bytes = [0; 4];
+        _ = getrandom::getrandom(&mut bytes);
+        sign_key = (u32::from_be_bytes(bytes) >> 1).max(1);
+
+        _ = state.nvs.set(&NVS_SIGN_KEY, sign_key).await;
+        crate::state::SETTINGS.write(|s| s.sign_key = sign_key);
+    }
+    crate::state::SESSION.write(|s| s.trust_server = true);
+
+    let packet = crate::structs::TimerPacket {
+        tag: None,
+        data: crate::structs::TimerPacketInner::Add {
+            firmware: crate::version::FIRMWARE.into(),
+            sign_key,
+        },
+    };
+    if crate::ws::send(packet).is_err() {
+        log::error!("Add packet dropped: ws queue full");
+    }
+}
+
+async fn submit_config_item(state: &GlobalState, sel: usize) {
+    let auto_setup_disabled = || {
+        let disabled = !crate::state::SESSION.read(|s| s.auto_setup);
+        if disabled {
+            state
+                .ui
+                .update(|u| u.error_text = Some("AutoSetup Mode Disabled".into()));
+        }
+        disabled
+    };
+
+    let menu = match sel {
+        0 => {
+            // reset settings
+            log::warn!("Reset settings: rebooting");
+            _ = state.nvs.delete(&esp_hal_wifimanager::WIFI_NVS_KEY).await;
+            _ = state.nvs.delete(&NVS_SIGN_KEY).await;
+            _ = state.nvs.delete(&NVS_BONDING_KEY).await;
+            _ = state.nvs.delete(&NVS_ERROR_LOG).await;
+
+            Timer::after_millis(250).await;
+            esp_hal::system::software_reset();
+        }
+        1 => {
+            crate::bluetooth::COMMANDS.signal(BleAction::StartScan);
+            Some(MenuScene::BtDisplay)
+        }
+        2 | 3 if auto_setup_disabled() => return,
+        2 => Some(MenuScene::Signing),
+        3 => Some(MenuScene::Unsigning),
+        #[cfg(feature = "v4")]
+        CONFIG_MENU_BUZZER_IDX => Some(MenuScene::BuzzerVolume),
+        CONFIG_MENU_ERROR_LOG_IDX => Some(MenuScene::ErrorLog),
+        _ => None, // Exit
+    };
+
+    state.ui.update(|u| {
+        if menu == Some(MenuScene::ErrorLog) {
+            close_error_log_entry(u);
+            u.selected_error_log_item = 0;
+        }
+        u.menu_scene = menu;
+        u.selected_config_menu = None;
+    });
+}
+
+/// First button down: start inspection. Returns true if it started.
+fn inspection_start(state: &GlobalState) -> bool {
+    if state.should_skip_other_actions() || !state.solve.read(|s| s.use_inspection()) {
+        return false;
     }
 
-    if unsafe { crate::state::CURRENT_TIME } != Some(0) {
+    // a stackmat must be reset (showing 0) first; the pads have no display of their own to reset
+    #[cfg(not(feature = "timer-func"))]
+    if state.timer.try_get() != Some(0) {
         log::warn!("Skipping inspection start because current timer time is not 0");
-        return Ok(false);
+        return false;
     }
 
-    if state_val.scene < Scene::Inspection
-        && state_val.inspection_start.is_none()
-        && state_val.solve_time.is_none()
-    {
-        state_val.inspection_start = Some(Instant::now());
-        state_val.scene = Scene::Inspection;
-        state.state.signal();
-
-        return Ok(true);
-    }
-
-    Ok(false)
-}
-
-#[macros::button_handler]
-async fn inspection_hold_stop(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
-    let mut state_val = state.state.value().await;
-    if state_val.should_skip_other_actions() {
-        return Ok(false);
-    }
-
-    if state_val.scene == Scene::Inspection {
-        let scene = if state_val.current_competitor.is_none() {
-            Scene::WaitingForCompetitor
-        } else {
-            Scene::CompetitorInfo
-        };
-
-        state_val.scene = scene;
-        state_val.inspection_start = None;
-        state_val.inspection_end = None;
-        state.state.signal();
-        return Ok(true);
-    }
-
-    Ok(false)
-}
-
-#[macros::button_handler]
-async fn dnf_button(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
-    let mut state_val = state.state.value().await;
-    if state_val.should_skip_other_actions() {
-        return Ok(false);
-    }
-
-    if state_val.scene == Scene::Inspection {
-        state_val.inspection_end = Some(Instant::now());
-        state_val.solve_time = Some(0);
-        state_val.penalty = Some(-1);
-        state_val.time_confirmed = true;
-
-        if state_val.current_competitor.is_some() {
-            state_val.scene = Scene::Finished;
-        } else {
-            state_val.scene = Scene::WaitingForCompetitor;
+    state.solve.update(|s| {
+        if s.scene < Scene::Inspection && s.inspection_start.is_none() && s.solve_time.is_none() {
+            s.inspection_start = Some(Instant::now());
+            s.scene = Scene::Inspection;
+            return true;
         }
-
-        state.state.signal();
-        return Ok(true);
-    } else if state_val.scene == Scene::Finished && !state_val.time_confirmed {
-        let old_penalty = state_val.penalty.unwrap_or(0);
-        state_val.penalty = Some(if old_penalty == -1 { 0 } else { -1 });
-
-        state.state.signal();
-        return Ok(true);
-    }
-
-    Ok(false)
+        false
+    })
 }
 
-#[macros::button_handler]
-async fn penalty_button(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
-    let mut state_val = state.state.value().await;
-    if state_val.should_skip_other_actions() {
-        return Ok(false);
-    }
-
-    if state_val.scene == Scene::Finished && !state_val.time_confirmed {
-        let old_penalty = state_val.penalty.unwrap_or(0);
-        state_val.penalty = Some(if old_penalty >= 16 || old_penalty == -1 {
-            0
-        } else {
-            old_penalty + 2
-        });
-
-        state.state.signal();
-        return Ok(false);
-    }
-
-    Ok(false)
-}
-
-#[macros::button_handler]
-async fn submit_reset_competitor(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    global_state: &GlobalState,
-) -> Result<bool, ()> {
-    let mut state = global_state.state.lock().await;
+fn inspection_hold_stop(state: &GlobalState) -> bool {
     if state.should_skip_other_actions() {
-        return Ok(false);
+        return false;
     }
 
-    global_state.timer_stop_signal.signal(());
-    state.reset_solve_state(None).await;
-    Ok(false)
+    state.solve.update(|s| {
+        if s.scene != Scene::Inspection {
+            return false;
+        }
+        s.scene = match s.current_competitor {
+            Some(_) => Scene::CompetitorInfo,
+            None => Scene::WaitingForCompetitor,
+        };
+        s.inspection_start = None;
+        s.inspection_end = None;
+        true
+    })
 }
 
-#[macros::button_handler]
-async fn submit_config_menu(
-    _triggered: &ButtonTrigger,
-    _hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
-    {
-        let mut state = state.state.lock().await;
-        state.selected_config_menu = Some(0);
+/// Fourth button hold: DNF during inspection, or toggle DNF on an unconfirmed time.
+fn dnf(state: &GlobalState) -> bool {
+    if state.should_skip_other_actions() {
+        return false;
     }
 
-    Ok(true)
+    state.solve.update(|s| {
+        if s.scene == Scene::Inspection {
+            s.inspection_end = Some(Instant::now());
+            s.solve_time = Some(0);
+            s.penalty = Some(-1);
+            s.time_confirmed = true;
+            s.scene = match s.current_competitor {
+                Some(_) => Scene::Finished,
+                None => Scene::WaitingForCompetitor,
+            };
+            true
+        } else if s.scene == Scene::Finished && !s.time_confirmed {
+            s.penalty = Some(if s.penalty == Some(-1) { 0 } else { -1 });
+            true
+        } else {
+            false
+        }
+    })
 }
 
-#[macros::button_handler]
-async fn delegate_hold(
-    triggered: &ButtonTrigger,
-    hold_time: u64,
-    state: &GlobalState,
-) -> Result<bool, ()> {
-    match triggered {
-        ButtonTrigger::Up => {
-            state.state.lock().await.delegate_hold = None;
-        }
-        ButtonTrigger::HoldTimed(_, _) => {
-            let mut state_val = state.state.value().await;
-            if state_val.should_skip_other_actions() || state_val.delegate_used {
-                return Ok(false);
-            }
-
-            if state_val.current_competitor.is_some() && state_val.solve_group.is_some() {
-                let hold_secs = hold_time / 1000;
-                let hold_secs = if hold_secs > 3 { 3 } else { hold_secs as u8 };
-
-                state_val.delegate_hold = Some(hold_secs);
-                state.state.signal();
-            }
-        }
-        ButtonTrigger::HoldOnce(_) => {
-            let mut state_val = state.state.lock().await;
-            if state_val.should_skip_other_actions() || state_val.delegate_used {
-                return Ok(false);
-            }
-
-            let (Some(current_competitor), Some(solve_group)) = (
-                state_val.current_competitor,
-                state_val.solve_group.clone().map(|x| x.group_id),
-            ) else {
-                log::error!("Delegate hold: competitor or solve_group none!");
-                return Ok(false);
-            };
-
-            #[cfg(not(feature = "e2e"))]
-            if unsafe { !crate::state::TRUST_SERVER } {
-                log::error!("Skipping delegate hold. Server not trusted!");
-                return Ok(false);
-            }
-
-            let inspection_time = if state_val.use_inspection()
-                && let Some(start) = state_val.inspection_start
-                && let Some(end) = state_val.inspection_end
-            {
-                (end - start).as_millis() as i64
-            } else {
-                0
-            };
-
-            let session_id = match &state_val.session_id {
-                Some(sess_id) => sess_id.clone(),
-                None => {
-                    let sess_id = uuid::Uuid::new_v4().to_string();
-                    state_val.session_id = Some(sess_id.clone());
-                    sess_id
-                }
-            };
-
-            let packet = crate::structs::TimerPacketInner::Solve {
-                solve_time: state_val.solve_time.unwrap_or(0),
-                penalty: state_val.penalty.unwrap_or(0) as i64,
-                competitor_id: current_competitor,
-                judge_id: state_val.current_judge.unwrap_or(0),
-                timestamp: current_epoch(),
-                session_id,
-                delegate: true,
-                inspection_time,
-                group_id: solve_group,
-                sign_key: unsafe { crate::state::SIGN_KEY },
-            };
-
-            state_val.delegate_hold = Some(3);
-            drop(state_val);
-
-            let resp =
-                crate::ws::send_tagged_request::<DelegateResponsePacket>(69420, packet, false)
-                    .await;
-            log::info!("Delegate resp: {resp:?}");
-
-            if let Ok(resp) = resp {
-                let mut state_val = state.state.lock().await;
-                state_val.solve_time =
-                    Some(resp.solve_time.unwrap_or(state_val.solve_time.unwrap_or(0)));
-
-                state_val.penalty = Some(
-                    resp.penalty
-                        .unwrap_or(state_val.penalty.unwrap_or(0) as i64) as i8,
-                );
-                state_val.scene = Scene::Finished;
-
-                state_val.time_confirmed = true;
-                state_val.delegate_used = true;
-                if !resp.should_scan_cards {
-                    state_val.reset_solve_state(Some(&state.nvs)).await;
-                }
-            }
-        }
-        _ => {}
+/// Fourth button release: cycle the +2 penalty (0 → +2 → … → +16 → 0) on an unconfirmed time.
+fn penalty(state: &GlobalState) {
+    if state.should_skip_other_actions() {
+        return;
     }
-    Ok(false)
+
+    state.solve.update(|s| {
+        if s.scene == Scene::Finished && !s.time_confirmed {
+            let old = s.penalty.unwrap_or(0);
+            s.penalty = Some(if old >= 16 || old == -1 { 0 } else { old + 2 });
+        }
+    });
+}
+
+/// Second button held: show how long (0..=3 s) until the delegate request is sent.
+fn delegate_progress(state: &GlobalState, ms: u64) {
+    if state.should_skip_other_actions() {
+        return;
+    }
+
+    state.solve.update(|s| {
+        if !s.delegate_used && s.current_competitor.is_some() && s.solve_group.is_some() {
+            s.delegate_hold = Some((ms / 1000).min(3) as u8);
+        }
+    });
+}
+
+/// Second button held for 3 s: queue a delegate solve for [`delegate_loop`].
+fn delegate_send(state: &GlobalState) {
+    if state.should_skip_other_actions() || DELEGATE_PENDING.load(Ordering::Relaxed) {
+        return;
+    }
+
+    #[cfg(not(feature = "e2e"))]
+    if !crate::state::SESSION.read(|s| s.trust_server) {
+        log::error!("Skipping delegate hold. Server not trusted!");
+        return;
+    }
+
+    let sign_key = crate::state::SETTINGS.read(|s| s.sign_key);
+    let packet = state.solve.update(|s| {
+        if s.delegate_used {
+            return None;
+        }
+        let (Some(competitor_id), Some(group)) = (s.current_competitor, s.solve_group.as_ref())
+        else {
+            log::error!("Delegate hold: competitor or solve_group none!");
+            return None;
+        };
+        let group_id = group.group_id.clone();
+
+        let inspection_time = match s.inspection_end.and(s.inspection_ms()) {
+            Some(ms) if s.use_inspection() => ms as i64,
+            _ => 0,
+        };
+        let session_id = s
+            .session_id
+            .get_or_insert_with(crate::state::new_session_id)
+            .clone();
+
+        s.delegate_hold = Some(3);
+        Some(crate::structs::TimerPacketInner::Solve {
+            solve_time: s.solve_time.unwrap_or(0),
+            penalty: s.penalty.unwrap_or(0) as i64,
+            competitor_id,
+            judge_id: s.current_judge.unwrap_or(0),
+            timestamp: current_epoch(),
+            session_id,
+            delegate: true,
+            inspection_time,
+            group_id,
+            sign_key,
+        })
+    });
+
+    if let Some(packet) = packet {
+        DELEGATE_PENDING.store(true, Ordering::Relaxed);
+        DELEGATE_REQUEST.signal(packet);
+    }
+}
+
+async fn delegate_loop(state: GlobalState) {
+    loop {
+        let packet = DELEGATE_REQUEST.wait().await;
+        let session_id = match &packet {
+            crate::structs::TimerPacketInner::Solve { session_id, .. } => Some(session_id.clone()),
+            _ => None,
+        };
+        let resp = crate::ws::delegate_request(
+            packet,
+            Duration::from_millis(crate::consts::DELEGATE_TIMEOUT_MS),
+        )
+        .await;
+        log::info!("Delegate resp: {resp:?}");
+
+        match resp {
+            Ok(resp) => {
+                // only for the attempt that called (it can't change meanwhile, but a reboot
+                // restoring another one could)
+                let applied = state.solve.update(|s| {
+                    s.delegate_hold = None;
+                    if session_id.is_none() || s.session_id != session_id {
+                        return false;
+                    }
+                    s.solve_time = Some(resp.solve_time.unwrap_or(s.solve_time.unwrap_or(0)));
+                    s.penalty = Some(resp.penalty.unwrap_or(s.penalty.unwrap_or(0) as i64) as i8);
+                    s.scene = Scene::Finished;
+                    s.time_confirmed = true;
+                    s.delegate_used = true;
+                    true
+                });
+                if !applied {
+                    log::warn!("Delegate answer for another attempt ignored");
+                } else if !resp.should_scan_cards {
+                    state.reset_solve(true).await;
+                }
+            }
+            // no answer: drop the waiting screen, the solve stays as it was
+            Err(_) => state.solve.update(|s| s.delegate_hold = None),
+        }
+
+        DELEGATE_PENDING.store(false, Ordering::Relaxed);
+    }
 }

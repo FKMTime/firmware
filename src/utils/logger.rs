@@ -1,71 +1,159 @@
-use crate::state::{ota_state, sleep_state};
-use alloc::{string::String, vec::Vec};
+use super::UninitBuf;
+use core::cell::RefCell;
+use embassy_sync::blocking_mutex::{Mutex, raw::CriticalSectionRawMutex};
+use portable_atomic::{AtomicBool, Ordering};
 
+const HALF: usize = 4 * 1024;
+/// 'L' + truncated flag + u64 time + u64 inspection + u64 competitor + 20 B group id
+/// + 36 B session id + padding
+const HEADER_LEN: usize = 100;
+
+/// Two halves: the logger appends to the active one, the consumer sends the other.
 #[unsafe(link_section = ".dram2_uninit")]
-static mut LOGS_BUF: core::mem::MaybeUninit<[u8; 8 * 1024]> = core::mem::MaybeUninit::uninit();
+static LOGS_BUF: UninitBuf<{ 2 * HALF }> = UninitBuf::new();
 
-pub struct LogsBufWriter {
-    buf: &'static mut [u8],
+struct LogsState {
+    initialized: bool,
+    active: usize,
     pos: usize,
 }
 
-#[allow(static_mut_refs)]
-pub static mut LOGS_WRITER: LogsBufWriter = LogsBufWriter {
-    buf: unsafe { &mut *LOGS_BUF.as_mut_ptr() },
-    pos: 0,
-};
+static LOGS: Mutex<CriticalSectionRawMutex, RefCell<LogsState>> =
+    Mutex::new(RefCell::new(LogsState {
+        initialized: false,
+        active: 0,
+        pos: 0,
+    }));
+static READY_TAKEN: AtomicBool = AtomicBool::new(false);
 
-impl LogsBufWriter {
-    pub fn get_vec(
-        &mut self,
-        current_time: Option<u64>,
-        inspection_time: Option<u64>,
-        competitor: Option<u64>,
-        group_id: &Option<String>,
-        session_id: &Option<String>,
-    ) -> Vec<u8> {
-        self.buf[2..10].copy_from_slice(&current_time.unwrap_or(u64::MAX).to_be_bytes());
-        self.buf[10..18].copy_from_slice(&inspection_time.unwrap_or(u64::MAX).to_be_bytes());
-        self.buf[18..26].copy_from_slice(&competitor.unwrap_or(u64::MAX).to_be_bytes());
-        self.buf[26..46].fill(0x00);
-        self.buf[46..82].fill(0x00);
+/// Live values written into the header of a log batch.
+pub struct LogsHeader<'a> {
+    pub current_time: Option<u64>,
+    pub inspection_time: Option<u64>,
+    pub competitor: Option<u64>,
+    pub group_id: Option<&'a str>,
+    pub session_id: Option<&'a str>,
+}
 
-        if let Some(group_id) = group_id
-            && group_id.len() <= 20
-        {
-            let bytes = &group_id.as_bytes();
-            self.buf[26..26 + bytes.len()].copy_from_slice(bytes);
-        }
+/// A finished log batch; the half stays reserved until this is dropped.
+pub struct ReadyLogs(&'static [u8]);
 
-        if let Some(session_id) = session_id
-            && session_id.len() <= 36
-        {
-            let bytes = &session_id.as_bytes();
-            self.buf[46..46 + bytes.len()].copy_from_slice(bytes);
-        }
+impl core::ops::Deref for ReadyLogs {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        self.0
+    }
+}
 
-        let tmp = self.buf[0..self.pos].to_vec();
-        self.pos = 0;
+impl Drop for ReadyLogs {
+    fn drop(&mut self) {
+        READY_TAKEN.store(false, Ordering::Release);
+    }
+}
 
-        tmp
+/// Swaps the halves and returns the finished batch (with `header` filled in), or
+/// `None` if nothing was logged or the previous batch is still held.
+pub fn take_ready(header: &LogsHeader) -> Option<ReadyLogs> {
+    if READY_TAKEN.swap(true, Ordering::Acquire) {
+        return None;
     }
 
-    fn mark_truncated(&mut self) {
-        self.buf[1] = 0x01;
+    let ready = LOGS.lock(|state| {
+        let mut state = state.try_borrow_mut().ok()?;
+        if state.pos == 0 {
+            return None;
+        }
+
+        let (half, len) = (state.active, state.pos);
+        state.active ^= 1;
+        state.pos = 0;
+
+        // SAFETY: inside the critical section; the returned half is only written again
+        // after the next swap, which needs READY_TAKEN (held by the ReadyLogs).
+        let buf = unsafe { LOGS_BUF.get(&mut state.initialized) };
+        let batch = &mut buf[half * HALF..half * HALF + len];
+        write_header(batch, header);
+
+        let ptr = batch.as_ptr();
+        // SAFETY: points into a 'static buffer; exclusively ours until ReadyLogs drops.
+        Some(unsafe { core::slice::from_raw_parts(ptr, len) })
+    });
+
+    match ready {
+        Some(bytes) => Some(ReadyLogs(bytes)),
+        None => {
+            READY_TAKEN.store(false, Ordering::Release);
+            None
+        }
+    }
+}
+
+fn write_header(batch: &mut [u8], header: &LogsHeader) {
+    batch[2..10].copy_from_slice(&header.current_time.unwrap_or(u64::MAX).to_be_bytes());
+    batch[10..18].copy_from_slice(&header.inspection_time.unwrap_or(u64::MAX).to_be_bytes());
+    batch[18..26].copy_from_slice(&header.competitor.unwrap_or(u64::MAX).to_be_bytes());
+    batch[26..82].fill(0x00);
+
+    if let Some(group_id) = header.group_id.filter(|g| g.len() <= 20) {
+        batch[26..26 + group_id.len()].copy_from_slice(group_id.as_bytes());
     }
 
-    fn write_raw(&mut self, bytes: &[u8]) {
-        if self.pos >= self.buf.len() {
+    if let Some(session_id) = header.session_id.filter(|s| s.len() <= 36) {
+        batch[46..46 + session_id.len()].copy_from_slice(session_id.as_bytes());
+    }
+}
+
+/// Appends one line record (u16 len + level + text) to the active half.
+fn append_line(level: &str, args: &core::fmt::Arguments) {
+    LOGS.lock(|state| {
+        // a log from inside the formatting below (or an ISR) is dropped instead of tearing
+        let Ok(mut state) = state.try_borrow_mut() else {
+            return;
+        };
+        let state = &mut *state;
+        // SAFETY: inside the critical section, only the active half is written.
+        let buf = unsafe { LOGS_BUF.get(&mut state.initialized) };
+        let half = &mut buf[state.active * HALF..(state.active + 1) * HALF];
+
+        if state.pos == 0 {
+            half[0] = b'L';
+            half[1] = 0x00;
+            state.pos = HEADER_LEN;
+        }
+
+        if state.pos + 3 > HALF {
+            half[1] = 0x01; // truncated
             return;
         }
 
+        let mut w = HalfWriter {
+            buf: half,
+            pos: state.pos + 2,
+        };
+        w.write_raw(level.as_bytes());
+        _ = core::fmt::write(&mut w, *args);
+        let end = w.pos;
+
+        let line_len = (end - state.pos - 2) as u16;
+        half[state.pos..state.pos + 2].copy_from_slice(&line_len.to_be_bytes());
+        state.pos = end;
+    });
+}
+
+struct HalfWriter<'a> {
+    buf: &'a mut [u8],
+    pos: usize,
+}
+
+impl HalfWriter<'_> {
+    fn write_raw(&mut self, bytes: &[u8]) {
         let len = bytes.len().min(self.buf.len() - self.pos);
         self.buf[self.pos..self.pos + len].copy_from_slice(&bytes[..len]);
         self.pos += len;
     }
 }
 
-impl core::fmt::Write for LogsBufWriter {
+impl core::fmt::Write for HalfWriter<'_> {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         self.write_raw(s.as_bytes());
         Ok(())
@@ -91,13 +179,7 @@ impl FkmLogger {
 
 impl log::Log for FkmLogger {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
-        let level = metadata.level();
-        //let target = metadata.target();
-
-        if level <= FILTER_MAX {
-            return true;
-        }
-        false
+        metadata.level() <= FILTER_MAX
     }
 
     fn log(&self, record: &log::Record) {
@@ -119,12 +201,14 @@ impl log::Log for FkmLogger {
             log::Level::Debug => BLUE,
             log::Level::Trace => CYAN,
         };
-        let reset = RESET;
 
-        esp_println::println!("{}{} - {}{}", color, record.level(), record.args(), reset);
+        esp_println::println!("{}{} - {}{}", color, record.level(), record.args(), RESET);
 
-        #[cfg(not(any(feature = "bat_dev_lcd", feature = "qa")))]
-        if !ota_state() && !sleep_state() {
+        // bat_dev_lcd/qa keep logs on the serial port only
+        if !cfg!(any(feature = "bat_dev_lcd", feature = "qa"))
+            && !crate::ws::ota_active()
+            && !crate::power::is_sleeping()
+        {
             let level: &str = match record.level() {
                 log::Level::Error => "E ",
                 log::Level::Warn => "W ",
@@ -133,28 +217,7 @@ impl log::Log for FkmLogger {
                 log::Level::Trace => "T ",
             };
 
-            unsafe {
-                #[allow(clippy::deref_addrof)]
-                let w = &mut *(&raw mut LOGS_WRITER);
-                if w.pos == 0 {
-                    w.buf[0] = b'L';
-                    w.buf[1] = 0x00;
-                    w.pos = 100; // 2 + u64 + u64 + u64 + max20char + 36char uuid + padding
-                }
-
-                if w.pos + 3 > w.buf.len() {
-                    w.mark_truncated();
-                    return;
-                }
-
-                let line_start = w.pos;
-                w.pos += 2;
-                w.write_raw(level.as_bytes());
-
-                _ = core::fmt::write(w, *record.args());
-                let line_len = w.pos - line_start - 2;
-                w.buf[line_start..line_start + 2].copy_from_slice(&(line_len as u16).to_be_bytes());
-            }
+            append_line(level, record.args());
         }
     }
 

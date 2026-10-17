@@ -1,0 +1,3 @@
+{"seed": 90002, "note": "regression: a card scanned while a card error was shown got its lookup answered but dropped behind the error screen", "actions": [
+[500, "card", 1785920765], [10, "expect", "err", 1], [500, "card", 69420], [10, "expect", "scene", "CompetitorInfo"], [10, "expect", "err", 0]
+]}
