@@ -80,7 +80,11 @@ python3 sim/monkey.py --seeds 1-40 --jobs 4 --minutes 5      # campaign (builds 
 python3 sim/monkey.py --replay 7                              # same actions again
 python3 sim/monkey.py --replay-file sim/out/7/actions.json --shrink   # minimize a failure
 python3 sim/monkey.py --seed 7 --emit-hil tests.json          # export for micro-connector's HIL
+for f in sim/scenarios/*.json; do python3 sim/monkey.py --replay-file $f; done   # regressions
 ```
+
+`sim/scenarios/` holds scripted regressions for bugs the monkey found (same format as
+`actions.json`, plus `expect` steps that wait for a `state` field to reach a value).
 
 Failures land in `sim/out/<seed>/` (actions, firmware log with timestamps, server log). Needs a
 built micro-connector (`cargo build --bins` in it; `--mc` path). The `state` sim command prints the
