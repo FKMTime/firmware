@@ -6,6 +6,7 @@ reboots, hangs or softlocks, and never sends inconsistent solves to the server.
   python3 sim/monkey.py --replay 7                            # rerun one seed (same actions)
   python3 sim/monkey.py --replay-file sim/out/7/actions.json --shrink
   python3 sim/monkey.py --seed 7 --emit-hil /tmp/tests.json   # scenario for micro-connector's HIL
+  python3 sim/monkey.py --hw v3 --seeds 1-6                   # v3 hardware (character LCD)
 
 Needs: esp-emu on PATH (or ~/.local/bin), a built micro-connector (--mc, default
 ~/projects/micro-connector), the sim patches (see sim/README.md). Failures go to sim/out/<seed>/.
@@ -36,13 +37,16 @@ BUTTON_NAMES = {1: "inspect", 2: "delegate", 3: "submit", 4: "penalty"}
 SLOW = 3  # emulated time runs up to ~3x slower than real time with several instances
 SRV_PORT = 18100  # per-job server port base, away from the default 8080 other sims use
 HEAP_LIMIT = 0.92  # of the heap size printed by the firmware
+# v3: the emulated LCD may differ from what the firmware wrote only this long (emulated ms)
+LCD_STALE_MS = 4000
 IDLE = dict(scene="WaitingForCompetitor", comp="-1", time="-1", menu="None", cfg="-1", err="0")
 
 
 # ── action generation (pure: same seed ⇒ same list) ─────────────────────────────────────────
 
-def generate(seed: int, count: int) -> list:
-    """Weighted random actions, biased towards abuse. Each action: [delay_ms, kind, *args]."""
+def generate(seed: int, count: int, hw: str = "v4") -> list:
+    """Weighted random actions, biased towards abuse. Each action: [delay_ms, kind, *args].
+    v3 adds LCD faults (lost E edge, lost write, module brownout) the display must heal from."""
     r = random.Random(seed)
     acts = []
 
@@ -54,6 +58,8 @@ def generate(seed: int, count: int) -> list:
         "stk": 14, "stk_chaos": 5, "bat": 2, "wait": 8, "flow": 10,
         "server": 1, "power": 1, "menu": 3, "wifi": 2, "outage": 1,
     }
+    if hw == "v3":
+        weights["lcd"] = 2
     kinds, w = zip(*weights.items())
     while len(acts) < count:
         kind = r.choices(kinds, w)[0]
@@ -116,6 +122,8 @@ def generate(seed: int, count: int) -> list:
                     add(r.choice([0, 100, 500, 3000]), "wifi", r.choice([100, 400, 1500, 3000]))
         elif kind == "outage":  # server gone for minutes
             add(gap, "server", r.choice([30_000, 90_000, 180_000]))
+        elif kind == "lcd":
+            add(gap, "emu", "lcd " + r.choice(["glitch", "drop", "reset"]))
     return acts[:count]
 
 
@@ -331,6 +339,9 @@ class Run:
                 if line.startswith("@state "):
                     st = dict(kv.split("=", 1) for kv in line[7:].split() if "=" in kv)
                     check_invariants(st)
+                    if int(st.get("lcd", 0)) > LCD_STALE_MS:
+                        self.emu.send("screen")
+                        raise Failure(f"LCD shows other text than the firmware wrote for {st['lcd']} ms")
                     return st
             time.sleep(0.05)
         raise Failure(f"no answer to `state` within {timeout}s (hang?)")
@@ -395,6 +406,8 @@ class Run:
             self.stackmat.cmd(a[0])
         elif kind == "bat":
             self.emu.send(f"bat {a[0]}")
+        elif kind == "emu":  # a raw sim command (e.g. `lcd glitch`)
+            self.emu.send(a[0])
         elif kind == "wait":
             pass
         elif kind == "expect":  # scripted scenarios only: state field reaches a value
@@ -555,11 +568,15 @@ class Run:
 
 # ── driver ──────────────────────────────────────────────────────────────────────────────────
 
-def build(port: int) -> tuple:
-    env = dict(os.environ, SIM_BUILD_ONLY="1", SIM_WS_URL=f"ws://192.168.4.1:{port}")
+def target(hw: str) -> Path:
+    return ROOT / ("target/sim-v3" if hw == "v3" else "target/sim")
+
+
+def build(port: int, hw: str = "v4") -> tuple:
+    env = dict(os.environ, SIM_BUILD_ONLY="1", SIM_WS_URL=f"ws://192.168.4.1:{port}", SIM_HW=hw)
     subprocess.run([str(ROOT / "sim/run.sh")], cwd=ROOT, env=env, check=True,
                    stdout=subprocess.DEVNULL)
-    t = ROOT / "target/sim"
+    t = target(hw)
     bin_, elf = t / f"monkey-{port}.bin", t / f"monkey-{port}.elf"
     shutil.copy(t / "sim.bin", bin_)
     shutil.copy(t / "riscv32imc-unknown-none-elf/release/fkm-firmware", elf)
@@ -630,7 +647,8 @@ def main():
     p.add_argument("--minutes", type=float, default=4)
     p.add_argument("--actions", type=int, default=400)
     p.add_argument("--chunk", type=int, default=40, help="recovery probe every N actions")
-    p.add_argument("--cfg-exit", type=int, default=6, help="index of Exit in the config menu (v4)")
+    p.add_argument("--hw", choices=["v3", "v4"], default=os.environ.get("SIM_HW", "v4"))
+    p.add_argument("--cfg-exit", type=int, help="index of Exit in the config menu (v3: 5, v4: 6)")
     p.add_argument("--mc", default="~/projects/micro-connector")
     p.add_argument("--emit-hil")
     p.add_argument("--shrink", action="store_true")
@@ -644,6 +662,10 @@ def main():
     p.add_argument("--time-scale", type=float, default=0.5, help="competition: solve lengths")
     p.add_argument("--slip-rate", type=float, default=1.0, help="competition: slip rate factor")
     args = p.parse_args()
+    if args.replay_file:  # a scenario written for one hardware revision runs on it
+        args.hw = json.load(open(args.replay_file)).get("hw", args.hw)
+    if args.cfg_exit is None:
+        args.cfg_exit = 5 if args.hw == "v3" else 6
 
     if args.mode == "competition" or (args.replay_file and "day" in json.load(open(args.replay_file))):
         import competition
@@ -660,7 +682,7 @@ def main():
             for part in args.seeds.split(","):
                 lo, _, hi = part.partition("-")
                 seeds += range(int(lo), int(hi or lo) + 1)
-        work = [(s, generate(s, args.actions)) for s in seeds]
+        work = [(s, generate(s, args.actions, args.hw)) for s in seeds]
 
     if args.emit_hil:
         emit_hil(work[0][1], args.emit_hil)
@@ -669,10 +691,10 @@ def main():
     jobs = max(1, min(args.jobs, len(work)))
     images = {}
     for j in range(jobs):
-        t = ROOT / "target/sim"
+        t = target(args.hw)
         port = SRV_PORT + args.job_base + j
         images[j] = ((t / f"monkey-{port}.bin", t / f"monkey-{port}.elf")
-                     if args.no_build else build(port))
+                     if args.no_build else build(port, args.hw))
 
     results, queue, lock = [], list(work), threading.Lock()
 
@@ -708,5 +730,6 @@ if __name__ == "__main__":
     a, b = generate(5, 300), generate(5, 300)
     assert a == b and generate(6, 300) != a
     assert {x[1] for x in a} >= {"btn", "card", "stk"}
+    assert "emu" in {x[1] for x in generate(5, 300, "v3")} and "emu" not in {x[1] for x in a}
     assert Stackmat.frame(b" ", 61_234) == b" 101234" + bytes([64 + 11]) + b"\n\r"
     main()

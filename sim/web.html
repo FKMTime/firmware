@@ -9,6 +9,7 @@
     --bg: #f4f4f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #deddd8;
     --accent: #1f6feb; --oled-bg: #050807; --oled-px: #9ff0ff; --btn: #ecebe7; --btn-down: #c9d8f5;
     --ok: #1a7f37; --bad: #c62828;
+    --lcd-bg: #1d3fd8; --lcd-cell: #2a4ce6; --lcd-ink: #eef4ff; --lcd-off-bg: #0d1a5c; --lcd-off-ink: #6c7bb8;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -33,6 +34,9 @@
   .stack > * + * { margin-top: 16px; }
   #oled { width: 100%; aspect-ratio: 2 / 1; image-rendering: pixelated; background: var(--oled-bg);
           border-radius: 6px; display: block; border: 6px solid #000; }
+  #lcd { width: 100%; aspect-ratio: 16 / 3.2; background: var(--lcd-bg); border-radius: 6px; display: block;
+         border: 10px solid #111; box-shadow: inset 0 0 18px rgba(0,0,0,.45); }
+  .hidden { display: none !important; }
   .buttons { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
   button { font: inherit; color: var(--ink); background: var(--btn); border: 1px solid var(--line);
            border-radius: 8px; padding: 10px 8px; cursor: pointer; touch-action: none; user-select: none; }
@@ -67,6 +71,7 @@
     </div>
     <section class="panel" aria-label="Device">
       <canvas id="oled" width="128" height="64" aria-label="OLED display"></canvas>
+      <canvas id="lcd" class="hidden" width="800" height="160" aria-label="16×2 character LCD"></canvas>
       <div class="buttons">
         <button class="hw" data-btn="1">Inspect<small>key 1</small></button>
         <button class="hw" data-btn="2">Delegate<small>key 2</small></button>
@@ -143,6 +148,37 @@ function drawOled(hex) {
     }
   }
   ctx.putImageData(img, 0, 0);
+}
+
+// v3 LCD: {codes: 32 char codes hex (row 0 then row 1), bl: backlight, cur: "r,c" | "-", cg: CGRAM hex}
+const lctx = $("lcd").getContext("2d");
+function drawLcd(f) {
+  const css = getComputedStyle(document.documentElement), v = (n) => css.getPropertyValue(n);
+  const bl = f.bl === "1", W = 800, H = 160, cw = W / 16, ch = H / 2, pad = 3;
+  lctx.fillStyle = v(bl ? "--lcd-bg" : "--lcd-off-bg"); lctx.fillRect(0, 0, W, H);
+  const cg = f.cg || "", cur = f.cur && f.cur !== "-" ? f.cur.split(",").map(Number) : null;
+  lctx.font = `600 ${ch * 0.62}px ui-monospace, "SF Mono", Menlo, monospace`;
+  lctx.textAlign = "center"; lctx.textBaseline = "middle";
+  for (let i = 0; i < 32; i++) {
+    const code = parseInt((f.codes || "").substr(i * 2, 2), 16) || 32, x = (i % 16) * cw, y = (i >> 4) * ch;
+    lctx.fillStyle = v("--lcd-cell"); lctx.globalAlpha = bl ? 0.35 : 0.15;
+    lctx.fillRect(x + pad, y + pad * 2, cw - pad * 2, ch - pad * 4); lctx.globalAlpha = 1;
+    lctx.fillStyle = v(bl ? "--lcd-ink" : "--lcd-off-ink");
+    if (code < 8) { // CGRAM glyph: 8 rows of 5 dots
+      const dx = (cw - pad * 2) / 5, dy = (ch - pad * 4) / 8;
+      for (let r = 0; r < 8; r++) {
+        const bits = parseInt(cg.substr(((code & 7) * 8 + r) * 2, 2), 16) || 0;
+        for (let c = 0; c < 5; c++) if (bits >> (4 - c) & 1) lctx.fillRect(x + pad + c * dx, y + pad * 2 + r * dy, dx - 1, dy - 1);
+      }
+    } else {
+      lctx.fillText(code >= 0x20 && code < 0x7f ? String.fromCharCode(code) : "▒", x + cw / 2, y + ch / 2);
+    }
+    if (cur && cur[0] === i >> 4 && cur[1] === i % 16) lctx.fillRect(x + pad, y + ch - pad * 4, cw - pad * 2, pad);
+  }
+}
+function setHw(hw) {
+  $("oled").classList.toggle("hidden", hw === "v3");
+  $("lcd").classList.toggle("hidden", hw !== "v3");
 }
 
 // hardware buttons: held until released (the firmware times the hold itself)
@@ -234,10 +270,12 @@ function addLog(l) {
 const es = new EventSource("/events");
 es.onopen = () => { $("conn").textContent = "connected"; $("conn").className = "ok"; };
 es.onerror = () => { $("conn").textContent = "disconnected (is sim/web.py running?)"; $("conn").className = "bad"; };
+es.addEventListener("hw", (e) => setHw(JSON.parse(e.data)));
 es.addEventListener("oled", (e) => drawOled(JSON.parse(e.data)));
+es.addEventListener("lcd", (e) => drawLcd(JSON.parse(e.data)));
 es.addEventListener("state", (e) => showState(JSON.parse(e.data)));
 es.addEventListener("log", (e) => addLog(JSON.parse(e.data)));
-drawOled("");
+drawOled(""); drawLcd({ bl: "1" });
 </script>
 </body>
 </html>

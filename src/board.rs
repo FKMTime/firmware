@@ -2,7 +2,7 @@
 use esp_hal::gpio::AnyPin;
 use esp_hal::gpio::Pin;
 use esp_hal::{
-    gpio::{Input, InputConfig, Output, Pull},
+    gpio::{Input, InputConfig, Pull},
     peripherals::{AES, BT, FLASH, FROM_CPU_INTR0, Peripherals, TIMG0, TIMG1, WIFI},
     timer::timg::TimerGroup,
 };
@@ -37,7 +37,7 @@ pub struct Board {
     pub cs: adv_shift_registers::wrappers::ShifterPin,
 
     #[cfg(feature = "v4")]
-    pub display_rst: Output<'static>,
+    pub display_rst: esp_hal::gpio::Output<'static>,
     #[cfg(feature = "v4")]
     pub i2c: SharedI2C,
     #[cfg(feature = "v4")]
@@ -76,7 +76,7 @@ impl Board {
         let flash = peripherals.FLASH;
         let sw_interrupt = peripherals.FROM_CPU_INTR0;
 
-        let display_rst = Output::new(
+        let display_rst = esp_hal::gpio::Output::new(
             peripherals.GPIO7,
             esp_hal::gpio::Level::Low,
             Default::default(),
@@ -175,7 +175,8 @@ impl Board {
 impl Board {
     pub fn init(peripherals: Peripherals) -> Board {
         use embedded_hal::digital::OutputPin;
-        use esp_hal::gpio::Level;
+        #[cfg(not(feature = "sim"))]
+        use esp_hal::gpio::{Level, Output};
 
         let timg0 = TimerGroup::new(peripherals.TIMG0);
         let timg1 = TimerGroup::new(peripherals.TIMG1);
@@ -200,9 +201,19 @@ impl Board {
             InputConfig::default().with_pull(Pull::Down),
         );
 
-        let shifter_data_pin = Output::new(peripherals.GPIO10, Level::Low, Default::default());
-        let shifter_latch_pin = Output::new(peripherals.GPIO1, Level::Low, Default::default());
-        let shifter_clk_pin = Output::new(peripherals.GPIO21, Level::Low, Default::default());
+        #[cfg(not(feature = "sim"))]
+        type ShiftOut = Output<'static>;
+        #[cfg(not(feature = "sim"))]
+        let (shifter_data_pin, shifter_clk_pin, shifter_latch_pin) = (
+            Output::new(peripherals.GPIO10, Level::Low, Default::default()),
+            Output::new(peripherals.GPIO21, Level::Low, Default::default()),
+            Output::new(peripherals.GPIO1, Level::Low, Default::default()),
+        );
+        // esp-emu can't observe GPIOs: the sim decodes the chain (and the LCD behind it) itself
+        #[cfg(feature = "sim")]
+        type ShiftOut = crate::sim::ShiftPin;
+        #[cfg(feature = "sim")]
+        let (shifter_data_pin, shifter_clk_pin, shifter_latch_pin) = crate::sim::shift_pins();
 
         let adv_shift_reg = adv_shift_registers::AdvancedShiftRegister::<2, _>::new(
             shifter_data_pin,
@@ -211,7 +222,7 @@ impl Board {
             0,
         );
         static SHIFT_REG: static_cell::StaticCell<
-            adv_shift_registers::AdvancedShiftRegister<2, Output<'static>>,
+            adv_shift_registers::AdvancedShiftRegister<2, ShiftOut>,
         > = static_cell::StaticCell::new();
         let adv_shift_reg = SHIFT_REG.init(adv_shift_reg);
 

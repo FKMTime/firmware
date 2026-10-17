@@ -812,9 +812,9 @@ def main(args):
     images = {}
     for j in range(jobs):
         port = M.SRV_PORT + args.job_base + j
-        t = M.ROOT / "target/sim"
+        t = M.target(args.hw)
         images[j] = ((t / f"monkey-{port}.bin", t / f"monkey-{port}.elf") if args.no_build
-                     else M.build(port))
+                     else M.build(port, args.hw))
     results, queue, lock = [], list(work), threading.Lock()
 
     def worker(j):

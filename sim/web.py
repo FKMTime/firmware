@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""The sim device in a browser: OLED, buttons, cards, stackmat, battery, Wi-Fi/server/power.
+"""The sim device in a browser: display, buttons, cards, stackmat, battery, Wi-Fi/server/power.
 
-    python3 sim/web.py [--mc ~/projects/micro-connector] [--no-server] [--port 8000]
+    python3 sim/web.py [--hw v3|v4] [--mc ~/projects/micro-connector] [--no-server] [--port 8000]
 
 Builds the sim image, starts esp-emu, the fake stackmat and (unless --no-server) a local
 micro-connector, then serves http://127.0.0.1:8000. Stdlib only: events go out as SSE,
@@ -23,22 +23,22 @@ ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
 class Hub:
-    """Collects events for the page: OLED frames, log lines, state."""
+    """Collects events for the page: display frames, log lines, state."""
 
     def __init__(self):
         self.events, self.cond = [], threading.Condition()
-        self.oled = None
+        self.frame = None
 
     def push(self, kind: str, data):
         with self.cond:
             self.events.append((kind, data))
-            if kind == "oled":
-                self.oled = data
+            if kind in ("oled", "lcd"):
+                self.frame = (kind, data)
             self.cond.notify_all()
 
     def watch(self, emu: monkey.Emu):
         """Turns emulator output into events (OLED frames as `@oled <hex>`, page-major like the
-        SSD1309 GRAM: byte = 8 vertical pixels)."""
+        SSD1309 GRAM: byte = 8 vertical pixels; LCD frames as `@lcd <32 char codes> bl= cur= cg=`)."""
         seen = 0
         while True:
             with emu.lock:
@@ -48,6 +48,9 @@ class Hub:
                 if line.startswith("@oled "):
                     if len(line) == 6 + 2048:
                         self.push("oled", line[6:])
+                elif line.startswith("@lcd "):
+                    hexcodes, *kv = line[5:].split()
+                    self.push("lcd", dict(codes=hexcodes, **dict(x.split("=", 1) for x in kv if "=" in x)))
                 elif line.startswith("@state "):
                     self.push("state", dict(kv.split("=", 1) for kv in line[7:].split() if "=" in kv))
                 else:
@@ -60,13 +63,14 @@ def main():
     p.add_argument("--mc", default="~/projects/micro-connector")
     p.add_argument("--no-server", action="store_true")
     p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--hw", choices=["v3", "v4"], default="v4")
     args = p.parse_args()
 
     out = monkey.ROOT / "sim/out/web"
     out.mkdir(parents=True, exist_ok=True)
     srv_port = monkey.SRV_PORT + JOB
     print("building the sim image…")
-    bin_, elf = monkey.build(srv_port)
+    bin_, elf = monkey.build(srv_port, args.hw)
 
     server = None
     if not args.no_server:
@@ -81,7 +85,7 @@ def main():
 
     def poll_state():
         time.sleep(1)
-        emu.send("oled raw")
+        emu.send("lcd raw" if args.hw == "v3" else "oled raw")
         while True:
             emu.send("state")
             time.sleep(1)
@@ -117,7 +121,7 @@ def main():
                 self.end_headers()
                 with hub.cond:
                     cursor = len(hub.events)
-                    first = [("oled", hub.oled)] if hub.oled else []
+                    first = [("hw", args.hw)] + ([hub.frame] if hub.frame else [])
                     # recent log so a reload isn't empty
                     first += [e for e in hub.events[-300:] if e[0] == "log"]
                 try:

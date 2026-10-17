@@ -6,12 +6,14 @@
 #   SIM_PROVISION=1 sim/run.sh  no seeded Wi-Fi: AP provisioning, panel on http://127.0.0.1:18080
 #   SIM_WIFIMANAGER=~/projects/esp-hal-wifimanager sim/run.sh   local wifimanager checkout
 #   SIM_BLE=tcp:localhost:9544 sim/run.sh   BLE through a Bumble controller (sim/ble_*.py)
+#   SIM_HW=v3 sim/run.sh       v3 hardware (HD44780 behind the shift registers) instead of v4
 #   SIM_BUILD_ONLY=1, SIM_HTTP_PORT/SIM_UART1_PORT/SIM_CONTROL_PORT: used by sim/monkey.py
 # Extra arguments go to esp-emu (e.g. --timeout 60s).
 set -eu
 cd "$(dirname "$0")/.."
 
-T=target/sim
+HW="${SIM_HW:-v4}"
+case "$HW" in v3) T=target/sim-v3 ;; v4) T=target/sim ;; *) echo "SIM_HW must be v3 or v4" >&2; exit 2 ;; esac
 mkdir -p "$T"
 PATCHES=""
 ESP_SIM_PATCHES="${ESP_SIM_PATCHES:-$HOME/tmp/esp-sim-patches}"
@@ -33,7 +35,7 @@ if [ -n "${SIM_WIFIMANAGER:-}" ]; then
     cargo update -q -p esp-hal-wifimanager $PATCHES
 fi
 # shellcheck disable=SC2086
-CARGO_TARGET_DIR=$T cargo build -r --no-default-features --features v4,sim $PATCHES
+CARGO_TARGET_DIR=$T cargo build -r --no-default-features --features $HW,sim $PATCHES
 cp "$T/Cargo.lock.bak" Cargo.lock
 trap - EXIT
 

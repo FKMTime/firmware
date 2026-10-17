@@ -56,6 +56,8 @@ async fn show(text: &mut LcdText, lcd: &mut Lcd) {
         lcd.set_position(col, row).await;
         lcd.print(&s).await;
     }
+    #[cfg(feature = "sim")]
+    crate::sim::lcd_intended(text.shown());
 }
 
 pub async fn lcd_show_critical_code(lcd_shifter: ShifterValue, code: u8) {

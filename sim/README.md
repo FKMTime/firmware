@@ -1,14 +1,16 @@
 # Running the firmware in esp-emu
 
 [esp-emu](https://github.com/espressif/esp-emulator) (Espressif, beta, closed source) runs the real
-ESP32-C3 image with Wi-Fi. The `sim` feature (v4, UART stackmat) fills the gaps of the emulator:
+ESP32-C3 image with Wi-Fi. The `sim` feature (v4 or v3, UART stackmat; `SIM_HW=v3` / `--hw v3`)
+fills the gaps of the emulator:
 
 | Real device | In `sim` builds |
 |---|---|
-| OLED (I2C) | fake SSD1309 on the I2C bus, printed to the console (half blocks) when it changes |
+| OLED (I2C, v4) | fake SSD1309 on the I2C bus, printed to the console (half blocks) when it changes |
+| LCD (v3) | the shift register chain is faked at its three GPIOs (data/clock/latch); the real `adv_shift_registers` + `ag-lcd-async` + `lcd_v3` code drives an emulated HD44780 (`src/sim/hd44780.rs`: 8-bit power-on state, 4-bit nibble pairing, DDRAM/CGRAM, entry mode/shift, writes during the busy time are lost), printed as a 16×2 box |
 | RFID reader | `card <uid>` on stdin |
 | Buttons | `btn <1-4> [ms]` on stdin (1 inspect, 2 delegate, 3 submit, 4 penalty) |
-| Battery gauge | `bat <0-100>` on stdin (starts at 100) |
+| Battery gauge | `bat <0-100>` on stdin (starts at 100); v3: the reading of the faked ADC |
 | Stackmat | the real UART driver; `sim/stackmat.py` plays the timer |
 | Wi-Fi setup | seeded for the emulator's AP; also adds itself to the server (`auto_add`) |
 | BLE | starts (patched esp-radio), but esp-emu never answers its HCI commands: no BLE flows yet |
@@ -34,13 +36,29 @@ python3 sim/stackmat.py                           # terminal 3: start | stop | r
 which doesn't get answers through esp-emu's relay on macOS. Cards in micro-connector's `tests.json`:
 `69420` (competitor), `3004425529` (judge).
 
+## v3 LCD
+
+`SIM_HW=v3 sim/run.sh` (or `--hw v3` for `web.py`/`monkey.py`). `@state` gets `lcd=<ms>`: how long
+the emulated LCD has shown something else than what `lcd_v3` believes it wrote (0 = in sync);
+`monkey.py` fails a run when that exceeds 4 s. Fault injection on stdin:
+
+| Command | Real-world fault |
+|---|---|
+| `lcd glitch` | one E edge lost (noise): every later byte pairs the wrong nibbles |
+| `lcd drop` | one write lost |
+| `lcd reset` | module brownout: back to 8-bit, display off, while the MCU keeps running |
+| `lcd slow <n>` | controller execution times ×n. esp-emu bit-bangs the shift registers ~4× slower than a C3, so n = 3–4 puts the short gaps where real hardware has them |
+| `lcd stats` | writes lost to the busy time and the least slack seen since the last `stats` |
+
+The fuzzer injects the first three on v3; `sim/scenarios/lcd-heal.json` checks each heals.
+
 ## In a browser
 
 ```sh
 python3 sim/web.py            # builds, starts esp-emu + stackmat + micro-connector, serves :8000
 ```
 
-http://127.0.0.1:8000 shows the OLED and has the four buttons (hold as long as on the device,
+http://127.0.0.1:8000 shows the OLED (or with `--hw v3` the 16×2 LCD) and has the four buttons (hold as long as on the device,
 keys 1–4), cards, the stackmat (space = start/stop, r = reset), battery, Wi-Fi off/on, server
 off/on, power cycle, the live state and the log. `--no-server` runs without micro-connector.
 
@@ -114,6 +132,7 @@ on one server, round by round, a competitor never at two stations at once.
 
 ```sh
 python3 sim/monkey.py --mode competition --seeds 1-6 --jobs 3 --job-base 20 --max-attempts 36
+python3 sim/monkey.py --mode competition --hw v3 --seeds 1-6 --jobs 3 --job-base 20
 python3 sim/monkey.py --mode competition --seed 4 --devices 3 --job-base 20 --slip-rate 2
 python3 sim/monkey.py --replay-file sim/out/comp-d1/4/day.json            # same day again
 ```

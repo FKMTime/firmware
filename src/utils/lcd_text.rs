@@ -101,6 +101,12 @@ impl LcdText {
         true
     }
 
+    /// What the LCD shows, as far as this buffer knows.
+    #[cfg_attr(not(feature = "sim"), allow(dead_code))]
+    pub fn shown(&self) -> &[[u8; COLS]; ROWS] {
+        &self.shown
+    }
+
     /// Calls `write(row, col, text)` for the changed run of each row and marks it shown.
     pub fn changes(&mut self, mut write: impl FnMut(u8, u8, &str)) {
         for row in 0..ROWS {
