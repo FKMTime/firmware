@@ -162,11 +162,16 @@ impl Tracker {
         if !repeated || self.confirmed == Some(state) || state == StackmatTimerState::Unknown {
             return None;
         }
-        self.confirmed = Some(state);
+        let prev = self.confirmed.replace(state);
         Some(match state {
             StackmatTimerState::Running => Event::Start {
                 at: sampled.saturating_sub(ms * 1000),
             },
+            // a stop we never saw start (timer still showing an old time at boot, or after a
+            // button/limit stop) isn't a new solve: it'd be attributed to the next competitor
+            StackmatTimerState::Stopped if prev != Some(StackmatTimerState::Running) => {
+                return None;
+            }
             StackmatTimerState::Stopped => Event::Stop(ms),
             _ => Event::Reset,
         })
@@ -438,6 +443,23 @@ mod tests {
             t.frame(400_000, (Running, 80)),
             Some(Event::Start { at: 320_000 })
         );
+    }
+
+    #[test]
+    fn stale_stopped_time_is_not_a_solve() {
+        // boot with the timer still showing a discarded time (monkey, power cycle)
+        let mut t = Tracker::new(0);
+        assert_eq!(t.frame(0, (Stopped, 3_010)), None);
+        assert_eq!(t.frame(80_000, (Stopped, 3_010)), None);
+        // ...after a button stop the timer's own stop doesn't count again either
+        t.frame(160_000, (Running, 0));
+        assert!(matches!(
+            t.frame(240_000, (Running, 80)),
+            Some(Event::Start { .. })
+        ));
+        t.end_solve();
+        t.frame(320_000, (Stopped, 150));
+        assert_eq!(t.frame(400_000, (Stopped, 150)), None);
     }
 
     #[test]
