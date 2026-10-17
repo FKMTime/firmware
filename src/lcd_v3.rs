@@ -108,10 +108,19 @@ async fn show(text: &mut LcdText, lcd: &mut Lcd) {
     crate::sim::lcd_intended(text.shown());
 }
 
-/// Re-syncs the controller and rewrites every character.
-async fn heal(lcd_shifter: &ShifterValue, text: &mut LcdText, lcd: &mut Lcd) {
-    resync(lcd_shifter).await;
-    text.invalidate();
+/// Writes the changes, or every `HEAL_INTERVAL` re-syncs the controller and rewrites every
+/// character (also on live screens: a solve can outlast many intervals).
+async fn update(
+    lcd_shifter: &ShifterValue,
+    text: &mut LcdText,
+    lcd: &mut Lcd,
+    healed: &mut Instant,
+) {
+    if healed.elapsed() >= HEAL_INTERVAL {
+        *healed = Instant::now();
+        resync(lcd_shifter).await;
+        text.invalidate();
+    }
     show(text, lcd).await;
 }
 
@@ -134,7 +143,7 @@ pub async fn lcd_task(
 ) {
     let mut lcd = new_lcd(&lcd_shifter).await;
     let mut text = LcdText::new();
-    let mut last_heal = Instant::now();
+    let mut healed = Instant::now();
 
     let mut line = Text::new();
     _ = write!(line, "{:X}", crate::utils::get_efuse_u32());
@@ -184,7 +193,7 @@ pub async fn lcd_task(
             if live != Live::Timer {
                 local.timer_ms = None;
             }
-            show(&mut text, &mut lcd).await;
+            update(&lcd_shifter, &mut text, &mut lcd, &mut healed).await;
         }
 
         crate::watchdog::heartbeat(crate::watchdog::TaskId::Lcd);
@@ -201,6 +210,7 @@ pub async fn lcd_task(
             ),
         );
         let Ok(event) = event.await else {
+            update(&lcd_shifter, &mut text, &mut lcd, &mut healed).await;
             continue;
         };
         match event {
@@ -208,12 +218,12 @@ pub async fn lcd_task(
             Event::TimerValue(ms) => {
                 local.timer_ms = Some(ms);
                 text.print(0, &time_str(ms), Align::Center, true);
-                show(&mut text, &mut lcd).await;
+                update(&lcd_shifter, &mut text, &mut lcd, &mut healed).await;
             }
             Event::InspectionFrame(start) => {
                 let elapsed = start.elapsed().as_millis();
                 text.print(0, &time_str(elapsed), Align::Center, true);
-                show(&mut text, &mut lcd).await;
+                update(&lcd_shifter, &mut text, &mut lcd, &mut healed).await;
             }
             Event::Progress(p) => {
                 local.progress = Some(p);
@@ -233,13 +243,8 @@ pub async fn lcd_task(
                     .update(|s| s.scene = Scene::AutoSetupWait);
             }
             Event::Tick => {
-                let scrolled = text.scroll_step();
-                if last_heal.elapsed() >= HEAL_INTERVAL {
-                    last_heal = Instant::now();
-                    heal(&lcd_shifter, &mut text, &mut lcd).await;
-                } else if scrolled {
-                    show(&mut text, &mut lcd).await;
-                }
+                text.scroll_step();
+                update(&lcd_shifter, &mut text, &mut lcd, &mut healed).await;
                 sleep_check(&mut text, &mut lcd, global_state, last_update).await;
             }
         }
