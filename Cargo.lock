@@ -1402,8 +1402,6 @@ dependencies = [
 [[package]]
 name = "esp-hal"
 version = "1.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9e3dfd511fed638fe41fdb4595f8c7f0cbb488d0f0cf2bbc063d76d805057cf"
 dependencies = [
  "bitfield",
  "bytemuck",
@@ -1585,8 +1583,6 @@ dependencies = [
 [[package]]
 name = "esp-radio"
 version = "1.0.0-beta.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50247f4e91000fc87661e77254126c74acc4535f822ee247f7778807202dc938"
 dependencies = [
  "allocator-api2",
  "bt-hci",

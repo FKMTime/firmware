@@ -423,8 +423,6 @@ class Emu:
         shown something else than the firmware wrote (`lcdtext`)."""
         kv = dict(x.split("=", 1) for x in line[7:].split() if "=" in x)
         with self.board.lock:
-            if "up" in kv:  # emulated ms when the firmware printed it
-                self.board.saw_time(int(kv["up"]) * 1000)
             line += f" held={self.board.held_mask()}"
             if "lcdtext" in kv and self.board.hw == "v3":
                 shown = b"".join(bytes(r) for r in self.board.lcd.visible()).hex()
