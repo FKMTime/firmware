@@ -247,6 +247,11 @@ async fn main(spawner: Spawner) {
         provisioning_signal: Some(&WIFI_SETUP_SIG),
         // provisioning and the ws buffers share heap: never let both run in one boot
         esp_restart_after_connection: true,
+        // our TCP windows (4 KB rx / 2 KB tx) keep ~3 frames in flight; the default 32+32
+        // dynamic buffers only let a burst after a reconnect take up to ~100 KB of heap
+        controller_config: esp_radio::wifi::ControllerConfig::default()
+            .with_dynamic_rx_buf_num(12)
+            .with_dynamic_tx_buf_num(12),
         ..Default::default()
     };
 
