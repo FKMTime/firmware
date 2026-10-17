@@ -105,25 +105,47 @@ is acted out like a person would (scan, group select, inspection 5–12 s, somet
 over 17 s (DNF), solve, judge's penalty, confirm, judge and competitor cards), with clumsy slips at
 a few % each (wrong card first, double taps, forgotten/restarted inspection, fumbled timer, +2
 applied and corrected, DNF hold, long/double submit, wrong button, scrolling past the group,
-delegate call, Wi-Fi blip, abandoned attempt, solve over the limit) plus server restarts mid-group
-and a draining battery. Each step's effect is checked on the device; after each attempt the
-server's `EnterAttempt` log (`srv/logs/unix.log`) must hold exactly one solve with the intended
-station, competitor, time, penalty, judge, group and inspection; at the end the whole list must
-match. `--devices N` runs N stations (own esp-emu, eFuse MAC from `sim/make-efuse.py`, stackmat)
-on one server, round by round, a competitor never at two stations at once.
+delegate call, Wi-Fi blip, abandoned attempt, solve over the limit, lost answer to a solve) plus
+server restarts mid-group and a draining battery. Each step's effect is checked on the device.
+
+micro-connector's e2e plays FKMTime here (`E2E_SIM=1`, only on micro-connector's `sim-e2e`
+branch: `--mc <checkout>`): it keeps attempts by session id like FKMTime, refuses resends
+("already entered"), ends a round at its cutoff ("No attempts left" + reset), DNFs at the time
+limit, and turns delegate calls into incidents. A seeded delegate answers each call after a few
+seconds (`--delegate-rate` multiplies the call rate): accept (cards confirm it), change time/penalty
+(cards confirm it), resolve without cards (reset), extra attempt (reset, the competitor solves
+again, the server replaces the original), delete (reset, redo), or only after the device's 5 min
+window (the device must ignore it; its resend is refused). The device must show "waiting for
+delegate" until the answer and then the decision. The oracle keeps the attempts FKMTime should
+hold and after each attempt and at the end compares them with e2e's (station, competitor, judge,
+group, number, extra, status, value, penalty, replacement, inspection); a session's sends must
+carry the same data. `--devices N` runs N stations (own esp-emu, eFuse MAC from
+`sim/make-efuse.py`, stackmat) on one server, round by round, a competitor never at two stations
+at once.
 
 ```sh
-python3 sim/monkey.py --mode competition --seeds 1-6 --jobs 3 --job-base 20 --max-attempts 36
+python3 sim/monkey.py --mode competition --seeds 1-6 --jobs 3 --job-base 20 --max-attempts 36 \
+    --mc ~/projects/micro-connector                                      # on its sim-e2e branch
+python3 sim/monkey.py --mode competition --seeds 1-4 --delegate-rate 8   # every decision a few times
 python3 sim/monkey.py --mode competition --seed 4 --devices 3 --job-base 20 --slip-rate 2
 python3 sim/monkey.py --replay-file sim/out/comp-d1/4/day.json            # same day again
 ```
 
 `--job-base N` moves ports (emulators 20000+10·N.., servers 18100+N..) away from other runs;
 `--time-scale` shortens solves (never inspection or holds). Logs: `sim/out/comp-d<N>/<seed>/`
-(`day.json` = plan, intended results, mismatches, executed steps). Not covered: sleep (off in sim
-builds), delegate answers (micro-connector's e2e never resolves an incident), BLE.
+(`day.json` = plan, intended results, mismatches, executed steps; `srv/e2e.jsonl` = every request
+with its answer, pushes and delegate decisions). Not covered: sleep (off in sim builds), attendance
+stations (the firmware never asks for attendance), BLE.
+
+e2e's control socket (`Server.ctl`, JSON lines): `attempts`, `resolve` (`sessionId`, `status`
+resolved / standard / extra_given, optional `value` cs, `penalty`, `noCards`), `delete`,
+`drop_reply` (`espId`: the next attempt is entered, its answer lost). Scenarios use it with
+`"sim_e2e": true`, optional `"server"` (e.g. `rounds` with attempts/cutoff/limit in cs) and the
+steps `resolve [args]` / `delete` (the open incident), `drop_reply`, `expect_db <competitor>
+[rows]`; `expect <field> <value> [s]` takes an optional timeout.
 
 Failures land in `sim/out/<seed>/` (actions, firmware log with timestamps, server log). Needs a
-built micro-connector (`cargo build --bins` in it; `--mc` path). The `state` sim command prints the
+built micro-connector (`cargo build --bins` in it; `--mc` path; `--sim-e2e` lets e2e play FKMTime
+here too). The `state` sim command prints the
 machine-readable line the monkey reads. Not covered: pads (`timer-func`), BLE, Wi-Fi drops (esp-emu
 can't drop the link), real display/RFID timing.

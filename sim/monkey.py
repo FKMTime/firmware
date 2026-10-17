@@ -138,49 +138,94 @@ def check_invariants(s: dict):
 # ── processes ───────────────────────────────────────────────────────────────────────────────
 
 class Server:
-    """micro-connector (dev, plain ws) + its e2e backend answering card lookups."""
+    """micro-connector (dev, plain ws) + its e2e backend. HIL mode: e2e answers card lookups and
+    accepts every solve. Sim mode (`sim=True`, needs micro-connector's `sim-e2e` branch): e2e
+    plays FKMTime (attempts by session, incidents, extra attempts, cutoffs, limits), keeps running
+    across server restarts like the real FKMTime would, takes delegate decisions on its control
+    socket (`ctl`) and logs every request with its answer to srv/e2e.jsonl (`log`)."""
 
-    def __init__(self, mc: Path, port: int, workdir: Path, fresh=False):
-        self.mc, self.port, self.dir = mc, port, workdir
-        self.procs = []
+    def __init__(self, mc: Path, port: int, workdir: Path, fresh=False, sim=False, extra=None):
+        self.mc, self.port, self.dir, self.sim = mc, port, workdir, sim
+        self.e2e, self.backend = None, None
+        # unix socket paths are limited to 104 bytes on macOS (SUN_LEN): keep them short
+        self.sock, self.ctl_path = f"/tmp/fkm-monkey-{port}.sock", f"/tmp/fkm-monkey-{port}.ctl"
         # appended across restarts: solve consistency is checked over the whole run
-        self.log = open(workdir / "server.log", "a", buffering=1)
+        self.log_file = open(workdir / "server.log", "a", buffering=1)
         if fresh:
-            self.log.write("\n=== fresh server after reset settings ===\n")
+            self.log_file.write("\n=== fresh server after reset settings ===\n")
         tests = json.load(open(mc / "tests.json"))
         tests["tests"] = [{"name": "idle (monkey)", "steps": [{"type": "Sleep", "data": 86_400_000}]}]
+        tests.update(extra or {})
         (workdir / "srv").mkdir(exist_ok=True)
         json.dump(tests, open(workdir / "srv" / "tests.json", "w"))
+        if fresh and sim:  # a new FKMTime: its attempts start over
+            (workdir / "srv" / "e2e.jsonl").unlink(missing_ok=True)
 
     def start(self):
         srv = self.dir / "srv"
         (srv / "fw").mkdir(exist_ok=True)
         (srv / "logs").mkdir(exist_ok=True)
-        # unix socket paths are limited to 104 bytes on macOS (SUN_LEN): keep it short
-        sock = f"/tmp/fkm-monkey-{self.port}.sock"
-        env = dict(os.environ, SOCKET_PATH=sock)
-        try:
-            os.unlink(sock)
-        except FileNotFoundError:
-            pass
-        self.procs.append(subprocess.Popen([self.mc / "target/debug/e2e"], cwd=srv, env=env,
-                                           stdout=self.log, stderr=self.log))
-        time.sleep(0.8)
+        env = dict(os.environ, SOCKET_PATH=self.sock)
+        if self.e2e is None:
+            os.unlink(self.sock) if os.path.exists(self.sock) else None
+            if self.sim:
+                env.update(E2E_SIM="1", E2E_CONTROL=self.ctl_path, E2E_LOG=str(srv / "e2e.jsonl"))
+            self.e2e = subprocess.Popen([self.mc / "target/debug/e2e"], cwd=srv, env=env,
+                                        stdout=self.log_file, stderr=self.log_file)
+            time.sleep(0.8)
         env.update(DEV="1", NO_TLS="1", NO_BT="1", NO_MDNS="1", PORT=str(self.port),
                    FIRMWARE_DIR=str(srv / "fw"), DEVICE_LOGS=str(srv / "logs"),
                    RUST_LOG="none,backend=trace")
-        self.procs.append(subprocess.Popen([self.mc / "target/debug/backend"], cwd=srv, env=env,
-                                           stdout=self.log, stderr=subprocess.STDOUT))
+        self.backend = subprocess.Popen([self.mc / "target/debug/backend"], cwd=srv, env=env,
+                                        stdout=self.log_file, stderr=subprocess.STDOUT)
+
+    @staticmethod
+    def _end(p):
+        if p is None:
+            return
+        p.terminate()
+        try:
+            p.wait(5)
+        except subprocess.TimeoutExpired:
+            p.kill()
 
     def stop(self):
-        for p in self.procs:
-            p.terminate()
-        for p in self.procs:
-            try:
-                p.wait(5)
-            except subprocess.TimeoutExpired:
-                p.kill()
-        self.procs = []
+        """Everything (also FKMTime)."""
+        self._end(self.backend)
+        self._end(self.e2e)
+        self.backend = self.e2e = None
+
+    def restart(self, down_s: float):
+        """The server goes away for `down_s` (in sim mode FKMTime stays up)."""
+        self._end(self.backend)
+        if not self.sim:
+            self._end(self.e2e)
+            self.e2e = None
+        time.sleep(down_s)
+        self.start()
+
+    def ctl(self, **cmd) -> dict:
+        with socket.socket(socket.AF_UNIX) as s:
+            s.settimeout(5)
+            s.connect(self.ctl_path)
+            s.sendall((json.dumps(cmd) + "\n").encode())
+            buf = b""
+            while not buf.endswith(b"\n"):
+                chunk = s.recv(65536)
+                if not chunk:
+                    break
+                buf += chunk
+        return json.loads(buf)
+
+    def attempts(self) -> list:
+        return self.ctl(cmd="attempts")["attempts"]
+
+    def log(self) -> list:
+        try:
+            text = (self.dir / "srv" / "e2e.jsonl").read_text(errors="replace")
+        except FileNotFoundError:
+            return []
+        return [json.loads(l) for l in text.splitlines() if l.strip()]
 
     def solves(self) -> list:
         """Solve entries the server received: (time, penalty, competitor, session, group, delegate)."""
@@ -315,7 +360,9 @@ class Run:
         job += args.job_base
         base = 20000 + job * 10
         self.ports = dict(http=base, uart1=base + 1, control=base + 2)
-        self.server = Server(Path(args.mc).expanduser(), SRV_PORT + job, self.dir)
+        self.server_extra = getattr(args, "server_extra", None)
+        self.server = Server(Path(args.mc).expanduser(), SRV_PORT + job, self.dir, sim=args.sim_e2e,
+                             extra=self.server_extra)
         self.image = image
         self.executed = []
         self.expected_boots = 1
@@ -347,7 +394,8 @@ class Run:
             self.settings_resets = resets
             self.expected_boots += 1
             self.server.stop()
-            self.server = Server(self.server.mc, self.server.port, self.dir, fresh=True)
+            self.server = Server(self.server.mc, self.server.port, self.dir, fresh=True,
+                                 sim=self.server.sim, extra=self.server_extra)
             self.server.start()
         if boots > self.expected_boots:
             raise Failure(f"unexpected reboot (#{boots})")
@@ -397,16 +445,35 @@ class Run:
             self.emu.send(f"bat {a[0]}")
         elif kind == "wait":
             pass
-        elif kind == "expect":  # scripted scenarios only: state field reaches a value
-            self.wait_for(lambda s: s.get(a[0]) == str(a[1]), 15, f"{a[0]}={a[1]}")
+        elif kind == "expect":  # scripted scenarios only: state field reaches a value (in a[2] s)
+            self.wait_for(lambda s: s.get(a[0]) == str(a[1]), a[2] if len(a) > 2 else 15, f"{a[0]}={a[1]}")
+        elif kind in ("resolve", "delete"):  # sim e2e: the delegate decides the open incident
+            open_ = [x for x in self.server.attempts() if x["status"] == "unresolved"]
+            if not open_:
+                raise Failure(f"{kind}: no open incident on the server")
+            extra = a[0] if a else {}
+            r = self.server.ctl(cmd=kind, sessionId=open_[-1]["sessionId"], **extra)
+            if not r.get("ok"):
+                raise Failure(f"{kind}: {r}")
+        elif kind == "drop_reply":  # sim e2e: the next attempt is entered, its answer lost
+            self.server.ctl(cmd="drop_reply", espId=int(self.state()["id"], 16))
+        elif kind == "expect_db":  # sim e2e: the attempts of a[0] (competitor) match a[1]
+            def db_matches():
+                rows = [x for x in self.server.attempts() if x["competitorId"] == a[0]]
+                return len(rows) == len(a[1]) and all(
+                    all(r.get(k) == v for k, v in want.items()) for r, want in zip(rows, a[1]))
+            t0 = time.monotonic()
+            while not db_matches():
+                if time.monotonic() - t0 > 15:
+                    rows = [x for x in self.server.attempts() if x["competitorId"] == a[0]]
+                    raise Failure(f"server attempts of {a[0]}: {rows}, expected {a[1]}")
+                time.sleep(0.5)
         elif kind == "wifi":  # radio torn down for a[0] ms
             self.emu.send("wifi off")
             time.sleep(a[0] / 1000)
             self.emu.send("wifi on")
         elif kind == "server":
-            self.server.stop()
-            time.sleep(a[0] / 1000)
-            self.server.start()
+            self.server.restart(a[0] / 1000)
         elif kind == "power":
             before = self.state(timeout=6).get("time")
             self.expected_boots += 1
@@ -506,6 +573,8 @@ class Run:
     def check_server(self):
         """Solves the device sent while being abused must still be consistent."""
         by_session = {}
+        # a delegate's decision may change the time the device then sends
+        decided = {x[3] for x in self.server.solves() if x[5]}
         for t, pen, comp, session, group, delegate in self.server.solves():
             if comp not in KNOWN_CARDS:
                 raise Failure(f"solve for unknown competitor {comp}")
@@ -514,7 +583,8 @@ class Run:
             running = time.monotonic() - st.started if st.state == b" " else 0
             # emulated time runs slower than real time: a button stop is within the real run
             button_stop = t <= max(st.longest_run, running, *[x / 1000 for x in st.stopped_times], 0) * 1000
-            if not delegate and t not in st.stopped_times and pen != -1 and not button_stop:
+            if not delegate and t not in st.stopped_times and pen != -1 and not button_stop \
+                    and session not in decided:
                 raise Failure(f"solve time {t} never shown by the stackmat {self.stackmat.stopped_times[-8:]}")
             if delegate:
                 continue  # a delegate call is a request; the solve submitted later supersedes it
@@ -631,7 +701,10 @@ def main():
     p.add_argument("--actions", type=int, default=400)
     p.add_argument("--chunk", type=int, default=40, help="recovery probe every N actions")
     p.add_argument("--cfg-exit", type=int, default=6, help="index of Exit in the config menu (v4)")
-    p.add_argument("--mc", default="~/projects/micro-connector")
+    p.add_argument("--mc", default="~/projects/micro-connector",
+                   help="micro-connector checkout (competition mode needs its sim-e2e branch)")
+    p.add_argument("--sim-e2e", action="store_true",
+                   help="fuzz: e2e plays FKMTime (always on in competition mode)")
     p.add_argument("--emit-hil")
     p.add_argument("--shrink", action="store_true")
     p.add_argument("--shrink-runs", type=int, default=12)
@@ -643,6 +716,8 @@ def main():
     p.add_argument("--max-attempts", type=int, default=40, help="competition: attempts in the day")
     p.add_argument("--time-scale", type=float, default=0.5, help="competition: solve lengths")
     p.add_argument("--slip-rate", type=float, default=1.0, help="competition: slip rate factor")
+    p.add_argument("--delegate-rate", type=float, default=1.0,
+                   help="competition: delegate call rate factor (on top of --slip-rate)")
     args = p.parse_args()
 
     if args.mode == "competition" or (args.replay_file and "day" in json.load(open(args.replay_file))):
@@ -652,6 +727,8 @@ def main():
     if args.replay_file:
         d = json.load(open(args.replay_file))
         work = [(d["seed"], d["actions"])]
+        args.sim_e2e = args.sim_e2e or d.get("sim_e2e", False)
+        args.server_extra = d.get("server")
     else:
         if args.seed is not None or args.replay is not None:
             seeds = [args.seed if args.seed is not None else args.replay]
