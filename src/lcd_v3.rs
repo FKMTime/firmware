@@ -20,8 +20,15 @@ type Lcd = LcdDisplay<ShifterPin, Delay>;
 type Text = heapless::String<96>;
 
 const EVENT_TIMEOUT: Duration = Duration::from_secs(30);
+/// HD44780 instructions and writes take 37–41 µs (~60 µs on a slow 190 kHz controller) and any
+/// transfer while busy is lost. ag-lcd-async waits only before characters, and the next command
+/// reaches the controller ~20 µs after a character through the shift registers.
+const BUSY_US: u64 = 100;
+/// Re-sync and rewrite the LCD this often on idle screens: the write-only bus can't see a lost
+/// write, a nibble desync or a module brownout, and the change-only cache would keep them.
+const HEAL_INTERVAL: Duration = Duration::from_secs(2);
 
-async fn new_lcd(lcd_shifter: ShifterValue) -> Lcd {
+async fn new_lcd(lcd_shifter: &ShifterValue) -> Lcd {
     let mut lcd = LcdDisplay::new(
         lcd_shifter.get_pin_mut(2, true),
         lcd_shifter.get_pin_mut(3, true),
@@ -43,9 +50,50 @@ async fn new_lcd(lcd_shifter: ShifterValue) -> Lcd {
     .build()
     .await;
 
+    // build() sends its 4-bit function set right after the 8-bit one, while the controller is busy
+    resync(lcd_shifter).await;
     lcd.clear().await;
     lcd.backlight_on();
     lcd
+}
+
+/// Initialisation by instruction (HD44780 datasheet fig. 24) without the clear: brings the
+/// controller back to 4-bit, 2 lines, display on from any state (nibble desync, 8-bit mode after
+/// a brownout) with the shown text untouched, so it doesn't flicker.
+async fn resync(lcd_shifter: &ShifterValue) {
+    // ShifterPin bit b is mask 0x80 >> b: RS = 2, E = 3, DB4..DB7 = 4..7 (CS and backlight kept)
+    const BUS: u8 = 0x3F;
+    const EN: u8 = 0x10;
+    let nibble = |n: u8| {
+        let db = (n & 0x0F).reverse_bits() >> 4;
+        for en in [0, EN, 0] {
+            let mut v = lcd_shifter.value(); // shifted out on drop
+            *v = *v & !BUS | db | en;
+        }
+    };
+
+    Timer::after_micros(BUSY_US).await;
+    for (n, wait_us) in [(0x3, 4100), (0x3, 100), (0x3, BUSY_US), (0x2, BUSY_US)] {
+        nibble(n);
+        Timer::after_micros(wait_us).await;
+    }
+    // function set 4-bit/2 lines/5x8, display on, entry left-to-right, home (resets any shift)
+    for (byte, wait_us) in [
+        (0x28, BUSY_US),
+        (0x0C, BUSY_US),
+        (0x06, BUSY_US),
+        (0x02, 3500),
+    ] {
+        nibble(byte >> 4);
+        nibble(byte);
+        Timer::after_micros(wait_us).await;
+    }
+}
+
+/// Moves the cursor once the previous character is done.
+async fn goto(lcd: &mut Lcd, col: u8, row: u8) {
+    Timer::after_micros(BUSY_US).await;
+    lcd.set_position(col, row).await;
 }
 
 /// Writes the changed characters to the LCD.
@@ -53,21 +101,28 @@ async fn show(text: &mut LcdText, lcd: &mut Lcd) {
     let mut runs: heapless::Vec<(u8, u8, heapless::String<16>), 2> = heapless::Vec::new();
     text.changes(|row, col, s| _ = runs.push((row, col, s.try_into().unwrap_or_default())));
     for (row, col, s) in runs {
-        lcd.set_position(col, row).await;
+        goto(lcd, col, row).await;
         lcd.print(&s).await;
     }
     #[cfg(feature = "sim")]
     crate::sim::lcd_intended(text.shown());
 }
 
+/// Re-syncs the controller and rewrites every character.
+async fn heal(lcd_shifter: &ShifterValue, text: &mut LcdText, lcd: &mut Lcd) {
+    resync(lcd_shifter).await;
+    text.invalidate();
+    show(text, lcd).await;
+}
+
 pub async fn lcd_show_critical_code(lcd_shifter: ShifterValue, code: u8) {
-    let mut lcd = new_lcd(lcd_shifter).await;
+    let mut lcd = new_lcd(&lcd_shifter).await;
     let mut line = Text::new();
     _ = write!(line, "       E{code}");
 
-    lcd.set_position(0, 0).await;
+    goto(&mut lcd, 0, 0).await;
     lcd.print(" CRITICAL ERROR ").await;
-    lcd.set_position(0, 1).await;
+    goto(&mut lcd, 0, 1).await;
     lcd.print(&line).await;
 }
 
@@ -77,8 +132,9 @@ pub async fn lcd_task(
     global_state: GlobalState,
     wifi_setup_sig: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {
-    let mut lcd = new_lcd(lcd_shifter).await;
+    let mut lcd = new_lcd(&lcd_shifter).await;
     let mut text = LcdText::new();
+    let mut last_heal = Instant::now();
 
     let mut line = Text::new();
     _ = write!(line, "{:X}", crate::utils::get_efuse_u32());
@@ -177,7 +233,11 @@ pub async fn lcd_task(
                     .update(|s| s.scene = Scene::AutoSetupWait);
             }
             Event::Tick => {
-                if text.scroll_step() {
+                let scrolled = text.scroll_step();
+                if last_heal.elapsed() >= HEAL_INTERVAL {
+                    last_heal = Instant::now();
+                    heal(&lcd_shifter, &mut text, &mut lcd).await;
+                } else if scrolled {
                     show(&mut text, &mut lcd).await;
                 }
                 sleep_check(&mut text, &mut lcd, global_state, last_update).await;

@@ -1,0 +1,6 @@
+{"seed": 90004, "hw": "v3", "note": "regression (v3): the LCD must show what the firmware wrote again within LCD_STALE_MS after a lost E edge (nibble desync), a lost write, a module brownout, and with a controller slower than the bus (commands sent while busy)", "actions": [
+[1000, "emu", "lcd glitch"], [10, "card", 69420], [10, "expect", "scene", "CompetitorInfo"], [6000, "expect", "lcd", 0],
+[10, "emu", "lcd drop"], [10, "btn", 3, 3400], [10, "expect", "scene", "WaitingForCompetitor"], [6000, "expect", "lcd", 0],
+[10, "emu", "lcd reset"], [10, "card", 69420], [10, "expect", "scene", "CompetitorInfo"], [6000, "expect", "lcd", 0],
+[10, "emu", "lcd slow 4"], [10, "btn", 3, 3400], [10, "expect", "scene", "WaitingForCompetitor"], [10, "card", 69420], [10, "expect", "scene", "CompetitorInfo"], [6000, "expect", "lcd", 0], [10, "emu", "lcd stats"], [10, "emu", "lcd slow 1"]
+]}

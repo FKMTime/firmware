@@ -101,6 +101,11 @@ impl LcdText {
         true
     }
 
+    /// Forget what the LCD shows: the next `changes` rewrites everything.
+    pub fn invalidate(&mut self) {
+        self.shown = [[0xFF; COLS]; ROWS];
+    }
+
     /// What the LCD shows, as far as this buffer knows.
     #[cfg_attr(not(feature = "sim"), allow(dead_code))]
     pub fn shown(&self) -> &[[u8; COLS]; ROWS] {
@@ -190,5 +195,17 @@ mod tests {
         }
         assert_eq!(&offsets[..10], [0, 1, 2, 3, 4, 5, 6, 7, 8, 7]);
         assert!(!flush(&mut t).is_empty());
+    }
+
+    #[test]
+    fn invalidate_rewrites_everything() {
+        let mut t = LcdText::new();
+        t.print(0, "abc", Align::Left, true);
+        flush(&mut t);
+        t.invalidate();
+        assert_eq!(
+            flush(&mut t),
+            [(0, 0, "abc             ".into()), (1, 0, " ".repeat(16))]
+        );
     }
 }
