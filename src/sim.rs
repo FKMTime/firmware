@@ -187,8 +187,63 @@ fn print_oled() {
     print(format_args!("└{:─<128}┘", ""));
 }
 
-const HELP: &str =
-    "sim commands: btn <1-4> [ms] | card <uid> | bat <0-100> | screen | help (btn 3 = submit)";
+const HELP: &str = "sim commands: btn <1-4> [ms] | card <uid> | bat <0-100> | screen | state | help (btn 3 = submit)";
+
+/// One machine-readable line for sim/monkey.py: `@state key=value ...` (`-` = none).
+fn print_state(state: GlobalState) {
+    let mut line = heapless::String::<512>::new();
+    let opt = |v: Option<u64>| v.map_or(-1, |v| v as i64);
+    state.solve.read(|s| {
+        _ = write!(
+            line,
+            "@state scene={:?} comp={} judge={} time={} pen={} insp={}{} conf={} group={} groups={} sel={} dhold={}",
+            s.scene,
+            opt(s.current_competitor),
+            opt(s.current_judge),
+            opt(s.solve_time),
+            s.penalty.map_or(-99, i64::from),
+            u8::from(s.inspection_start.is_some()),
+            u8::from(s.inspection_end.is_some()),
+            u8::from(s.time_confirmed),
+            s.solve_group.as_ref().map_or("-", |g| g.group_id.as_str()),
+            s.possible_groups.len(),
+            s.group_selected_idx,
+            s.delegate_hold.map_or(-1, i64::from),
+        );
+    });
+    state.ui.read(|u| {
+        _ = write!(
+            line,
+            " menu={:?} cfg={} err={} msg={} el={}/{} eo={}",
+            u.menu_scene,
+            u.selected_config_menu.map_or(-1, |v| v as i64),
+            u8::from(u.error_text.is_some()),
+            u8::from(u.custom_message.is_some()),
+            u.selected_error_log_item,
+            crate::utils::error_log::entry_count() + 1,
+            u8::from(u.selected_error_log_entry.is_some()),
+        );
+    });
+    state.status.read(|s| {
+        _ = write!(
+            line,
+            " wifi={:?} srv={:?} stk={:?} added={:?}",
+            s.wifi_connected, s.server_connected, s.stackmat_connected, s.device_added
+        );
+    });
+    _ = write!(line, " errs=");
+    for i in 0..crate::utils::error_log::entry_count() {
+        match crate::utils::error_log::entry(i) {
+            Some(crate::utils::error_log::ErrorLogEntry::Code { code, .. }) => {
+                _ = write!(line, "{code},")
+            }
+            Some(_) => _ = write!(line, "S,"),
+            None => _ = write!(line, "?,"),
+        }
+    }
+    _ = write!(line, " up={}", Instant::now().as_millis());
+    print(format_args!("{line}"));
+}
 
 /// Reads stdin commands and prints the OLED when it changes (at most every 200 ms).
 #[embassy_executor::task]
@@ -241,6 +296,7 @@ fn command(line: &str, state: GlobalState) {
             OLED.lock(|o| o.borrow_mut().dirty = true);
             print_oled();
         }
+        (Some("state"), _) => print_state(state),
         _ => print(format_args!("? {line}\r\n{HELP}")),
     }
 }

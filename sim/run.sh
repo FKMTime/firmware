@@ -6,6 +6,7 @@
 #   SIM_PROVISION=1 sim/run.sh  no seeded Wi-Fi: AP provisioning, panel on http://127.0.0.1:18080
 #   SIM_WIFIMANAGER=~/projects/esp-hal-wifimanager sim/run.sh   local wifimanager checkout
 #   SIM_BLE=tcp:localhost:9544 sim/run.sh   BLE through a Bumble controller (sim/ble_*.py)
+#   SIM_BUILD_ONLY=1, SIM_HTTP_PORT/SIM_UART1_PORT/SIM_CONTROL_PORT: used by sim/monkey.py
 # Extra arguments go to esp-emu (e.g. --timeout 60s).
 set -eu
 cd "$(dirname "$0")/.."
@@ -38,7 +39,10 @@ trap - EXIT
 
 ELF=$T/riscv32imc-unknown-none-elf/release/fkm-firmware
 espflash save-image --chip esp32c3 --merge --partition-table partitions.csv "$ELF" "$T/sim.bin"
+# SIM_BUILD_ONLY=1: stop here (sim/monkey.py copies $T/sim.bin and the ELF per instance)
+[ -z "${SIM_BUILD_ONLY:-}" ] || exit 0
 # firmware port 80 (its own AP while provisioning) on host :18080; `reset` on :5557 keeps flash
 exec esp-emu --chip esp32c3 --firmware "$T/sim.bin" --elf "$ELF" \
-    --net "user,hostfwd=tcp:127.0.0.1:18080-:80" --uart1-tcp 127.0.0.1:5556 \
-    --control-tcp 127.0.0.1:5557 ${SIM_BLE:+--ble-hci "$SIM_BLE"} "$@"
+    --net "user,hostfwd=tcp:127.0.0.1:${SIM_HTTP_PORT:-18080}-:80" \
+    --uart1-tcp "127.0.0.1:${SIM_UART1_PORT:-5556}" \
+    --control-tcp "127.0.0.1:${SIM_CONTROL_PORT:-5557}" ${SIM_BLE:+--ble-hci "$SIM_BLE"} "$@"

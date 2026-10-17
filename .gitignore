@@ -7,3 +7,4 @@ target/
 **/*.rs.bk
 *.pdb
 dist/
+sim/out/
