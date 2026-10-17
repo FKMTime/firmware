@@ -11,7 +11,7 @@ esp-backtrace = { version = "0.20.0", features = [ "panic-handler", "println", "
 esp-hal = { version = "1.2.2", features = [ "esp32c3" ] }
 esp-println = { version = "0.18.0", features = ["log-04", "esp32c3"] }
 log = { version = "0.4.34", features = ["release_max_level_info"] }
-esp-radio = { version = "1.0.0-beta.1", features = ["coex", "esp32c3"] }
+esp-radio = { version = "1.0.0-beta.1", features = ["coex", "esp32c3", "unstable"] }
 esp-rtos = { version = "0.4.0", features = ["esp32c3", "embassy", "esp-radio"] }
 embassy-executor = { version = "0.10.0", features = ["nightly"] }
 embassy-net = { version = "0.9.1", features = ["tcp", "udp", "multicast", "dhcpv4", "medium-ethernet", "proto-ipv4", "dns"] }
@@ -21,7 +21,7 @@ static_cell = { version = "2.1.1", features = ["nightly"] }
 heapless = { version = "0.9.3", default-features = false }
 esp-alloc = { version = "0.11.0", features = ["internal-heap-stats"] }
 
-esp-hal-wifimanager = { version = "0.6.3", default-features = false, features = ["ap", "ble", "esp32c3", "ota", "custom_panel"] }
+esp-hal-wifimanager = { version = "0.6.4", default-features = false, features = ["ap", "ble", "esp32c3", "ota", "custom_panel"] }
 serde = { version = "1.0.229", features = ["alloc", "derive"], default-features = false }
 serde_json = { version = "1.0.154", default-features = false, features = ["alloc"] }
 adv-shift-registers = "0.2.5"
