@@ -28,6 +28,10 @@ use ws_framer::{WsFrame, WsRxError, WsRxFramer, WsTxFramer, WsUrl};
 
 const WS_BUF_SIZE: usize = 8192;
 const TLS_BUF_SIZE: usize = 16640;
+// TCP socket buffers (in the task's static state, which the main stack pays for): TLS has its own
+// 16 KB record buffers and outgoing frames are small or chunked, so small windows are enough
+const TCP_RX_SIZE: usize = 4096;
+const TCP_TX_SIZE: usize = 2048;
 const OUT_QUEUE_LEN: usize = 8;
 const REQUEST_SLOTS: usize = 4;
 /// Close code telling the server the device goes to sleep.
@@ -206,8 +210,8 @@ pub async fn ws_task(
     };
     log::debug!("ws_url: {ws_url:?}");
 
-    let mut tcp_rx = [0; WS_BUF_SIZE];
-    let mut tcp_tx = [0; WS_BUF_SIZE];
+    let mut tcp_rx = [0; TCP_RX_SIZE];
+    let mut tcp_tx = [0; TCP_TX_SIZE];
     // SAFETY: `ws_task` is spawned once and these are the only references to the buffers
     // (each is taken, and zeroed, exactly once).
     let mut bufs = unsafe {
@@ -323,21 +327,6 @@ async fn run(
     let mut tx = WsTxFramer::new(true, &mut *bufs.ws_tx);
     let mut rx = WsRxFramer::new(&mut *bufs.ws_rx);
     handshake(global_state, url, &mut socket, &mut tx, &mut rx).await?;
-
-    #[cfg(feature = "auto_add")]
-    if !global_state
-        .status
-        .read(|s| s.device_added)
-        .unwrap_or(false)
-    {
-        _ = send(TimerPacket {
-            tag: None,
-            data: TimerPacketInner::Add {
-                firmware: crate::version::FIRMWARE.into(),
-                sign_key: crate::state::SETTINGS.read(|s| s.sign_key),
-            },
-        });
-    }
 
     let mut ota = Ota::new(FlashStorage::new(unsafe {
         esp_hal::peripherals::FLASH::steal()
@@ -627,6 +616,11 @@ async fn handle_packet(
             global_state
                 .status
                 .update(|s| s.device_added = Some(*added));
+            // auto_add registers like a submit press would (fresh sign key, server trusted)
+            #[cfg(feature = "auto_add")]
+            if !*added {
+                crate::buttons::add_device(&global_state).await;
+            }
             crate::translations::clear_locales();
             for locale in locales {
                 crate::translations::process_locale(&locale.locale, &locale.translations);
