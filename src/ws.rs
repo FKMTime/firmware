@@ -8,7 +8,7 @@ use crate::{
     consts::WS_RETRY_MS,
     state::{GlobalState, Scene},
     structs::{ApiError, DelegateResponsePacket, FromPacket, TimerPacket, TimerPacketInner},
-    utils::{UninitBuf, error_log::codes, logger::ReadyLogs},
+    utils::{error_log::codes, logger::ReadyLogs},
 };
 use core::{cell::Cell, fmt::Write as _, str::FromStr};
 use embassy_crypto_rustcrypto as _;
@@ -36,15 +36,6 @@ const OUT_QUEUE_LEN: usize = 8;
 const REQUEST_SLOTS: usize = 4;
 /// Close code telling the server the device goes to sleep.
 const CLOSE_SLEEP: u16 = 4000;
-
-#[unsafe(link_section = ".dram2_uninit")]
-static WS_RX_BUF: UninitBuf<WS_BUF_SIZE> = UninitBuf::new();
-#[unsafe(link_section = ".dram2_uninit")]
-static WS_TX_BUF: UninitBuf<WS_BUF_SIZE> = UninitBuf::new();
-#[unsafe(link_section = ".dram2_uninit")]
-static TLS_RX_BUF: UninitBuf<TLS_BUF_SIZE> = UninitBuf::new();
-#[unsafe(link_section = ".dram2_uninit")]
-static TLS_TX_BUF: UninitBuf<TLS_BUF_SIZE> = UninitBuf::new();
 
 type Cs = CriticalSectionRawMutex;
 
@@ -212,17 +203,23 @@ pub async fn ws_task(
 
     let mut tcp_rx = [0; TCP_RX_SIZE];
     let mut tcp_tx = [0; TCP_TX_SIZE];
-    // SAFETY: `ws_task` is spawned once and these are the only references to the buffers
-    // (each is taken, and zeroed, exactly once).
-    let mut bufs = unsafe {
-        Buffers {
-            ws_rx: WS_RX_BUF.get(&mut false),
-            ws_tx: WS_TX_BUF.get(&mut false),
-            tls_rx: TLS_RX_BUF.get(&mut false),
-            tls_tx: TLS_TX_BUF.get(&mut false),
-            tcp_rx: &mut tcp_rx,
-            tcp_tx: &mut tcp_tx,
-        }
+    // allocated once, never freed: they reuse the heap wifimanager provisioning used
+    let (Some(mut tls_rx), Some(mut tls_tx), Some(mut ws_rx), Some(mut ws_tx)) = (
+        alloc_buf(TLS_BUF_SIZE),
+        alloc_buf(TLS_BUF_SIZE),
+        alloc_buf(WS_BUF_SIZE),
+        alloc_buf(WS_BUF_SIZE),
+    ) else {
+        log::error!("Not enough heap for the ws buffers");
+        return;
+    };
+    let mut bufs = Buffers {
+        ws_rx: &mut ws_rx,
+        ws_tx: &mut ws_tx,
+        tls_rx: &mut tls_rx,
+        tls_tx: &mut tls_tx,
+        tcp_rx: &mut tcp_rx,
+        tcp_tx: &mut tcp_tx,
     };
 
     loop {
@@ -254,6 +251,13 @@ pub async fn ws_task(
             .update(|s| s.server_connected = Some(false));
         Timer::after_millis(WS_RETRY_MS).await;
     }
+}
+
+fn alloc_buf(len: usize) -> Option<alloc::vec::Vec<u8>> {
+    let mut buf = alloc::vec::Vec::new();
+    buf.try_reserve_exact(len).ok()?;
+    buf.resize(len, 0);
+    Some(buf)
 }
 
 struct Buffers<'a> {
