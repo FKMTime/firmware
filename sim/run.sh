@@ -1,7 +1,6 @@
 #!/bin/sh
 # Builds the `sim` firmware against the esp-emu patched crates (with the bus tap) and runs it in
-# esp-emu with the host device models (sim/bus.py). The patches live in $ESP_SIM_PATCHES
-# (default ~/tmp/esp-sim-patches, see its README).
+# esp-emu with the host device models (sim/bus.py). The patches are in sim/patches/.
 #   sim/run.sh                 mdns finds the server
 #   SIM_WS_URL=ws://192.168.4.1:8080 sim/run.sh     fixed url (192.168.4.1 = this machine)
 #   SIM_PROVISION=1 sim/run.sh  no seeded Wi-Fi: AP provisioning, panel on http://127.0.0.1:18080
@@ -18,10 +17,9 @@ HW="${SIM_HW:-v4}"
 case "$HW" in v3) T=target/sim-v3 ;; v4) T=target/sim ;; *) echo "SIM_HW must be v3 or v4" >&2; exit 2 ;; esac
 mkdir -p "$T"
 PATCHES=""
-ESP_SIM_PATCHES="${ESP_SIM_PATCHES:-$HOME/tmp/esp-sim-patches}"
 locked() { grep -A1 "^name = \"$1\"\$" Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p'; }
 for CRATE in esp-hal esp-radio; do
-    DIR=$("$ESP_SIM_PATCHES/apply.sh" "$CRATE-$(locked "$CRATE")")
+    DIR=$(sim/patches/apply.sh "$CRATE-$(locked "$CRATE")")
     PATCHES="$PATCHES --config patch.crates-io.$CRATE.path=\"$DIR\""
 done
 if [ -n "${SIM_WIFIMANAGER:-}" ]; then

@@ -8,3 +8,4 @@ target/
 *.pdb
 dist/
 sim/out/
+venv

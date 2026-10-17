@@ -1,6 +1,6 @@
 //! esp-emu simulation build (feature `sim`, see sim/README.md).
 //!
-//! The firmware runs its real drivers: the esp-sim-patches bus tap (so `sim` builds need the
+//! The firmware runs its real drivers: the sim/patches bus tap (so `sim` builds need the
 //! patched esp-hal, see sim/run.sh) hands GPIO, I2C, SPI and ADC traffic to device models on
 //! the host (sim/bus.py). This module only adds what the host can't see: a machine-readable
 //! state line and a Wi-Fi radio switch, read from the tap's console input.

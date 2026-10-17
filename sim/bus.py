@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Host side of the esp-sim-patches bus tap: esp-emu's UART0 carries the firmware's GPIO, I2C,
+"""Host side of the sim/patches bus tap: esp-emu's UART0 carries the firmware's GPIO, I2C,
 SPI and ADC traffic (frames `F5 <type> <len u16> <payload>`, see the patches' README); the
 boards here wire the device models of sim/devices.py to it like the real PCBs do.
 

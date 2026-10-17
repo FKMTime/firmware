@@ -2,7 +2,7 @@
 
 [esp-emu](https://github.com/espressif/esp-emulator) (Espressif, beta, closed source) runs the real
 ESP32-C3 image with Wi-Fi. The firmware runs its real drivers: the bus tap in the patched esp-hal
-(esp-sim-patches, `ESP_SIM_TAP=1`) hands every GPIO, I2C, SPI and ADC access to the host over
+(`sim/patches/`, `ESP_SIM_TAP=1`) hands every GPIO, I2C, SPI and ADC access to the host over
 esp-emu's UART0 socket, where `sim/bus.py` wires the device models of `sim/devices.py` like the
 PCB does (`SIM_HW=v3|v4`, `--hw v3|v4`; v4 is the default):
 
@@ -26,8 +26,8 @@ transceives), `i2c nack <addr hex> [n]`. `tap stats` prints the tap's traffic an
 
 `sim/run.sh` builds against patched copies of esp-hal (esp-emu never sets the interrupt matrix
 status registers, which esp-hal relies on; the bus tap) and esp-radio (BLE bring-up behind the
-ESP-IDF names esp-emu intercepts), without touching `Cargo.lock`. The patches live in
-`$ESP_SIM_PATCHES` (default `~/tmp/esp-sim-patches`, see its README). Control port
+ESP-IDF names esp-emu intercepts), without touching `Cargo.lock`. The patches are in
+`sim/patches/` (see its README); the patched crates go to `target/sim-patches/`. Control port
 `127.0.0.1:5557` takes `reset` (flash kept).
 
 ## Run
@@ -87,7 +87,7 @@ network) are logged and the AP keeps running.
 ## BLE (not working yet)
 
 `SIM_BLE=tcp:localhost:9544 sim/run.sh` connects the firmware to a Bumble controller, e.g.
-`~/tmp/esp-sim-patches/venv/bin/python sim/ble_phone.py` (a "phone" for BLE provisioning). esp-emu
+`venv/bin/python sim/ble_phone.py` (Bumble, see `sim/patches/README.md`) (a "phone" for BLE provisioning). esp-emu
 intercepts the patched esp-radio and receives the first HCI command (`BLE HCI: Reset`), but never
 calls esp-radio's `notify_host_recv`/`notify_host_send_available`, so no response arrives and the
 host stack waits forever. AP provisioning keeps working next to it.

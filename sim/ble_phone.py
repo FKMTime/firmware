@@ -2,7 +2,7 @@
 """BLE "phone" that provisions Wi-Fi over wifimanager's GATT service (Bumble).
 
 Start this first, then the firmware in provisioning mode:
-    ~/tmp/esp-sim-patches/venv/bin/python sim/ble_phone.py
+    venv/bin/python sim/ble_phone.py   # a venv with Bumble, see sim/patches/README.md
     SIM_PROVISION=1 SIM_BLE=tcp:localhost:9544 sim/run.sh
 """
 

@@ -1,4 +1,4 @@
-"""Device models behind the esp-sim-patches bus tap (pure: no I/O, host-tested by the
+"""Device models behind the sim/patches bus tap (pure: no I/O, host-tested by the
 self-check at the bottom). They see what the real chips see: pin edges, I2C/SPI bytes."""
 
 # ── HD44780 character LCD (v3) ──────────────────────────────────────────────────────────────
