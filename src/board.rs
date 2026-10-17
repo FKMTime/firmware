@@ -131,10 +131,6 @@ impl Board {
                 .with_frequency(esp_hal::time::Rate::from_khz(400)),
         );
 
-        // esp-emu models no I2C devices: the sim build runs every I2C device as absent
-        #[cfg(feature = "sim")]
-        let i2c = i2c.ok().filter(|_| false).ok_or(());
-
         let i2c = match i2c {
             Ok(i2c) => {
                 let i2c = i2c
@@ -175,7 +171,6 @@ impl Board {
 impl Board {
     pub fn init(peripherals: Peripherals) -> Board {
         use embedded_hal::digital::OutputPin;
-        #[cfg(not(feature = "sim"))]
         use esp_hal::gpio::{Level, Output};
 
         let timg0 = TimerGroup::new(peripherals.TIMG0);
@@ -201,19 +196,9 @@ impl Board {
             InputConfig::default().with_pull(Pull::Down),
         );
 
-        #[cfg(not(feature = "sim"))]
-        type ShiftOut = Output<'static>;
-        #[cfg(not(feature = "sim"))]
-        let (shifter_data_pin, shifter_clk_pin, shifter_latch_pin) = (
-            Output::new(peripherals.GPIO10, Level::Low, Default::default()),
-            Output::new(peripherals.GPIO21, Level::Low, Default::default()),
-            Output::new(peripherals.GPIO1, Level::Low, Default::default()),
-        );
-        // esp-emu can't observe GPIOs: the sim decodes the chain (and the LCD behind it) itself
-        #[cfg(feature = "sim")]
-        type ShiftOut = crate::sim::ShiftPin;
-        #[cfg(feature = "sim")]
-        let (shifter_data_pin, shifter_clk_pin, shifter_latch_pin) = crate::sim::shift_pins();
+        let shifter_data_pin = Output::new(peripherals.GPIO10, Level::Low, Default::default());
+        let shifter_latch_pin = Output::new(peripherals.GPIO1, Level::Low, Default::default());
+        let shifter_clk_pin = Output::new(peripherals.GPIO21, Level::Low, Default::default());
 
         let adv_shift_reg = adv_shift_registers::AdvancedShiftRegister::<2, _>::new(
             shifter_data_pin,
@@ -222,7 +207,7 @@ impl Board {
             0,
         );
         static SHIFT_REG: static_cell::StaticCell<
-            adv_shift_registers::AdvancedShiftRegister<2, ShiftOut>,
+            adv_shift_registers::AdvancedShiftRegister<2, Output<'static>>,
         > = static_cell::StaticCell::new();
         let adv_shift_reg = SHIFT_REG.init(adv_shift_reg);
 

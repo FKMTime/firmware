@@ -91,8 +91,6 @@ async fn main(spawner: Spawner) {
 
     set_brownout_detection(false);
     let board = Board::init(peripherals);
-    #[cfg(feature = "sim")]
-    let sim_rx = sim::init();
     esp_rtos::start(board.timg1.timer0, board.sw_interrupt);
     FkmLogger::set_logger();
     spawn_task(
@@ -186,13 +184,11 @@ async fn main(spawner: Spawner) {
         battery_v3::battery_read_task(board.battery, board.adc1, global_state),
     );
     #[cfg(feature = "sim")]
-    if let Some(rx) = sim_rx {
-        spawn_task(
-            &spawner,
-            "sim::command_task",
-            sim::command_task(rx, global_state),
-        );
-    }
+    spawn_task(
+        &spawner,
+        "sim::command_task",
+        sim::command_task(global_state),
+    );
     #[cfg(feature = "v4")]
     spawn_task(
         &spawner,
@@ -285,9 +281,6 @@ async fn main(spawner: Spawner) {
             }
         }
     }
-
-    #[cfg(feature = "sim")]
-    sim::seed_wifi(nvs).await;
 
     Timer::after_millis(500).await;
     // boxed (boot only, freed after): kept in main's state this ~6 KB future would hold static RAM,

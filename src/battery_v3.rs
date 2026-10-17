@@ -1,9 +1,7 @@
 use crate::consts::BATTERY_SEND_INTERVAL_MS;
 use embassy_time::{Duration, Instant, Timer};
-#[cfg(not(feature = "sim"))]
 use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 
-#[cfg(not(feature = "sim"))]
 type AdcCal = esp_hal::analog::adc::AdcCalCurve<esp_hal::peripherals::ADC1<'static>>;
 
 #[embassy_executor::task]
@@ -12,15 +10,10 @@ pub async fn battery_read_task(
     adc: esp_hal::peripherals::ADC1<'static>,
     state: crate::state::GlobalState,
 ) {
-    #[cfg(not(feature = "sim"))]
-    let (mut adc, mut adc_pin) = {
-        let mut adc_config = AdcConfig::new();
-        let pin = adc_config.enable_pin_with_cal::<_, AdcCal>(adc_pin, Attenuation::_11dB);
-        (Adc::new(adc, adc_config).into_async(), pin)
-    };
-    // esp-emu has no ADC: the sim's `bat` command sets the reading
-    #[cfg(feature = "sim")]
-    let _ = (adc_pin, adc);
+    let mut adc_config = AdcConfig::new();
+
+    let mut adc_pin = adc_config.enable_pin_with_cal::<_, AdcCal>(adc_pin, Attenuation::_11dB);
+    let mut adc = Adc::new(adc, adc_config).into_async();
 
     let mut battery_start = Instant::now().saturating_add(Duration::from_millis(300));
 
@@ -38,10 +31,7 @@ pub async fn battery_read_task(
             continue;
         }
 
-        #[cfg(not(feature = "sim"))]
         let read = adc.read_oneshot(&mut adc_pin).await;
-        #[cfg(feature = "sim")]
-        let read = crate::sim::battery_adc();
         let read = smoother.tick(read as f32);
 
         #[cfg(feature = "bat_dev_lcd")]

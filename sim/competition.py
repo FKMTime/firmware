@@ -283,7 +283,8 @@ class Mismatch(Exception):
 class Station(M.Run):
     def __init__(self, n, run_dir, server, image, ports, args, restart_lock):
         self.n, self.dir, self.server, self.args, self.ports = n, run_dir, server, args, ports
-        self.expected_boots, self.settings_resets, self.heap_peak = 1, 0, 0
+        self.expected_boots, self.settings_resets, self.heap_peak, self.reseed_after = 1, 0, 0, 0
+        self.image = image
         self.executed, self.t0 = [], time.monotonic()
         self.restart_lock = restart_lock
         efuse = run_dir / f"dev{n}.efuse"
@@ -292,7 +293,7 @@ class Station(M.Run):
                        check=True, stdout=subprocess.DEVNULL)
         bin_ = run_dir / f"dev{n}.bin"
         shutil.copy(image[0], bin_)
-        self.emu = M.Emu(bin_, image[1], ports, run_dir / f"firmware{n}.log", efuse)
+        self.emu = M.Emu(bin_, image[1], ports, run_dir / f"firmware{n}.log", efuse, hw=args.hw)
         self.stackmat = M.Stackmat(ports["uart1"])
         self.esp = None
         self.delegate_until = -10**9  # emulated ms until which a pending delegate blocks new calls
@@ -640,7 +641,7 @@ def check_attempt(st, rec, new):
 class Day:
     def __init__(self, seed, day, job, args, image):
         self.seed, self.day, self.args = seed, day, args
-        self.dir = M.OUT / f"comp-d{day['devices']}" / str(seed)
+        self.dir = M.OUT / f"comp{'-v3' if args.hw == 'v3' else ''}-d{day['devices']}" / str(seed)
         if self.dir.exists():
             shutil.rmtree(self.dir)
         self.dir.mkdir(parents=True)
@@ -725,7 +726,7 @@ class Day:
             for i in range(n):
                 base = 20000 + (self.args.job_base + self.job * n + i) * 10
                 stations.append(Station(i, self.dir, self.server, self.image,
-                                        dict(http=base, uart1=base + 1, control=base + 2), self.args,
+                                        dict(http=base, uart1=base + 1, control=base + 2, tap=base + 3), self.args,
                                         self.restart_lock))
             for st in stations:
                 st.boot()
@@ -846,7 +847,7 @@ def main(args):
         print(f"  slips: {', '.join(f'{k} {v}' for k, v in sorted(s['slips'].items())) or '-'}")
         for m in s["mismatches"] + s["failures"]:
             print(f"  ! {m}")
-    print(f"\n{len(results) - bad}/{len(results)} days clean (logs: sim/out/comp-d{work[0][1]['devices']}/<seed>/)")
+    print(f"\n{len(results) - bad}/{len(results)} days clean (logs: sim/out/comp{'-v3' if args.hw == 'v3' else ''}-d{work[0][1]['devices']}/<seed>/)")
     return 1 if bad else 0
 
 

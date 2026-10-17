@@ -1,27 +1,34 @@
 # Running the firmware in esp-emu
 
 [esp-emu](https://github.com/espressif/esp-emulator) (Espressif, beta, closed source) runs the real
-ESP32-C3 image with Wi-Fi. The `sim` feature (v4 or v3, UART stackmat; `SIM_HW=v3` / `--hw v3`)
-fills the gaps of the emulator:
+ESP32-C3 image with Wi-Fi. The firmware runs its real drivers: the bus tap in the patched esp-hal
+(esp-sim-patches, `ESP_SIM_TAP=1`) hands every GPIO, I2C, SPI and ADC access to the host over
+esp-emu's UART0 socket, where `sim/bus.py` wires the device models of `sim/devices.py` like the
+PCB does (`SIM_HW=v3|v4`, `--hw v3|v4`; v4 is the default):
 
-| Real device | In `sim` builds |
+| Real device | Model on the host |
 |---|---|
-| OLED (I2C, v4) | fake SSD1309 on the I2C bus, printed to the console (half blocks) when it changes |
-| LCD (v3) | the shift register chain is faked at its three GPIOs (data/clock/latch); the real `adv_shift_registers` + `ag-lcd-async` + `lcd_v3` code drives an emulated HD44780 (`src/sim/hd44780.rs`: 8-bit power-on state, 4-bit nibble pairing, DDRAM/CGRAM, entry mode/shift, writes during the busy time are lost), printed as a 16×2 box |
-| RFID reader | `card <uid>` on stdin |
-| Buttons | `btn <1-4> [ms]` on stdin (1 inspect, 2 delegate, 3 submit, 4 penalty) |
-| Battery gauge | `bat <0-100>` on stdin (starts at 100); v3: the reading of the faked ADC |
-| Stackmat | the real UART driver; `sim/stackmat.py` plays the timer |
-| Wi-Fi setup | seeded for the emulator's AP; also adds itself to the server (`auto_add`) |
+| v4 OLED (I2C 0x3C) | SSD1309 page-addressing GRAM, printed to the console (half blocks) when it changes |
+| v3 LCD | 74HC595 chain decoded from the GPIO10/21/1 (data/clock/latch) edges → HD44780 on the second register (RS, E, DB4–7, backlight): 8-bit power-on state, 4-bit nibble pairing, DDRAM/CGRAM, entry mode/shift; a transfer starting within the busy time (37/41 µs, 1.52 ms for clear/home) is lost. Printed as a 16×2 box |
+| RFID | MFRC522 register model (v4: I2C 0x28, v3: SPI with CS from the shift register) answering the real esp-hal-mfrc522 driver: REQA/anticollision/select/HLTA, MFAuthent against the card's sector trailer, MIFARE read/write. `card <uid>` holds a 1K card in the field for 3 s; what is written to a card stays on it |
+| Buttons | `btn <1-4> [ms]` (1 inspect, 2 delegate, 3 submit, 4 penalty). v4: GPIO0–3 pulses, timed in emulated time by the tap; v3: the matrix (shift register row × GPIO3) answered per scan |
+| Battery | `bat <0-100>` (starts at 100). v4: BQ27441 on I2C 0x55; v3: ADC1 channel 2 through the divider |
+| Stackmat | the real UART1 driver; `sim/stackmat.py` plays the timer |
+| Wi-Fi setup | the host writes Wi-Fi + server url into the image's NVS partition (`bus.py nvs`, esp-nvs-partition-tool); the firmware also adds itself to the server (`auto_add`) |
 | BLE | starts (patched esp-radio), but esp-emu never answers its HCI commands: no BLE flows yet |
 | Sleep | off |
 
+The firmware's `sim` feature (`SIM_CLIPPY=1 sim/run.sh` lints it) only adds what the host can't see: `state` (the `@state` line the
+scripts read, v3 also with lcd_v3's change cache as `lcdtext`) and `wifi off|on` (radio torn down
+/ restarted), read from the tap's console frames; it needs the patched esp-hal. Faults the host
+injects: `lcd glitch|drop|reset|slow <n>` (below), `rfid error [n]` (parity errors on the next
+transceives), `i2c nack <addr hex> [n]`. `tap stats` prints the tap's traffic and round-trip times.
+
 `sim/run.sh` builds against patched copies of esp-hal (esp-emu never sets the interrupt matrix
-status registers, which esp-hal relies on) and esp-radio (BLE bring-up behind the ESP-IDF names
-esp-emu intercepts), without touching `Cargo.lock`. The patches live in
-`$ESP_SIM_PATCHES` (default `~/tmp/esp-sim-patches`, see its README). The sim build also trades
-12 KB of heap for main stack: wifimanager 0.6.1's Wi-Fi init overruns the ~15.6 KB the sim statics
-leave. Control port `127.0.0.1:5557` takes `reset` (flash kept).
+status registers, which esp-hal relies on; the bus tap) and esp-radio (BLE bring-up behind the
+ESP-IDF names esp-emu intercepts), without touching `Cargo.lock`. The patches live in
+`$ESP_SIM_PATCHES` (default `~/tmp/esp-sim-patches`, see its README). Control port
+`127.0.0.1:5557` takes `reset` (flash kept).
 
 ## Run
 
@@ -32,22 +39,23 @@ SIM_WS_URL=ws://192.168.4.1:8080 sim/run.sh       # terminal 2: firmware; type c
 python3 sim/stackmat.py                           # terminal 3: start | stop | reset | off | on
 ```
 
+`sim/run.sh` takes the device commands above; `state` and `wifi off|on` go to the firmware.
 `192.168.4.1` is this machine inside the emulator. Without `SIM_WS_URL` the firmware uses mDNS,
 which doesn't get answers through esp-emu's relay on macOS. Cards in micro-connector's `tests.json`:
 `69420` (competitor), `3004425529` (judge).
 
 ## v3 LCD
 
-`SIM_HW=v3 sim/run.sh` (or `--hw v3` for `web.py`/`monkey.py`). `@state` gets `lcd=<ms>`: how long
-the emulated LCD has shown something else than what `lcd_v3` believes it wrote (0 = in sync);
-`monkey.py` fails a run when that exceeds 4 s. Fault injection on stdin:
+`SIM_HW=v3 sim/run.sh` (or `--hw v3` for `web.py`/`monkey.py`). The host adds `lcd=<ms>` to
+`@state`: how long the emulated LCD has shown something else than lcd_v3's cache (0 = in sync);
+`monkey.py` fails a run when that exceeds 4 s. Faults at the LCD model:
 
 | Command | Real-world fault |
 |---|---|
 | `lcd glitch` | one E edge lost (noise): every later byte pairs the wrong nibbles |
 | `lcd drop` | one write lost |
 | `lcd reset` | module brownout: back to 8-bit, display off, while the MCU keeps running |
-| `lcd slow <n>` | controller execution times ×n. esp-emu bit-bangs the shift registers ~4× slower than a C3, so n = 3–4 puts the short gaps where real hardware has them |
+| `lcd slow <n>` | controller execution times ×n: the emulated bit-banging (through the tap) is slower than a real C3's, so n puts the short gaps where real hardware has them |
 | `lcd stats` | writes lost to the busy time and the least slack seen since the last `stats` |
 
 The fuzzer injects the first three on v3; `sim/scenarios/lcd-heal.json` checks each heals.

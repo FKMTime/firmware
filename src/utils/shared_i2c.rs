@@ -19,9 +19,6 @@ impl embedded_hal_async::i2c::I2c for SharedI2C {
         operations: &mut [embedded_hal::i2c::Operation<'_>],
     ) -> Result<(), Self::Error> {
         let Some(i2c) = self.inner else {
-            #[cfg(feature = "sim")]
-            return crate::sim::i2c(address, operations);
-            #[cfg(not(feature = "sim"))]
             return Err(esp_hal::i2c::master::Error::Timeout);
         };
 

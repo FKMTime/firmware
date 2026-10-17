@@ -25,9 +25,10 @@ import threading
 import time
 from pathlib import Path
 
+from bus import Emu  # esp-emu + the bus tap and device models
+
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "sim" / "out"
-EMU = shutil.which("esp-emu") or str(Path.home() / ".local/bin/esp-emu")
 
 COMPETITOR, JUDGE, MULTI = 69420, 3004425529, 1264825046  # micro-connector tests.json cards
 KNOWN_CARDS = {COMPETITOR, JUDGE, MULTI}
@@ -254,59 +255,6 @@ class Stackmat:
             time.sleep(10 * 10 / 1200)
 
 
-class Emu:
-    def __init__(self, bin_: Path, elf: Path, ports: dict, log: Path, efuse: Path = None):
-        self.log = open(log, "w", buffering=1)
-        self.lines, self.lock = [], threading.Lock()
-        # a station of several needs its own MAC (device id); esp-emu writes the file back
-        extra = ["--efuse", str(efuse)] if efuse else []
-        self.proc = subprocess.Popen(
-            [EMU, "--chip", "esp32c3", "--firmware", str(bin_), "--elf", str(elf),
-             "--net", f"user,hostfwd=tcp:127.0.0.1:{ports['http']}-:80",
-             "--uart1-tcp", f"127.0.0.1:{ports['uart1']}",
-             "--control-tcp", f"127.0.0.1:{ports['control']}", *extra],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0)
-        self.control = ports["control"]
-        threading.Thread(target=self.read, daemon=True).start()
-
-    def read(self):
-        buf = b""
-        while True:
-            chunk = self.proc.stdout.read(4096)
-            if not chunk:
-                break
-            buf += chunk
-            *lines, buf = buf.split(b"\n")
-            now = time.monotonic()
-            for raw in lines:
-                line = raw.decode(errors="replace").rstrip("\r")
-                self.log.write(f"{now:.3f} {line}\n")
-                with self.lock:
-                    self.lines.append((now, line))
-
-    def send(self, line: str):
-        try:
-            self.proc.stdin.write((line + "\n").encode())
-            self.proc.stdin.flush()
-        except OSError:
-            pass
-
-    def since(self, t0: float) -> list:
-        with self.lock:
-            return [l for t, l in self.lines if t >= t0]
-
-    def power_cycle(self):
-        with socket.create_connection(("127.0.0.1", self.control), timeout=3) as s:
-            s.sendall(b"reset\n")
-
-    def stop(self):
-        self.proc.send_signal(signal.SIGINT)
-        try:
-            self.proc.wait(5)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
-
-
 # ── one run ─────────────────────────────────────────────────────────────────────────────────
 
 class Failure(Exception):
@@ -316,18 +264,19 @@ class Failure(Exception):
 class Run:
     def __init__(self, seed, actions, job, args, image):
         self.seed, self.actions, self.args = seed, actions, args
-        self.dir = OUT / str(seed)
+        self.dir = out_dir(seed, args.hw)
         if self.dir.exists():
             shutil.rmtree(self.dir)
         self.dir.mkdir(parents=True)
         job += args.job_base
         base = 20000 + job * 10
-        self.ports = dict(http=base, uart1=base + 1, control=base + 2)
+        self.ports = dict(http=base, uart1=base + 1, control=base + 2, tap=base + 3)
         self.server = Server(Path(args.mc).expanduser(), SRV_PORT + job, self.dir)
         self.image = image
         self.executed = []
         self.expected_boots = 1
         self.settings_resets = 0
+        self.reseed_after = 0
         self.heap_peak = 0
 
     # helpers
@@ -350,16 +299,21 @@ class Run:
         if self.emu.proc.poll() is not None:
             raise Failure(f"emulator exited ({self.emu.proc.returncode}): crash/panic stop")
         text = self.emu.since(0)
-        boots = sum(1 for l in text if l.startswith("ESP-ROM:"))
+        boots = sum(1 for l in text if "INFO - Hardware Rev:" in l)
         # "Reset settings" in the config menu legitimately wipes NVS and reboots; the device then
-        # registers again with a new sign key, so the server starts fresh too
+        # registers again with a new sign key, so the server starts fresh too. Its Wi-Fi comes
+        # back the way the host seeded it: written again after that reboot, then one more.
         resets = sum(1 for l in text if "Reset settings: rebooting" in l)
         if resets > self.settings_resets:
             self.settings_resets = resets
-            self.expected_boots += 1
+            self.expected_boots += 2
             self.server.stop()
             self.server = Server(self.server.mc, self.server.port, self.dir, fresh=True)
             self.server.start()
+            self.reseed_after = self.expected_boots - 1
+        if self.reseed_after and boots >= self.reseed_after:
+            self.reseed_after = 0
+            self.emu.reseed(self.image[0].with_suffix(".nvs"))
         if boots > self.expected_boots:
             raise Failure(f"unexpected reboot (#{boots})")
         for l in text[-400:]:
@@ -537,7 +491,7 @@ class Run:
 
     def execute(self, deadline):
         self.server.start()
-        self.emu = Emu(*self.image, self.ports, self.dir / "firmware.log")
+        self.emu = Emu(*self.image, self.ports, self.dir / "firmware.log", hw=self.args.hw)
         self.stackmat = Stackmat(self.ports["uart1"])
         self.t0 = time.monotonic()
         try:
@@ -568,6 +522,11 @@ class Run:
 
 # ── driver ──────────────────────────────────────────────────────────────────────────────────
 
+def out_dir(seed, hw: str) -> Path:
+    """Logs of one run: sim/out/<seed> (v4), sim/out/v3-<seed>."""
+    return OUT / (f"v3-{seed}" if hw == "v3" else str(seed))
+
+
 def target(hw: str) -> Path:
     return ROOT / ("target/sim-v3" if hw == "v3" else "target/sim")
 
@@ -579,6 +538,7 @@ def build(port: int, hw: str = "v4") -> tuple:
     t = target(hw)
     bin_, elf = t / f"monkey-{port}.bin", t / f"monkey-{port}.elf"
     shutil.copy(t / "sim.bin", bin_)
+    shutil.copy(t / "sim.nvs", bin_.with_suffix(".nvs"))  # the seeded Wi-Fi, for `Reset settings`
     shutil.copy(t / "riscv32imc-unknown-none-elf/release/fkm-firmware", elf)
     return bin_, elf
 
@@ -633,7 +593,7 @@ def shrink(seed, actions, args, image):
             if n >= len(actions):
                 break
             n = min(len(actions), n * 2)
-    json.dump({"seed": seed, "actions": actions}, open(OUT / str(seed) / "minimal.json", "w"))
+    json.dump({"seed": seed, "actions": actions}, open(out_dir(seed, args.hw) / "minimal.json", "w"))
     return actions
 
 
@@ -718,10 +678,10 @@ def main():
     failed = [(s, e, a) for s, e, a in results if e]
     print(f"\n{len(results) - len(failed)}/{len(results)} seeds clean")
     for seed, err, actions in failed:
-        print(f"  seed {seed}: {err}  (logs: sim/out/{seed}/)")
+        print(f"  seed {seed}: {err}  (logs: {out_dir(seed, args.hw)})")
         if args.shrink:
             minimal = shrink(seed, actions, args, images[0])
-            print(f"  seed {seed}: minimal repro {len(minimal)} actions -> sim/out/{seed}/minimal.json")
+            print(f"  seed {seed}: minimal repro {len(minimal)} actions -> {out_dir(seed, args.hw)}/minimal.json")
     sys.exit(1 if failed else 0)
 
 

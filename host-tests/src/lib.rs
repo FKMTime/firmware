@@ -14,8 +14,6 @@ pub mod ring_log;
 pub mod text;
 #[path = "../../src/utils/lcd_text.rs"]
 pub mod lcd_text;
-#[path = "../../src/sim/hd44780.rs"]
-pub mod hd44780;
 #[path = "../../src/utils/oled_ui.rs"]
 pub mod oled_ui;
 #[path = "../../src/utils/stackmat.rs"]

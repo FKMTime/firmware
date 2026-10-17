@@ -56,11 +56,6 @@ impl ButtonInputs {
     }
 
     fn sample(&self) -> u8 {
-        // esp-emu reads every input pin high (no pulls): sim presses only come from stdin
-        if cfg!(feature = "sim") {
-            return 0;
-        }
-
         let mut mask = 0;
 
         #[cfg(feature = "v4")]

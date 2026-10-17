@@ -77,9 +77,9 @@ def main():
         server = monkey.Server(Path(args.mc).expanduser(), srv_port, out)
         server.start()
     base = 20000 + JOB * 10
-    ports = dict(http=base, uart1=base + 1, control=base + 2)
+    ports = dict(http=base, uart1=base + 1, control=base + 2, tap=base + 3)
     stackmat = monkey.Stackmat(ports["uart1"])
-    emu = monkey.Emu(bin_, elf, ports, out / "firmware.log")
+    emu = monkey.Emu(bin_, elf, ports, out / "firmware.log", hw=args.hw)
     hub = Hub()
     threading.Thread(target=hub.watch, args=(emu,), daemon=True).start()
 
