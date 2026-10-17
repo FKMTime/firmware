@@ -15,7 +15,7 @@ pub const FRAME_RX_DELAY_US: u64 = 8 * BYTE_US;
 pub const DISCONNECT_US: u64 = 500_000;
 
 /// Largest time a stackmat frame can carry (9:59.999).
-#[cfg(any(all(feature = "e2e", not(feature = "timer-func")), test))]
+#[cfg(test)]
 const MAX_FRAME_MS: u64 = 9 * 60_000 + 59_999;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -36,7 +36,7 @@ impl StackmatTimerState {
         }
     }
 
-    #[cfg(any(all(feature = "e2e", not(feature = "timer-func")), test))]
+    #[cfg(test)]
     pub fn to_u8(self) -> u8 {
         match self {
             Self::Unknown => 0,
@@ -197,8 +197,8 @@ impl Tracker {
     }
 }
 
-/// Builds a gen4 frame (e2e simulation); times above 9:59.999 are clamped.
-#[cfg(any(all(feature = "e2e", not(feature = "timer-func")), test))]
+/// Builds a gen4 frame for tests; times above 9:59.999 are clamped.
+#[cfg(test)]
 pub fn generate_stackmat_data(state: StackmatTimerState, time_ms: u64) -> [u8; 8] {
     let time_ms = time_ms.min(MAX_FRAME_MS);
     let digit = |v: u64| b'0' + (v % 10) as u8;

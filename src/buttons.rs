@@ -64,11 +64,6 @@ pub async fn buttons_task(
 async fn button_loop(state: GlobalState, mut inputs: ButtonInputs) {
     let mut press: Option<Press> = None;
 
-    // simulated press: (start, length ms, button index)
-    #[cfg(feature = "e2e")]
-    let mut e2e_press = (Instant::now(), 0, 0);
-    #[cfg(feature = "e2e")]
-    let mut send_ack = false;
     #[cfg(feature = "qa")]
     let mut qa_down = None;
 
@@ -77,17 +72,6 @@ async fn button_loop(state: GlobalState, mut inputs: ButtonInputs) {
 
         #[allow(unused_mut)]
         let mut extra = 0u8;
-        #[cfg(feature = "e2e")]
-        {
-            if let Some((btn_idx, press_ms)) = state.e2e.buttons_sig.try_take() {
-                e2e_press = (Instant::now(), press_ms, btn_idx);
-                send_ack = true;
-                log::debug!("[E2E] Button pressed: {btn_idx} for {press_ms}ms");
-            }
-            if e2e_press.0.elapsed().as_millis() <= e2e_press.1 {
-                extra |= 1 << e2e_press.2;
-            }
-        }
 
         if let Some((prev, next)) = inputs.poll(extra) {
             #[cfg(feature = "qa")]
@@ -103,12 +87,6 @@ async fn button_loop(state: GlobalState, mut inputs: ButtonInputs) {
                 press = on_down(&state, Button::from_mask(next));
             } else if let Some(p) = press.take() {
                 on_up(&state, p.button).await;
-            }
-
-            #[cfg(feature = "e2e")]
-            if prev != 0 && send_ack {
-                crate::ws::send_test_ack(&state);
-                send_ack = false;
             }
         }
 
@@ -628,7 +606,6 @@ fn delegate_send(state: &GlobalState) {
         return;
     }
 
-    #[cfg(not(feature = "e2e"))]
     if !crate::state::SESSION.read(|s| s.trust_server) {
         log::error!("Skipping delegate hold. Server not trusted!");
         return;

@@ -409,17 +409,11 @@ fn render(s: &View, text: &mut LcdText, local: &Local) -> Live {
             TranslationKey::SERVER_DISCONNECTED_FOOTER,
         ),
         Screen::DeviceNotAdded => {
-            #[cfg(not(feature = "e2e"))]
             tr(
                 text,
                 TranslationKey::DEVICE_NOT_ADDED_HEADER,
                 TranslationKey::DEVICE_NOT_ADDED_FOOTER,
             );
-            #[cfg(feature = "e2e")]
-            {
-                text.print(0, "Press submit", Align::Center, true);
-                text.print(1, "To start HIL", Align::Center, true);
-            }
         }
         Screen::StackmatLost => tr(
             text,

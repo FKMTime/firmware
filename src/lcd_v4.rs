@@ -322,13 +322,10 @@ fn render(s: &View, f: &mut Frame, local: &Local) -> Live {
             ),
         ),
         Screen::DeviceNotAdded => {
-            #[cfg(not(feature = "e2e"))]
             let lines = tr_lines(
                 TranslationKey::DEVICE_NOT_ADDED_HEADER,
                 TranslationKey::DEVICE_NOT_ADDED_FOOTER,
             );
-            #[cfg(feature = "e2e")]
-            let lines = two_lines("Press submit", "To start HIL");
             ui::text_main(f, &lines);
         }
         Screen::StackmatLost => ui::text_main(

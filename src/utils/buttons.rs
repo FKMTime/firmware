@@ -76,7 +76,7 @@ impl ButtonInputs {
         mask
     }
 
-    /// Samples the buttons (OR-ed with `extra`, e.g. simulated e2e presses) and returns
+    /// Samples the buttons (OR-ed with `extra`, e.g. injected QA presses) and returns
     /// `(previous, new)` mask when it changed.
     pub fn poll(&mut self, extra: u8) -> Option<(u8, u8)> {
         let new = self.sample() | extra;

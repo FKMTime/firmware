@@ -14,7 +14,6 @@ profont = "0.7.0"
 qrcodegen-no-heap = "1.8.1"
 
 [features]
-e2e = []
 v3 = []
 v4 = []
 timer-func = []

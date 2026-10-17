@@ -129,39 +129,6 @@ pub enum TimerPacketInner {
         volume: Option<u8>,
     },
     DumpCrashLog,
-
-    // packet for end to end testing
-    #[cfg(feature = "e2e")]
-    TestPacket(TestPacketData),
-
-    #[cfg(feature = "e2e")]
-    TestAck(SnapshotData),
-}
-
-#[cfg(feature = "e2e")]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", content = "data")]
-pub enum TestPacketData {
-    HardStateReset,
-    ResetState,
-    ScanCard(u64),
-    ButtonPress { pin: u8, press_time: u64 },
-    StackmatTime(u64),
-    StackmatReset,
-}
-
-#[cfg(feature = "e2e")]
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct SnapshotData {
-    pub scene: usize,
-    pub inspection_time: Option<u64>,
-    pub solve_time: Option<u64>,
-    pub penalty: Option<i8>,
-    pub time_confirmed: bool,
-    pub possible_groups: usize,
-    pub group_selected_idx: usize,
-    pub current_competitor: Option<u64>,
-    pub current_judge: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

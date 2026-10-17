@@ -277,21 +277,6 @@ impl Solve {
             self.scene = Scene::Finished;
         }
     }
-
-    #[cfg(feature = "e2e")]
-    pub fn snapshot_data(&self) -> crate::structs::SnapshotData {
-        crate::structs::SnapshotData {
-            scene: self.scene as usize,
-            inspection_time: self.inspection_end.and(self.inspection_ms()),
-            penalty: self.penalty,
-            solve_time: self.solve_time,
-            current_judge: self.current_judge,
-            current_competitor: self.current_competitor,
-            group_selected_idx: self.group_selected_idx,
-            time_confirmed: self.time_confirmed,
-            possible_groups: self.possible_groups.len(),
-        }
-    }
 }
 
 /// Menus, cursors and messages shown on top of the scene (buttons write, display reads).
@@ -417,14 +402,6 @@ pub fn current_epoch() -> u64 {
         .saturating_add(Instant::now().as_secs())
 }
 
-#[cfg(feature = "e2e")]
-#[derive(Default)]
-pub struct End2End {
-    pub buttons_sig: Signal<Cs, (usize, u64)>,
-    pub card_scan_sig: Signal<Cs, u128>,
-    pub stackmat_sig: Signal<Cs, (crate::utils::stackmat::StackmatTimerState, u64)>,
-}
-
 pub type GlobalState = &'static GlobalStateInner;
 pub struct GlobalStateInner {
     pub solve: Shared<Solve>,
@@ -447,9 +424,6 @@ pub struct GlobalStateInner {
 
     pub nvs: &'static Nvs,
     pub aes: Mutex<Cs, Aes<'static>>,
-
-    #[cfg(feature = "e2e")]
-    pub e2e: End2End,
 }
 
 impl GlobalStateInner {
@@ -468,8 +442,6 @@ impl GlobalStateInner {
             buzzer_sound_test: Signal::new(),
             nvs,
             aes: Mutex::new(Aes::new(aes)),
-            #[cfg(feature = "e2e")]
-            e2e: End2End::default(),
         }
     }
 
@@ -490,20 +462,6 @@ impl GlobalStateInner {
         if e.should_reset_time {
             self.reset_solve(false).await;
         }
-    }
-
-    /// e2e: back to a clean attempt and no messages.
-    #[cfg(feature = "e2e")]
-    pub fn hard_reset(&self) {
-        self.solve.update(|s| {
-            s.reset();
-            s.delegate_hold = None;
-        });
-        self.timer.sender().clear();
-        self.ui.update(|u| {
-            u.error_text = None;
-            u.custom_message = None;
-        });
     }
 
     /// Read-only view of everything the display draws (borrowed, no copy of the lists).
@@ -559,8 +517,8 @@ pub struct SavedGlobalState {
     pub solve_group: PossibleGroup,
 }
 
-/// e2e/qa runs never persist an unfinished solve.
-const PERSIST_SOLVES: bool = !cfg!(any(feature = "e2e", feature = "qa"));
+/// QA runs never persist an unfinished solve.
+const PERSIST_SOLVES: bool = !cfg!(feature = "qa");
 
 impl SavedGlobalState {
     pub async fn from_nvs(nvs: &Nvs) -> Option<Self> {

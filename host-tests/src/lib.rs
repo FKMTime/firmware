@@ -172,23 +172,4 @@ mod outgoing_json {
             same(&TimerPacket { tag: Some(u64::MAX), data });
         }
     }
-
-    #[cfg(feature = "e2e")]
-    #[test]
-    fn test_ack_identical() {
-        same(&TimerPacket {
-            tag: None,
-            data: TimerPacketInner::TestAck(crate::structs::SnapshotData {
-                scene: 3,
-                inspection_time: Some(15000),
-                solve_time: None,
-                penalty: Some(-1),
-                time_confirmed: true,
-                possible_groups: 2,
-                group_selected_idx: 1,
-                current_competitor: Some(9),
-                current_judge: None,
-            }),
-        });
-    }
 }

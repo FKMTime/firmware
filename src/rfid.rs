@@ -84,11 +84,8 @@ pub async fn rfid_task(
         esp_hal_mfrc522::Mfrc522::new(esp_hal_mfrc522::SpiInterface::new(spi))
     };
 
-    // e2e cards are simulated: there is no reader to bring up
-    if !cfg!(feature = "e2e") {
-        init_until_ready(&mut mfrc522).await;
-        log::debug!("PCD ver: {:?}", mfrc522.version().await);
-    }
+    init_until_ready(&mut mfrc522).await;
+    log::debug!("PCD ver: {:?}", mfrc522.version().await);
 
     let mut rfid_sleep = false;
     let mut last_card = (0, Instant::now());
@@ -118,7 +115,7 @@ pub async fn rfid_task(
             continue;
         }
 
-        let Some(card) = next_card(&mut mfrc522, &global_state).await else {
+        let Some(card) = next_card(&mut mfrc522).await else {
             continue;
         };
         let card_uid = card.uid;
@@ -153,41 +150,22 @@ pub async fn rfid_task(
     }
 }
 
-/// A scanned card. `selected` is the reader's selection; simulated e2e cards have none, so they
-/// skip everything that talks to a real card (trust, signing, secure check, halt).
+/// A scanned card and the reader's selection.
 struct Card {
     uid: u128,
     selected: Option<Uid>,
 }
 
-/// The next scanned card: from the reader, or the simulated e2e card source.
-async fn next_card<I: Interface>(
-    mfrc522: &mut Mfrc522<I>,
-    global_state: &GlobalState,
-) -> Option<Card> {
-    #[cfg(feature = "e2e")]
-    {
-        let _ = mfrc522;
-        let uid = global_state.e2e.card_scan_sig.try_take()?;
-        log::debug!("[E2E] Card scan: {uid}");
-        Some(Card {
-            uid,
-            selected: None,
-        })
+/// The next scanned card from the reader.
+async fn next_card<I: Interface>(mfrc522: &mut Mfrc522<I>) -> Option<Card> {
+    if !matches!(mfrc522.is_new_card_present().await, Ok(true)) {
+        return None;
     }
-
-    #[cfg(not(feature = "e2e"))]
-    {
-        let _ = global_state;
-        if !matches!(mfrc522.is_new_card_present().await, Ok(true)) {
-            return None;
-        }
-        let selected = mfrc522.select().await.ok()?;
-        Some(Card {
-            uid: selected.to_u128(),
-            selected: Some(selected),
-        })
-    }
+    let selected = mfrc522.select().await.ok()?;
+    Some(Card {
+        uid: selected.to_u128(),
+        selected: Some(selected),
+    })
 }
 
 /// Re-initializes the reader until it answers (logs the failure once).
@@ -364,9 +342,6 @@ async fn handle_card<I: Interface>(
             _ = mfrc522.stop_crypto1().await;
         }
     }
-
-    #[cfg(feature = "e2e")]
-    crate::ws::send_test_ack(global_state);
 }
 
 /// What to do after the state was updated for a scanned card.
@@ -433,8 +408,7 @@ async fn process_card_info_response(resp: CardInfoResponsePacket, global_state: 
                     return CardAction::Nothing;
                 };
 
-                // e2e runs against an untrusted test server
-                if !cfg!(feature = "e2e") && !crate::state::SESSION.read(|s| s.trust_server) {
+                if !crate::state::SESSION.read(|s| s.trust_server) {
                     log::error!("Skipping solve send. Server not trusted!");
                     return CardAction::Nothing;
                 }

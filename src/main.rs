@@ -103,9 +103,6 @@ async fn main(spawner: Spawner) {
     log::info!("Hardware Rev: {}", version::HW_VER);
     log::info!("Firmware: {}", version::FIRMWARE);
 
-    #[cfg(feature = "e2e")]
-    log::info!("This firmware is in E2E mode!");
-
     #[cfg(feature = "qa")]
     log::info!("This firmware is in QA mode!");
 

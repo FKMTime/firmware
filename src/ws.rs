@@ -99,12 +99,6 @@ pub fn close(code: u16, reason: &'static str) {
     WAKE.signal(());
 }
 
-#[cfg(feature = "e2e")]
-pub fn send_test_ack(global_state: &GlobalState) {
-    let data = TimerPacketInner::TestAck(global_state.solve.read(|s| s.snapshot_data()));
-    _ = send(TimerPacket { tag: None, data });
-}
-
 /// Frees its request slot when dropped (also when the waiting future is cancelled).
 struct SlotGuard(&'static Slot);
 
@@ -501,12 +495,9 @@ async fn handshake(
                 s.fkm_token = fkm_token;
             });
         } else {
-            #[cfg(not(feature = "e2e"))]
-            {
-                global_state
-                    .ui
-                    .update(|u| u.error_text = Some("Server Not Trusted!".into()));
-            }
+            global_state
+                .ui
+                .update(|u| u.error_text = Some("Server Not Trusted!".into()));
         }
     }
 
@@ -660,7 +651,6 @@ async fn handle_packet(
             if firmware.as_str() != crate::version::FIRMWARE {
                 return Ok(());
             }
-            #[cfg(not(feature = "e2e"))]
             if !crate::state::SESSION.read(|s| s.trust_server) {
                 return Ok(());
             }
@@ -692,10 +682,6 @@ async fn handle_packet(
             }
         }
         TimerPacketInner::DumpCrashLog => owed.crash_log = true,
-        #[cfg(feature = "e2e")]
-        TimerPacketInner::TestPacket(test_packet) => {
-            parse_test_packet(test_packet.clone(), &global_state).await;
-        }
         _ => {}
     }
 
@@ -721,7 +707,6 @@ fn handle_ota_chunk(
     if !ota_active() {
         return Ok(());
     }
-    #[cfg(not(feature = "e2e"))]
     if !crate::state::SESSION.read(|s| s.trust_server) {
         return Ok(());
     }
@@ -742,37 +727,6 @@ fn handle_ota_chunk(
         .signal(ota.progress().map_or(0, |p| p.percent()));
     owed.ota_ack = true;
     Ok(())
-}
-
-#[cfg(feature = "e2e")]
-async fn parse_test_packet(
-    test_packet: crate::structs::TestPacketData,
-    global_state: &GlobalState,
-) {
-    use crate::structs::TestPacketData;
-    use crate::utils::stackmat::StackmatTimerState;
-
-    log::warn!("TEST PACKET: {test_packet:?}");
-    let e2e = &global_state.e2e;
-    match test_packet {
-        TestPacketData::ResetState => {
-            global_state.reset_solve(false).await;
-            e2e.stackmat_sig.signal((StackmatTimerState::Reset, 0));
-            send_test_ack(global_state);
-        }
-        TestPacketData::HardStateReset => {
-            e2e.stackmat_sig.signal((StackmatTimerState::Reset, 0));
-            global_state.hard_reset();
-        }
-        TestPacketData::ScanCard(uid) => e2e.card_scan_sig.signal(uid as u128),
-        TestPacketData::ButtonPress { pin, press_time } => {
-            e2e.buttons_sig.signal((pin as usize, press_time))
-        }
-        TestPacketData::StackmatTime(ms) => {
-            e2e.stackmat_sig.signal((StackmatTimerState::Running, ms))
-        }
-        TestPacketData::StackmatReset => e2e.stackmat_sig.signal((StackmatTimerState::Reset, 0)),
-    }
 }
 
 // boxing the TLS connection would need the heap; only one Socket exists at a time

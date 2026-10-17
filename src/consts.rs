@@ -1,7 +1,7 @@
-/// The device never sleeps without the `sleep` feature or in e2e/qa/sim builds.
+/// The device never sleeps without the `sleep` feature or in qa/sim builds.
 pub const SLEEP_ENABLED: bool = cfg!(all(
     feature = "sleep",
-    not(any(feature = "e2e", feature = "qa", feature = "sim"))
+    not(any(feature = "qa", feature = "sim"))
 ));
 pub const SLEEP_AFTER_MS: u64 = 60000 * 5;
 pub const DEEPER_SLEEP_AFTER_MS: u64 = 60000 * 15;

@@ -6,11 +6,6 @@ use crate::{
     consts::{INSPECTION_TIME_DNF, INSPECTION_TIME_PLUS2},
     state::{GlobalState, Scene, Solve},
 };
-// the e2e uart simulator replaces the timed read
-#[cfg_attr(
-    all(feature = "e2e", not(feature = "timer-func")),
-    allow(unused_imports)
-)]
 use embassy_time::{Duration, Instant, Timer, with_timeout};
 
 /// Publishes the running time to the display, the BLE display and the logger.
@@ -155,18 +150,10 @@ pub async fn stackmat_task(
         );
         return;
     };
-    #[cfg_attr(feature = "e2e", allow(unused_mut, unused_variables))]
     let mut uart = uart.with_rx(uart_pin).into_async();
 
-    #[cfg(feature = "e2e")]
-    let mut sim = e2e::Sim::default();
     let mut parser = Parser::default();
-    let rx_delay = if cfg!(feature = "e2e") {
-        0
-    } else {
-        FRAME_RX_DELAY_US
-    };
-    let mut tracker = Tracker::new(rx_delay);
+    let mut tracker = Tracker::new(FRAME_RX_DELAY_US);
     let mut connected: Option<bool> = None;
     let mut buf = [0u8; 16];
 
@@ -181,7 +168,6 @@ pub async fn stackmat_task(
             _ => 100,
         };
 
-        #[cfg(not(feature = "e2e"))]
         let n = match with_timeout(Duration::from_millis(wait), uart.read_async(&mut buf)).await {
             Ok(Ok(n)) => n,
             Ok(Err(e)) => {
@@ -190,12 +176,6 @@ pub async fn stackmat_task(
                 0
             }
             Err(_) => 0,
-        };
-        #[cfg(feature = "e2e")]
-        let n = {
-            let _ = wait;
-            Timer::after_millis(10).await;
-            sim.frame(&global_state, &mut buf)
         };
 
         if sleeping {
@@ -241,11 +221,6 @@ pub async fn stackmat_task(
                 Some(Event::Stop(ms)) => time_end(ms, false, &global_state).await,
                 Some(Event::Reset) => global_state.solve.update(reset_from_timer),
                 None => {}
-            }
-
-            #[cfg(feature = "e2e")]
-            if sim.take_ack() {
-                crate::ws::send_test_ack(&global_state);
             }
 
             show_time(&global_state, frame.1);
@@ -308,62 +283,6 @@ fn reset_from_timer(s: &mut Solve) {
         s.session_id
             .get_or_insert_with(crate::state::new_session_id);
         s.time_confirmed = true;
-    }
-}
-
-/// e2e: frames generated from the test server's commands instead of the UART.
-#[cfg(all(feature = "e2e", not(feature = "timer-func")))]
-mod e2e {
-    use crate::{state::GlobalState, utils::stackmat::StackmatTimerState};
-
-    pub struct Sim {
-        state: StackmatTimerState,
-        target_ms: u64,
-        since: embassy_time::Instant,
-        ack: bool,
-    }
-
-    impl Default for Sim {
-        fn default() -> Self {
-            Self {
-                state: StackmatTimerState::Reset,
-                target_ms: 0,
-                since: embassy_time::Instant::now(),
-                ack: false,
-            }
-        }
-    }
-
-    impl Sim {
-        /// Writes the current frame into `buf`, returns its length.
-        pub fn frame(&mut self, global_state: &GlobalState, buf: &mut [u8; 16]) -> usize {
-            if let Some((state, ms)) = global_state.e2e.stackmat_sig.try_take() {
-                (self.state, self.target_ms, self.since) =
-                    (state, ms, embassy_time::Instant::now());
-            }
-
-            let ms = match self.state {
-                StackmatTimerState::Unknown | StackmatTimerState::Reset => 0,
-                StackmatTimerState::Running => {
-                    let ms = self.since.elapsed().as_millis();
-                    if ms >= self.target_ms {
-                        self.state = StackmatTimerState::Stopped;
-                        self.ack = true;
-                    }
-                    ms.min(self.target_ms)
-                }
-                StackmatTimerState::Stopped => self.target_ms,
-            };
-
-            buf[..8].copy_from_slice(&crate::utils::stackmat::generate_stackmat_data(
-                self.state, ms,
-            ));
-            8
-        }
-
-        pub fn take_ack(&mut self) -> bool {
-            core::mem::take(&mut self.ack)
-        }
     }
 }
 
