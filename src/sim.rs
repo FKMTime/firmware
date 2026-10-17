@@ -23,6 +23,8 @@ use esp_hal::{
 pub static CARD: Signal<CriticalSectionRawMutex, u128> = Signal::new();
 /// `wifi off|on`: `true` stops the radio (driver torn down), `false` restarts it
 pub static WIFI: Signal<CriticalSectionRawMutex, bool> = Signal::new();
+/// `oled raw`: frames as `@oled <hex>` every 20 ms (sim/web.py) instead of text art every 200 ms
+static OLED_RAW: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
 
 static TX: CriticalSectionMutex<RefCell<Option<UartTx<'static, Blocking>>>> =
     CriticalSectionMutex::new(RefCell::new(None));
@@ -171,6 +173,16 @@ fn print_oled() {
         return;
     };
 
+    if OLED_RAW.load(portable_atomic::Ordering::Relaxed) {
+        let mut line = heapless::String::<{ 6 + 2048 }>::new();
+        _ = line.push_str("@oled ");
+        for b in gram.gram {
+            _ = write!(line, "{b:02x}");
+        }
+        print(format_args!("{line}"));
+        return;
+    }
+
     print(format_args!("┌{:─<128}┐", ""));
     for row in 0..32 {
         let mut line = heapless::String::<{ 128 * 3 + 8 }>::new();
@@ -253,7 +265,7 @@ fn print_state(state: GlobalState) {
     print(format_args!("{line}"));
 }
 
-/// Reads stdin commands and prints the OLED when it changes (at most every 200 ms).
+/// Reads stdin commands and prints the OLED when it changes (every 200 ms, 20 ms in raw mode).
 #[embassy_executor::task]
 pub async fn command_task(mut rx: UartRx<'static, Async>, state: GlobalState) {
     use embassy_futures::select::{Either, select};
@@ -266,7 +278,9 @@ pub async fn command_task(mut rx: UartRx<'static, Async>, state: GlobalState) {
     loop {
         match select(
             rx.read_async(&mut buf),
-            Timer::after(Duration::from_millis(200)),
+            Timer::after(Duration::from_millis(
+                if OLED_RAW.load(portable_atomic::Ordering::Relaxed) { 20 } else { 200 },
+            )),
         )
         .await
         {
@@ -305,6 +319,10 @@ fn command(line: &str, state: GlobalState) {
             print_oled();
         }
         (Some("state"), _) => print_state(state),
+        (Some("oled"), _) if a == Some("raw") => {
+            OLED_RAW.store(true, portable_atomic::Ordering::Relaxed);
+            OLED.lock(|o| o.borrow_mut().dirty = true);
+        }
         (Some("wifi"), _) if a == Some("off") => WIFI.signal(true),
         (Some("wifi"), _) if a == Some("on") => WIFI.signal(false),
         _ => print(format_args!("? {line}\r\n{HELP}")),

@@ -128,17 +128,21 @@ const $ = (id) => document.getElementById(id);
 const send = (target, arg = "") =>
   fetch("/cmd", { method: "POST", body: JSON.stringify({ target, arg }) }).catch(() => {});
 
-// OLED: 32 rows of 128 half-block chars, each char = 2 vertical pixels
+// OLED: 1024 bytes hex, 8 pages × 128 columns, bit n of a byte = row page*8+n
 const ctx = $("oled").getContext("2d");
-const TOP = { "▀": 1, "█": 1 }, BOTTOM = { "▄": 1, "█": 1 };
-function drawOled(rows) {
-  const css = getComputedStyle(document.documentElement);
-  ctx.fillStyle = css.getPropertyValue("--oled-bg"); ctx.fillRect(0, 0, 128, 64);
-  ctx.fillStyle = css.getPropertyValue("--oled-px");
-  rows.forEach((row, y) => [...row].forEach((ch, x) => {
-    if (TOP[ch]) ctx.fillRect(x, y * 2, 1, 1);
-    if (BOTTOM[ch]) ctx.fillRect(x, y * 2 + 1, 1, 1);
-  }));
+const img = ctx.createImageData(128, 64);
+function rgb(v) { const c = document.createElement("canvas").getContext("2d"); c.fillStyle = v; c.fillRect(0, 0, 1, 1); return c.getImageData(0, 0, 1, 1).data; }
+let on, off;
+function drawOled(hex) {
+  if (!on) { const css = getComputedStyle(document.documentElement); on = rgb(css.getPropertyValue("--oled-px")); off = rgb(css.getPropertyValue("--oled-bg")); }
+  for (let i = 0; i < 1024; i++) {
+    const b = hex ? parseInt(hex.substr(i * 2, 2), 16) : 0, x = i % 128, page = i >> 7;
+    for (let bit = 0; bit < 8; bit++) {
+      const c = b >> bit & 1 ? on : off, p = ((page * 8 + bit) * 128 + x) * 4;
+      img.data[p] = c[0]; img.data[p + 1] = c[1]; img.data[p + 2] = c[2]; img.data[p + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
 }
 
 // hardware buttons: held until released (the firmware times the hold itself)
@@ -233,7 +237,7 @@ es.onerror = () => { $("conn").textContent = "disconnected (is sim/web.py runnin
 es.addEventListener("oled", (e) => drawOled(JSON.parse(e.data)));
 es.addEventListener("state", (e) => showState(JSON.parse(e.data)));
 es.addEventListener("log", (e) => addLog(JSON.parse(e.data)));
-drawOled([]);
+drawOled("");
 </script>
 </body>
 </html>

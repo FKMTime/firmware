@@ -10,6 +10,7 @@ commands come in as POSTs.
 import argparse
 import json
 import re
+import signal
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -36,26 +37,22 @@ class Hub:
             self.cond.notify_all()
 
     def watch(self, emu: monkey.Emu):
-        """Turns emulator output into events (the OLED arrives as 32 half-block text rows)."""
-        seen, rows = 0, None
+        """Turns emulator output into events (OLED frames as `@oled <hex>`, page-major like the
+        SSD1309 GRAM: byte = 8 vertical pixels)."""
+        seen = 0
         while True:
             with emu.lock:
                 new = [l for _, l in emu.lines[seen:]]
                 seen += len(new)
             for line in new:
-                if line.startswith("┌"):
-                    rows = []
-                elif rows is not None and line.startswith("│"):
-                    rows.append(line[1:129])
-                elif rows is not None and line.startswith("└"):
-                    if len(rows) == 32:
-                        self.push("oled", rows)
-                    rows = None
+                if line.startswith("@oled "):
+                    if len(line) == 6 + 2048:
+                        self.push("oled", line[6:])
                 elif line.startswith("@state "):
                     self.push("state", dict(kv.split("=", 1) for kv in line[7:].split() if "=" in kv))
                 else:
                     self.push("log", ANSI.sub("", line))
-            time.sleep(0.05)
+            time.sleep(0.01)
 
 
 def main():
@@ -83,6 +80,8 @@ def main():
     threading.Thread(target=hub.watch, args=(emu,), daemon=True).start()
 
     def poll_state():
+        time.sleep(1)
+        emu.send("oled raw")
         while True:
             emu.send("state")
             time.sleep(1)
@@ -146,6 +145,10 @@ def main():
                 self.send_response(400)
             self.end_headers()
 
+    def on_term(*_):
+        raise KeyboardInterrupt  # same cleanup as Ctrl-C
+
+    signal.signal(signal.SIGTERM, on_term)
     http = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     http.daemon_threads = True
     print(f"device on http://127.0.0.1:{args.port}  (firmware log: {out / 'firmware.log'})")
