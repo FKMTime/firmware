@@ -512,9 +512,10 @@ impl GlobalStateInner {
         })
     }
 
-    /// Buttons/cards are ignored while an error, a lost connection or a setup scene is shown.
+    /// Buttons/cards are ignored while an error, a lost connection, a setup scene or a pending
+    /// delegate call is shown.
     pub fn should_skip_other_actions(&self) -> bool {
-        if self.ui.read(|u| u.error_text.is_some()) {
+        if self.ui.read(|u| u.error_text.is_some()) || crate::buttons::delegate_pending() {
             return true;
         }
 
