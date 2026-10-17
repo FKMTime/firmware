@@ -101,6 +101,11 @@ impl LcdText {
         true
     }
 
+    /// Forget what the LCD shows: the next `changes` rewrites everything.
+    pub fn invalidate(&mut self) {
+        self.shown = [[0xFF; COLS]; ROWS];
+    }
+
     /// Calls `write(row, col, text)` for the changed run of each row and marks it shown.
     pub fn changes(&mut self, mut write: impl FnMut(u8, u8, &str)) {
         for row in 0..ROWS {
@@ -184,5 +189,17 @@ mod tests {
         }
         assert_eq!(&offsets[..10], [0, 1, 2, 3, 4, 5, 6, 7, 8, 7]);
         assert!(!flush(&mut t).is_empty());
+    }
+
+    #[test]
+    fn invalidate_rewrites_everything() {
+        let mut t = LcdText::new();
+        t.print(0, "abc", Align::Left, true);
+        flush(&mut t);
+        t.invalidate();
+        assert_eq!(
+            flush(&mut t),
+            [(0, 0, "abc             ".into()), (1, 0, " ".repeat(16))]
+        );
     }
 }
