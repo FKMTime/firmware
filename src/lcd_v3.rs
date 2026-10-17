@@ -19,13 +19,13 @@ use embassy_time::{Delay, Duration, Instant, Timer, with_timeout};
 type Lcd = LcdDisplay<ShifterPin, Delay>;
 type Text = heapless::String<96>;
 
-const EVENT_TIMEOUT: Duration = Duration::from_secs(30);
 /// HD44780 instructions and writes take 37–41 µs (~60 µs on a slow 190 kHz controller) and any
 /// transfer while busy is lost. ag-lcd-async waits only before characters, and the next command
 /// reaches the controller ~20 µs after a character through the shift registers.
 const BUSY_US: u64 = 100;
-/// Re-sync and rewrite the LCD this often on idle screens: the write-only bus can't see a lost
-/// write, a nibble desync or a module brownout, and the change-only cache would keep them.
+/// Re-sync and rewrite the LCD this often: the write-only bus can't see a lost write, a nibble
+/// desync or a module brownout, and the change-only cache would keep them. Also bounds the
+/// wait for events (watchdog heartbeat, screens without live updates).
 const HEAL_INTERVAL: Duration = Duration::from_secs(2);
 
 async fn new_lcd(lcd_shifter: &ShifterValue) -> Lcd {
@@ -197,9 +197,9 @@ pub async fn lcd_task(
         }
 
         crate::watchdog::heartbeat(crate::watchdog::TaskId::Lcd);
-        // bounded so the heartbeat keeps beating while a live screen waits for its signal
+        // bounded: the heartbeat keeps beating and the LCD heals while a live screen waits
         let event = with_timeout(
-            EVENT_TIMEOUT,
+            HEAL_INTERVAL,
             next_event(
                 global_state,
                 &mut timer,
