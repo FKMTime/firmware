@@ -41,7 +41,7 @@ class Board:
     def __init__(self, hw: str, emit):
         self.hw, self.emit, self.lock = hw, emit, threading.Lock()
         self.tap = None
-        self.emu_us, self.emu_wall = 0, time.monotonic()  # last known emulated time
+        self.emu_us = 0  # the firmware's clock in its last timed frame (G, Q)
         self.raw, self.last_print, self.printed = False, 0.0, None
         self.held = {}  # button 1-4 → (start µs, end µs)
         self.battery = 100
@@ -57,15 +57,18 @@ class Board:
         else:
             self.oled, self.gauge = SSD1309(), BQ27441()
 
-    def now_us(self):
-        return self.emu_us + int((time.monotonic() - self.emu_wall) * 1e6)
-
     def saw_time(self, us: int):
-        self.emu_us, self.emu_wall = us, time.monotonic()
+        self.emu_us = us
 
     def held_mask(self):
-        now = self.now_us()
-        return sum(1 << (b - 1) for b, (s, e) in self.held.items() if s <= now < e)
+        """Buttons still held as the firmware sees it (v3: by its clock in the last frame;
+        v4: pulses it hasn't reported over)."""
+        if self.hw == "v4":
+            return sum(1 << (b - 1) for b in self.held)
+        return sum(1 << (b - 1) for b, (s, e) in self.held.items() if s <= self.emu_us < e)
+
+    def pulse_end(self, pin: int):
+        self.held.pop(pin + 1, None)
 
     def power_on(self):
         """Power cycle: the peripherals reset with the MCU."""
@@ -163,10 +166,15 @@ class Board:
         num = lambda i, d=None: int(w[i], 0) if len(w) > i and w[i].lstrip("-").isdigit() else d
         if w[0] == "btn" and num(1) in (1, 2, 3, 4):
             b, ms = num(1), num(2, 150)
-            start = self.now_us()
-            self.held[b] = (start, start + ms * 1000)
-            if self.hw == "v4" and self.tap:  # GPIO0..3, high while pressed
-                self.tap.send(b"g", struct.pack("<BBI", b - 1, 1 if ms else 0, ms * 1000))
+            if self.hw == "v4":  # GPIO0..3 high while pressed, timed by the tap
+                if ms:
+                    self.held[b] = None
+                else:
+                    self.held.pop(b, None)
+                if self.tap:
+                    self.tap.send(b"g", struct.pack("<BBI", b - 1, 1 if ms else 0, ms * 1000))
+            else:  # from the firmware's clock as of its last frame (one every ~1 ms on v3)
+                self.held[b] = (self.emu_us, self.emu_us + ms * 1000)
         elif w[0] == "card" and num(1) is not None:
             uid = num(1) & 0xFFFFFFFF
             self.rfid.card = self.cards.setdefault(uid, Card(uid))
@@ -328,7 +336,7 @@ class Tap:
                     return t_hi + t32
 
                 seq = b""
-                if ty != ord("G") and payload:  # requests start with their sequence byte
+                if ty in b"QISA" and payload:  # requests start with their sequence byte
                     seq, payload = payload[:1], payload[1:]
                 with self.board.lock:
                     reply = self.frame(ty, payload, unwrap)
@@ -369,6 +377,8 @@ class Tap:
             return b"\x00" + miso if p[0] else None
         elif ty == ord("A"):
             return b"\x00" + struct.pack("<H", b.adc(p[0]))
+        elif ty == ord("P"):
+            b.pulse_end(p[0])
         return None
 
     def stop(self):
