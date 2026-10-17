@@ -33,6 +33,7 @@ KNOWN_CARDS = {COMPETITOR, JUDGE, MULTI}
 # real thresholds (src/buttons.rs) and their neighbours
 HOLDS = [5, 20, 29, 31, 80, 150, 400, 990, 1010, 1500, 2990, 3010, 4500, 9990, 10010, 12500]
 BUTTON_NAMES = {1: "inspect", 2: "delegate", 3: "submit", 4: "penalty"}
+SLOW = 3  # emulated time runs up to ~3x slower than real time with several instances
 HEAP_LIMIT = 0.92  # of the heap size printed by the firmware
 IDLE = dict(scene="WaitingForCompetitor", comp="-1", menu="None", cfg="-1", err="0")
 
@@ -109,6 +110,21 @@ def generate(seed: int, count: int) -> list:
     return acts[:count]
 
 
+def check_invariants(s: dict):
+    """State combinations the UI must never show, whatever the input."""
+    bad = []
+    if s.get("menu") != "None" and s.get("cfg") != "-1":
+        bad.append("a menu and the config menu at once")
+    if s.get("scene") == "Finished" and s.get("time") == "-1":
+        bad.append("Finished without a time")
+    if s.get("conf") == "1" and s.get("scene") != "Finished":
+        bad.append("confirmed time outside Finished")
+    if s.get("judge") not in ("-1", None) and s.get("judge") == s.get("comp"):
+        bad.append("judge is the competitor")
+    if bad:
+        raise Failure("contradicting state (" + ", ".join(bad) + f"): {s}")
+
+
 # ── processes ───────────────────────────────────────────────────────────────────────────────
 
 class Server:
@@ -157,11 +173,12 @@ class Server:
         self.procs = []
 
     def solves(self) -> list:
-        """Solve entries the server received: (time, penalty, competitor, session, group)."""
+        """Solve entries the server received: (time, penalty, competitor, session, group, delegate)."""
         text = (self.dir / "server.log").read_text(errors="replace")
         text = re.sub(r"\x1b\[[0-9;]*m", "", text)
         pat = r"Solve: (\d+) \((-?\d+)\) (\d+) \S+ \d+ (\S+) (\w+) (\S+)"
-        return [(int(m[1]), int(m[2]), int(m[3]), m[4], m[6]) for m in re.finditer(pat, text)]
+        return [(int(m[1]), int(m[2]), int(m[3]), m[4], m[6], m[5] == "true")
+                for m in re.finditer(pat, text)]
 
 
 class Stackmat:
@@ -296,7 +313,9 @@ class Run:
         while time.monotonic() - t0 < timeout:
             for line in self.emu.since(t0):
                 if line.startswith("@state "):
-                    return dict(kv.split("=", 1) for kv in line[7:].split() if "=" in kv)
+                    st = dict(kv.split("=", 1) for kv in line[7:].split() if "=" in kv)
+                    check_invariants(st)
+                    return st
             time.sleep(0.05)
         raise Failure(f"no answer to `state` within {timeout}s (hang?)")
 
@@ -326,6 +345,7 @@ class Run:
                     raise Failure(f"heap peak {m[2]}/{m[3]}")
 
     def wait_for(self, pred, timeout, what):
+        timeout *= SLOW  # timeouts are in emulated seconds; emulation can lag real time
         t0 = time.monotonic()
         last = {}
         while time.monotonic() - t0 < timeout:
@@ -335,6 +355,13 @@ class Run:
                 return last
             time.sleep(0.5)
         raise Failure(f"timeout waiting for {what}; last state {last}")
+
+    def press(self, button, ms):
+        """A deliberate press: waits until the firmware saw it released (emulated time can run
+        several times slower than real time when instances share the CPU)."""
+        self.emu.send(f"btn {button} {ms}")
+        time.sleep(0.15)
+        self.wait_for(lambda s: s.get("held") == "0", ms / 1000 * 6 + 5, f"btn {button} released")
 
     def boot(self):
         self.wait_for(lambda s: s.get("srv") == "Some(true)" and s.get("scene") == "WaitingForCompetitor",
@@ -372,6 +399,8 @@ class Run:
         self.stackmat.cmd("stop")
         self.stackmat.cmd("reset")
         t0 = time.monotonic()
+        # a long press from the abuse phase may still be held (emulated time lags real time)
+        self.wait_for(lambda s: s.get("held") == "0", 20, "all buttons released")
         while time.monotonic() - t0 < 60:
             self.check_alive()
             s = self.state()
@@ -381,24 +410,23 @@ class Run:
                 time.sleep(1)  # reconnecting: the device must come back by itself
                 continue
             if s.get("err") == "1":
-                self.emu.send("btn 3 120")  # dismiss the error
-            elif s.get("cfg") != "-1":
-                self.emu.send("btn 1 120")  # walk the config menu up to its last item (Exit)
-                time.sleep(0.4)
-                if self.state().get("cfg") == str(self.args.cfg_exit):
-                    self.emu.send("btn 3 120")
+                self.press(3, 120)  # dismiss the error
             elif s.get("menu") == "Some(ErrorLog)":
                 sel, count = s.get("el", "0/1").split("/")
                 # an open entry closes on submit; in the list, Exit is the last item
                 at_exit = s.get("eo") == "1" or int(sel) == int(count) - 1
-                self.emu.send("btn 3 120" if at_exit else "btn 4 120")
+                self.press(3 if at_exit else 4, 120)
             elif s.get("menu") != "None":
-                self.emu.send("btn 3 120")  # BT display, signing, buzzer volume: submit leaves
+                self.press(3, 120)  # BT display, signing, buzzer volume: submit leaves
+            elif s.get("cfg") != "-1":
+                self.press(1, 120)  # walk the config menu up to its last item (Exit)
+                time.sleep(0.4)
+                if self.state().get("cfg") == str(self.args.cfg_exit):
+                    self.press(3, 120)
             elif s.get("msg") == "1":
                 pass  # messages time out by themselves (≤ 8 s)
             else:
-                self.emu.send("btn 3 3400")  # reset competitor
-                time.sleep(3.6)
+                self.press(3, 3400)  # reset competitor
             time.sleep(0.8)
         raise Failure(f"SOFTLOCK: no way back to idle within 60s; last state {s}")
 
@@ -409,7 +437,7 @@ class Run:
         before = len(self.server.solves())
         self.emu.send(f"card {COMPETITOR}")
         self.wait_for(lambda s: s.get("scene") == "CompetitorInfo", 20, "competitor info")
-        self.emu.send("btn 1 120")
+        self.press(1, 120)
         self.wait_for(lambda s: s.get("scene") == "Inspection", 5, "inspection")
         time.sleep(1.0)
         self.stackmat.cmd("start")
@@ -420,7 +448,7 @@ class Run:
         s = self.wait_for(lambda s: s.get("scene") == "Finished", 5, "finished")
         if abs(int(s["time"]) - shown) > 0:
             raise Failure(f"solve time {s['time']} != stackmat {shown}")
-        self.emu.send("btn 3 120")
+        self.press(3, 120)
         self.wait_for(lambda s: s.get("conf") == "1", 5, "time confirmed")
         self.emu.send(f"card {JUDGE}")
         self.wait_for(lambda s: s.get("judge") == str(JUDGE), 20, "judge scanned")
@@ -443,10 +471,11 @@ class Run:
     def check_server(self):
         """Solves the device sent while being abused must still be consistent."""
         by_session = {}
-        for t, pen, comp, session, group in self.server.solves():
+        for t, pen, comp, session, group, delegate in self.server.solves():
             if comp not in KNOWN_CARDS:
                 raise Failure(f"solve for unknown competitor {comp}")
-            if t not in self.stackmat.stopped_times and pen != -1:
+            # a delegate call carries whatever time there is (0 before the solve)
+            if not delegate and t not in self.stackmat.stopped_times and pen != -1:
                 raise Failure(f"solve time {t} never shown by the stackmat {self.stackmat.stopped_times[-8:]}")
             prev = by_session.setdefault(session, (t, pen, comp, group))
             if prev != (t, pen, comp, group):

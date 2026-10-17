@@ -241,7 +241,13 @@ fn print_state(state: GlobalState) {
             None => _ = write!(line, "?,"),
         }
     }
-    _ = write!(line, " up={}", Instant::now().as_millis());
+    _ = write!(
+        line,
+        " timer={:?} held={} up={}",
+        state.timer.try_get(),
+        button_mask(),
+        Instant::now().as_millis()
+    );
     print(format_args!("{line}"));
 }
 
