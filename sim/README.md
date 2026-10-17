@@ -34,6 +34,16 @@ python3 sim/stackmat.py                           # terminal 3: start | stop | r
 which doesn't get answers through esp-emu's relay on macOS. Cards in micro-connector's `tests.json`:
 `69420` (competitor), `3004425529` (judge).
 
+## In a browser
+
+```sh
+python3 sim/web.py            # builds, starts esp-emu + stackmat + micro-connector, serves :8000
+```
+
+http://127.0.0.1:8000 shows the OLED and has the four buttons (hold as long as on the device,
+keys 1–4), cards, the stackmat (space = start/stop, r = reset), battery, Wi-Fi off/on, server
+off/on, power cycle, the live state and the log. `--no-server` runs without micro-connector.
+
 ## Wi-Fi provisioning
 
 ```sh

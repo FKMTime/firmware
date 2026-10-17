@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FKM Sim Device</title>
+<style>
+  :root {
+    --bg: #f4f4f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #deddd8;
+    --accent: #1f6feb; --oled-bg: #050807; --oled-px: #9ff0ff; --btn: #ecebe7; --btn-down: #c9d8f5;
+    --ok: #1a7f37; --bad: #c62828;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141413; --panel: #1e1e1c; --ink: #ecebe7; --muted: #9a9a94; --line: #2f2f2c;
+      --accent: #6ea8ff; --btn: #2a2a27; --btn-down: #2c3f63; --ok: #4ac26b; --bad: #ff6b6b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141413; --panel: #1e1e1c; --ink: #ecebe7; --muted: #9a9a94; --line: #2f2f2c;
+    --accent: #6ea8ff; --btn: #2a2a27; --btn-down: #2c3f63; --ok: #4ac26b; --bad: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px;
+         display: grid; grid-template-columns: minmax(0, 560px) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 860px) { main { grid-template-columns: minmax(0, 1fr); } }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+       margin: 0 0 10px; font-weight: 600; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .stack > * + * { margin-top: 16px; }
+  #oled { width: 100%; aspect-ratio: 2 / 1; image-rendering: pixelated; background: var(--oled-bg);
+          border-radius: 6px; display: block; border: 6px solid #000; }
+  .buttons { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+  button { font: inherit; color: var(--ink); background: var(--btn); border: 1px solid var(--line);
+           border-radius: 8px; padding: 10px 8px; cursor: pointer; touch-action: none; user-select: none; }
+  button:hover { border-color: var(--muted); }
+  button.down, button[aria-pressed="true"] { background: var(--btn-down); border-color: var(--accent); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .hw { padding: 16px 8px; font-weight: 600; }
+  .hw small { display: block; font-weight: 400; color: var(--muted); font-size: 11px; }
+  .held { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; margin-top: 6px; min-height: 1.4em; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  input[type=text] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+                     border-radius: 8px; padding: 9px 10px; width: 140px; min-width: 0; }
+  input[type=range] { flex: 1; min-width: 120px; accent-color: var(--accent); }
+  .timer { font: 600 34px/1 ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums;
+           margin-bottom: 10px; }
+  .kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 12px; font-size: 13px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; font-family: ui-monospace, Menlo, monospace; overflow-wrap: anywhere; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  #log { height: 280px; overflow: auto; margin: 0; font: 11.5px/1.45 ui-monospace, Menlo, monospace;
+         white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
+  .hint { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+  #conn { font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="stack">
+    <div>
+      <h1>FKM device (esp-emu)</h1>
+      <span id="conn" class="bad">connecting…</span>
+    </div>
+    <section class="panel" aria-label="Device">
+      <canvas id="oled" width="128" height="64" aria-label="OLED display"></canvas>
+      <div class="buttons">
+        <button class="hw" data-btn="1">Inspect<small>key 1</small></button>
+        <button class="hw" data-btn="2">Delegate<small>key 2</small></button>
+        <button class="hw" data-btn="3">Submit<small>key 3</small></button>
+        <button class="hw" data-btn="4">Penalty<small>key 4</small></button>
+      </div>
+      <div class="held" id="held" aria-live="polite"></div>
+      <p class="hint">Hold a button as long as you'd hold the real one (e.g. Submit 10 s = config menu).</p>
+    </section>
+    <section class="panel">
+      <h2>Stackmat</h2>
+      <div class="timer" id="timer">0:00.000</div>
+      <div class="row">
+        <button id="stk-start">Start</button>
+        <button id="stk-stop">Stop</button>
+        <button id="stk-reset">Reset</button>
+        <button id="stk-plug" aria-pressed="true">Plugged in</button>
+      </div>
+      <p class="hint">Space = start / stop, R = reset.</p>
+    </section>
+  </div>
+
+  <div class="stack">
+    <section class="panel">
+      <h2>Cards</h2>
+      <div class="row">
+        <button data-card="69420">Competitor</button>
+        <button data-card="3004425529">Judge</button>
+        <button data-card="1264825046">Multi-group</button>
+        <input type="text" id="uid" inputmode="numeric" placeholder="card uid" aria-label="Card uid">
+        <button id="scan">Scan</button>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Power &amp; network</h2>
+      <div class="row">
+        <label for="bat">Battery</label>
+        <input type="range" id="bat" min="0" max="100" value="100">
+        <span id="bat-v">100%</span>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="wifi" aria-pressed="true">Wi-Fi on</button>
+        <button id="server" aria-pressed="true">Server on</button>
+        <button id="power">Power cycle</button>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>State</h2>
+      <dl class="kv" id="state"></dl>
+    </section>
+    <section class="panel">
+      <h2>Log</h2>
+      <pre id="log"></pre>
+    </section>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const send = (target, arg = "") =>
+  fetch("/cmd", { method: "POST", body: JSON.stringify({ target, arg }) }).catch(() => {});
+
+// OLED: 32 rows of 128 half-block chars, each char = 2 vertical pixels
+const ctx = $("oled").getContext("2d");
+const TOP = { "▀": 1, "█": 1 }, BOTTOM = { "▄": 1, "█": 1 };
+function drawOled(rows) {
+  const css = getComputedStyle(document.documentElement);
+  ctx.fillStyle = css.getPropertyValue("--oled-bg"); ctx.fillRect(0, 0, 128, 64);
+  ctx.fillStyle = css.getPropertyValue("--oled-px");
+  rows.forEach((row, y) => [...row].forEach((ch, x) => {
+    if (TOP[ch]) ctx.fillRect(x, y * 2, 1, 1);
+    if (BOTTOM[ch]) ctx.fillRect(x, y * 2 + 1, 1, 1);
+  }));
+}
+
+// hardware buttons: held until released (the firmware times the hold itself)
+const holding = new Map();
+function press(n, el) {
+  if (holding.has(n)) return;
+  holding.set(n, performance.now()); el?.classList.add("down");
+  send("emu", `btn ${n} 600000`);
+}
+function release(n, el) {
+  if (!holding.has(n)) return;
+  holding.delete(n); el?.classList.remove("down");
+  send("emu", `btn ${n} 0`);
+}
+document.querySelectorAll("[data-btn]").forEach((el) => {
+  const n = +el.dataset.btn;
+  el.addEventListener("pointerdown", (e) => { el.setPointerCapture(e.pointerId); press(n, el); });
+  el.addEventListener("pointerup", () => release(n, el));
+  el.addEventListener("pointercancel", () => release(n, el));
+});
+setInterval(() => {
+  const now = performance.now();
+  $("held").textContent = [...holding].map(([n, t]) =>
+    `${["", "Inspect", "Delegate", "Submit", "Penalty"][n]} held ${((now - t) / 1000).toFixed(1)} s`).join(" · ");
+}, 100);
+
+// stackmat (shown time is tracked here; the fake timer keeps its own)
+let started = null, shown = 0;
+const fmt = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}.${String(ms % 1000).padStart(3, "0")}`;
+const stk = {
+  start() { if (started === null) { started = performance.now(); send("stk", "start"); } },
+  stop() { if (started !== null) { shown = Math.round(performance.now() - started); started = null; send("stk", "stop"); } },
+  reset() { started = null; shown = 0; send("stk", "reset"); },
+};
+setInterval(() => { $("timer").textContent = fmt(started === null ? shown : Math.round(performance.now() - started)); }, 31);
+$("stk-start").onclick = stk.start; $("stk-stop").onclick = stk.stop; $("stk-reset").onclick = stk.reset;
+function toggle(el, onText, offText, cb) {
+  el.onclick = () => {
+    const on = el.getAttribute("aria-pressed") !== "true";
+    el.setAttribute("aria-pressed", on); el.textContent = on ? onText : offText; cb(on);
+  };
+}
+toggle($("stk-plug"), "Plugged in", "Unplugged", (on) => send("stk", on ? "on" : "off"));
+toggle($("wifi"), "Wi-Fi on", "Wi-Fi off", (on) => send("emu", on ? "wifi on" : "wifi off"));
+toggle($("server"), "Server on", "Server off", (on) => send("server", on ? "start" : "stop"));
+$("power").onclick = () => send("power");
+
+// keyboard: 1–4 hold buttons, space start/stop, r reset
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.repeat) return;
+  const btn = document.querySelector(`[data-btn="${e.key}"]`);
+  if (btn) { press(+e.key, btn); e.preventDefault(); }
+  else if (e.code === "Space") { started === null ? stk.start() : stk.stop(); e.preventDefault(); }
+  else if (e.key === "r") stk.reset();
+});
+document.addEventListener("keyup", (e) => {
+  const btn = document.querySelector(`[data-btn="${e.key}"]`);
+  if (btn) release(+e.key, btn);
+});
+window.addEventListener("blur", () => holding.forEach((_, n) => release(n, document.querySelector(`[data-btn="${n}"]`))));
+
+// cards & battery
+document.querySelectorAll("[data-card]").forEach((el) => el.onclick = () => send("emu", `card ${el.dataset.card}`));
+$("scan").onclick = () => { const uid = $("uid").value.trim(); if (/^\d+$/.test(uid)) send("emu", `card ${uid}`); };
+$("uid").addEventListener("keydown", (e) => { if (e.key === "Enter") $("scan").click(); });
+$("bat").oninput = () => { $("bat-v").textContent = `${$("bat").value}%`; };
+$("bat").onchange = () => send("emu", `bat ${$("bat").value}`);
+
+// state & log
+const SHOW = { scene: "Scene", comp: "Competitor", judge: "Judge", time: "Time (ms)", pen: "Penalty",
+               menu: "Menu", wifi: "Wi-Fi", srv: "Server", stk: "Stackmat", added: "Added", errs: "Errors" };
+function showState(s) {
+  $("state").innerHTML = "";
+  for (const [k, label] of Object.entries(SHOW)) {
+    const v = s[k] ?? "–", dt = document.createElement("dt"), dd = document.createElement("dd");
+    dt.textContent = label; dd.textContent = v;
+    if (v === "Some(true)") dd.className = "ok"; else if (v === "Some(false)") dd.className = "bad";
+    $("state").append(dt, dd);
+  }
+}
+const log = $("log"), lines = [];
+function addLog(l) {
+  lines.push(l); if (lines.length > 400) lines.splice(0, lines.length - 400);
+  const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
+  log.textContent = lines.join("\n");
+  if (atEnd) log.scrollTop = log.scrollHeight;
+}
+
+const es = new EventSource("/events");
+es.onopen = () => { $("conn").textContent = "connected"; $("conn").className = "ok"; };
+es.onerror = () => { $("conn").textContent = "disconnected (is sim/web.py running?)"; $("conn").className = "bad"; };
+es.addEventListener("oled", (e) => drawOled(JSON.parse(e.data)));
+es.addEventListener("state", (e) => showState(JSON.parse(e.data)));
+es.addEventListener("log", (e) => addLog(JSON.parse(e.data)));
+drawOled([]);
+</script>
+</body>
+</html>
