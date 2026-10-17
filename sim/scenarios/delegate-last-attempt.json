@@ -1,0 +1,21 @@
+{"seed": 90107, "note": "regression: confirming a resolved last attempt was refused (No attempts left) and reset the device", "sim_e2e": true, "server": {"rounds": {"333-bf": {"attempts": 1}}}, "actions": [
+[500, "card", 3004425529],
+[10, "expect", "scene", "CompetitorInfo"],
+[1500, "stk", "start"],
+[10, "expect", "scene", "Timer"],
+[1500, "stk", "stop"],
+[10, "expect", "scene", "Finished"],
+[300, "btn", 2, 3600],
+[10, "expect", "held", 0],
+[10, "expect", "dhold", 3],
+[3000, "expect", "dhold", 3],
+[10, "resolve", {"status": "resolved"}],
+[10, "expect", "conf", 1],
+[500, "card", 1264825046],
+[10, "expect", "judge", 1264825046],
+[500, "card", 3004425529],
+[10, "expect", "comp", -1],
+[10, "expect", "scene", "WaitingForCompetitor"],
+[10, "expect", "err", 0],
+[10, "expect_db", 3004425529, [{"status": "resolved", "judgeId": 1264825046}]]
+]}

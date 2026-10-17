@@ -2,7 +2,7 @@
 use esp_hal::gpio::AnyPin;
 use esp_hal::gpio::Pin;
 use esp_hal::{
-    gpio::{Input, InputConfig, Output, Pull},
+    gpio::{Input, InputConfig, Pull},
     peripherals::{AES, BT, FLASH, FROM_CPU_INTR0, Peripherals, TIMG0, TIMG1, WIFI},
     timer::timg::TimerGroup,
 };
@@ -37,7 +37,7 @@ pub struct Board {
     pub cs: adv_shift_registers::wrappers::ShifterPin,
 
     #[cfg(feature = "v4")]
-    pub display_rst: Output<'static>,
+    pub display_rst: esp_hal::gpio::Output<'static>,
     #[cfg(feature = "v4")]
     pub i2c: SharedI2C,
     #[cfg(feature = "v4")]
@@ -76,7 +76,7 @@ impl Board {
         let flash = peripherals.FLASH;
         let sw_interrupt = peripherals.FROM_CPU_INTR0;
 
-        let display_rst = Output::new(
+        let display_rst = esp_hal::gpio::Output::new(
             peripherals.GPIO7,
             esp_hal::gpio::Level::Low,
             Default::default(),
@@ -171,7 +171,7 @@ impl Board {
 impl Board {
     pub fn init(peripherals: Peripherals) -> Board {
         use embedded_hal::digital::OutputPin;
-        use esp_hal::gpio::Level;
+        use esp_hal::gpio::{Level, Output};
 
         let timg0 = TimerGroup::new(peripherals.TIMG0);
         let timg1 = TimerGroup::new(peripherals.TIMG1);

@@ -84,6 +84,7 @@ pub async fn rfid_task(
         esp_hal_mfrc522::Mfrc522::new(esp_hal_mfrc522::SpiInterface::new(spi))
     };
 
+    // e2e cards are simulated: there is no reader to bring up
     if !cfg!(feature = "e2e") {
         init_until_ready(&mut mfrc522).await;
         log::debug!("PCD ver: {:?}", mfrc522.version().await);

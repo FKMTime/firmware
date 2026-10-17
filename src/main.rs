@@ -30,6 +30,8 @@ mod consts;
 mod mdns;
 mod power;
 mod rfid;
+#[cfg(feature = "sim")]
+mod sim;
 mod stackmat;
 mod state;
 mod structs;
@@ -180,6 +182,12 @@ async fn main(spawner: Spawner) {
         &spawner,
         "battery_v3::battery_read_task",
         battery_v3::battery_read_task(board.battery, board.adc1, global_state),
+    );
+    #[cfg(feature = "sim")]
+    spawn_task(
+        &spawner,
+        "sim::command_task",
+        sim::command_task(global_state),
     );
     #[cfg(feature = "v4")]
     spawn_task(
@@ -380,6 +388,12 @@ async fn main(spawner: Spawner) {
     loop {
         Timer::after_millis(100).await;
         watchdog::heartbeat(watchdog::TaskId::Main);
+        #[cfg(feature = "sim")]
+        match sim::WIFI.try_take() {
+            Some(true) => wifi_res.stop_radio(),
+            Some(false) => wifi_res.restart_radio(),
+            None => {}
+        }
         if !healthy && boot.elapsed().as_secs() >= HEALTHY_AFTER_SECS {
             utils::backtrace_store::mark_healthy();
             healthy = true;

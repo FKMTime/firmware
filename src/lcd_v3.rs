@@ -104,6 +104,8 @@ async fn show(text: &mut LcdText, lcd: &mut Lcd) {
         goto(lcd, col, row).await;
         lcd.print(&s).await;
     }
+    #[cfg(feature = "sim")]
+    crate::sim::lcd_intended(text.shown());
 }
 
 /// Writes the changes, or every `HEAL_INTERVAL` re-syncs the controller and rewrites every

@@ -1,0 +1,580 @@
+diff -ruN a/src/analog/adc/riscv.rs b/src/analog/adc/riscv.rs
+--- a/src/analog/adc/riscv.rs
++++ b/src/analog/adc/riscv.rs
+@@ -355,6 +355,9 @@
+         PIN: super::AdcChannel,
+         CS: super::AdcCalScheme<ADCX>,
+     {
++        if crate::sim_tap::ACTIVE {
++            return Ok(crate::sim_tap::adc(pin.pin.adc_channel()));
++        }
+         if self.attenuations[pin.pin.adc_channel() as usize].is_none() {
+             panic!(
+                 "Channel {} is not configured reading!",
+@@ -499,6 +502,9 @@
+         PIN: super::AdcChannel,
+         CS: super::AdcCalScheme<ADCX>,
+     {
++        if crate::sim_tap::ACTIVE {
++            return crate::sim_tap::adc(pin.pin.adc_channel());
++        }
+         let channel = pin.pin.adc_channel();
+         if self.attenuations[channel as usize].is_none() {
+             panic!("Channel {} is not configured reading!", channel);
+diff -ruN a/src/gpio/mod.rs b/src/gpio/mod.rs
+--- a/src/gpio/mod.rs
++++ b/src/gpio/mod.rs
+@@ -1991,12 +1991,18 @@
+     /// The current state of the input.
+     #[inline]
+     pub(crate) fn is_input_high(&self) -> bool {
++        if crate::sim_tap::ACTIVE {
++            return crate::sim_tap::gpio_in(self.number());
++        }
+         self.bank().read_input() & self.mask() != 0
+     }
+ 
+     /// Sets the pin's level to high or low.
+     #[inline]
+     pub(crate) fn set_output_high(&self, high: bool) {
++        if crate::sim_tap::ACTIVE {
++            crate::sim_tap::gpio_out(self.number(), high);
++        }
+         self.bank().write_output(self.mask(), high);
+     }
+ 
+diff -ruN a/src/i2c/master/low_level/mod.rs b/src/i2c/master/low_level/mod.rs
+--- a/src/i2c/master/low_level/mod.rs	2006-07-24 03:21:28
++++ b/src/i2c/master/low_level/mod.rs	2026-10-17 19:42:39
+@@ -1348,6 +1348,9 @@
+         address: I2cAddress,
+         operations: impl Iterator<Item = Operation<'a>>,
+     ) -> Result<(), Error> {
++        if crate::sim_tap::ACTIVE {
++            return crate::sim_tap::i2c(address, operations);
++        }
+         address.validate()?;
+         self.ensure_idle_blocking();
+ 
+@@ -1412,6 +1415,9 @@
+         address: I2cAddress,
+         operations: impl Iterator<Item = Operation<'a>>,
+     ) -> Result<(), Error> {
++        if crate::sim_tap::ACTIVE {
++            return crate::sim_tap::i2c(address, operations);
++        }
+         address.validate()?;
+         self.ensure_idle().await;
+ 
+diff -ruN a/src/interrupt/riscv.rs b/src/interrupt/riscv.rs
+--- a/src/interrupt/riscv.rs	2006-07-24 03:21:28
++++ b/src/interrupt/riscv.rs	2026-10-17 00:59:09
+@@ -597,7 +597,14 @@
+     #[unsafe(no_mangle)]
+     #[crate::ram]
+     unsafe fn handle_interrupts(cpu_intr: CpuInterrupt) {
+-        let status = InterruptStatus::current();
++        let mut status = InterruptStatus::current();
++        // esp-emu never mirrors sources into INTR_STATUS: like xtensa edge interrupts, call every
++        // handler mapped to this interrupt (each checks its own peripheral)
++        if status.iterator().next().is_none() {
++            for nr in 0..crate::soc::pac::__EXTERNAL_INTERRUPTS.len() as u8 {
++                status.set(nr);
++            }
++        }
+ 
+         // this has no effect on level interrupts, but the interrupt may be an edge one
+         // so we clear it anyway
+diff -ruN a/src/interrupt/software.rs b/src/interrupt/software.rs
+--- a/src/interrupt/software.rs	2006-07-24 03:21:28
++++ b/src/interrupt/software.rs	2026-10-17 00:59:09
+@@ -105,7 +105,11 @@
+                 crate::interrupt::free(|| {
+                     reg.write(|w| w.cpu_intr().set_bit());
+                     // Wait for the interrupt to actually take effect.
+-                    while !self.is_pending() {}
++                    // esp-emu never mirrors FROM_CPU_INTR into INTR_STATUS: bounded wait
++                    let mut spins = 0u32;
++                    while !self.is_pending() && spins < 1000 {
++                        spins += 1;
++                    }
+                 });
+             }
+         }
+diff -ruN a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -310,6 +310,8 @@
+ pub mod spi;
+ pub mod system;
+ pub mod time;
++#[doc(hidden)]
++pub mod sim_tap;
+ #[cfg(uart_driver_supported)]
+ pub mod uart;
+ 
+diff -ruN a/src/sim_tap.rs b/src/sim_tap.rs
+--- a/src/sim_tap.rs	1970-01-01 01:00:00
++++ b/src/sim_tap.rs	2026-10-17 21:01:54
+@@ -0,0 +1,335 @@
++//! esp-sim-patches bus tap (emulator only). Built with `ESP_SIM_TAP` set, GPIO, I2C, SPI and
++//! ADC traffic goes over UART0 to a host that models the devices. Frames in both directions:
++//! `F5 <type> <len u16 LE> <payload>`; anything else on the line (ROM text) is not a frame.
++//!
++//! To the host: `G` GPIO output changes `[t0 µs u32][(pin | level << 7, µs since previous)]..`,
++//! `Q` input query `[now µs u32]` (outputs changed since the last read: a matrix scan's answer
++//! depends on them), `I` I2C `[addr][(R|W, len u16, data if W)]..`, `S` SPI `[read? u8][MOSI]`,
++//! `A` ADC `[channel]`, each after a sequence byte. Writes don't wait; `Q`, reads and `A` wait
++//! for the host's `r` reply `[seq][status][data]` (status 0 = ok, 1 = NACK address, 2 = NACK
++//! data, other = error; `Q`: the input levels u32); a reply to an earlier, timed out request
++//! is dropped. The host may send `g` `[(pin, level, µs u32)]..` any time: the pin reads
++//! `level`, after `µs` (0 = never) the other level again, timed from when the firmware sees it
++//! (it reports the end with `P` `[pin]`);
++//! and `c` `[text]`: console input for the firmware ([`console`]).
++
++use core::cell::RefCell;
++
++use critical_section::Mutex;
++
++/// Only builds with `ESP_SIM_TAP` set use the tap.
++pub const ACTIVE: bool = option_env!("ESP_SIM_TAP").is_some();
++const MARK: u8 = 0xF5;
++const REPLY_TIMEOUT_US: u64 = 500_000;
++
++struct Tap {
++    batch: [u8; 512],
++    len: usize,
++    last_us: u64,
++    out: u64,
++    inputs: u32,
++    /// end of each input pulse (µs, 0 = none)
++    pulse_end: [u64; 32],
++    outputs_changed: bool,
++    rx: [u8; 4 + 256],
++    rx_len: usize,
++    reply: Option<([u8; 256], usize)>,
++    seq: u8,
++    console: [u8; 128],
++    console_len: usize,
++}
++
++static TAP: Mutex<RefCell<Tap>> = Mutex::new(RefCell::new(Tap {
++    batch: [0; 512],
++    len: 0,
++    last_us: 0,
++    out: 0,
++    inputs: 0,
++    pulse_end: [0; 32],
++    outputs_changed: false,
++    rx: [0; 4 + 256],
++    rx_len: 0,
++    reply: None,
++    seq: 0,
++    console: [0; 128],
++    console_len: 0,
++}));
++
++fn now_us() -> u64 {
++    crate::time::Instant::now().duration_since_epoch().as_micros()
++}
++
++// UART0 through the ROM functions esp-emu intercepts (it ignores the FIFO registers there)
++fn rx() -> Option<u8> {
++    // SAFETY: the ESP32-C3 ROM's `uart_rx_one_char` (0 = got a byte)
++    let rx_one_char: unsafe extern "C" fn(*mut u8) -> i32 = unsafe { core::mem::transmute(0x4000_0070usize) };
++    let mut b = 0;
++    (unsafe { rx_one_char(&mut b) } == 0).then_some(b)
++}
++
++fn tx(bytes: &[u8]) {
++    // SAFETY: the ESP32-C3 ROM's `uart_tx_one_char`, as esp-println calls it
++    let tx_one_char: unsafe extern "C" fn(u8) -> i32 = unsafe { core::mem::transmute(0x4000_0068usize) };
++    for &b in bytes {
++        unsafe { tx_one_char(b) };
++    }
++}
++
++fn frame(ty: u8, parts: &[&[u8]]) {
++    let len = parts.iter().map(|p| p.len()).sum::<usize>() as u16;
++    let [lo, hi] = len.to_le_bytes();
++    tx(&[MARK, ty, lo, hi]);
++    for p in parts {
++        tx(p);
++    }
++}
++
++/// A frame starting with the sequence byte of the current request.
++fn frame_seq(t: &Tap, ty: u8, parts: &[&[u8]]) {
++    let len = 1 + parts.iter().map(|p| p.len()).sum::<usize>() as u16;
++    let [lo, hi] = len.to_le_bytes();
++    tx(&[MARK, ty, lo, hi, t.seq]);
++    for p in parts {
++        tx(p);
++    }
++}
++
++impl Tap {
++    fn expire_pulses(&mut self) {
++        let now = now_us();
++        for pin in 0..32 {
++            if self.pulse_end[pin] != 0 && now >= self.pulse_end[pin] {
++                self.pulse_end[pin] = 0;
++                self.inputs ^= 1 << pin;
++                self.flush();
++                frame(b'P', &[&[pin as u8]]);
++            }
++        }
++    }
++
++    fn flush(&mut self) {
++        if self.len > 4 {
++            frame(b'G', &[&self.batch[..self.len]]);
++        }
++        self.len = 0;
++    }
++
++    /// Feeds received bytes to the frame parser.
++    fn poll_rx(&mut self) {
++        while let Some(b) = rx() {
++            if self.rx_len == 0 && b != MARK {
++                continue;
++            }
++            self.rx[self.rx_len] = b;
++            self.rx_len += 1;
++            if self.rx_len < 4 {
++                continue;
++            }
++            let len = usize::from(u16::from_le_bytes([self.rx[2], self.rx[3]]));
++            if len > 256 {
++                self.rx_len = 0; // garbage: resync on the next marker
++            } else if self.rx_len == 4 + len {
++                let payload = &self.rx[4..4 + len];
++                match self.rx[1] {
++                    b'g' => {
++                        let now = now_us();
++                        for e in payload.chunks_exact(6) {
++                            let pin = usize::from(e[0] & 31);
++                            let us = u32::from_le_bytes([e[2], e[3], e[4], e[5]]);
++                            self.inputs = self.inputs & !(1 << pin) | u32::from(e[1] & 1) << pin;
++                            self.pulse_end[pin] = if us == 0 { 0 } else { now + u64::from(us) };
++                        }
++                    }
++                    b'c' => {
++                        let n = len.min(self.console.len() - self.console_len);
++                        let at = self.console_len;
++                        self.console[at..at + n].copy_from_slice(&payload[..n]);
++                        self.console_len += n;
++                    }
++                    b'r' if len > 0 && payload[0] == self.seq => {
++                        let mut buf = [0; 256];
++                        buf[..len - 1].copy_from_slice(&payload[1..]);
++                        self.reply = Some((buf, len - 1));
++                    }
++                    _ => {}
++                }
++                self.rx_len = 0;
++            }
++        }
++    }
++}
++
++/// Sends a request and waits for the host's reply; `None` without a host.
++fn request(ty: u8, parts: &[&[u8]]) -> Option<([u8; 256], usize)> {
++    critical_section::with(|cs| {
++        let mut t = TAP.borrow_ref_mut(cs);
++        t.flush();
++        t.poll_rx();
++        t.reply = None;
++        t.seq = t.seq.wrapping_add(1);
++        frame_seq(&t, ty, parts);
++    });
++    let start = now_us();
++    loop {
++        let reply = critical_section::with(|cs| {
++            let mut t = TAP.borrow_ref_mut(cs);
++            t.poll_rx();
++            t.reply.take()
++        });
++        if reply.is_some() || now_us() - start > REPLY_TIMEOUT_US {
++            return reply.filter(|(_, len)| *len > 0);
++        }
++    }
++}
++
++/// An output pin changed its level.
++pub(crate) fn gpio_out(pin: u8, high: bool) {
++    critical_section::with(|cs| {
++        let mut t = TAP.borrow_ref_mut(cs);
++        let mask = 1u64 << pin;
++        if (t.out & mask != 0) == high {
++            return;
++        }
++        t.out = if high { t.out | mask } else { t.out & !mask };
++        t.outputs_changed = true;
++        let now = now_us();
++        let dt = now.saturating_sub(t.last_us);
++        if t.len + 2 > t.batch.len() || dt > 255 {
++            t.flush();
++        }
++        if t.len == 0 {
++            t.batch[..4].copy_from_slice(&(now as u32).to_le_bytes());
++            t.len = 4;
++        }
++        let len = t.len;
++        t.batch[len] = pin | u8::from(high) << 7;
++        t.batch[len + 1] = if len == 4 { 0 } else { dt as u8 };
++        t.len += 2;
++        t.last_us = now;
++    })
++}
++
++/// An input pin's level: asks the host when outputs changed since the last read (a matrix
++/// scan's answer depends on them), else what it sent last.
++pub(crate) fn gpio_in(pin: u8) -> bool {
++    let ask = critical_section::with(|cs| {
++        let mut t = TAP.borrow_ref_mut(cs);
++        t.poll_rx();
++        core::mem::take(&mut t.outputs_changed)
++    });
++    if ask {
++        if let Some((r, 5)) = request(b'Q', &[&(now_us() as u32).to_le_bytes()]) {
++            let levels = u32::from_le_bytes([r[1], r[2], r[3], r[4]]);
++            critical_section::with(|cs| TAP.borrow_ref_mut(cs).inputs = levels);
++        }
++    }
++    critical_section::with(|cs| {
++        let mut t = TAP.borrow_ref_mut(cs);
++        t.expire_pulses();
++        t.inputs & 1 << pin != 0
++    })
++}
++
++pub(crate) fn i2c<'a>(
++    address: crate::i2c::master::I2cAddress,
++    operations: impl Iterator<Item = crate::i2c::master::Operation<'a>>,
++) -> Result<(), crate::i2c::master::Error> {
++    use crate::i2c::master::{AcknowledgeCheckFailedReason as Nack, Error, I2cAddress, Operation};
++    let I2cAddress::SevenBit(addr) = address;
++    let mut ops: [Option<Operation<'a>>; 8] = [const { None }; 8];
++    let mut req = [0u8; 256];
++    let (mut n, mut reads) = (1, 0);
++    req[0] = addr;
++    for (slot, op) in ops.iter_mut().zip(operations) {
++        let (kind, len, data): (u8, usize, &[u8]) = match &op {
++            Operation::Write(d) => (b'W', d.len(), d),
++            Operation::Read(d) => (b'R', d.len(), &[]),
++        };
++        reads += usize::from(kind == b'R');
++        let end = n + 3 + data.len();
++        if end > req.len() {
++            return Err(Error::FifoExceeded);
++        }
++        req[n] = kind;
++        req[n + 1..n + 3].copy_from_slice(&(len as u16).to_le_bytes());
++        req[n + 3..end].copy_from_slice(data);
++        n = end;
++        *slot = Some(op);
++    }
++    if reads == 0 {
++        critical_section::with(|cs| {
++            let mut t = TAP.borrow_ref_mut(cs);
++            t.flush();
++            frame_seq(&t, b'I', &[&req[..n]]);
++        });
++        return Ok(());
++    }
++    let (r, len) = request(b'I', &[&req[..n]]).ok_or(Error::Timeout)?;
++    match r[0] {
++        0 => {}
++        1 => return Err(Error::AcknowledgeCheckFailed(Nack::Address)),
++        2 => return Err(Error::AcknowledgeCheckFailed(Nack::Data)),
++        _ => return Err(Error::Timeout),
++    }
++    let mut data = &r[1..len];
++    for op in ops.iter_mut().flatten() {
++        if let Operation::Read(buf) = op {
++            let k = buf.len().min(data.len());
++            buf[..k].copy_from_slice(&data[..k]);
++            data = &data[k..];
++        }
++    }
++    Ok(())
++}
++
++/// Full duplex transfer of `max(read, write)` bytes (MOSI padded with 0); without `read` the
++/// host isn't waited for.
++pub(crate) fn spi(read: &mut [u8], write: &[u8]) -> Result<(), ()> {
++    let n = read.len().max(write.len()).min(250);
++    let mut mosi = [0u8; 250];
++    mosi[..write.len().min(n)].copy_from_slice(&write[..write.len().min(n)]);
++    if read.is_empty() {
++        critical_section::with(|cs| {
++            let mut t = TAP.borrow_ref_mut(cs);
++            t.flush();
++            frame_seq(&t, b'S', &[&[0], &mosi[..n]]);
++        });
++        return Ok(());
++    }
++    let (r, len) = request(b'S', &[&[1], &mosi[..n]]).ok_or(())?;
++    if r[0] != 0 {
++        return Err(());
++    }
++    let k = read.len().min(len - 1);
++    read[..k].copy_from_slice(&r[1..1 + k]);
++    Ok(())
++}
++
++pub(crate) fn spi_in_place(words: &mut [u8]) -> Result<(), ()> {
++    let mut write = [0u8; 250];
++    let n = words.len().min(250);
++    write[..n].copy_from_slice(&words[..n]);
++    spi(words, &write[..n])
++}
++
++/// A oneshot ADC reading of `channel` (0 without a host).
++pub(crate) fn adc(channel: u8) -> u16 {
++    match request(b'A', &[&[channel]]) {
++        Some((r, 3)) if r[0] == 0 => u16::from_le_bytes([r[1], r[2]]),
++        _ => 0,
++    }
++}
++
++/// Console input the host sent (`c` frames): copies up to `buf.len()` bytes, returns how many.
++pub fn console(buf: &mut [u8]) -> usize {
++    critical_section::with(|cs| {
++        let mut t = TAP.borrow_ref_mut(cs);
++        t.poll_rx();
++        let n = buf.len().min(t.console_len);
++        buf[..n].copy_from_slice(&t.console[..n]);
++        let len = t.console_len;
++        t.console.copy_within(n..len, 0);
++        t.console_len -= n;
++        n
++    })
++}
+diff -ruN a/src/spi/master/dma.rs b/src/spi/master/dma.rs
+--- a/src/spi/master/dma.rs	2006-07-24 03:21:28
++++ b/src/spi/master/dma.rs	2026-10-17 19:21:21
+@@ -414,6 +414,9 @@
+     /// Fills the given buffer with data from the bus.
+     #[instability::unstable]
+     pub async fn read_async(&mut self, words: &mut [u8]) -> Result<(), Error> {
++        if crate::sim_tap::ACTIVE {
++            return crate::sim_tap::spi(words, &[]).map_err(|_| Error::Unknown);
++        }
+         if words.is_empty() {
+             return Ok(());
+         }
+@@ -460,6 +463,9 @@
+     /// Transmits the given buffer to the bus.
+     #[instability::unstable]
+     pub async fn write_async(&mut self, words: &[u8]) -> Result<(), Error> {
++        if crate::sim_tap::ACTIVE {
++            return crate::sim_tap::spi(&mut [], words).map_err(|_| Error::Unknown);
++        }
+         if words.is_empty() {
+             return Ok(());
+         }
+@@ -501,6 +507,9 @@
+     /// the bus into another buffer.
+     #[instability::unstable]
+     pub async fn transfer_async(&mut self, read: &mut [u8], write: &[u8]) -> Result<(), Error> {
++        if crate::sim_tap::ACTIVE {
++            return crate::sim_tap::spi(read, write).map_err(|_| Error::Unknown);
++        }
+         if read.is_empty() && write.is_empty() {
+             return Ok(());
+         }
+@@ -582,6 +591,9 @@
+     /// the bus into the same buffer.
+     #[instability::unstable]
+     pub async fn transfer_in_place_async(&mut self, words: &mut [u8]) -> Result<(), Error> {
++        if crate::sim_tap::ACTIVE {
++            return crate::sim_tap::spi_in_place(words).map_err(|_| Error::Unknown);
++        }
+         if words.is_empty() {
+             return Ok(());
+         }
+@@ -1457,6 +1469,9 @@
+     /// Reads data from the SPI bus using DMA.
+     #[instability::unstable]
+     pub fn read(&mut self, words: &mut [u8]) -> Result<(), Error> {
++        if crate::sim_tap::ACTIVE {
++            return crate::sim_tap::spi(words, &[]).map_err(|_| Error::Unknown);
++        }
+         let _clock = SpiClockGuard::new(self.spi.info());
+ 
+         self.driver().setup_full_duplex()?;
+@@ -1498,6 +1513,9 @@
+     /// Writes data to the SPI bus using DMA.
+     #[instability::unstable]
+     pub fn write(&mut self, words: &[u8]) -> Result<(), Error> {
++        if crate::sim_tap::ACTIVE {
++            return crate::sim_tap::spi(&mut [], words).map_err(|_| Error::Unknown);
++        }
+         let _clock = SpiClockGuard::new(self.spi.info());
+ 
+         self.driver().setup_full_duplex()?;
+@@ -1533,6 +1551,9 @@
+     /// Transfers data to and from the SPI bus simultaneously using DMA.
+     #[instability::unstable]
+     pub fn transfer(&mut self, read: &mut [u8], write: &[u8]) -> Result<(), Error> {
++        if crate::sim_tap::ACTIVE {
++            return crate::sim_tap::spi(read, write).map_err(|_| Error::Unknown);
++        }
+         let _clock = SpiClockGuard::new(self.spi.info());
+ 
+         self.driver().setup_full_duplex()?;
+@@ -1608,6 +1629,9 @@
+     /// Transfers data in place on the SPI bus using DMA.
+     #[instability::unstable]
+     pub fn transfer_in_place(&mut self, words: &mut [u8]) -> Result<(), Error> {
++        if crate::sim_tap::ACTIVE {
++            return crate::sim_tap::spi_in_place(words).map_err(|_| Error::Unknown);
++        }
+         let _clock = SpiClockGuard::new(self.spi.info());
+ 
+         self.driver().setup_full_duplex()?;
+diff -ruN a/src/spi/master/mod.rs b/src/spi/master/mod.rs
+--- a/src/spi/master/mod.rs	2006-07-24 03:21:28
++++ b/src/spi/master/mod.rs	2026-10-17 19:21:21
+@@ -858,6 +858,9 @@
+     /// # {after_snippet}
+     /// ```
+     pub async fn transfer_in_place_async(&mut self, words: &mut [u8]) -> Result<(), Error> {
++        if crate::sim_tap::ACTIVE {
++            return crate::sim_tap::spi_in_place(words).map_err(|_| Error::Unknown);
++        }
+         let _clock = SpiClockGuard::new(self.spi.info());
+ 
+         self.driver().setup_full_duplex()?;
+@@ -1233,6 +1236,9 @@
+     /// # {after_snippet}
+     /// ```
+     pub fn write(&mut self, words: &[u8]) -> Result<(), Error> {
++        if crate::sim_tap::ACTIVE {
++            return crate::sim_tap::spi(&mut [], words).map_err(|_| Error::Unknown);
++        }
+         let _clock = SpiClockGuard::new(self.spi.info());
+ 
+         self.driver().setup_full_duplex()?;
+@@ -1263,6 +1269,9 @@
+     /// # {after_snippet}
+     /// ```
+     pub fn read(&mut self, words: &mut [u8]) -> Result<(), Error> {
++        if crate::sim_tap::ACTIVE {
++            return crate::sim_tap::spi(words, &[]).map_err(|_| Error::Unknown);
++        }
+         let _clock = SpiClockGuard::new(self.spi.info());
+         self.driver().setup_full_duplex()?;
+         self.driver().read(words)
+@@ -1292,6 +1301,9 @@
+     /// # {after_snippet}
+     /// ```
+     pub fn transfer(&mut self, words: &mut [u8]) -> Result<(), Error> {
++        if crate::sim_tap::ACTIVE {
++            return crate::sim_tap::spi_in_place(words).map_err(|_| Error::Unknown);
++        }
+         let _clock = SpiClockGuard::new(self.spi.info());
+         self.driver().setup_full_duplex()?;
+         self.driver().transfer_in_place(words)
