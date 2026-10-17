@@ -32,6 +32,12 @@ static DELEGATE_REQUEST: Signal<CriticalSectionRawMutex, crate::structs::TimerPa
     Signal::new();
 static DELEGATE_PENDING: AtomicBool = AtomicBool::new(false);
 
+/// A delegate call waits for its answer: the attempt shows "waiting for delegate" and takes no
+/// input until then, so the answer can't meet a changed (or the next) attempt.
+pub fn delegate_pending() -> bool {
+    DELEGATE_PENDING.load(Ordering::Relaxed)
+}
+
 /// The single button being held. Dropped when an action consumes the press, so it gets no
 /// further hold/up actions.
 struct Press {
@@ -187,7 +193,9 @@ async fn on_up(state: &GlobalState, button: Button) {
     match button {
         Button::Third => submit(state).await,
         Button::Fourth => penalty(state),
-        Button::Second => state.solve.update(|s| s.delegate_hold = None),
+        // a sent call keeps its "waiting for delegate" screen until the answer
+        Button::Second if !delegate_pending() => state.solve.update(|s| s.delegate_hold = None),
+        Button::Second => {}
         Button::First => {}
     }
 }
@@ -671,6 +679,10 @@ fn delegate_send(state: &GlobalState) {
 async fn delegate_loop(state: GlobalState) {
     loop {
         let packet = DELEGATE_REQUEST.wait().await;
+        let session_id = match &packet {
+            crate::structs::TimerPacketInner::Solve { session_id, .. } => Some(session_id.clone()),
+            _ => None,
+        };
         let resp = crate::ws::delegate_request(
             packet,
             Duration::from_millis(crate::consts::DELEGATE_TIMEOUT_MS),
@@ -680,18 +692,27 @@ async fn delegate_loop(state: GlobalState) {
 
         match resp {
             Ok(resp) => {
-                state.solve.update(|s| {
+                // only for the attempt that called (it can't change meanwhile, but a reboot
+                // restoring another one could)
+                let applied = state.solve.update(|s| {
+                    s.delegate_hold = None;
+                    if session_id.is_none() || s.session_id != session_id {
+                        return false;
+                    }
                     s.solve_time = Some(resp.solve_time.unwrap_or(s.solve_time.unwrap_or(0)));
                     s.penalty = Some(resp.penalty.unwrap_or(s.penalty.unwrap_or(0) as i64) as i8);
                     s.scene = Scene::Finished;
                     s.time_confirmed = true;
                     s.delegate_used = true;
+                    true
                 });
-                if !resp.should_scan_cards {
+                if !applied {
+                    log::warn!("Delegate answer for another attempt ignored");
+                } else if !resp.should_scan_cards {
                     state.reset_solve(true).await;
                 }
             }
-            // no answer: drop the "hold" indicator, the solve stays as it was
+            // no answer: drop the waiting screen, the solve stays as it was
             Err(_) => state.solve.update(|s| s.delegate_hold = None),
         }
 
