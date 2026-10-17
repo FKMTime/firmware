@@ -83,8 +83,9 @@ async fn main(spawner: Spawner) {
         config
     });
 
-    // wifimanager 0.5+ keeps its signals/buffers in statics instead of the heap
     esp_alloc::heap_allocator!(size: 112 * 1024);
+    // reclaimed bootloader RAM: wifimanager provisioning, or the ws/TLS buffers (one per boot)
+    esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 54 * 1024);
 
     set_brownout_detection(false);
     let board = Board::init(peripherals);
@@ -244,6 +245,8 @@ async fn main(spawner: Spawner) {
         wifi_panel: esp_hal_wifimanager::include_panel!("src/panel.html"),
         wifi_conn_signal: Some(&WIFI_CONN_SIG),
         provisioning_signal: Some(&WIFI_SETUP_SIG),
+        // provisioning and the ws buffers share heap: never let both run in one boot
+        esp_restart_after_connection: true,
         ..Default::default()
     };
 
