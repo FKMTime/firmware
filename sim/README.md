@@ -60,3 +60,29 @@ A solve: `card 69420`, `btn 1`, stackmat `start` … `stop`, `btn 3`, `card 3004
 
 Cargo prints "patch `esp-hal` … was not used" for the separately built std library; the firmware
 does use the patched copy.
+
+## Monkey (robustness fuzzing)
+
+`sim/monkey.py` runs the firmware in esp-emu with its own micro-connector per instance and abuses
+it with a seeded, weighted random action list: button mashing, odd hold lengths around the real
+thresholds, several buttons at once, card spam in every phase (competitor, judge, multi-group,
+unknown), stackmat chaos (start/stop at wrong times, unplug, garbage bytes), battery changes,
+menu walks, server restarts and power cycles. Same seed ⇒ same actions.
+
+Every few actions it checks liveness (answers `state`, no unexpected reboot/panic, heap bound) and
+state invariants; every `--chunk` actions it runs a recovery probe: get back to idle the way a user
+would, then a full solve that the server must receive exactly once with the stackmat's time.
+Solves the server got during the abuse must be consistent (known competitor, a time the stackmat
+showed, one payload per session id).
+
+```sh
+python3 sim/monkey.py --seeds 1-40 --jobs 4 --minutes 5      # campaign (builds one image per job)
+python3 sim/monkey.py --replay 7                              # same actions again
+python3 sim/monkey.py --replay-file sim/out/7/actions.json --shrink   # minimize a failure
+python3 sim/monkey.py --seed 7 --emit-hil tests.json          # export for micro-connector's HIL
+```
+
+Failures land in `sim/out/<seed>/` (actions, firmware log with timestamps, server log). Needs a
+built micro-connector (`cargo build --bins` in it; `--mc` path). The `state` sim command prints the
+machine-readable line the monkey reads. Not covered: pads (`timer-func`), BLE, Wi-Fi drops (esp-emu
+can't drop the link), real display/RFID timing.
