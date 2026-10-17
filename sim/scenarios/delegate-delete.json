@@ -1,4 +1,4 @@
-{"seed": 90104, "note": "delegate deletes the incident: idle, the redo takes the same attempt number", "sim_e2e": true, "actions": [
+{"seed": 90104, "note": "delegate deletes the incident: idle, the redo takes the same attempt number", "actions": [
 [500, "card", 69420],
 [10, "expect", "scene", "CompetitorInfo"],
 [300, "btn", 1, 150],

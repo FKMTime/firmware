@@ -1,4 +1,4 @@
-{"seed": 90107, "note": "regression: confirming a resolved last attempt was refused (No attempts left) and reset the device", "sim_e2e": true, "server": {"rounds": {"333-bf": {"attempts": 1}}}, "actions": [
+{"seed": 90107, "note": "regression: confirming a resolved last attempt was refused (No attempts left) and reset the device", "server": {"rounds": {"333-bf": {"attempts": 1}}}, "actions": [
 [500, "card", 3004425529],
 [10, "expect", "scene", "CompetitorInfo"],
 [1500, "stk", "start"],

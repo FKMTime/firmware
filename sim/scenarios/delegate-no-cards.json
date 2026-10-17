@@ -1,4 +1,4 @@
-{"seed": 90102, "note": "delegate resolves without cards: the device goes back to idle", "sim_e2e": true, "actions": [
+{"seed": 90102, "note": "delegate resolves without cards: the device goes back to idle", "actions": [
 [500, "card", 69420],
 [10, "expect", "scene", "CompetitorInfo"],
 [300, "btn", 1, 150],

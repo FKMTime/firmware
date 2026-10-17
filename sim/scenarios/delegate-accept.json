@@ -1,4 +1,4 @@
-{"seed": 90100, "note": "delegate accepts the time: device confirms it, cards add the judge on the server", "sim_e2e": true, "actions": [
+{"seed": 90100, "note": "delegate accepts the time: device confirms it, cards add the judge on the server", "actions": [
 [500, "card", 69420],
 [10, "expect", "scene", "CompetitorInfo"],
 [300, "btn", 1, 150],

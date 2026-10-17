@@ -4,7 +4,7 @@ micro-connector), and the server must get exactly the intended results.
 
 Every human action is a planned step with a defined outcome. The oracle models the firmware rules
 (src/buttons.rs, src/rfid.rs, src/stackmat.rs) independently and checks the device state after each
-step. micro-connector's e2e plays FKMTime (`sim-e2e` branch, Server(sim=True)): a delegate answers
+step. micro-connector's e2e plays FKMTime: a delegate answers
 each call with a seeded decision, cutoffs end rounds early, answers get lost. The oracle keeps the
 attempts FKMTime should hold (`Ledger`) and compares them with e2e's after each attempt and at the
 end: station, competitor, judge, group, attempt number, extra, status, value, penalty, replacement
@@ -917,7 +917,7 @@ class Day:
             shutil.rmtree(self.dir)
         self.dir.mkdir(parents=True)
         self.server = M.Server(Path(args.mc).expanduser(), M.SRV_PORT + args.job_base + job, self.dir,
-                               sim=True, extra=dict(groups=day["groups"], cards=day["cards"],
+                               extra=dict(groups=day["groups"], cards=day["cards"],
                                                     rounds=day.get("rounds", {})))
         self.ledger, self.refused = Ledger(day), set()
         self.job, self.image = job, image

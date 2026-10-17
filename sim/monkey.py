@@ -5,7 +5,6 @@ reboots, hangs or softlocks, and never sends inconsistent solves to the server.
   python3 sim/monkey.py --seeds 1-20 --jobs 4 --minutes 4     # fuzz
   python3 sim/monkey.py --replay 7                            # rerun one seed (same actions)
   python3 sim/monkey.py --replay-file sim/out/7/actions.json --shrink
-  python3 sim/monkey.py --seed 7 --emit-hil /tmp/tests.json   # scenario for micro-connector's HIL
   python3 sim/monkey.py --hw v3 --seeds 1-6                   # v3 hardware (character LCD)
 
 Needs: esp-emu on PATH (or ~/.local/bin), a built micro-connector (--mc, default
@@ -34,7 +33,6 @@ COMPETITOR, JUDGE, MULTI = 69420, 3004425529, 1264825046  # micro-connector test
 KNOWN_CARDS = {COMPETITOR, JUDGE, MULTI}
 # real thresholds (src/buttons.rs) and their neighbours
 HOLDS = [5, 20, 29, 31, 80, 150, 400, 990, 1010, 1500, 2990, 3010, 4500, 9990, 10010, 12500]
-BUTTON_NAMES = {1: "inspect", 2: "delegate", 3: "submit", 4: "penalty"}
 SLOW = 3  # emulated time runs up to ~3x slower than real time with several instances
 SRV_PORT = 18100  # per-job server port base, away from the default 8080 other sims use
 HEAP_LIMIT = 0.92  # of the heap size printed by the firmware
@@ -147,14 +145,12 @@ def check_invariants(s: dict):
 # ── processes ───────────────────────────────────────────────────────────────────────────────
 
 class Server:
-    """micro-connector (dev, plain ws) + its e2e backend. HIL mode: e2e answers card lookups and
-    accepts every solve. Sim mode (`sim=True`, needs micro-connector's `sim-e2e` branch): e2e
-    plays FKMTime (attempts by session, incidents, extra attempts, cutoffs, limits), keeps running
-    across server restarts like the real FKMTime would, takes delegate decisions on its control
-    socket (`ctl`) and logs every request with its answer to srv/e2e.jsonl (`log`)."""
+    """micro-connector (dev, plain ws) + fake FKMTime. Attempts and incidents survive
+    connector restarts; delegate decisions use `ctl`, requests and answers go to srv/e2e.jsonl.
+    """
 
-    def __init__(self, mc: Path, port: int, workdir: Path, fresh=False, sim=False, extra=None):
-        self.mc, self.port, self.dir, self.sim = mc, port, workdir, sim
+    def __init__(self, mc: Path, port: int, workdir: Path, fresh=False, extra=None):
+        self.mc, self.port, self.dir = mc, port, workdir
         self.e2e, self.backend = None, None
         # unix socket paths are limited to 104 bytes on macOS (SUN_LEN): keep them short
         self.sock, self.ctl_path = f"/tmp/fkm-monkey-{port}.sock", f"/tmp/fkm-monkey-{port}.ctl"
@@ -163,11 +159,10 @@ class Server:
         if fresh:
             self.log_file.write("\n=== fresh server after reset settings ===\n")
         tests = json.load(open(mc / "tests.json"))
-        tests["tests"] = [{"name": "idle (monkey)", "steps": [{"type": "Sleep", "data": 86_400_000}]}]
         tests.update(extra or {})
         (workdir / "srv").mkdir(exist_ok=True)
         json.dump(tests, open(workdir / "srv" / "tests.json", "w"))
-        if fresh and sim:  # a new FKMTime: its attempts start over
+        if fresh:  # a new FKMTime: its attempts start over
             (workdir / "srv" / "e2e.jsonl").unlink(missing_ok=True)
 
     def start(self):
@@ -177,8 +172,7 @@ class Server:
         env = dict(os.environ, SOCKET_PATH=self.sock)
         if self.e2e is None:
             os.unlink(self.sock) if os.path.exists(self.sock) else None
-            if self.sim:
-                env.update(E2E_SIM="1", E2E_CONTROL=self.ctl_path, E2E_LOG=str(srv / "e2e.jsonl"))
+            env.update(E2E_CONTROL=self.ctl_path, E2E_LOG=str(srv / "e2e.jsonl"))
             self.e2e = subprocess.Popen([self.mc / "target/debug/e2e"], cwd=srv, env=env,
                                         stdout=self.log_file, stderr=self.log_file)
             time.sleep(0.8)
@@ -205,11 +199,8 @@ class Server:
         self.backend = self.e2e = None
 
     def restart(self, down_s: float):
-        """The server goes away for `down_s` (in sim mode FKMTime stays up)."""
+        """The connector goes away for `down_s`; fake FKMTime stays up."""
         self._end(self.backend)
-        if not self.sim:
-            self._end(self.e2e)
-            self.e2e = None
         time.sleep(down_s)
         self.start()
 
@@ -317,7 +308,7 @@ class Run:
         base = 20000 + job * 10
         self.ports = dict(http=base, uart1=base + 1, control=base + 2, tap=base + 3)
         self.server_extra = getattr(args, "server_extra", None)
-        self.server = Server(Path(args.mc).expanduser(), SRV_PORT + job, self.dir, sim=args.sim_e2e,
+        self.server = Server(Path(args.mc).expanduser(), SRV_PORT + job, self.dir,
                              extra=self.server_extra)
         self.image = image
         self.executed = []
@@ -356,7 +347,7 @@ class Run:
             self.expected_boots += 2
             self.server.stop()
             self.server = Server(self.server.mc, self.server.port, self.dir, fresh=True,
-                                 sim=self.server.sim, extra=self.server_extra)
+                                 extra=self.server_extra)
             self.server.start()
             self.reseed_after = self.expected_boots - 1
         if self.reseed_after and boots >= self.reseed_after:
@@ -613,30 +604,6 @@ def build(port: int, hw: str = "v4") -> tuple:
     return bin_, elf
 
 
-def emit_hil(actions, path):
-    """Exports what micro-connector's HIL format can express (single buttons, cards, sleeps,
-    one random solve time); misuse it can't express is dropped and listed."""
-    steps, dropped = [], set()
-    for delay, kind, *a in actions:
-        if delay:
-            steps.append({"type": "Sleep", "data": delay})
-        if kind == "btn":
-            steps.append({"type": "Button", "data": {"name": BUTTON_NAMES[a[0]], "time": a[1]}})
-        elif kind == "card":
-            steps.append({"type": "ScanCard", "data": a[0]})
-        elif kind == "stk" and a[0] == "stop":
-            steps.append({"type": "SolveTime"})
-        elif kind == "wait":
-            pass
-        elif kind == "expect":  # scripted scenarios only: state field reaches a value
-            self.wait_for(lambda s: s.get(a[0]) == str(a[1]), 15, f"{a[0]}={a[1]}")
-        else:
-            dropped.add(f"{kind} {a[0] if a else ''}".strip())
-    json.dump({"name": "monkey", "sleepBetween": 0, "steps": steps}, open(path, "w"), indent=1)
-    if dropped:
-        print("not expressible in tests.json (dropped):", ", ".join(sorted(dropped)))
-
-
 def run_one(seed, actions, job, args, image):
     deadline = time.monotonic() + args.minutes * 60
     err = Run(seed, actions, job, args, image).execute(deadline)
@@ -680,10 +647,9 @@ def main():
     p.add_argument("--hw", choices=["v3", "v4"], default=os.environ.get("SIM_HW", "v4"))
     p.add_argument("--cfg-exit", type=int, help="index of Exit in the config menu (v3: 5, v4: 6)")
     p.add_argument("--mc", default="~/projects/micro-connector",
-                   help="micro-connector checkout (competition mode needs its sim-e2e branch)")
+                   help="micro-connector checkout with its fake FKMTime binary built")
     p.add_argument("--sim-e2e", action="store_true",
-                   help="fuzz: e2e plays FKMTime (always on in competition mode)")
-    p.add_argument("--emit-hil")
+                   help="compatibility option: e2e always plays FKMTime")
     p.add_argument("--shrink", action="store_true")
     p.add_argument("--shrink-runs", type=int, default=12)
     p.add_argument("--no-build", action="store_true")
@@ -709,7 +675,6 @@ def main():
     if args.replay_file:
         d = json.load(open(args.replay_file))
         work = [(d["seed"], d["actions"])]
-        args.sim_e2e = args.sim_e2e or d.get("sim_e2e", False)
         args.server_extra = d.get("server")
         if any(str(a[1]).startswith("expect") for a in d["actions"]):
             args.chunk = 10**9  # scripted: no recovery probe between its steps
@@ -722,10 +687,6 @@ def main():
                 lo, _, hi = part.partition("-")
                 seeds += range(int(lo), int(hi or lo) + 1)
         work = [(s, generate(s, args.actions, args.hw)) for s in seeds]
-
-    if args.emit_hil:
-        emit_hil(work[0][1], args.emit_hil)
-        return
 
     jobs = max(1, min(args.jobs, len(work)))
     images = {}

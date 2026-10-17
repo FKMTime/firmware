@@ -1,4 +1,4 @@
-{"seed": 90109, "note": "cutoff missed: the next scan answers No attempts left and resets the device", "sim_e2e": true, "server": {"rounds": {"333-bf": {"attempts": 3, "cutoff": {"attempts": 1, "value": 100}}}}, "actions": [
+{"seed": 90109, "note": "cutoff missed: the next scan answers No attempts left and resets the device", "server": {"rounds": {"333-bf": {"attempts": 3, "cutoff": {"attempts": 1, "value": 100}}}}, "actions": [
 [500, "card", 3004425529],
 [10, "expect", "scene", "CompetitorInfo"],
 [1500, "stk", "start"],

@@ -1,4 +1,4 @@
-{"seed": 90103, "note": "delegate gives an extra attempt: idle, the redo is extra 1 replacing the attempt", "sim_e2e": true, "actions": [
+{"seed": 90103, "note": "delegate gives an extra attempt: idle, the redo is extra 1 replacing the attempt", "actions": [
 [500, "card", 69420],
 [10, "expect", "scene", "CompetitorInfo"],
 [300, "btn", 1, 150],

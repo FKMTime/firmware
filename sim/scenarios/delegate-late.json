@@ -1,4 +1,4 @@
-{"seed": 90105, "note": "no answer within the device's 5 min window: the solve stays, its resend is refused, the late answer is ignored", "sim_e2e": true, "actions": [
+{"seed": 90105, "note": "no answer within the device's 5 min window: the solve stays, its resend is refused, the late answer is ignored", "actions": [
 [500, "card", 69420],
 [10, "expect", "scene", "CompetitorInfo"],
 [300, "btn", 1, 150],

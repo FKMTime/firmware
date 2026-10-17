@@ -1,4 +1,4 @@
-{"seed": 90110, "note": "regression: an answer slower than the 5 s heartbeat (here: lost, 7.5 s timeout) made micro-connector close the device's connection (missed heartbeat ticks fired in a burst), so its error never arrived", "sim_e2e": true, "actions": [
+{"seed": 90110, "note": "regression: an answer slower than the 5 s heartbeat (here: lost, 7.5 s timeout) made micro-connector close the device's connection (missed heartbeat ticks fired in a burst), so its error never arrived", "actions": [
 [500, "card", 69420],
 [10, "expect", "scene", "CompetitorInfo"],
 [300, "btn", 1, 150],

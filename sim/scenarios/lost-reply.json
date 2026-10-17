@@ -1,4 +1,4 @@
-{"seed": 90108, "note": "the answer to a solve is lost: error, the resend is refused (already entered), the judge resets", "sim_e2e": true, "actions": [
+{"seed": 90108, "note": "the answer to a solve is lost: error, the resend is refused (already entered), the judge resets", "actions": [
 [500, "card", 69420],
 [10, "expect", "scene", "CompetitorInfo"],
 [300, "btn", 1, 150],

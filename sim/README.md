@@ -115,7 +115,6 @@ showed, one payload per session id).
 python3 sim/monkey.py --seeds 1-40 --jobs 4 --minutes 5      # campaign (builds one image per job)
 python3 sim/monkey.py --replay 7                              # same actions again
 python3 sim/monkey.py --replay-file sim/out/7/actions.json --shrink   # minimize a failure
-python3 sim/monkey.py --seed 7 --emit-hil tests.json          # export for micro-connector's HIL
 for f in sim/scenarios/*.json; do python3 sim/monkey.py --replay-file $f; done   # regressions
 ```
 
@@ -134,7 +133,7 @@ applied and corrected, DNF hold, long/double submit, wrong button, scrolling pas
 delegate call, Wi-Fi blip, abandoned attempt, solve over the limit, lost answer to a solve) plus
 server restarts mid-group and a draining battery. Each step's effect is checked on the device.
 
-micro-connector's e2e plays FKMTime here (`E2E_SIM=1`, only on micro-connector's `sim-e2e`
+micro-connector's `e2e` binary plays FKMTime here (fake server included on `master`
 branch: `--mc <checkout>`): it keeps attempts by session id like FKMTime, refuses resends
 ("already entered"), ends a round at its cutoff ("No attempts left" + reset), DNFs at the time
 limit, and turns delegate calls into incidents. A seeded delegate answers each call after a few
@@ -151,7 +150,7 @@ at once.
 
 ```sh
 python3 sim/monkey.py --mode competition --seeds 1-6 --jobs 3 --job-base 20 --max-attempts 36 \
-    --mc ~/projects/micro-connector                                      # on its sim-e2e branch
+    --mc ~/projects/micro-connector
 python3 sim/monkey.py --mode competition --seeds 1-4 --delegate-rate 8   # every decision a few times
 python3 sim/monkey.py --mode competition --hw v3 --seeds 1-6 --jobs 3 --job-base 20 \
     --mc ~/projects/micro-connector
@@ -168,12 +167,11 @@ stations (the firmware never asks for attendance), BLE.
 e2e's control socket (`Server.ctl`, JSON lines): `attempts`, `resolve` (`sessionId`, `status`
 resolved / standard / extra_given, optional `value` cs, `penalty`, `noCards`), `delete`,
 `drop_reply` (`espId`: the next attempt is entered, its answer lost). Scenarios use it with
-`"sim_e2e": true`, optional `"server"` (e.g. `rounds` with attempts/cutoff/limit in cs) and the
+optional `"server"` (e.g. `rounds` with attempts/cutoff/limit in cs) and the
 steps `resolve [args]` / `delete` (the open incident), `drop_reply`, `expect_db <competitor>
 [rows]`; `expect <field> <value> [s]` takes an optional timeout.
 
 Failures land in `sim/out/<seed>/` (actions, firmware log with timestamps, server log). Needs a
-built micro-connector (`cargo build --bins` in it; `--mc` path; `--sim-e2e` lets e2e play FKMTime
-here too). The `state` sim command prints the
+built micro-connector (`cargo build --bins` in it; `--mc` path). The `state` sim command prints the
 machine-readable line the monkey reads. Not covered: pads (`timer-func`), BLE, Wi-Fi drops (esp-emu
 can't drop the link), real display/RFID timing.

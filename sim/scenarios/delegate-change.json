@@ -1,4 +1,4 @@
-{"seed": 90101, "note": "delegate changes time and penalty: the device shows and confirms the decision", "sim_e2e": true, "actions": [
+{"seed": 90101, "note": "delegate changes time and penalty: the device shows and confirms the decision", "actions": [
 [500, "card", 69420],
 [10, "expect", "scene", "CompetitorInfo"],
 [300, "btn", 1, 150],

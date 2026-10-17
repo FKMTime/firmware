@@ -1,4 +1,4 @@
-{"seed": 90106, "note": "regression: the judge moved on while a delegate call was pending and the answer was applied to the next competitor's attempt", "sim_e2e": true, "actions": [
+{"seed": 90106, "note": "regression: the judge moved on while a delegate call was pending and the answer was applied to the next competitor's attempt", "actions": [
 [500, "card", 69420],
 [10, "expect", "scene", "CompetitorInfo"],
 [300, "btn", 1, 150],
