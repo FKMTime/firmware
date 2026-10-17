@@ -189,6 +189,7 @@ class Stackmat:
     def __init__(self, port: int):
         self.port, self.state, self.started, self.shown, self.plugged = port, b"I", 0.0, 0, True
         self.garbage, self.stopped_times, self.lock = 0, [], threading.Lock()
+        self.longest_run = 0.0  # s; a button (or unplug) can stop a solve before the timer does
         self.alive = True
         threading.Thread(target=self.run, daemon=True).start()
 
@@ -206,6 +207,8 @@ class Stackmat:
                 self.state, self.shown = b"S", int((time.monotonic() - self.started) * 1000)
                 self.stopped_times.append(self.shown)
             elif c == "reset":
+                if self.state == b" ":
+                    self.longest_run = max(self.longest_run, time.monotonic() - self.started)
                 self.state, self.shown = b"I", 0
             elif c in ("on", "off"):
                 self.plugged = c == "on"
@@ -394,8 +397,8 @@ class Run:
             time.sleep(2)
             # the timer still shows its last time after a reboot: that must not become a solve
             if before == "-1":
-                self.wait_for(lambda s: s.get("stk") == "Some(true)", 60, "stackmat after reboot")
-                time.sleep(1)
+                # frames of a plugged timer arrive long before the server is up
+                self.wait_for(lambda s: s.get("srv") == "Some(true)", 180, "server after reboot")
                 if (after := self.state(timeout=6).get("time")) != "-1":
                     raise Failure(f"a solve ({after} ms) appeared after a reboot")
         # a button press lasts `ms`; don't send the next action for the same press into it
@@ -484,8 +487,14 @@ class Run:
             if comp not in KNOWN_CARDS:
                 raise Failure(f"solve for unknown competitor {comp}")
             # a delegate call carries whatever time there is (0 before the solve)
-            if not delegate and t not in self.stackmat.stopped_times and pen != -1:
+            st = self.stackmat
+            running = time.monotonic() - st.started if st.state == b" " else 0
+            # emulated time runs slower than real time: a button stop is within the real run
+            button_stop = t <= max(st.longest_run, running, *[x / 1000 for x in st.stopped_times], 0) * 1000
+            if not delegate and t not in st.stopped_times and pen != -1 and not button_stop:
                 raise Failure(f"solve time {t} never shown by the stackmat {self.stackmat.stopped_times[-8:]}")
+            if delegate:
+                continue  # a delegate call is a request; the solve submitted later supersedes it
             prev = by_session.setdefault(session, (t, pen, comp, group))
             if prev != (t, pen, comp, group):
                 raise Failure(f"session {session} sent twice with different data: {prev} vs {(t, pen, comp, group)}")
