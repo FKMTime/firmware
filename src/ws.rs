@@ -28,6 +28,10 @@ use ws_framer::{WsFrame, WsRxError, WsRxFramer, WsTxFramer, WsUrl};
 
 const WS_BUF_SIZE: usize = 8192;
 const TLS_BUF_SIZE: usize = 16640;
+// TCP socket buffers (in the task's static state, which the main stack pays for): TLS has its own
+// 16 KB record buffers and outgoing frames are small or chunked, so small windows are enough
+const TCP_RX_SIZE: usize = 4096;
+const TCP_TX_SIZE: usize = 2048;
 const OUT_QUEUE_LEN: usize = 8;
 const REQUEST_SLOTS: usize = 4;
 /// Close code telling the server the device goes to sleep.
@@ -206,8 +210,8 @@ pub async fn ws_task(
     };
     log::debug!("ws_url: {ws_url:?}");
 
-    let mut tcp_rx = [0; WS_BUF_SIZE];
-    let mut tcp_tx = [0; WS_BUF_SIZE];
+    let mut tcp_rx = [0; TCP_RX_SIZE];
+    let mut tcp_tx = [0; TCP_TX_SIZE];
     // SAFETY: `ws_task` is spawned once and these are the only references to the buffers
     // (each is taken, and zeroed, exactly once).
     let mut bufs = unsafe {
