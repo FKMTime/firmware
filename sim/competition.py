@@ -365,6 +365,9 @@ class Station(M.Run):
             if s:
                 return s
             s = self.st()
+            if s.get("srv") != "Some(true)" or s.get("stk") != "Some(true)":
+                self.disturbed = True  # the disconnected screen ignores buttons: press again
+                continue
             if s.get("err") != "1":
                 raise Mismatch(f"{what}: btn {b} {ms} ms gave {brief(s)}")
             self.dismiss(s)
@@ -843,7 +846,7 @@ def main(args):
         print(f"  slips: {', '.join(f'{k} {v}' for k, v in sorted(s['slips'].items())) or '-'}")
         for m in s["mismatches"] + s["failures"]:
             print(f"  ! {m}")
-    print(f"\n{len(results) - bad}/{len(results)} days clean (logs: sim/out/comp-d{args.devices}/<seed>/)")
+    print(f"\n{len(results) - bad}/{len(results)} days clean (logs: sim/out/comp-d{work[0][1]['devices']}/<seed>/)")
     return 1 if bad else 0
 
 
