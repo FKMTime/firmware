@@ -7,6 +7,7 @@ pub mod buttons;
 pub mod error_log;
 pub mod logger;
 pub mod ring_log;
+pub mod stack;
 pub mod stackmat;
 pub mod text;
 

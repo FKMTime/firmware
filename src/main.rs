@@ -75,6 +75,7 @@ const ERROR_LOG_SAVE_INTERVAL: embassy_time::Duration = embassy_time::Duration::
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) {
+    utils::stack::paint();
     let peripherals = esp_hal::init({
         let mut config = esp_hal::Config::default();
         config = config.with_cpu_clock(esp_hal::clock::CpuClock::_80MHz);
@@ -430,6 +431,8 @@ async fn logger_task(global_state: GlobalState) {
                 stats.max_usage,
                 stats.size
             );
+            let (stack_used, stack_size) = utils::stack::high_water();
+            log::info!("Stack: max {stack_used} of {stack_size} bytes");
             heap_start = Instant::now();
         }
     }
