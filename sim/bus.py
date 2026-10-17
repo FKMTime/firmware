@@ -28,6 +28,7 @@ from devices import BQ27441, MFRC522, SSD1309, Card, Chain595, HD44780
 ROOT = Path(__file__).resolve().parent.parent
 EMU = shutil.which("esp-emu") or str(Path.home() / ".local/bin/esp-emu")
 MARK = 0xF5
+FRAME_TYPES, MAX_FRAME = b"GQISAP", 520  # what the tap sends; its largest is a full G batch
 CARD_IN_FIELD_S = 3.0
 NVS_OFFSET, NVS_SIZE = 0x9000, 0x4000  # partitions.csv
 NVS_TOOL = os.environ.get("SIM_NVS_TOOL", str(Path.home() / "projects/esp-nvs/target/debug/esp-nvs-partition-tool"))
@@ -89,7 +90,8 @@ class Board:
             if i > 4:
                 dt = p[i + 1]
                 t += dt
-            self.lcd_t += dt / cpu if dt < 50 else dt
+            if dt >= 0:  # (the clock restarts when the firmware reboots)
+                self.lcd_t += dt / cpu if dt < 50 else dt
             pin, high = p[i] & 0x7F, p[i] >> 7
             if pin == 10:
                 chain.data = high
@@ -322,6 +324,10 @@ class Tap:
                 if len(buf) < 4:
                     break
                 n = struct.unpack_from("<H", buf, 2)[0]
+                if buf[1] not in FRAME_TYPES or n > MAX_FRAME:
+                    # not a frame (a reset cut the last one short): resync on the next marker
+                    text.append(buf.pop(0))
+                    continue
                 if len(buf) < 4 + n:
                     break
                 ty, payload = buf[1], bytes(buf[4:4 + n])
@@ -424,6 +430,9 @@ class Emu:
         now = time.monotonic()
         if line.startswith("@state "):
             line = self.annotate(line)
+        elif "INFO - Hardware Rev:" in line:  # booted: no press survives a reset
+            with self.board.lock:
+                self.board.held.clear()
         self.log.write(f"{now:.3f} {line}\n")
         with self.lock:
             self.lines.append((now, line))
