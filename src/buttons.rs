@@ -160,8 +160,13 @@ async fn on_hold(state: &GlobalState, button: Button, prev_ms: u64, ms: u64) -> 
             false
         }
         Button::Third if crossed(CONFIG_MENU_HOLD_MS) => {
-            // consumed: releasing the button must not also submit
-            state.ui.update(|u| u.selected_config_menu = Some(0));
+            // consumed: releasing the button must not also submit. Inside a menu (which is
+            // part of the config menu) it stays put, so both are never shown at once.
+            state.ui.update(|u| {
+                if u.menu_scene.is_none() {
+                    u.selected_config_menu = Some(0);
+                }
+            });
             true
         }
         Button::Second => {
