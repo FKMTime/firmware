@@ -348,9 +348,9 @@ async fn handle_card<I: Interface>(
         }
     }
 
-    let is_competitor = global_state
-        .solve
-        .read(|s| s.current_competitor.is_none_or(|c| c == card_uid as u64));
+    // only a card starting an attempt: the server refuses it once the round is over, which must
+    // not hit the competitor's confirming tap (e.g. of a last attempt a delegate resolved)
+    let is_competitor = global_state.solve.read(|s| s.current_competitor.is_none());
 
     let resp = crate::ws::request::<CardInfoResponsePacket>(
         crate::structs::TimerPacketInner::CardInfoRequest {
