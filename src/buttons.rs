@@ -448,14 +448,21 @@ async fn submit(state: &GlobalState) {
     }
 }
 
-/// Registers this device on the server with a fresh sign key.
+/// Registers this device on the server, with a fresh sign key if it has none yet.
+///
+/// An existing key is kept: the server ignores an `Add` for a device it already knows, so a
+/// second `Add` with a new key (submit pressed twice, or a stale "not added" push that crossed
+/// the first `Add`) would leave the device with a key the server rejects.
 pub async fn add_device(state: &GlobalState) {
-    let mut sign_key = [0; 4];
-    _ = getrandom::getrandom(&mut sign_key);
-    let sign_key = u32::from_be_bytes(sign_key) >> 1;
+    let mut sign_key = crate::state::SETTINGS.read(|s| s.sign_key);
+    if sign_key == 0 {
+        let mut bytes = [0; 4];
+        _ = getrandom::getrandom(&mut bytes);
+        sign_key = (u32::from_be_bytes(bytes) >> 1).max(1);
 
-    _ = state.nvs.set(&NVS_SIGN_KEY, sign_key).await;
-    crate::state::SETTINGS.write(|s| s.sign_key = sign_key);
+        _ = state.nvs.set(&NVS_SIGN_KEY, sign_key).await;
+        crate::state::SETTINGS.write(|s| s.sign_key = sign_key);
+    }
     crate::state::SESSION.write(|s| s.trust_server = true);
 
     let packet = crate::structs::TimerPacket {
