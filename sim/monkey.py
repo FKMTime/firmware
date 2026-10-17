@@ -729,6 +729,8 @@ def main():
         work = [(d["seed"], d["actions"])]
         args.sim_e2e = args.sim_e2e or d.get("sim_e2e", False)
         args.server_extra = d.get("server")
+        if any(str(a[1]).startswith("expect") for a in d["actions"]):
+            args.chunk = 10**9  # scripted: no recovery probe between its steps
     else:
         if args.seed is not None or args.replay is not None:
             seeds = [args.seed if args.seed is not None else args.replay]
