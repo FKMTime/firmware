@@ -3,7 +3,7 @@
 //! The firmware runs its real drivers: the sim/patches bus tap (so `sim` builds need the
 //! patched esp-hal, see sim/run.sh) hands GPIO, I2C, SPI and ADC traffic to device models on
 //! the host (sim/bus.py). This module only adds what the host can't see: a machine-readable
-//! state line and a Wi-Fi radio switch, read from the tap's console input.
+//! state line, heap statistics and a Wi-Fi radio switch, read from the tap's console input.
 
 #[cfg(feature = "timer-func")]
 compile_error!("feature `sim` needs the UART stackmat (--no-default-features)");
@@ -29,7 +29,7 @@ pub fn lcd_intended(rows: &[[u8; crate::utils::lcd_text::COLS]; 2]) {
     LCD_TEXT.lock(|t| t.set(*rows));
 }
 
-const HELP: &str = "firmware sim commands: state | wifi off|on";
+const HELP: &str = "firmware sim commands: state | heap | wifi off|on";
 
 /// One machine-readable line for sim/monkey.py: `@state key=value ...` (`-` = none).
 fn print_state(state: GlobalState) {
@@ -124,6 +124,15 @@ pub async fn command_task(state: GlobalState) {
 fn command(line: &str, state: GlobalState) {
     match line.trim() {
         "state" => print_state(state),
+        "heap" => {
+            let stats = esp_alloc::HEAP.stats();
+            esp_println::println!(
+                "Heap: used {} max {} of {} bytes",
+                stats.current_usage,
+                stats.max_usage,
+                stats.size
+            );
+        }
         "wifi off" => WIFI.signal(true),
         "wifi on" => WIFI.signal(false),
         _ => esp_println::println!("? {line}\r\n{HELP}"),

@@ -19,7 +19,8 @@ PCB does (`SIM_HW=v3|v4`, `--hw v3|v4`; v4 is the default):
 | Sleep | off |
 
 The firmware's `sim` feature (`SIM_CLIPPY=1 sim/run.sh` lints it) only adds what the host can't see: `state` (the `@state` line the
-scripts read, v3 also with lcd_v3's change cache as `lcdtext`) and `wifi off|on` (radio torn down
+scripts read, v3 also with lcd_v3's change cache as `lcdtext`), `heap` (current/peak/capacity,
+also available during provisioning), and `wifi off|on` (radio torn down
 / restarted), read from the tap's console frames; it needs the patched esp-hal. Faults the host
 injects: `lcd glitch|drop|reset|slow <n>` (below), `rfid error [n]` (parity errors on the next
 transceives), `i2c nack <addr hex> [n]`. `tap stats` prints the tap's traffic and round-trip times.
