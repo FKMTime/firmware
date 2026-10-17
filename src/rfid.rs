@@ -388,6 +388,9 @@ enum CardAction {
 }
 
 async fn process_card_info_response(resp: CardInfoResponsePacket, global_state: &GlobalState) {
+    // a card scanned after an error (e.g. the wrong card first) answers it: the scan
+    // must not be swallowed behind the old error screen
+    global_state.ui.update(|u| u.error_text = None);
     if global_state.should_skip_other_actions() {
         return;
     }
