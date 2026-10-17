@@ -30,6 +30,11 @@ const AUTH_FAILURE: u8 = 0x05;
 
 type Ctrl = ExternalController<BleConnector<'static>, 20>;
 type Pool = DefaultPacketPool;
+type Resources = HostResources<Ctrl, Pool, 1, 3>;
+
+// in a static, not in the task future: futures are built on the stack and then moved, so their
+// size is a stack spike on every poll (trouble_host::new re-initialises it for each session)
+static RESOURCES: static_cell::StaticCell<Resources> = static_cell::StaticCell::new();
 
 /// UI → BLE task commands.
 pub static COMMANDS: BleCommands = BleCommands(Channel::new());
@@ -65,9 +70,14 @@ impl BleCommands {
 
 #[embassy_executor::task]
 pub async fn bluetooth_timer_task(bt: BT<'static>, state: GlobalState) {
+    // all fields are MaybeUninit, so this write is free (no stack temporary)
+    let Some(resources) = RESOURCES.try_uninit() else {
+        return;
+    };
+    let resources = resources.write(HostResources::new());
     loop {
         // sleeping drops the whole BLE stack
-        select(run(&bt, state), wait_sleep(true)).await;
+        select(run(&bt, state, resources), wait_sleep(true)).await;
         // let the controller shut down before it is created again
         Timer::after_millis(1000).await;
         wait_sleep(false).await;
@@ -78,7 +88,7 @@ async fn wait_sleep(sleep: bool) {
     while SLEEP.wait().await != sleep {}
 }
 
-async fn run(bt: &BT<'static>, state: GlobalState) {
+async fn run(bt: &BT<'static>, state: GlobalState, resources: &mut Resources) {
     let mut backoff = Duration::from_secs(1);
     loop {
         let bond = load_bond(state).await;
@@ -86,7 +96,7 @@ async fn run(bt: &BT<'static>, state: GlobalState) {
             COMMANDS.wait_for(|c| *c == BleAction::StartScan).await;
         }
 
-        match session(bt, state, bond).await {
+        match session(bt, state, bond, resources).await {
             Ok(()) => backoff = Duration::from_secs(1),
             Err(()) => {
                 Timer::after(backoff).await;
@@ -101,6 +111,7 @@ async fn session(
     bt: &BT<'static>,
     state: GlobalState,
     bond: Option<BondInformation>,
+    resources: &mut Resources,
 ) -> Result<(), ()> {
     // SAFETY: only one session (and so one connector) exists at a time.
     let connector = BleConnector::new(unsafe { bt.clone_unchecked() }, Default::default())
@@ -116,8 +127,7 @@ async fn session(
             crate::log_once!(codes::BLE_MAC_READ_FAILED);
         })?;
 
-    let mut resources: HostResources<Ctrl, Pool, 1, 3> = HostResources::new();
-    let stack = trouble_host::new(ExternalController::new(connector), &mut resources)
+    let stack = trouble_host::new(ExternalController::new(connector), resources)
         .set_random_address(Address::random(mac))
         .build();
     let mut runner = stack.runner();

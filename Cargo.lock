@@ -1481,9 +1481,9 @@ dependencies = [
 
 [[package]]
 name = "esp-hal-ota"
-version = "0.7.1"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "169b6da547c8dc76277919a420e8e969ffd9db9a704cfeaad086ccfaf879a6ea"
+checksum = "6978d1aeb37e6bf33dda15d98744b769ad140364f4fba02f6789ccf067c9666c"
 dependencies = [
  "embedded-storage",
  "esp-rom-sys",
@@ -1507,9 +1507,9 @@ dependencies = [
 
 [[package]]
 name = "esp-hal-wifimanager"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ef2e97d02d58b45114b1faad6c00e00e47e2125d1962bd9ce21bd6f1586d877"
+checksum = "31042c6caf833fb6fe14c8c4a688f4de820f9ca19ac90db1eb62a3b71aeb580d"
 dependencies = [
  "edge-dhcp",
  "edge-nal",
@@ -1546,7 +1546,7 @@ checksum = "911aadae41ec99104efa865bd0b6e486b4b735999f9b571963748a46d16495ab"
 [[package]]
 name = "esp-nvs"
 version = "0.6.2"
-source = "git+https://github.com/filipton/esp-nvs.git?rev=9fbd51dc8766507e25003f9b79689832a2b8a798#9fbd51dc8766507e25003f9b79689832a2b8a798"
+source = "git+https://github.com/filipton/esp-nvs.git?rev=af9a88793ada2496efb7420f26b96823e3b42842#af9a88793ada2496efb7420f26b96823e3b42842"
 dependencies = [
  "embedded-storage",
  "strum",

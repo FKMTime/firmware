@@ -77,6 +77,7 @@ const ERROR_LOG_SAVE_INTERVAL: embassy_time::Duration = embassy_time::Duration::
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) {
+    utils::stack::paint();
     let peripherals = esp_hal::init({
         let mut config = esp_hal::Config::default();
         config = config.with_cpu_clock(esp_hal::clock::CpuClock::_80MHz);
@@ -116,16 +117,20 @@ async fn main(spawner: Spawner) {
 
     let Ok(nvs) = Nvs::new(unsafe { board.flash.clone_unchecked() }) else {
         utils::error_log::add_error(utils::error_log::codes::WRONG_PARTITION_TABLE);
+        // boxed (error path only): kept in main's state it would hold ~5 KB of static RAM forever
         #[cfg(feature = "v3")]
-        lcd_v3::lcd_show_critical_code(board.lcd, utils::error_log::codes::WRONG_PARTITION_TABLE)
-            .await;
+        alloc::boxed::Box::pin(lcd_v3::lcd_show_critical_code(
+            board.lcd,
+            utils::error_log::codes::WRONG_PARTITION_TABLE,
+        ))
+        .await;
 
         #[cfg(feature = "v4")]
-        lcd_v4::lcd_show_critical_code(
+        alloc::boxed::Box::pin(lcd_v4::lcd_show_critical_code(
             board.i2c,
             board.display_rst,
             utils::error_log::codes::WRONG_PARTITION_TABLE,
-        )
+        ))
         .await;
 
         loop {
@@ -282,7 +287,9 @@ async fn main(spawner: Spawner) {
     sim::seed_wifi(nvs).await;
 
     Timer::after_millis(500).await;
-    let wifi_res = esp_hal_wifimanager::init_wm(
+    // boxed (boot only, freed after): kept in main's state this ~6 KB future would hold static RAM,
+    // and with it main stack, for the whole runtime
+    let wifi_res = alloc::boxed::Box::pin(esp_hal_wifimanager::init_wm(
         wm_settings,
         &spawner,
         #[cfg(feature = "qa")]
@@ -291,7 +298,7 @@ async fn main(spawner: Spawner) {
         Some(nvs),
         board.wifi,
         unsafe { board.bt.clone_unchecked() },
-    )
+    ))
     .await;
 
     let Ok(wifi_res) = wifi_res else {
@@ -450,6 +457,8 @@ async fn logger_task(global_state: GlobalState) {
                 stats.max_usage,
                 stats.size
             );
+            let (stack_used, stack_size) = utils::stack::high_water();
+            log::info!("Stack: max {stack_used} of {stack_size} bytes");
             heap_start = Instant::now();
         }
     }
