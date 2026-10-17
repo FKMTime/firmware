@@ -386,6 +386,8 @@ class Run:
             self.emu.send(f"bat {a[0]}")
         elif kind == "wait":
             pass
+        elif kind == "expect":  # scripted scenarios only: state field reaches a value
+            self.wait_for(lambda s: s.get(a[0]) == str(a[1]), 15, f"{a[0]}={a[1]}")
         elif kind == "server":
             self.server.stop()
             time.sleep(a[0] / 1000)
@@ -417,9 +419,15 @@ class Run:
             self.check_alive()
             s = self.state()
             if all(s.get(k) == v for k, v in IDLE.items()) and s.get("msg") == "0":
-                return s
-            if s.get("srv") != "Some(true)":
-                time.sleep(1)  # reconnecting: the device must come back by itself
+                # a card lookup sent during the abuse phase may still answer: idle must hold
+                time.sleep(3)
+                if all(self.state().get(k) == v for k, v in IDLE.items()):
+                    return s
+                continue
+            # reconnecting / timer replugged above: the device must come back by itself
+            # (while it shows the disconnected screen it ignores input by design)
+            if s.get("srv") != "Some(true)" or s.get("stk") != "Some(true)":
+                time.sleep(1)
                 continue
             if s.get("err") == "1":
                 self.press(3, 120)  # dismiss the error
@@ -558,6 +566,8 @@ def emit_hil(actions, path):
             steps.append({"type": "SolveTime"})
         elif kind == "wait":
             pass
+        elif kind == "expect":  # scripted scenarios only: state field reaches a value
+            self.wait_for(lambda s: s.get(a[0]) == str(a[1]), 15, f"{a[0]}={a[1]}")
         else:
             dropped.add(f"{kind} {a[0] if a else ''}".strip())
     json.dump({"name": "monkey", "sleepBetween": 0, "steps": steps}, open(path, "w"), indent=1)
