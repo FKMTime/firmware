@@ -21,7 +21,7 @@ static_cell = { version = "2.1.1", features = ["nightly"] }
 heapless = { version = "0.9.3", default-features = false }
 esp-alloc = { version = "0.11.0", features = ["internal-heap-stats"] }
 
-esp-hal-wifimanager = { version = "0.6.1", default-features = false, features = ["ap", "ble", "esp32c3", "ota", "custom_panel"] }
+esp-hal-wifimanager = { version = "0.6.2", default-features = false, features = ["ap", "ble", "esp32c3", "ota", "custom_panel"] }
 serde = { version = "1.0.229", features = ["alloc", "derive"], default-features = false }
 serde_json = { version = "1.0.154", default-features = false, features = ["alloc"] }
 adv-shift-registers = "0.2.5"
@@ -103,4 +103,4 @@ serde_json = "1.0.154"
 
 # slimmer esp-nvs (sorted vec map instead of btreemap, same on-flash format)
 [patch.crates-io]
-esp-nvs = { git = "https://github.com/filipton/esp-nvs.git", rev = "9fbd51dc8766507e25003f9b79689832a2b8a798" }
+esp-nvs = { git = "https://github.com/filipton/esp-nvs.git", rev = "af9a88793ada2496efb7420f26b96823e3b42842" }
