@@ -168,10 +168,15 @@ stations (the firmware never asks for attendance), BLE.
 
 e2e's control socket (`Server.ctl`, JSON lines): `attempts`, `resolve` (`sessionId`, `status`
 resolved / standard / extra_given, optional `value` cs, `penalty`, `noCards`), `delete`,
-`drop_reply` (`espId`: the next attempt is entered, its answer lost). Scenarios use it with
+`drop_reply` (`espId`: the next attempt is entered, its answer lost), `hold_reply` / `release_reply`
+(`espId`: enter the next attempt but hold its answer until released). Scenarios use it with
 optional `"server"` (e.g. `rounds` with attempts/cutoff/limit in cs) and the
 steps `resolve [args]` / `delete` (the open incident), `drop_reply`, `expect_db <competitor>
 [rows]`; `expect <field> <value> [s]` takes an optional timeout.
+
+`assert <field> <value>` checks immediately, so a transient wrong message cannot pass by timing
+out and disappearing. `late-solve-reply.json` holds a success through a reset and starts another
+timer before releasing it; the old success must not cover the new attempt with a message.
 
 Failures land in `sim/out/<seed>/` (actions, firmware log with timestamps, server log). Needs a
 built micro-connector (`cargo build --bins` in it; `--mc` path). The `state` sim command prints the

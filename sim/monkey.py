@@ -407,6 +407,10 @@ class Run:
             pass
         elif kind == "expect":  # scripted scenarios only: state field reaches a value (in a[2] s)
             self.wait_for(lambda s: s.get(a[0]) == str(a[1]), a[2] if len(a) > 2 else 15, f"{a[0]}={a[1]}")
+        elif kind == "assert":  # immediate: a transient wrong overlay must not pass after timing out
+            s = self.state()
+            if s.get(a[0]) != str(a[1]):
+                raise Failure(f"expected {a[0]}={a[1]} now; state {s}")
         elif kind in ("resolve", "delete"):  # sim e2e: the delegate decides the open incident
             open_ = [x for x in self.server.attempts() if x["status"] == "unresolved"]
             if not open_:
@@ -415,8 +419,10 @@ class Run:
             r = self.server.ctl(cmd=kind, sessionId=open_[-1]["sessionId"], **extra)
             if not r.get("ok"):
                 raise Failure(f"{kind}: {r}")
-        elif kind == "drop_reply":  # sim e2e: the next attempt is entered, its answer lost
-            self.server.ctl(cmd="drop_reply", espId=int(self.state()["id"], 16))
+        elif kind in ("drop_reply", "hold_reply", "release_reply"):
+            r = self.server.ctl(cmd=kind, espId=int(self.state()["id"], 16))
+            if not r.get("ok") or (kind == "release_reply" and not r.get("delivered")):
+                raise Failure(f"{kind}: {r}")
         elif kind == "expect_db":  # sim e2e: the attempts of a[0] (competitor) match a[1]
             def db_matches():
                 rows = [x for x in self.server.attempts() if x["competitorId"] == a[0]]

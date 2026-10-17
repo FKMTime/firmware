@@ -472,9 +472,10 @@ async fn process_card_info_response(resp: CardInfoResponsePacket, global_state: 
             };
             log::warn!("solve_resp: {resp:?}");
 
-            if same_attempt {
-                global_state.reset_solve(true).await;
+            if !same_attempt {
+                return;
             }
+            global_state.reset_solve(true).await;
 
             let (first, second) = split_after_two_words(&resp.message).unwrap_or(("Solve", "sent"));
             show_message(global_state, (first.into(), second.into()), 3000).await;
