@@ -26,9 +26,14 @@ if [ -n "${SIM_WIFIMANAGER:-}" ]; then
     PATCHES="$PATCHES --config patch.crates-io.esp-hal-wifimanager.path=\"$SIM_WIFIMANAGER\""
 fi
 
-# the patches must not leak into the committed lockfile
+# the patches must not leak into the committed lockfile; one build at a time, or a second build
+# would back up the first one's patched lockfile
+LOCK=target/sim-build.lock
+mkdir -p target
+while ! mkdir "$LOCK" 2>/dev/null; do sleep 1; done
 cp Cargo.lock "$T/Cargo.lock.bak"
-trap 'cp "$T/Cargo.lock.bak" Cargo.lock' EXIT
+trap 'cp "$T/Cargo.lock.bak" Cargo.lock; rmdir "$LOCK"' EXIT
+trap 'exit 1' INT TERM
 # shellcheck disable=SC2086 # PATCHES holds several --config arguments
 if [ -n "${SIM_WIFIMANAGER:-}" ]; then
     # a local version differing from the lockfile's would otherwise be ignored by the patch
@@ -42,6 +47,7 @@ fi
 # shellcheck disable=SC2086
 ESP_SIM_TAP=1 CARGO_TARGET_DIR=$T cargo build -r --no-default-features --features $HW,sim $PATCHES
 cp "$T/Cargo.lock.bak" Cargo.lock
+rmdir "$LOCK"
 trap - EXIT
 
 ELF=$T/riscv32imc-unknown-none-elf/release/fkm-firmware
