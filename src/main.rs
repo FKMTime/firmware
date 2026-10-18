@@ -106,7 +106,9 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "qa")]
     log::info!("This firmware is in QA mode!");
 
-    let Ok(nvs) = Nvs::new(unsafe { board.flash.clone_unchecked() }) else {
+    let Ok(nvs) = Nvs::new(unsafe { board.flash.clone_unchecked() }).inspect_err(|error| {
+        log::error!("NVS initialization failed: {error:?}");
+    }) else {
         utils::error_log::add_error(utils::error_log::codes::WRONG_PARTITION_TABLE);
         // boxed (error path only): kept in main's state it would hold ~5 KB of static RAM forever
         #[cfg(feature = "v3")]
