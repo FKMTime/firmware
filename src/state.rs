@@ -355,11 +355,7 @@ impl SignaledGlobalStateInner {
             }
         }
 
-        if self.scene <= Scene::MdnsWait {
-            return true;
-        }
-
-        false
+        self.scene <= Scene::MdnsWait
     }
 
     pub async fn reset_solve_state(&mut self, save_nvs: Option<&Nvs>) {

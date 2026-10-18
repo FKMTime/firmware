@@ -94,10 +94,7 @@ impl log::Log for FkmLogger {
         let level = metadata.level();
         //let target = metadata.target();
 
-        if level <= FILTER_MAX {
-            return true;
-        }
-        false
+        level <= FILTER_MAX
     }
 
     fn log(&self, record: &log::Record) {
