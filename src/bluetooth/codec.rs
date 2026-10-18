@@ -5,6 +5,13 @@
 /// `[23]` address type (0 public, 1 random).
 pub const BOND_LEN: usize = 24;
 
+/// Stable random identity from the device MAC, in BLE little-endian byte order.
+pub fn static_address_from_mac(mut mac: [u8; 6]) -> [u8; 6] {
+    mac.reverse();
+    mac[5] |= 0xc0;
+    mac
+}
+
 pub fn encode_bond(addr: [u8; 6], ltk: [u8; 16], level: u8, random: bool) -> [u8; BOND_LEN] {
     let mut buf = [0; BOND_LEN];
     buf[..6].copy_from_slice(&addr);

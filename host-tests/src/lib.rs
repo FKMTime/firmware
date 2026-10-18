@@ -44,6 +44,19 @@ mod ble_tests {
     }
 
     #[test]
+    fn static_identity_uses_ble_byte_order_and_static_bits() {
+        assert_eq!(
+            static_address_from_mac([0xb0, 0x81, 0x84, 0xfe, 0x7e, 0x9c]),
+            [0x9c, 0x7e, 0xfe, 0x84, 0x81, 0xf0],
+        );
+        for first in [0x00, 0x40, 0x80, 0xc0] {
+            let addr = static_address_from_mac([first, 1, 2, 3, 4, 5]);
+            assert_eq!(addr[5] & 0xc0, 0xc0);
+            assert_eq!(&addr[..5], &[5, 4, 3, 2, 1]);
+        }
+    }
+
+    #[test]
     fn rejects_bad_bonds() {
         assert_eq!(decode_bond(&[]), None);
         assert_eq!(decode_bond(&[0; 32]), None); // old format: re-pair

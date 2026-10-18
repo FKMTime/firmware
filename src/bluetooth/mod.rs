@@ -128,7 +128,7 @@ async fn session(
         })?;
 
     let stack = trouble_host::new(ExternalController::new(connector), resources)
-        .set_random_address(Address::random(mac))
+        .set_random_address(Address::random(codec::static_address_from_mac(mac)))
         .build();
     let mut runner = stack.runner();
     let discovery = Discovery {
@@ -270,6 +270,11 @@ async fn connect_once(
                     bond,
                 } => {
                     break Ok((security_level.encrypted(), bond));
+                }
+                // Resuming a stored bond encrypts the link without pairing again.
+                // Fresh pairings must still wait for PairingComplete to save their keys.
+                ConnectionEvent::Encrypted { security_level, .. } if bond.is_some() => {
+                    break Ok((security_level.encrypted(), None));
                 }
                 ConnectionEvent::PairingFailed(e) => {
                     log::error!("[ble] pairing failed ({e:?})");
