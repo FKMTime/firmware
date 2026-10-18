@@ -188,7 +188,10 @@ async fn link(
             };
             central = scanner.into_inner();
             match picked {
-                BleAction::Connect(device) => Address::random(device.addr),
+                BleAction::Connect(device) => match device.random_address {
+                    true => Address::random(device.addr),
+                    false => Address::new(AddrKind::PUBLIC, BdAddr::new(device.addr)),
+                },
                 _ => return Ok(()),
             }
         }
@@ -374,6 +377,11 @@ impl EventHandler for Discovery {
         }
         while let Some(Ok(report)) = reports.next() {
             let addr = report.addr.into_inner();
+            let random_address = match report.addr_kind {
+                AddrKind::PUBLIC => false,
+                AddrKind::RANDOM => true,
+                _ => continue,
+            };
             let Some(name) =
                 codec::parse_device_name(report.data).filter(|n| codec::is_fkm_display(n))
             else {
@@ -382,7 +390,7 @@ impl EventHandler for Discovery {
             if self.state.ui.read(|u| {
                 u.discovered_bluetooth_devices
                     .iter()
-                    .any(|d| d.addr == addr)
+                    .any(|d| d.addr == addr && d.random_address == random_address)
             }) {
                 continue;
             }
@@ -395,6 +403,7 @@ impl EventHandler for Discovery {
                 let device = BleDisplayDevice {
                     name: name.into(),
                     addr,
+                    random_address,
                 };
                 if u.discovered_bluetooth_devices.push(device) && after_list {
                     u.selected_bluetooth_item += 1;
@@ -414,6 +423,7 @@ async fn store_bond(state: GlobalState, bond: &BondInformation) {
         bond.identity.addr.addr.into_inner(),
         bond.ltk.to_le_bytes(),
         level,
+        bond.identity.addr.kind == AddrKind::RANDOM,
     );
     if let Err(e) = state.nvs.set(&NVS_BONDING_KEY, record.as_slice()).await {
         log::error!("[ble] storing bond failed ({e:?})");
@@ -423,10 +433,13 @@ async fn store_bond(state: GlobalState, bond: &BondInformation) {
 
 async fn load_bond(state: GlobalState) -> Option<BondInformation> {
     let buf = state.nvs.get::<Vec<u8>>(&NVS_BONDING_KEY).await.ok()?;
-    let (addr, ltk, level) = codec::decode_bond(&buf)?;
+    let (addr, ltk, level, random) = codec::decode_bond(&buf)?;
     Some(BondInformation {
         identity: Identity {
-            addr: Address::random(addr),
+            addr: match random {
+                true => Address::random(addr),
+                false => Address::new(AddrKind::PUBLIC, BdAddr::new(addr)),
+            },
             irk: None,
         },
         security_level: match level {

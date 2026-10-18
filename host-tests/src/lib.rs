@@ -34,16 +34,25 @@ mod ble_tests {
 
     #[test]
     fn bond_round_trip() {
-        let buf = encode_bond([9, 8, 7, 6, 5, 4], [3; 16], 2);
-        assert_eq!(decode_bond(&buf), Some(([9, 8, 7, 6, 5, 4], [3; 16], 2)));
+        for random in [false, true] {
+            let buf = encode_bond([9, 8, 7, 6, 5, 4], [3; 16], 2, random);
+            assert_eq!(
+                decode_bond(&buf),
+                Some(([9, 8, 7, 6, 5, 4], [3; 16], 2, random)),
+            );
+        }
     }
 
     #[test]
     fn rejects_bad_bonds() {
         assert_eq!(decode_bond(&[]), None);
         assert_eq!(decode_bond(&[0; 32]), None); // old format: re-pair
+        assert_eq!(decode_bond(&[0; 23]), None); // missing address type
         let mut buf = [0u8; BOND_LEN];
         buf[22] = 3; // unknown security level
+        assert_eq!(decode_bond(&buf), None);
+        buf[22] = 1;
+        buf[23] = 2; // unknown address type
         assert_eq!(decode_bond(&buf), None);
     }
 

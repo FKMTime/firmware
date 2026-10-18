@@ -38,6 +38,7 @@ pub const CONFIG_MENU_ITEMS: [&str; 7] = [
 pub struct BleDisplayDevice {
     pub name: ShortText,
     pub addr: [u8; 6],
+    pub random_address: bool,
 }
 
 #[derive(Deserialize, Debug)]
