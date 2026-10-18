@@ -365,6 +365,10 @@ impl SignaledGlobalStateInner {
     pub async fn reset_solve_state(&mut self, save_nvs: Option<&Nvs>) {
         unsafe {
             GROUP_LIMIT = None;
+            INSPECTION_TIME = None;
+            CURRENT_COMPETITOR = None;
+            CURRENT_GROUP_ID = None;
+            CURRENT_SESSION_ID = None;
         }
         self.solve_time = None;
         self.penalty = None;
