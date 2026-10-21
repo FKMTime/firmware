@@ -1,27 +1,62 @@
-use crate::{consts::NVS_ERROR_LOG, state::current_epoch};
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec::Vec,
+use super::{
+    UninitBuf,
+    ring_log::{self, CODE_LEN, STACKTRACE_HEADER_LEN, record_len},
 };
-use anyhow::Result;
+use crate::{consts::NVS_ERROR_LOG, state::current_epoch};
+use core::{cell::RefCell, fmt::Write};
+use embassy_sync::blocking_mutex::{Mutex, raw::CriticalSectionRawMutex};
+use embassy_time::Instant;
 use esp_hal_wifimanager::Nvs;
+use portable_atomic::{AtomicBool, Ordering};
 
+const CAPACITY: usize = 2 * 1024;
+/// Same code is recorded at most once per this many seconds (a failing peripheral
+/// reports in a tight loop).
+const RATE_LIMIT_SECS: u64 = 60;
+const RATE_LIMIT_SLOTS: usize = 8;
+pub const MAX_STACKTRACE_ADDRS: usize = 16;
+
+/// Records, oldest first, in the [`ring_log`] format (same as stored in NVS).
 #[unsafe(link_section = ".dram2_uninit")]
-static mut ERROR_LOG_BUF: core::mem::MaybeUninit<[u8; 2 * 1024]> = core::mem::MaybeUninit::uninit();
-static mut OFFSET: usize = 0;
-static mut SAVE_READY: bool = false;
+static BUF: UninitBuf<CAPACITY> = UninitBuf::new();
+
+struct ErrorLog {
+    initialized: bool,
+    len: usize,
+    recent: [(u8, u64); RATE_LIMIT_SLOTS],
+    recent_next: usize,
+}
+
+static LOG: Mutex<CriticalSectionRawMutex, RefCell<ErrorLog>> =
+    Mutex::new(RefCell::new(ErrorLog {
+        initialized: false,
+        len: 0,
+        recent: [(0, 0); RATE_LIMIT_SLOTS],
+        recent_next: 0,
+    }));
+static DIRTY: AtomicBool = AtomicBool::new(false);
+
+/// Runs `f` with exclusive access to the log state and the (initialized) buffer.
+fn with_log<R>(f: impl FnOnce(&mut ErrorLog, &mut [u8; CAPACITY]) -> R) -> R {
+    LOG.lock(|log| {
+        let mut log = log.borrow_mut();
+        // SAFETY: the critical section serializes all access to BUF.
+        let buf = unsafe { BUF.get(&mut log.initialized) };
+        f(&mut log, buf)
+    })
+}
 
 #[inline(always)]
 pub fn is_save_ready() -> bool {
-    unsafe { SAVE_READY }
+    DIRTY.load(Ordering::Relaxed)
 }
 
 #[inline(always)]
 pub fn clear_save_ready() {
-    unsafe { SAVE_READY = false };
+    DIRTY.store(false, Ordering::Relaxed);
 }
 
+/// Numbers are shown to users (docs links), so a removed code's number is never reused.
 #[allow(dead_code)]
 pub mod codes {
     // RFID (1-9)
@@ -45,8 +80,6 @@ pub mod codes {
     // LCD / Display (20-29)
     #[cfg(feature = "v4")]
     pub const LCD_INIT_FAILED: u8 = 20;
-    #[cfg(feature = "v4")]
-    pub const LCD_FRAMEBUFFER_ALLOC_FAILED: u8 = 21;
     #[cfg(feature = "v4")]
     pub const LCD_FLUSH_TIMEOUT: u8 = 22;
 
@@ -78,14 +111,12 @@ pub mod codes {
     pub const WS_HTTP_UPGRADE_READ_FAILED: u8 = 63;
     pub const WS_PACKET_PARSE_FAILED: u8 = 64;
     pub const WS_PACKET_SERIALIZE_FAILED: u8 = 65;
-    pub const WS_TAGGED_SUBSCRIBER_FAILED: u8 = 66;
 
     // NVS persistence (70-79)
     pub const NVS_SAVED_STATE_WRITE_FAILED: u8 = 70;
     pub const NVS_BONDING_KEY_WRITE_FAILED: u8 = 71;
     #[cfg(feature = "v4")]
     pub const NVS_BUZZER_VOLUME_WRITE_FAILED: u8 = 72;
-    pub const ERROR_LOG_PARSE_FAILED: u8 = 73;
     pub const NVS_SAVED_STATE_DELETE_FAILED: u8 = 74;
 
     // Tasks / runtime (80-89)
@@ -93,186 +124,139 @@ pub mod codes {
     pub const SHARED_I2C_TIMEOUT: u8 = 81;
 
     // Crash recovery (90-99)
-    #[cfg(feature = "release_build")]
-    pub const DOUBLE_PANIC_RECOVERY: u8 = 90;
-    pub const BACKTRACE_READ_FAILED: u8 = 91;
+    /// Several crashes / watchdog resets in a row (was "double panic recovery").
+    pub const REPEATED_CRASHES: u8 = 90;
+    pub const WATCHDOG_RESET: u8 = 92;
 }
 
-pub async fn add_error(code: u8) {
-    unsafe {
-        #[allow(static_mut_refs)]
-        let error_log_buf = &mut (*ERROR_LOG_BUF.as_mut_ptr());
-
-        error_log_buf[OFFSET] = b'N';
-        error_log_buf[OFFSET + 1..OFFSET + 1 + 8].copy_from_slice(&current_epoch().to_be_bytes());
-        error_log_buf[OFFSET + 1 + 8] = code;
-
-        OFFSET += 1 + 8 + 1;
-        SAVE_READY = true;
+fn push_record(log: &mut ErrorLog, buf: &mut [u8; CAPACITY], record: &[u8]) {
+    if ring_log::push(buf, &mut log.len, record) {
+        DIRTY.store(true, Ordering::Relaxed);
     }
 }
 
-pub async fn add_stacktrace(addrs: &[u32], version: &str, timestamp: u64) {
-    unsafe {
-        #[allow(static_mut_refs)]
-        let error_log_buf = &mut (*ERROR_LOG_BUF.as_mut_ptr());
+/// Records error `code` (rate limited per code).
+pub fn add_error(code: u8) {
+    let now = Instant::now().as_secs();
+    let mut record = [0; CODE_LEN];
+    record[0] = b'N';
+    record[1..9].copy_from_slice(&current_epoch().to_be_bytes());
+    record[9] = code;
 
-        let mut version_buf = [0; 16];
-        let version_bytes = version.as_bytes();
-        let version_len = core::cmp::min(version_bytes.len(), version_buf.len());
-        version_buf[..version_len].copy_from_slice(&version_bytes[..version_len]);
-
-        error_log_buf[OFFSET] = b'S';
-        error_log_buf[OFFSET + 1..OFFSET + 1 + 8].copy_from_slice(&timestamp.to_be_bytes());
-        error_log_buf[OFFSET + 1 + 8..OFFSET + 1 + 8 + 16].copy_from_slice(&version_buf);
-        error_log_buf[OFFSET + 1 + 8 + 16] = addrs.len() as u8;
-
-        for (i, &addr) in addrs.iter().enumerate() {
-            let start = OFFSET + 1 + 8 + 16 + 1 + i * 4;
-            let end = start + 4;
-            error_log_buf[start..end].copy_from_slice(&addr.to_be_bytes());
+    with_log(|log, buf| {
+        let recently = log
+            .recent
+            .iter()
+            .any(|&(c, at)| c == code && at != 0 && now.saturating_sub(at) < RATE_LIMIT_SECS);
+        if recently {
+            return;
         }
 
-        OFFSET += 1 + 8 + 16 + 1 + addrs.len() * 4;
-        SAVE_READY = true;
-    }
+        let slot = log.recent_next;
+        log.recent[slot] = (code, now.max(1));
+        log.recent_next = (slot + 1) % RATE_LIMIT_SLOTS;
+        push_record(log, buf, &record);
+    });
 }
 
-pub fn dump_error_log() -> &'static [u8] {
-    #[allow(static_mut_refs)]
-    unsafe {
-        &(&*ERROR_LOG_BUF.as_ptr())[..OFFSET]
+/// Records a panic backtrace (at most [`MAX_STACKTRACE_ADDRS`] addresses).
+pub fn add_stacktrace(addrs: &[u32], version: &str, timestamp: u64) {
+    let addrs = &addrs[..addrs.len().min(MAX_STACKTRACE_ADDRS)];
+    let mut record = [0; STACKTRACE_HEADER_LEN + MAX_STACKTRACE_ADDRS * 4];
+    record[0] = b'S';
+    record[1..9].copy_from_slice(&timestamp.to_be_bytes());
+    let version_len = version.len().min(16);
+    record[9..9 + version_len].copy_from_slice(&version.as_bytes()[..version_len]);
+    record[STACKTRACE_HEADER_LEN - 1] = addrs.len() as u8;
+    for (chunk, addr) in record[STACKTRACE_HEADER_LEN..]
+        .as_chunks_mut::<4>()
+        .0
+        .iter_mut()
+        .zip(addrs)
+    {
+        *chunk = addr.to_be_bytes();
     }
+
+    let len = STACKTRACE_HEADER_LEN + addrs.len() * 4;
+    with_log(|log, buf| push_record(log, buf, &record[..len]));
 }
 
+/// Calls `f` with the raw log (the NVS / crash log dump format).
+pub fn with_error_log<R>(f: impl FnOnce(&[u8]) -> R) -> R {
+    with_log(|log, buf| f(&buf[..log.len]))
+}
+
+/// Restores the log saved in NVS, keeping only the valid prefix.
 pub async fn load_error_log(nvs: &Nvs) {
-    let Ok(buf) = nvs.get::<Vec<u8>>(NVS_ERROR_LOG).await else {
+    let Ok(saved) = nvs.get::<alloc::vec::Vec<u8>>(&NVS_ERROR_LOG).await else {
         return;
     };
 
-    let loaded_len = buf.len();
-
-    #[allow(static_mut_refs)]
-    let error_log_buf = unsafe { &mut (*ERROR_LOG_BUF.as_mut_ptr()) };
-    error_log_buf[..buf.len()].copy_from_slice(&buf);
-    drop(buf);
-
-    let mut offset = 0;
-    while offset < loaded_len {
-        let log_type = error_log_buf[offset];
-        match log_type {
-            b'N' => {
-                // u64 + u8
-                offset += 1 + 8 + 1;
-            }
-            b'S' => {
-                // u64 + 16 * u8 + u8 (size) + size * u32
-                let size = error_log_buf[offset + 1 + 8 + 16];
-                offset += 1 + 8 + 16 + 1 + size as usize * 4;
-            }
-            _ => {
-                break;
-            }
-        }
-    }
-
-    unsafe {
-        OFFSET = offset;
-    }
+    let saved = &saved[..saved.len().min(CAPACITY)];
+    let valid = ring_log::valid_prefix(saved);
+    with_log(|log, buf| {
+        buf[..valid].copy_from_slice(&saved[..valid]);
+        log.len = valid;
+    });
 }
 
 pub async fn save_error_log(nvs: &Nvs) {
-    #[allow(static_mut_refs)]
-    let error_log_buf = unsafe { &mut (*ERROR_LOG_BUF.as_mut_ptr()) };
-
-    unsafe {
-        _ = nvs.delete(NVS_ERROR_LOG).await;
-        let res = nvs.set(NVS_ERROR_LOG, &error_log_buf[..OFFSET]).await;
-        if let Err(e) = res {
-            log::error!("errorlog save error: {e:?}");
-        }
+    // shortcut: copies the log to the heap for the NVS write (rare, throttled by the caller)
+    let bytes = with_error_log(|b| b.to_vec());
+    if let Err(e) = nvs.set(&NVS_ERROR_LOG, bytes.as_slice()).await {
+        log::error!("errorlog save error: {e:?}");
     }
 }
 
-pub fn parse_error_log_entries() -> Result<Vec<ErrorLogEntry>> {
-    let mut tmp = Vec::new();
+/// Number of entries in the log.
+pub fn entry_count() -> usize {
+    with_error_log(|buf| Entries { buf }.count())
+}
 
-    #[allow(static_mut_refs)]
-    let error_log_buf = unsafe { &mut (*ERROR_LOG_BUF.as_mut_ptr()) };
-    let max_offset = unsafe { OFFSET };
+/// Entry `idx` (oldest first).
+pub fn entry(idx: usize) -> Option<ErrorLogEntry> {
+    with_error_log(|buf| Entries { buf }.nth(idx))
+}
 
-    log::warn!("ERROR LOG:");
-    let mut offset = 0;
-    while offset < max_offset {
-        let log_type = error_log_buf[offset];
-        match log_type {
-            b'N' => {
-                // u64 + u8
-                let entry = ErrorLogEntry::Code {
-                    timestamp: u64::from_be_bytes(
-                        error_log_buf[offset + 1..offset + 1 + 8].try_into()?,
-                    ),
-                    code: error_log_buf[offset + 1 + 8],
-                };
+struct Entries<'a> {
+    buf: &'a [u8],
+}
 
-                if let ErrorLogEntry::Code { timestamp, code } = entry {
-                    log::warn!(
-                        "Error {} at {}",
-                        code,
-                        crate::utils::error_log::format_timestamp_full(timestamp)
-                    );
-                }
+impl Iterator for Entries<'_> {
+    type Item = ErrorLogEntry;
 
-                tmp.push(entry);
-                offset += 1 + 8 + 1;
-            }
-            b'S' => {
-                // u64 + 16 * u8 + u8 (size) + size * u32
+    fn next(&mut self) -> Option<ErrorLogEntry> {
+        let len = record_len(self.buf)?;
+        let (record, rest) = self.buf.split_at(len);
+        self.buf = rest;
 
-                let version_str =
-                    core::str::from_utf8(&error_log_buf[offset + 1 + 8..offset + 1 + 8 + 16])?;
-                let version_str = version_str.trim_end_matches('\0');
-
-                let size = error_log_buf[offset + 1 + 8 + 16];
-                let mut tmp_addrs = Vec::new();
-                for addr in (error_log_buf
-                    [offset + 1 + 8 + 16 + 1..offset + 1 + 8 + 16 + 1 + size as usize * 4])
-                    .chunks(4)
-                {
-                    tmp_addrs.push(u32::from_be_bytes(addr.try_into()?));
-                }
-                let entry = ErrorLogEntry::Stacktrace {
-                    timestamp: u64::from_be_bytes(
-                        error_log_buf[offset + 1..offset + 1 + 8].try_into()?,
-                    ),
-                    version: version_str.to_string(),
-                    addrs: tmp_addrs,
-                };
-                if let ErrorLogEntry::Stacktrace {
-                    timestamp,
-                    ref version,
-                    ref addrs,
-                } = entry
-                {
-                    log::warn!(
-                        "Panic of ver {version} at {}. Addrs: {addrs:X?}",
-                        crate::utils::error_log::format_timestamp_full(timestamp)
-                    );
-                }
-
-                tmp.push(entry);
-                offset += 1 + 8 + 16 + 1 + size as usize * 4;
-            }
+        let timestamp = u64::from_be_bytes(record[1..9].try_into().ok()?);
+        Some(match record[0] {
+            b'N' => ErrorLogEntry::Code {
+                timestamp,
+                code: record[9],
+            },
             _ => {
-                break;
+                let version = core::str::from_utf8(&record[9..25])
+                    .unwrap_or("")
+                    .trim_end_matches('\0');
+                ErrorLogEntry::Stacktrace {
+                    timestamp,
+                    version: heapless::String::try_from(version).unwrap_or_default(),
+                    addrs: record[STACKTRACE_HEADER_LEN..]
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .take(MAX_STACKTRACE_ADDRS)
+                        .map(|c| u32::from_be_bytes(*c))
+                        .collect(),
+                }
             }
-        }
+        })
     }
-
-    Ok(tmp)
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub enum ErrorLogEntry {
     Code {
         timestamp: u64,
@@ -280,45 +264,43 @@ pub enum ErrorLogEntry {
     },
     Stacktrace {
         timestamp: u64,
-        version: String,
-        addrs: Vec<u32>,
+        version: heapless::String<16>,
+        addrs: heapless::Vec<u32, MAX_STACKTRACE_ADDRS>,
     },
 }
 
+pub type Label = heapless::String<24>;
+
 impl ErrorLogEntry {
-    #[cfg(feature = "v3")]
-    pub fn list_label_v3(&self) -> String {
-        match self {
+    pub fn list_label(&self) -> Label {
+        let mut label = Label::new();
+        _ = match self {
             ErrorLogEntry::Code { timestamp, code } => {
-                format!("E{code} {}", format_timestamp_compact(*timestamp))
+                write!(label, "E{code} {}", format_timestamp_compact(*timestamp))
             }
             ErrorLogEntry::Stacktrace { timestamp, .. } => {
-                format!("Panic {}", format_timestamp_compact(*timestamp))
+                write!(label, "Panic {}", format_timestamp_compact(*timestamp))
             }
-        }
-    }
-
-    #[cfg(feature = "v4")]
-    pub fn list_label_v4(&self) -> String {
-        match self {
-            ErrorLogEntry::Code { timestamp, code } => {
-                format!("E{code} {}", format_timestamp_compact(*timestamp))
-            }
-            ErrorLogEntry::Stacktrace { timestamp, .. } => {
-                format!("Panic {}", format_timestamp_compact(*timestamp))
-            }
-        }
+        };
+        label
     }
 }
 
-pub fn format_timestamp_compact(timestamp: u64) -> String {
+pub fn format_timestamp_compact(timestamp: u64) -> Label {
     let (_year, month, day, hour, minute, _second) = epoch_to_ymdhms(timestamp);
-    format!("{day:02}/{month:02} {hour:02}:{minute:02}")
+    let mut s = Label::new();
+    _ = write!(s, "{day:02}/{month:02} {hour:02}:{minute:02}");
+    s
 }
 
-pub fn format_timestamp_full(timestamp: u64) -> String {
+pub fn format_timestamp_full(timestamp: u64) -> Label {
     let (year, month, day, hour, minute, second) = epoch_to_ymdhms(timestamp);
-    format!("{day:02}/{month:02}/{year:04} {hour:02}:{minute:02}:{second:02}")
+    let mut s = Label::new();
+    _ = write!(
+        s,
+        "{day:02}/{month:02}/{year:04} {hour:02}:{minute:02}:{second:02}"
+    );
+    s
 }
 
 fn epoch_to_ymdhms(timestamp: u64) -> (i32, u32, u32, u32, u32, u32) {

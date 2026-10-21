@@ -1,140 +1,150 @@
-use alloc::vec::Vec;
-use esp_storage::FlashStorage;
+//! Crash record kept in RTC fast RAM (survives software and watchdog resets, not power loss).
+//!
+//! The panic handler only does plain atomic stores here: no locks, no heap, no flash.
+//! The record is turned into an error log entry on the next boot.
 
-#[esp_hal::ram(unstable(rtc_fast, persistent))]
-static mut NVS_PANIC_FLAG: u32 = 0;
-
-const NVS_PANIC_MAGIC_1: u32 = 0x1A1A_1A1A;
-const NVS_PANIC_MAGIC_2: u32 = 0xDEAD_BEEF;
+use portable_atomic::{AtomicU32, Ordering};
 
 const MAX_BACKTRACE_ADDRESSES: usize = 10;
 const RA_OFFSET: usize = 4;
-const SAVED_VERSION_LEN: usize = 16;
-const SAVED_TIMESTAMP_LEN: usize = 8;
+const VERSION_WORDS: usize = 4;
 
-#[cfg(feature = "release_build")]
-pub fn verify_panic_flag() {
-    use embedded_storage::nor_flash::NorFlash;
+const MAGIC: u32 = 0xF4C0_A5E1;
+const KIND_NONE: u32 = 0;
+const KIND_PANIC: u32 = 1;
+const KIND_WATCHDOG: u32 = 2;
 
-    const NVS_OFFSET: u32 = 0x9000;
-    const NVS_SIZE: u32 = 0x4000;
+// word layout of `CRASH`
+const W_MAGIC: usize = 0;
+const W_KIND: usize = 1;
+const W_CONSECUTIVE: usize = 2;
+const W_TASK: usize = 3;
+const W_EPOCH: usize = 4; // 2 words
+const W_VERSION: usize = 6; // VERSION_WORDS words
+const W_ADDR_COUNT: usize = W_VERSION + VERSION_WORDS;
+const W_ADDRS: usize = W_ADDR_COUNT + 1;
+const W_CHECKSUM: usize = W_ADDRS + MAX_BACKTRACE_ADDRESSES;
+const WORDS: usize = W_CHECKSUM + 1;
 
-    if unsafe { NVS_PANIC_FLAG == NVS_PANIC_MAGIC_2 } {
-        log::error!("Two panics in a row! Self recovery...");
-        embassy_futures::block_on(crate::utils::error_log::add_error(
-            crate::utils::error_log::codes::DOUBLE_PANIC_RECOVERY,
-        ));
+#[allow(clippy::declare_interior_mutable_const)]
+const ZERO: AtomicU32 = AtomicU32::new(0);
 
-        let mut flash = FlashStorage::new(unsafe { esp_hal::peripherals::FLASH::steal() });
-        let mut buf = [0; 1024];
-        let res = embedded_storage::ReadStorage::read(
-            &mut flash,
-            (NVS_OFFSET + NVS_SIZE - 2) as u32,
-            &mut buf[..2],
-        );
+// Any bit pattern is valid (power-on garbage fails the magic/checksum check).
+#[esp_hal::ram(unstable(rtc_fast, persistent))]
+static CRASH: [AtomicU32; WORDS] = [ZERO; WORDS];
 
-        if let Err(e) = res {
-            log::error!("read_len_err: {e:?}");
-            embassy_futures::block_on(crate::utils::error_log::add_error(
-                crate::utils::error_log::codes::BACKTRACE_READ_FAILED,
-            ));
-        }
-
-        let mut len = u16::from_be_bytes([buf[0], buf[1]]);
-        if len > 1024 || len == 0xff {
-            len = 0;
-        }
-
-        if len == 0 {
-            _ = flash.erase(NVS_OFFSET, NVS_OFFSET + NVS_SIZE);
-        } else {
-            _ = flash.erase(NVS_OFFSET, NVS_OFFSET + NVS_SIZE - 2 - len as u32);
-        }
-
-        unsafe { NVS_PANIC_FLAG = 0 };
-    }
+fn get(w: usize) -> u32 {
+    CRASH[w].load(Ordering::Relaxed)
 }
 
-pub async fn read_saved_backtrace() {
-    if let Some(nvs_part) = esp_hal_wifimanager::Nvs::read_nvs_partition_offset(unsafe {
-        esp_hal::peripherals::FLASH::steal()
-    }) {
-        let mut flash = FlashStorage::new(unsafe { esp_hal::peripherals::FLASH::steal() });
+fn set(w: usize, v: u32) {
+    CRASH[w].store(v, Ordering::Relaxed);
+}
 
-        let mut buf = [0; 1024];
-        let res = embedded_storage::ReadStorage::read(
-            &mut flash,
-            (nvs_part.0 + nvs_part.1 - 2) as u32,
-            &mut buf[..2],
-        );
+fn checksum() -> u32 {
+    (W_KIND..W_CHECKSUM).fold(MAGIC, |acc, w| acc.rotate_left(5) ^ get(w))
+}
 
-        if let Err(e) = res {
-            log::error!("read_len_err: {e:?}");
-            crate::utils::error_log::add_error(
-                crate::utils::error_log::codes::BACKTRACE_READ_FAILED,
-            )
-            .await;
-            return;
-        }
+fn is_valid() -> bool {
+    get(W_MAGIC) == MAGIC && get(W_CHECKSUM) == checksum()
+}
 
-        let len = u16::from_be_bytes([buf[0], buf[1]]);
-        if len == 0 || len > 1024 || len == 0xff {
-            return;
-        }
+fn seal() {
+    set(W_MAGIC, MAGIC);
+    set(W_CHECKSUM, checksum());
+}
 
-        let res = embedded_storage::ReadStorage::read(
-            &mut flash,
-            (nvs_part.0 + nvs_part.1 - 2 - len as usize) as u32,
-            &mut buf[..len as usize],
-        );
+/// Starts a new record (consecutive crash count carries over a valid previous one).
+fn record(kind: u32, task: u32, addrs: &[usize]) {
+    let consecutive = if is_valid() { get(W_CONSECUTIVE) } else { 0 };
+    set(W_KIND, kind);
+    set(W_CONSECUTIVE, consecutive.saturating_add(1));
+    set(W_TASK, task);
 
-        if let Err(e) = res {
-            log::error!("read_msg_err: {e:?}");
-            crate::utils::error_log::add_error(
-                crate::utils::error_log::codes::BACKTRACE_READ_FAILED,
-            )
-            .await;
-            return;
-        }
+    let epoch = crate::state::current_epoch();
+    set(W_EPOCH, epoch as u32);
+    set(W_EPOCH + 1, (epoch >> 32) as u32);
 
-        const HEADER_LEN: usize = SAVED_VERSION_LEN + SAVED_TIMESTAMP_LEN;
-        let len = len as usize;
-        if len < HEADER_LEN || !(len - HEADER_LEN).is_multiple_of(4) {
-            return;
-        }
+    let mut version = [0u8; VERSION_WORDS * 4];
+    let bytes = crate::version::VERSION.as_bytes();
+    let len = bytes.len().min(version.len());
+    version[..len].copy_from_slice(&bytes[..len]);
+    for (i, chunk) in version.as_chunks::<4>().0.iter().enumerate() {
+        set(W_VERSION + i, u32::from_le_bytes(*chunk));
+    }
 
-        let version_raw = &buf[..SAVED_VERSION_LEN];
-        let saved_version = core::str::from_utf8(version_raw)
-            .unwrap_or(crate::version::VERSION)
-            .trim_end_matches('\0');
-        let saved_timestamp = u64::from_be_bytes(
-            buf[SAVED_VERSION_LEN..HEADER_LEN]
-                .try_into()
-                .unwrap_or([0; 8]),
-        );
-        let addr_data = &buf[HEADER_LEN..len];
+    let count = addrs.len().min(MAX_BACKTRACE_ADDRESSES);
+    set(W_ADDR_COUNT, count as u32);
+    for (i, addr) in addrs.iter().take(count).enumerate() {
+        set(W_ADDRS + i, addr.saturating_sub(RA_OFFSET) as u32);
+    }
 
-        log::error!("Last crash info:");
-        let mut addrs = Vec::new();
-        for addr in addr_data.chunks(4) {
-            if let Ok(addr) = addr.try_into() {
-                let addr: u32 = u32::from_be_bytes(addr);
-                addrs.push(addr);
-                log::error!("0x{:X}", addr);
+    seal();
+}
+
+/// Called by the task watchdog right before it lets the hardware watchdog reset the chip.
+pub fn record_watchdog(task: u8) {
+    record(KIND_WATCHDOG, task as u32, &[]);
+}
+
+/// Moves the crash record (if any) into the error log. Call after `load_error_log`.
+pub fn report_saved_crash() {
+    if !is_valid() {
+        set(W_KIND, KIND_NONE);
+        set(W_CONSECUTIVE, 0);
+        seal();
+        return;
+    }
+
+    let consecutive = get(W_CONSECUTIVE);
+    match get(W_KIND) {
+        KIND_PANIC => {
+            let mut version = [0u8; VERSION_WORDS * 4];
+            for (i, chunk) in version.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+                *chunk = get(W_VERSION + i).to_le_bytes();
             }
+            let version = core::str::from_utf8(&version)
+                .unwrap_or(crate::version::VERSION)
+                .trim_end_matches('\0');
+            let epoch = (get(W_EPOCH) as u64) | ((get(W_EPOCH + 1) as u64) << 32);
+
+            let mut addrs = [0u32; MAX_BACKTRACE_ADDRESSES];
+            let count = (get(W_ADDR_COUNT) as usize).min(MAX_BACKTRACE_ADDRESSES);
+            for (i, addr) in addrs.iter_mut().take(count).enumerate() {
+                *addr = get(W_ADDRS + i);
+            }
+
+            log::error!("Last crash info:");
+            for addr in &addrs[..count] {
+                log::error!("0x{addr:X}");
+            }
+            crate::utils::error_log::add_stacktrace(&addrs[..count], version, epoch);
         }
+        KIND_WATCHDOG => {
+            log::error!("Last reset: task watchdog (task {})", get(W_TASK));
+            crate::utils::error_log::add_error(crate::utils::error_log::codes::WATCHDOG_RESET);
+        }
+        _ => {}
+    }
 
-        _ = embedded_storage::Storage::write(
-            &mut flash,
-            (nvs_part.0 + nvs_part.1 - 2) as u32,
-            &[0x00, 0x00],
-        );
+    if consecutive >= 2 {
+        log::error!("{consecutive} crashes in a row!");
+        crate::utils::error_log::add_error(crate::utils::error_log::codes::REPEATED_CRASHES);
+    }
 
-        crate::utils::error_log::add_stacktrace(&addrs, saved_version, saved_timestamp).await;
+    set(W_KIND, KIND_NONE);
+    seal();
+}
+
+/// Called once the firmware has run fine for a while: the next crash starts a new count.
+pub fn mark_healthy() {
+    if is_valid() && get(W_CONSECUTIVE) != 0 {
+        set(W_CONSECUTIVE, 0);
+        seal();
     }
 }
 
-pub fn backtrace() -> [Option<usize>; MAX_BACKTRACE_ADDRESSES] {
+fn backtrace() -> [Option<usize>; MAX_BACKTRACE_ADDRESSES] {
     let fp = unsafe {
         let mut _tmp: u32;
         core::arch::asm!("mv {0}, x8", out(reg) _tmp);
@@ -144,8 +154,8 @@ pub fn backtrace() -> [Option<usize>; MAX_BACKTRACE_ADDRESSES] {
     backtrace_internal(fp, 2)
 }
 
-pub fn backtrace_internal(fp: u32, suppress: i32) -> [Option<usize>; MAX_BACKTRACE_ADDRESSES] {
-    let mut result = [None; 10];
+fn backtrace_internal(fp: u32, suppress: i32) -> [Option<usize>; MAX_BACKTRACE_ADDRESSES] {
+    let mut result = [None; MAX_BACKTRACE_ADDRESSES];
     let mut index = 0;
 
     let mut fp = fp;
@@ -201,44 +211,14 @@ fn is_valid_ram_address(address: u32) -> bool {
 #[unsafe(no_mangle)]
 pub extern "Rust" fn custom_pre_backtrace() {
     let backtrace = backtrace();
-    unsafe {
-        if NVS_PANIC_FLAG != NVS_PANIC_MAGIC_1 && NVS_PANIC_FLAG != NVS_PANIC_MAGIC_2 {
-            NVS_PANIC_FLAG = NVS_PANIC_MAGIC_1;
-        } else if NVS_PANIC_FLAG == NVS_PANIC_MAGIC_1 {
-            NVS_PANIC_FLAG = NVS_PANIC_MAGIC_2;
-        }
-    }
-
-    let mut tmp = Vec::new();
-    let mut version = [0; SAVED_VERSION_LEN];
-    let version_bytes = crate::version::VERSION.as_bytes();
-    let version_len = core::cmp::min(version_bytes.len(), SAVED_VERSION_LEN);
-    version[..version_len].copy_from_slice(&version_bytes[..version_len]);
-    tmp.extend_from_slice(&version);
-    tmp.extend_from_slice(&crate::state::current_epoch().to_be_bytes());
+    let mut addrs = [0usize; MAX_BACKTRACE_ADDRESSES];
+    let mut count = 0;
     for addr in backtrace.into_iter().flatten() {
-        tmp.extend_from_slice(&((addr - RA_OFFSET) as u32).to_be_bytes());
+        addrs[count] = addr;
+        count += 1;
     }
 
-    if let Some(nvs_part) = esp_hal_wifimanager::Nvs::read_nvs_partition_offset(unsafe {
-        esp_hal::peripherals::FLASH::steal()
-    }) {
-        let mut flash = FlashStorage::new(unsafe { esp_hal::peripherals::FLASH::steal() });
-        _ = embedded_storage::Storage::write(
-            &mut flash,
-            (nvs_part.0 + nvs_part.1 - 2) as u32,
-            &(tmp.len() as u16).to_be_bytes(),
-        );
-
-        _ = embedded_storage::Storage::write(
-            &mut flash,
-            (nvs_part.0 + nvs_part.1 - 2 - tmp.len()) as u32,
-            &tmp,
-        );
-    }
-
-    let delay = esp_hal::delay::Delay::new();
-    delay.delay_millis(100);
+    record(KIND_PANIC, 0, &addrs[..count]);
 }
 
 #[unsafe(no_mangle)]

@@ -1,32 +1,32 @@
+#[cfg(any(feature = "v3", not(feature = "timer-func")))]
+use esp_hal::gpio::AnyPin;
+use esp_hal::gpio::Pin;
 use esp_hal::{
-    gpio::{AnyPin, Input, InputConfig, Output, Pin, Pull},
-    peripherals::{
-        ADC1, AES, BT, FLASH, Peripherals, SPI2, SW_INTERRUPT, TIMG0, TIMG1, UART1, WIFI,
-    },
-    rng::Rng,
+    gpio::{Input, InputConfig, Pull},
+    peripherals::{AES, BT, FLASH, FROM_CPU_INTR0, Peripherals, TIMG0, TIMG1, WIFI},
     timer::timg::TimerGroup,
 };
 
 #[cfg(feature = "v4")]
 use crate::utils::shared_i2c::SharedI2C;
 
-#[allow(dead_code)]
 pub struct Board {
     // peripherals
     pub timg0: TimerGroup<'static, TIMG0<'static>>,
     pub timg1: TimerGroup<'static, TIMG1<'static>>,
-    pub rng: Rng,
-    pub uart1: UART1<'static>,
-    pub spi2: SPI2<'static>,
-    pub adc1: ADC1<'static>,
+    #[cfg(not(feature = "timer-func"))]
+    pub uart1: esp_hal::peripherals::UART1<'static>,
     pub wifi: WIFI<'static>,
     pub bt: BT<'static>,
-    pub spi_dma: esp_hal::peripherals::DMA_CH0<'static>,
     pub aes: AES<'static>,
     pub flash: FLASH<'static>,
-    pub sw_interrupt: SW_INTERRUPT<'static>,
+    pub sw_interrupt: FROM_CPU_INTR0<'static>,
 
     // spi
+    #[cfg(feature = "v3")]
+    pub spi2: esp_hal::peripherals::SPI2<'static>,
+    #[cfg(feature = "v3")]
+    pub spi_dma: esp_hal::peripherals::DMA_CH0<'static>,
     #[cfg(feature = "v3")]
     pub miso: AnyPin<'static>,
     #[cfg(feature = "v3")]
@@ -37,12 +37,13 @@ pub struct Board {
     pub cs: adv_shift_registers::wrappers::ShifterPin,
 
     #[cfg(feature = "v4")]
-    pub display_rst: Output<'static>,
+    pub display_rst: esp_hal::gpio::Output<'static>,
     #[cfg(feature = "v4")]
     pub i2c: SharedI2C,
     #[cfg(feature = "v4")]
     pub buzzer: esp_hal::ledc::channel::Channel<'static, esp_hal::ledc::LowSpeed>,
 
+    #[cfg(not(feature = "timer-func"))]
     pub stackmat_rx: AnyPin<'static>,
 
     #[cfg(feature = "v4")]
@@ -54,16 +55,14 @@ pub struct Board {
     #[cfg(feature = "v3")]
     pub battery: esp_hal::peripherals::GPIO2<'static>,
     #[cfg(feature = "v3")]
+    pub adc1: esp_hal::peripherals::ADC1<'static>,
+    #[cfg(feature = "v3")]
     pub button_input: Input<'static>,
 
     #[cfg(feature = "v3")]
     pub buttons_shifter: adv_shift_registers::wrappers::ShifterValue,
     #[cfg(feature = "v3")]
     pub lcd: adv_shift_registers::wrappers::ShifterValue,
-
-    // usb pins
-    pub usb_dp: AnyPin<'static>,
-    pub usb_dm: AnyPin<'static>,
 }
 
 #[cfg(feature = "v4")]
@@ -71,22 +70,13 @@ impl Board {
     pub fn init(peripherals: Peripherals) -> Board {
         let timg0 = TimerGroup::new(peripherals.TIMG0);
         let timg1 = TimerGroup::new(peripherals.TIMG1);
-        let rng = Rng::new();
-        let uart1 = peripherals.UART1;
-        let spi2 = peripherals.SPI2;
-        let spi_dma = peripherals.DMA_CH0;
-        let adc1 = peripherals.ADC1;
         let wifi = peripherals.WIFI;
         let bt = peripherals.BT;
         let aes = peripherals.AES;
         let flash = peripherals.FLASH;
-        let sw_interrupt = peripherals.SW_INTERRUPT;
+        let sw_interrupt = peripherals.FROM_CPU_INTR0;
 
-        let stackmat_rx = peripherals.GPIO20.degrade();
-        let usb_dp = peripherals.GPIO19.degrade();
-        let usb_dm = peripherals.GPIO18.degrade();
-
-        let display_rst = Output::new(
+        let display_rst = esp_hal::gpio::Output::new(
             peripherals.GPIO7,
             esp_hal::gpio::Level::Low,
             Default::default(),
@@ -104,7 +94,10 @@ impl Board {
                 frequency: esp_hal::time::Rate::from_hz(2_500),
             });
         }
-        let lstimer0: &'static _ = alloc::boxed::Box::leak(alloc::boxed::Box::new(lstimer0));
+        static LSTIMER0: static_cell::StaticCell<
+            esp_hal::ledc::timer::Timer<'static, esp_hal::ledc::LowSpeed>,
+        > = static_cell::StaticCell::new();
+        let lstimer0: &'static _ = LSTIMER0.init(lstimer0);
         let mut buzzer = ledc.channel::<esp_hal::ledc::LowSpeed>(
             esp_hal::ledc::channel::Number::Channel0,
             peripherals.GPIO4,
@@ -118,36 +111,18 @@ impl Board {
             });
         }
 
-        let b1 = Input::new(
-            peripherals.GPIO0,
-            InputConfig::default().with_pull(Pull::Down),
-        );
-
-        let b2 = Input::new(
-            peripherals.GPIO1,
-            InputConfig::default().with_pull(Pull::Down),
-        );
-
-        let b3 = Input::new(
-            peripherals.GPIO2,
-            InputConfig::default().with_pull(Pull::Down),
-        );
-
-        let b4 = Input::new(
-            peripherals.GPIO3,
-            InputConfig::default().with_pull(Pull::Down),
-        );
-
+        let pull_down = InputConfig::default().with_pull(Pull::Down);
+        let buttons = [
+            peripherals.GPIO0.degrade(),
+            peripherals.GPIO1.degrade(),
+            peripherals.GPIO2.degrade(),
+            peripherals.GPIO3.degrade(),
+        ]
+        .map(|pin| Input::new(pin, pull_down));
         #[cfg(feature = "timer-func")]
-        let pad1 = Input::new(
-            peripherals.GPIO5,
-            InputConfig::default().with_pull(Pull::Down),
-        );
-
-        #[cfg(feature = "timer-func")]
-        let pad2 = Input::new(
-            peripherals.GPIO6,
-            InputConfig::default().with_pull(Pull::Down),
+        let pads = (
+            Input::new(peripherals.GPIO5, pull_down),
+            Input::new(peripherals.GPIO6, pull_down),
         );
 
         let i2c = esp_hal::i2c::master::I2c::new(
@@ -171,11 +146,8 @@ impl Board {
         Board {
             timg0,
             timg1,
-            rng,
-            uart1,
-            spi2,
-            spi_dma,
-            adc1,
+            #[cfg(not(feature = "timer-func"))]
+            uart1: peripherals.UART1,
             wifi,
             bt,
             aes,
@@ -186,14 +158,11 @@ impl Board {
 
             display_rst,
             buzzer,
-            stackmat_rx,
-            buttons: [b1, b2, b3, b4],
-
+            #[cfg(not(feature = "timer-func"))]
+            stackmat_rx: peripherals.GPIO20.degrade(),
+            buttons,
             #[cfg(feature = "timer-func")]
-            pads: (pad1, pad2),
-
-            usb_dp,
-            usb_dm,
+            pads,
         }
     }
 }
@@ -202,11 +171,10 @@ impl Board {
 impl Board {
     pub fn init(peripherals: Peripherals) -> Board {
         use embedded_hal::digital::OutputPin;
-        use esp_hal::gpio::Level;
+        use esp_hal::gpio::{Level, Output};
 
         let timg0 = TimerGroup::new(peripherals.TIMG0);
         let timg1 = TimerGroup::new(peripherals.TIMG1);
-        let rng = Rng::new();
         let uart1 = peripherals.UART1;
         let spi2 = peripherals.SPI2;
         let spi_dma = peripherals.DMA_CH0;
@@ -215,15 +183,13 @@ impl Board {
         let bt = peripherals.BT;
         let aes = peripherals.AES;
         let flash = peripherals.FLASH;
-        let sw_interrupt = peripherals.SW_INTERRUPT;
+        let sw_interrupt = peripherals.FROM_CPU_INTR0;
 
         let sck = peripherals.GPIO4.degrade();
         let miso = peripherals.GPIO5.degrade();
         let mosi = peripherals.GPIO6.degrade();
         let battery = peripherals.GPIO2;
         let stackmat_rx = peripherals.GPIO20.degrade();
-        let usb_dp = peripherals.GPIO19.degrade();
-        let usb_dm = peripherals.GPIO18.degrade();
 
         let button_input = Input::new(
             peripherals.GPIO3,
@@ -240,8 +206,10 @@ impl Board {
             shifter_latch_pin,
             0,
         );
-        let adv_shift_reg = alloc::boxed::Box::new(adv_shift_reg);
-        let adv_shift_reg = alloc::boxed::Box::leak(adv_shift_reg);
+        static SHIFT_REG: static_cell::StaticCell<
+            adv_shift_registers::AdvancedShiftRegister<2, Output<'static>>,
+        > = static_cell::StaticCell::new();
+        let adv_shift_reg = SHIFT_REG.init(adv_shift_reg);
 
         let mut backlight = adv_shift_reg.get_pin_mut(1, 1, false);
         _ = backlight.set_high();
@@ -255,7 +223,6 @@ impl Board {
         Board {
             timg0,
             timg1,
-            rng,
             uart1,
             spi2,
             spi_dma,
@@ -277,8 +244,6 @@ impl Board {
 
             buttons_shifter,
             lcd,
-            usb_dp,
-            usb_dm,
         }
     }
 }

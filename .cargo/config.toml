@@ -12,3 +12,4 @@ ESP_LOG="INFO"
 
 [unstable]
 build-std = ["alloc", "core"]
+build-std-features = ["optimize_for_size"]

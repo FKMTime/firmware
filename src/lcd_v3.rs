@@ -1,798 +1,543 @@
-use ag_lcd_async::LcdDisplay;
-use alloc::{rc::Rc, string::ToString};
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use embassy_time::{Delay, Duration, Instant, Timer};
-use embedded_hal::digital::OutputPin;
-use embedded_hal_async::delay::DelayNs;
-
 use crate::{
-    consts::{
-        DEEPER_SLEEP_AFTER_MS, INSPECTION_TIME_PLUS2, LCD_INSPECTION_FRAME_TIME,
-        SCROLL_TICKER_INVERVAL_MS, SLEEP_AFTER_MS,
-    },
-    state::{
-        GlobalState, MenuScene, Scene, SignaledGlobalStateInner, deeper_sleep_state, sleep_state,
-    },
+    consts::SCROLL_TICK_MS,
+    power,
+    state::{CHANGED, GlobalState, MenuScene, Scene, View},
     translations::{TranslationKey, get_translation, get_translation_params},
     utils::{
-        lcd_abstract::{LcdAbstract, PrintAlign},
-        stackmat::ms_to_time_str,
+        error_log::{self, ErrorLogEntry},
+        lcd_text::{Align, LcdText},
+        screen::{Event, Live, Local, SIGN_RESULT_MS, Screen, next_event, screen},
+        text::time_str,
     },
 };
+use adv_shift_registers::wrappers::{ShifterPin, ShifterValue};
+use ag_lcd_async::LcdDisplay;
+use core::fmt::Write;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
+use embassy_time::{Delay, Duration, Instant, Timer, with_timeout};
 
-pub async fn lcd_show_critical_code(
-    lcd_shifter: adv_shift_registers::wrappers::ShifterValue,
-    code: u8,
-) {
-    let mut lcd = {
-        let bl_pin = lcd_shifter.get_pin_mut(1, true);
-        let rs_pin = lcd_shifter.get_pin_mut(2, true);
-        let en_pin = lcd_shifter.get_pin_mut(3, true);
-        let d4_pin = lcd_shifter.get_pin_mut(4, false);
-        let d5_pin = lcd_shifter.get_pin_mut(5, false);
-        let d6_pin = lcd_shifter.get_pin_mut(6, false);
-        let d7_pin = lcd_shifter.get_pin_mut(7, false);
-        LcdDisplay::new(rs_pin, en_pin, Delay)
-            .with_display(ag_lcd_async::Display::On)
-            .with_blink(ag_lcd_async::Blink::Off)
-            .with_cursor(ag_lcd_async::Cursor::Off)
-            .with_size(ag_lcd_async::Size::Dots5x8)
-            .with_cols(16)
-            .with_lines(ag_lcd_async::Lines::TwoLines)
-            .with_half_bus(d4_pin, d5_pin, d6_pin, d7_pin)
-            .with_backlight(bl_pin)
-            .build()
-            .await
-    };
+type Lcd = LcdDisplay<ShifterPin, Delay>;
+type Text = heapless::String<96>;
 
+/// HD44780 instructions and writes take 37–41 µs (~60 µs on a slow 190 kHz controller) and any
+/// transfer while busy is lost. ag-lcd-async waits only before characters, and the next command
+/// reaches the controller ~20 µs after a character through the shift registers.
+const BUSY_US: u64 = 100;
+/// Re-sync and rewrite the LCD this often: the write-only bus can't see a lost write, a nibble
+/// desync or a module brownout, and the change-only cache would keep them. Also bounds the
+/// wait for events (watchdog heartbeat, screens without live updates).
+const HEAL_INTERVAL: Duration = Duration::from_secs(2);
+
+async fn new_lcd(lcd_shifter: &ShifterValue) -> Lcd {
+    let mut lcd = LcdDisplay::new(
+        lcd_shifter.get_pin_mut(2, true),
+        lcd_shifter.get_pin_mut(3, true),
+        Delay,
+    )
+    .with_display(ag_lcd_async::Display::On)
+    .with_blink(ag_lcd_async::Blink::Off)
+    .with_cursor(ag_lcd_async::Cursor::Off)
+    .with_size(ag_lcd_async::Size::Dots5x8)
+    .with_cols(16)
+    .with_lines(ag_lcd_async::Lines::TwoLines)
+    .with_half_bus(
+        lcd_shifter.get_pin_mut(4, false),
+        lcd_shifter.get_pin_mut(5, false),
+        lcd_shifter.get_pin_mut(6, false),
+        lcd_shifter.get_pin_mut(7, false),
+    )
+    .with_backlight(lcd_shifter.get_pin_mut(1, true))
+    .build()
+    .await;
+
+    // build() sends its 4-bit function set right after the 8-bit one, while the controller is busy
+    resync(lcd_shifter).await;
     lcd.clear().await;
     lcd.backlight_on();
+    lcd
+}
 
-    lcd.set_position(0, 0).await;
+/// Initialisation by instruction (HD44780 datasheet fig. 24) without the clear: brings the
+/// controller back to 4-bit, 2 lines, display on from any state (nibble desync, 8-bit mode after
+/// a brownout) with the shown text untouched, so it doesn't flicker.
+async fn resync(lcd_shifter: &ShifterValue) {
+    // ShifterPin bit b is mask 0x80 >> b: RS = 2, E = 3, DB4..DB7 = 4..7 (CS and backlight kept)
+    const BUS: u8 = 0x3F;
+    const EN: u8 = 0x10;
+    let nibble = |n: u8| {
+        let db = (n & 0x0F).reverse_bits() >> 4;
+        for en in [0, EN, 0] {
+            let mut v = lcd_shifter.value(); // shifted out on drop
+            *v = *v & !BUS | db | en;
+        }
+    };
+
+    Timer::after_micros(BUSY_US).await;
+    for (n, wait_us) in [(0x3, 4100), (0x3, 100), (0x3, BUSY_US), (0x2, BUSY_US)] {
+        nibble(n);
+        Timer::after_micros(wait_us).await;
+    }
+    // function set 4-bit/2 lines/5x8, display on, entry left-to-right, home (resets any shift)
+    for (byte, wait_us) in [
+        (0x28, BUSY_US),
+        (0x0C, BUSY_US),
+        (0x06, BUSY_US),
+        (0x02, 3500),
+    ] {
+        nibble(byte >> 4);
+        nibble(byte);
+        Timer::after_micros(wait_us).await;
+    }
+}
+
+/// Moves the cursor once the previous character is done.
+async fn goto(lcd: &mut Lcd, col: u8, row: u8) {
+    Timer::after_micros(BUSY_US).await;
+    lcd.set_position(col, row).await;
+}
+
+/// Writes the changed characters to the LCD.
+async fn show(text: &mut LcdText, lcd: &mut Lcd) {
+    let mut runs: heapless::Vec<(u8, u8, heapless::String<16>), 2> = heapless::Vec::new();
+    text.changes(|row, col, s| _ = runs.push((row, col, s.try_into().unwrap_or_default())));
+    for (row, col, s) in runs {
+        goto(lcd, col, row).await;
+        lcd.print(&s).await;
+    }
+    #[cfg(feature = "sim")]
+    crate::sim::lcd_intended(text.shown());
+}
+
+/// Writes the changes, or every `HEAL_INTERVAL` re-syncs the controller and rewrites every
+/// character (also on live screens: a solve can outlast many intervals).
+async fn update(
+    lcd_shifter: &ShifterValue,
+    text: &mut LcdText,
+    lcd: &mut Lcd,
+    healed: &mut Instant,
+) {
+    if healed.elapsed() >= HEAL_INTERVAL {
+        *healed = Instant::now();
+        resync(lcd_shifter).await;
+        text.invalidate();
+    }
+    show(text, lcd).await;
+}
+
+pub async fn lcd_show_critical_code(lcd_shifter: ShifterValue, code: u8) {
+    let mut lcd = new_lcd(&lcd_shifter).await;
+    let mut line = Text::new();
+    _ = write!(line, "       E{code}");
+
+    goto(&mut lcd, 0, 0).await;
     lcd.print(" CRITICAL ERROR ").await;
-    lcd.set_position(0, 1).await;
-    lcd.print(&alloc::format!("       E{code}")).await;
+    goto(&mut lcd, 0, 1).await;
+    lcd.print(&line).await;
 }
 
 #[embassy_executor::task]
 pub async fn lcd_task(
-    lcd_shifter: adv_shift_registers::wrappers::ShifterValue,
+    lcd_shifter: ShifterValue,
     global_state: GlobalState,
-    wifi_setup_sig: Rc<Signal<NoopRawMutex, ()>>,
+    wifi_setup_sig: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {
-    let mut lcd = {
-        let bl_pin = lcd_shifter.get_pin_mut(1, true);
-        let rs_pin = lcd_shifter.get_pin_mut(2, true);
-        let en_pin = lcd_shifter.get_pin_mut(3, true);
-        let d4_pin = lcd_shifter.get_pin_mut(4, false);
-        let d5_pin = lcd_shifter.get_pin_mut(5, false);
-        let d6_pin = lcd_shifter.get_pin_mut(6, false);
-        let d7_pin = lcd_shifter.get_pin_mut(7, false);
-        LcdDisplay::new(rs_pin, en_pin, Delay)
-            .with_display(ag_lcd_async::Display::On)
-            .with_blink(ag_lcd_async::Blink::Off)
-            .with_cursor(ag_lcd_async::Cursor::Off)
-            .with_size(ag_lcd_async::Size::Dots5x8)
-            .with_cols(16)
-            .with_lines(ag_lcd_async::Lines::TwoLines)
-            .with_half_bus(d4_pin, d5_pin, d6_pin, d7_pin)
-            .with_backlight(bl_pin)
-            .build()
-            .await
-    };
+    let mut lcd = new_lcd(&lcd_shifter).await;
+    let mut text = LcdText::new();
+    let mut healed = Instant::now();
 
-    lcd.clear().await;
-    lcd.backlight_on();
+    let mut line = Text::new();
+    _ = write!(line, "{:X}", crate::utils::get_efuse_u32());
+    text.print(0, &line, Align::Left, true);
+    text.print(1, crate::version::VERSION, Align::Center, true);
+    show(&mut text, &mut lcd).await;
 
-    let mut lcd_driver: LcdAbstract<80, 16, 2, 3> = LcdAbstract::new();
-
-    _ = lcd_driver.print(
-        0,
-        &alloc::format!("{:X}", crate::utils::get_efuse_u32()),
-        PrintAlign::Left,
-        true,
-    );
-    _ = lcd_driver.print(1, crate::version::VERSION, PrintAlign::Center, true);
-    lcd_driver.display_on_lcd(&mut lcd).await;
-
-    _ = lcd_driver.print(
-        0,
-        &alloc::format!("{}%", global_state.show_battery.wait().await),
-        PrintAlign::Right,
-        false,
-    );
-    lcd_driver.display_on_lcd(&mut lcd).await;
+    line.clear();
+    global_state.battery_ready.wait().await;
+    _ = write!(line, "{}%", global_state.battery.read(|b| b.percent));
+    text.print(0, &line, Align::Right, false);
+    show(&mut text, &mut lcd).await;
 
     #[cfg(not(feature = "bat_dev_lcd"))]
     Timer::after_millis(2500).await;
 
-    _ = lcd_driver.clear_all();
-    let mut last_update;
+    let Some(mut timer) = global_state.timer.receiver() else {
+        log::error!("lcd: no timer receiver left");
+        return;
+    };
+    let mut local = Local::default();
+    let mut live = Live::Idle;
+    let mut last_update = Instant::now();
+    let (mut state_changed, mut rerender) = (true, true);
     loop {
-        let current_state = global_state.state.value().await.clone();
-        log::debug!("lcd current_state: {current_state:?}");
-        last_update = Instant::now();
-
-        if sleep_state() {
-            lcd.backlight_on();
-
-            unsafe {
-                crate::state::SLEEP_STATE = false;
+        if state_changed {
+            state_changed = false;
+            rerender = true;
+            last_update = Instant::now();
+            if power::is_sleeping() {
+                lcd.backlight_on();
+                power::wake();
             }
         }
 
-        let current_scene = current_state.scene.clone();
-        let fut = async {
-            let _ = process_lcd(
-                current_state,
-                &global_state,
-                &mut lcd_driver,
-                &mut lcd,
-                &wifi_setup_sig,
-            )
-            .await;
-            lcd_driver.display_on_lcd(&mut lcd).await;
-
-            let mut scroll_ticker =
-                embassy_time::Ticker::every(Duration::from_millis(SCROLL_TICKER_INVERVAL_MS));
-            loop {
-                scroll_ticker.next().await;
-                let changed = lcd_driver.scroll_step();
-                if changed.is_ok_and(|c| c) {
-                    lcd_driver.display_on_lcd(&mut lcd).await;
-                }
-
-                #[cfg(not(any(feature = "e2e", feature = "qa")))]
-                if !sleep_state()
-                    && (Instant::now() - last_update).as_millis() > SLEEP_AFTER_MS
-                    && current_scene.can_sleep()
+        if rerender {
+            crate::bench!(LCD_FRAME);
+            rerender = false;
+            global_state.ui.write(|u| {
+                if u.menu_scene == Some(MenuScene::BtDisplay)
+                    && u.selected_bluetooth_item > u.discovered_bluetooth_devices.len() + 1
                 {
-                    _ = lcd_driver.print(0, "Sleep", PrintAlign::Center, true);
-                    _ = lcd_driver.print(1, "Press any key", PrintAlign::Center, true);
-                    lcd_driver.display_on_lcd(&mut lcd).await;
-                    lcd.backlight_off();
-
-                    {
-                        global_state.state.lock().await.server_connected = Some(false);
-                    }
-
-                    unsafe {
-                        crate::state::SLEEP_STATE = true;
-                        crate::state::TRUST_SERVER = false;
-                    }
-
-                    global_state.state.signal_reset();
+                    u.selected_bluetooth_item = 0;
                 }
-
-                #[cfg(not(any(feature = "e2e", feature = "qa")))]
-                if sleep_state()
-                    && !deeper_sleep_state()
-                    && (Instant::now() - last_update).as_millis() > DEEPER_SLEEP_AFTER_MS
-                {
-                    _ = lcd_driver.print(0, "Deep Sleep", PrintAlign::Center, true);
-                    _ = lcd_driver.print(1, "Press any key", PrintAlign::Center, true);
-                    lcd_driver.display_on_lcd(&mut lcd).await;
-                    crate::utils::deeper_sleep();
-                }
+            });
+            live = global_state.view(|v| render(v, &mut text, &local));
+            if live != Live::Timer {
+                local.timer_ms = None;
             }
-        };
+            update(&lcd_shifter, &mut text, &mut lcd, &mut healed).await;
+        }
 
-        let res = embassy_futures::select::select(fut, global_state.state.wait()).await;
-        match res {
-            embassy_futures::select::Either::First(_) => {}
-            embassy_futures::select::Either::Second(_) => {
-                continue;
+        crate::watchdog::heartbeat(crate::watchdog::TaskId::Lcd);
+        // bounded: the heartbeat keeps beating and the LCD heals while a live screen waits
+        let event = with_timeout(
+            HEAL_INTERVAL,
+            next_event(
+                global_state,
+                &mut timer,
+                wifi_setup_sig,
+                live,
+                &local,
+                Duration::from_millis(SCROLL_TICK_MS),
+            ),
+        );
+        let Ok(event) = event.await else {
+            update(&lcd_shifter, &mut text, &mut lcd, &mut healed).await;
+            continue;
+        };
+        match event {
+            Event::State => state_changed = true,
+            Event::TimerValue(ms) => {
+                local.timer_ms = Some(ms);
+                text.print(0, &time_str(ms), Align::Center, true);
+                update(&lcd_shifter, &mut text, &mut lcd, &mut healed).await;
+            }
+            Event::InspectionFrame(start) => {
+                let elapsed = start.elapsed().as_millis();
+                text.print(0, &time_str(elapsed), Align::Center, true);
+                update(&lcd_shifter, &mut text, &mut lcd, &mut healed).await;
+            }
+            Event::Progress(p) => {
+                local.progress = Some(p);
+                rerender = true;
+            }
+            Event::SignResult(ok) => {
+                local.sign_result = Some((ok, Instant::now()));
+                rerender = true;
+            }
+            Event::SignResultEnd => {
+                local.sign_result = None;
+                rerender = true;
+            }
+            Event::WifiSetup => {
+                global_state
+                    .solve
+                    .update(|s| s.scene = Scene::AutoSetupWait);
+            }
+            Event::Tick => {
+                text.scroll_step();
+                update(&lcd_shifter, &mut text, &mut lcd, &mut healed).await;
+                sleep_check(&mut text, &mut lcd, global_state, last_update).await;
             }
         }
     }
 }
 
-async fn process_lcd<T: OutputPin, D: DelayNs>(
-    current_state: SignaledGlobalStateInner,
-    global_state: &GlobalState,
-    lcd_driver: &mut LcdAbstract<80, 16, 2, 3>,
-    lcd: &mut LcdDisplay<T, D>,
-    wifi_setup_sig: &Signal<NoopRawMutex, ()>,
-) -> Option<()> {
+/// Sleep after `SLEEP_AFTER_MS` without state changes, "deeper sleep" after `DEEPER_SLEEP_AFTER_MS`.
+async fn sleep_check(
+    text: &mut LcdText,
+    lcd: &mut Lcd,
+    global_state: GlobalState,
+    last_update: Instant,
+) {
+    use crate::consts::{DEEPER_SLEEP_AFTER_MS, SLEEP_AFTER_MS, SLEEP_ENABLED};
+    if !SLEEP_ENABLED {
+        return;
+    }
+
+    let idle_ms = last_update.elapsed().as_millis();
+    let can_sleep = global_state.solve.read(|s| s.scene.can_sleep());
+    if !power::is_sleeping() && idle_ms > SLEEP_AFTER_MS && can_sleep {
+        text.print(0, "Sleep", Align::Center, true);
+        text.print(1, "Press any key", Align::Center, true);
+        show(text, lcd).await;
+        lcd.backlight_off();
+
+        global_state
+            .status
+            .update(|s| s.server_connected = Some(false));
+        power::request_sleep();
+        crate::state::SESSION.write(|s| s.trust_server = false);
+        CHANGED.reset(); // these changes must not wake the display again
+    }
+
+    if power::is_sleeping()
+        && !crate::power::is_deeper_sleeping()
+        && idle_ms > DEEPER_SLEEP_AFTER_MS
+    {
+        text.print(0, "Deep Sleep", Align::Center, true);
+        text.print(1, "Press any key", Align::Center, true);
+        show(text, lcd).await;
+        power::enter_deep_sleep();
+    }
+}
+
+fn tr(text: &mut LcdText, header: usize, footer: usize) {
+    text.print(0, &get_translation(header), Align::Center, true);
+    text.print(1, &get_translation(footer), Align::Center, true);
+}
+
+/// Lays out both lines for the current state (no I/O, no heap).
+fn render(s: &View, text: &mut LcdText, local: &Local) -> Live {
+    text.clear();
+    let mut line = Text::new();
+
     #[cfg(feature = "bat_dev_lcd")]
     {
-        let battery_read = current_state.current_bat_read.unwrap_or(-1.0);
-        lcd_driver
-            .print(
-                0,
-                &alloc::format!("BAT: {battery_read}"),
-                PrintAlign::Left,
-                true,
-            )
-            .ok()?;
-
-        if let Some(avg) = current_state.avg_bat_read {
-            lcd_driver
-                .print(1, &alloc::format!("AVG: {avg}"), PrintAlign::Left, true)
-                .ok()?;
+        _ = write!(line, "BAT: {}", s.battery.current_read.unwrap_or(-1.0));
+        text.print(0, &line, Align::Left, true);
+        if let Some(avg) = s.battery.avg_read {
+            line.clear();
+            _ = write!(line, "AVG: {avg}");
+            text.print(1, &line, Align::Left, true);
         }
-
-        return Some(());
+        return Live::Idle;
     }
 
-    if let Some(error_text) = current_state.error_text {
-        lcd_driver
-            .print(
+    match screen(s.solve, s.ui, &s.status) {
+        Screen::Error(error) => {
+            text.print(
                 0,
                 &get_translation(TranslationKey::ERROR_HEADER),
-                PrintAlign::Center,
+                Align::Center,
                 true,
-            )
-            .ok()?;
-
-        lcd_driver
-            .print(1, &error_text, PrintAlign::Center, true)
-            .ok()?;
-
-        return Some(());
-    }
-
-    // display custom message on top of everything!
-    if let Some((line1, line2)) = &current_state.custom_message {
-        _ = lcd_driver.print(0, line1, PrintAlign::Center, true);
-        _ = lcd_driver.print(1, line2, PrintAlign::Center, true);
-
-        return Some(());
-    }
-
-    if let Some(sel) = current_state.selected_config_menu {
-        lcd_driver.clear_all().ok()?;
-        lcd_driver.print(0, "<", PrintAlign::Left, false).ok()?;
-        lcd_driver.print(0, ">", PrintAlign::Right, false).ok()?;
-
-        lcd_driver
-            .print(0, "Config Menu", PrintAlign::Center, false)
-            .ok()?;
-
-        lcd_driver
-            .print(
-                1,
-                &alloc::format!("{}. {}", sel + 1, crate::structs::CONFIG_MENU_ITEMS[sel]),
-                PrintAlign::Left,
-                true,
-            )
-            .ok()?;
-
-        return Some(());
-    }
-
-    match current_state.menu_scene {
-        Some(MenuScene::Signing) | Some(MenuScene::Unsigning) => {
-            let prefix = if current_state.menu_scene == Some(MenuScene::Signing) {
-                "S"
-            } else {
-                "Uns"
-            };
-
-            lcd_driver.clear_all().ok()?;
-            lcd_driver
-                .print(
-                    0,
-                    &alloc::format!("{prefix}igning | Submit To Exit"),
-                    PrintAlign::Left,
-                    true,
-                )
-                .ok()?;
-
-            if global_state.sign_unsign_progress.signaled() {
-                let status = if global_state.sign_unsign_progress.wait().await {
-                    "OK"
-                } else {
-                    "FAIL"
-                };
-
-                lcd_driver
-                    .print(
-                        1,
-                        &alloc::format!("Operation {}", status),
-                        PrintAlign::Center,
-                        true,
-                    )
-                    .ok()?;
-                lcd_driver.display_on_lcd(lcd).await;
-
-                Timer::after_millis(300).await;
-                lcd_driver
-                    .print(1, "Scan the card", PrintAlign::Center, true)
-                    .ok()?;
-            } else {
-                lcd_driver
-                    .print(1, "Scan the card", PrintAlign::Center, true)
-                    .ok()?;
-            }
-
-            return Some(());
+            );
+            text.print(1, error, Align::Center, true);
         }
-        Some(crate::state::MenuScene::BtDisplay) => {
-            lcd_driver.clear_all().ok()?;
-            if current_state.selected_bluetooth_item
-                == current_state.discovered_bluetooth_devices.len()
-            {
-                lcd_driver
-                    .print(0, "Unpair", PrintAlign::Center, true)
-                    .ok()?;
-            } else if current_state.selected_bluetooth_item
-                == current_state.discovered_bluetooth_devices.len() + 1
-            {
-                lcd_driver.print(0, "Exit", PrintAlign::Center, true).ok()?;
-            } else if current_state.selected_bluetooth_item
-                < current_state.discovered_bluetooth_devices.len()
-            {
-                if let Some(display_dev) = current_state
-                    .discovered_bluetooth_devices
-                    .get(current_state.selected_bluetooth_item)
-                {
-                    lcd_driver
-                        .print(0, &display_dev.name, PrintAlign::Center, true)
-                        .ok()?;
-
-                    lcd_driver
-                        .print(
-                            1,
-                            &alloc::format!("{:x?}", display_dev.addr),
-                            PrintAlign::Center,
-                            true,
-                        )
-                        .ok()?;
+        Screen::Custom(l1, l2) => {
+            text.print(0, l1, Align::Center, true);
+            text.print(1, l2, Align::Center, true);
+        }
+        Screen::ConfigMenu(sel) => {
+            text.print(0, "<", Align::Left, false);
+            text.print(0, ">", Align::Right, false);
+            text.print(0, "Config Menu", Align::Center, false);
+            let item = crate::structs::CONFIG_MENU_ITEMS
+                .get(sel)
+                .copied()
+                .unwrap_or("");
+            _ = write!(line, "{}. {item}", sel + 1);
+            text.print(1, &line, Align::Left, true);
+        }
+        Screen::Signing(sign) => {
+            let title = if sign { "Signing" } else { "Unsigning" };
+            _ = write!(line, "{title} | Submit To Exit");
+            text.print(0, &line, Align::Left, true);
+            match local.sign_result {
+                Some((ok, at)) if at.elapsed().as_millis() < SIGN_RESULT_MS => {
+                    let status = if ok { "Operation OK" } else { "Operation FAIL" };
+                    text.print(1, status, Align::Center, true);
                 }
-            } else {
-                global_state.state.lock().await.selected_bluetooth_item = 0;
+                _ => text.print(1, "Scan the card", Align::Center, true),
             }
-
-            return Some(());
+            return Live::Signing;
         }
-        Some(MenuScene::ErrorLog) => {
-            lcd_driver.clear_all().ok()?;
-
-            if let Some(entry_idx) = current_state.selected_error_log_entry {
-                if let Some(entry) = current_state.error_log_entries.get(entry_idx) {
-                    match entry {
-                        crate::utils::error_log::ErrorLogEntry::Code { timestamp, code } => {
-                            lcd_driver
-                                .print(0, &alloc::format!("Error E{code}"), PrintAlign::Left, true)
-                                .ok()?;
-                            lcd_driver
-                                .print(
-                                    1,
-                                    &crate::utils::error_log::format_timestamp_full(*timestamp),
-                                    PrintAlign::Left,
-                                    true,
-                                )
-                                .ok()?;
-                        }
-                        crate::utils::error_log::ErrorLogEntry::Stacktrace {
-                            timestamp, ..
-                        } => {
-                            lcd_driver
-                                .print(0, "Panic (view logs for details)", PrintAlign::Left, true)
-                                .ok()?;
-
-                            lcd_driver
-                                .print(
-                                    1,
-                                    &crate::utils::error_log::format_timestamp_full(*timestamp),
-                                    PrintAlign::Left,
-                                    true,
-                                )
-                                .ok()?;
-                        }
-                    }
-                } else {
-                    lcd_driver
-                        .print(0, "Invalid log entry", PrintAlign::Center, true)
-                        .ok()?;
-                    lcd_driver
-                        .print(1, "Submit to return", PrintAlign::Center, true)
-                        .ok()?;
+        Screen::BtDevices(sel) => {
+            let devices = &s.ui.discovered_bluetooth_devices;
+            match devices.get(sel) {
+                Some(dev) => {
+                    text.print(0, &dev.name, Align::Center, true);
+                    _ = write!(line, "{:x?}", dev.addr);
+                    text.print(1, &line, Align::Center, true);
                 }
-            } else {
-                let exit_idx = current_state.error_log_entries.len();
-                if current_state.selected_error_log_item == exit_idx {
-                    lcd_driver.print(0, "Exit", PrintAlign::Center, true).ok()?;
-                    lcd_driver
-                        .print(1, "Submit to return", PrintAlign::Center, true)
-                        .ok()?;
-                } else if let Some(entry) = current_state
-                    .error_log_entries
-                    .get(current_state.selected_error_log_item)
-                {
-                    lcd_driver
-                        .print(0, &entry.list_label_v3(), PrintAlign::Center, true)
-                        .ok()?;
-                    lcd_driver
-                        .print(1, "Submit for details", PrintAlign::Center, true)
-                        .ok()?;
-                } else {
-                    lcd_driver
-                        .print(0, "No entries", PrintAlign::Center, true)
-                        .ok()?;
-                    lcd_driver.print(1, "Exit", PrintAlign::Center, true).ok()?;
-                }
-            }
-
-            return Some(());
-        }
-        #[cfg(feature = "v4")]
-        Some(crate::state::MenuScene::BuzzerVolume) => {}
-        None => {}
-    }
-
-    let overwritten = process_lcd_overwrite(&current_state, global_state, lcd_driver).await;
-    if overwritten {
-        return Some(());
-    }
-
-    lcd_driver.clear_all().ok()?;
-    if let Some(time) = current_state.delegate_hold {
-        let delegate_remaining = 3 - time;
-
-        if delegate_remaining == 0 {
-            lcd_driver
-                .print(
-                    0,
-                    &get_translation(TranslationKey::WAITING_FOR_DELEGATE_HEADER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-
-            lcd_driver
-                .print(
-                    1,
-                    &get_translation(TranslationKey::WAITING_FOR_DELEGATE_FOOTER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-        } else {
-            lcd_driver
-                .print(
-                    0,
-                    &get_translation(TranslationKey::CALLING_FOR_DELEGATE_HEADER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-
-            lcd_driver
-                .print(
-                    1,
-                    &get_translation_params(
-                        TranslationKey::CALLING_FOR_DELEGATE_FOOTER,
-                        &[delegate_remaining],
-                    ),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-        }
-
-        return Some(());
-    }
-
-    match current_state.scene {
-        Scene::WifiConnect => {
-            lcd_driver
-                .print(
-                    0,
-                    &get_translation(TranslationKey::WAITING_FOR_WIFI_HEADER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-
-            lcd_driver
-                .print(
-                    1,
-                    &get_translation(TranslationKey::WAITING_FOR_WIFI_FOOTER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-
-            lcd_driver.display_on_lcd(lcd).await;
-            wifi_setup_sig.wait().await;
-            global_state.state.lock().await.scene = Scene::AutoSetupWait;
-        }
-        Scene::AutoSetupWait => {
-            let wifi_ssid = alloc::format!("FKM-{:X}", crate::utils::get_efuse_u32());
-            lcd_driver
-                .print(
-                    0,
-                    &get_translation(TranslationKey::WIFI_SETUP_HEADER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-
-            lcd_driver
-                .print(1, &wifi_ssid, PrintAlign::Center, true)
-                .ok()?;
-        }
-        Scene::MdnsWait => {
-            lcd_driver
-                .print(
-                    0,
-                    &get_translation(TranslationKey::WAITING_FOR_MDNS_HEADER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-
-            lcd_driver
-                .print(
-                    1,
-                    &get_translation(TranslationKey::WAITING_FOR_MDNS_FOOTER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-        }
-        Scene::GroupSelect => {
-            lcd_driver.clear_all().ok()?;
-            lcd_driver.print(0, "<", PrintAlign::Left, false).ok()?;
-            lcd_driver.print(1, "<", PrintAlign::Left, false).ok()?;
-            lcd_driver.print(0, ">", PrintAlign::Right, false).ok()?;
-            lcd_driver.print(1, ">", PrintAlign::Right, false).ok()?;
-
-            lcd_driver
-                .print(
-                    0,
-                    &get_translation(TranslationKey::SELECT_GROUP),
-                    PrintAlign::Center,
-                    false,
-                )
-                .ok()?;
-
-            lcd_driver
-                .print(
-                    1,
-                    &current_state.possible_groups[current_state.group_selected_idx].name,
-                    PrintAlign::Center,
-                    false,
-                )
-                .ok()?;
-        }
-        Scene::WaitingForCompetitor => {
-            lcd_driver
-                .print(
-                    0,
-                    &get_translation(TranslationKey::SCAN_COMPETITOR_CARD_HEADER),
-                    PrintAlign::Center,
-                    true,
-                )
-                .ok()?;
-
-            if let Some(solve_time) = current_state.solve_time {
-                let time_str = ms_to_time_str(solve_time);
-                lcd_driver
-                    .print(
-                        1,
-                        &get_translation_params(
-                            TranslationKey::SCAN_COMPETITOR_CARD_WITH_TIME_FOOTER,
-                            &[time_str],
-                        ),
-                        PrintAlign::Center,
-                        true,
-                    )
-                    .ok()?;
-            } else {
-                lcd_driver
-                    .print(
-                        1,
-                        &get_translation(TranslationKey::SCAN_COMPETITOR_CARD_FOOTER),
-                        PrintAlign::Center,
-                        true,
-                    )
-                    .ok()?;
+                None if sel == devices.len() => text.print(0, "Unpair", Align::Center, true),
+                None => text.print(0, "Exit", Align::Center, true),
             }
         }
-        Scene::CompetitorInfo => {
-            lcd_driver
-                .print(
-                    0,
-                    &current_state
-                        .competitor_display
-                        .unwrap_or("??????".to_string()),
-                    PrintAlign::Center,
+        Screen::ErrorLogEntry { idx, .. } => match error_log::entry(idx) {
+            Some(ErrorLogEntry::Code { timestamp, code }) => {
+                _ = write!(line, "Error E{code}");
+                text.print(0, &line, Align::Left, true);
+                text.print(
+                    1,
+                    &error_log::format_timestamp_full(timestamp),
+                    Align::Left,
                     true,
-                )
-                .ok()?;
-
-            if let Some(group) = current_state.solve_group {
-                lcd_driver
-                    .print(1, &group.name, PrintAlign::Center, true)
-                    .ok()?;
+                );
             }
-        }
-        Scene::Inspection => {
-            let inspection_start = global_state
-                .state
-                .value()
-                .await
-                .inspection_start
-                .unwrap_or(Instant::now());
-
-            lcd_driver
-                .print(1, "Inspection", PrintAlign::Center, true)
-                .ok()?;
-
-            loop {
-                let elapsed = (Instant::now() - inspection_start).as_millis();
-                unsafe {
-                    crate::state::INSPECTION_TIME = Some(elapsed);
-                }
-
-                let time_str = ms_to_time_str(elapsed);
-                lcd_driver
-                    .print(0, &time_str, PrintAlign::Center, true)
-                    .ok()?;
-
-                lcd_driver.display_on_lcd(lcd).await;
-                Timer::after_millis(LCD_INSPECTION_FRAME_TIME).await;
+            Some(ErrorLogEntry::Stacktrace { timestamp, .. }) => {
+                text.print(0, "Panic (view logs for details)", Align::Left, true);
+                text.print(
+                    1,
+                    &error_log::format_timestamp_full(timestamp),
+                    Align::Left,
+                    true,
+                );
             }
-        }
-        Scene::Timer => loop {
-            let time = global_state.timer_signal.wait().await;
-            let time_str = ms_to_time_str(time);
-            lcd_driver
-                .print(0, &time_str, PrintAlign::Center, true)
-                .ok()?;
-
-            lcd_driver.display_on_lcd(lcd).await;
+            None => {
+                text.print(0, "Invalid log entry", Align::Center, true);
+                text.print(1, "Submit to return", Align::Center, true);
+            }
         },
-        Scene::Finished => {
-            let solve_time = current_state.solve_time.unwrap_or(0);
-            let time_str = if solve_time > 0 {
-                ms_to_time_str(solve_time)
+        Screen::ErrorLogList(sel) => {
+            if sel == error_log::entry_count() {
+                text.print(0, "Exit", Align::Center, true);
+                text.print(1, "Submit to return", Align::Center, true);
+            } else if let Some(entry) = error_log::entry(sel) {
+                text.print(0, &entry.list_label(), Align::Center, true);
+                text.print(1, "Submit for details", Align::Center, true);
+            } else {
+                text.print(0, "No entries", Align::Center, true);
+                text.print(1, "Exit", Align::Center, true);
+            }
+        }
+        Screen::WifiLost => {
+            text.print(0, "Wi-Fi", Align::Center, true);
+            text.print(1, "Connection lost", Align::Center, true);
+        }
+        Screen::ServerLost => tr(
+            text,
+            TranslationKey::SERVER_DISCONNECTED_HEADER,
+            TranslationKey::SERVER_DISCONNECTED_FOOTER,
+        ),
+        Screen::DeviceNotAdded => {
+            tr(
+                text,
+                TranslationKey::DEVICE_NOT_ADDED_HEADER,
+                TranslationKey::DEVICE_NOT_ADDED_FOOTER,
+            );
+        }
+        Screen::StackmatLost => tr(
+            text,
+            TranslationKey::STACKMAT_DISCONNECTED_HEADER,
+            TranslationKey::STACKMAT_DISCONNECTED_FOOTER,
+        ),
+        Screen::Delegate(0) => tr(
+            text,
+            TranslationKey::WAITING_FOR_DELEGATE_HEADER,
+            TranslationKey::WAITING_FOR_DELEGATE_FOOTER,
+        ),
+        Screen::Delegate(remaining) => {
+            let header = get_translation(TranslationKey::CALLING_FOR_DELEGATE_HEADER);
+            text.print(0, &header, Align::Center, true);
+            let footer =
+                get_translation_params(TranslationKey::CALLING_FOR_DELEGATE_FOOTER, &[remaining]);
+            text.print(1, &footer, Align::Center, true);
+        }
+        Screen::WifiConnect => {
+            tr(
+                text,
+                TranslationKey::WAITING_FOR_WIFI_HEADER,
+                TranslationKey::WAITING_FOR_WIFI_FOOTER,
+            );
+            return Live::WifiConnect;
+        }
+        Screen::AutoSetup => {
+            text.print(
+                0,
+                &get_translation(TranslationKey::WIFI_SETUP_HEADER),
+                Align::Center,
+                true,
+            );
+            _ = write!(line, "FKM-{:X}", crate::utils::get_efuse_u32());
+            text.print(1, &line, Align::Center, true);
+        }
+        Screen::MdnsWait => tr(
+            text,
+            TranslationKey::WAITING_FOR_MDNS_HEADER,
+            TranslationKey::WAITING_FOR_MDNS_FOOTER,
+        ),
+        Screen::GroupSelect(name) => {
+            for row in 0..2 {
+                text.print(row, "<", Align::Left, false);
+                text.print(row, ">", Align::Right, false);
+            }
+            text.print(
+                0,
+                &get_translation(TranslationKey::SELECT_GROUP),
+                Align::Center,
+                false,
+            );
+            text.print(1, name, Align::Center, false);
+        }
+        Screen::WaitingForCompetitor(solve_time) => {
+            let header = get_translation(TranslationKey::SCAN_COMPETITOR_CARD_HEADER);
+            text.print(0, &header, Align::Center, true);
+            let footer = match solve_time {
+                Some(time) => get_translation_params(
+                    TranslationKey::SCAN_COMPETITOR_CARD_WITH_TIME_FOOTER,
+                    &[time_str(time)],
+                ),
+                None => get_translation(TranslationKey::SCAN_COMPETITOR_CARD_FOOTER),
+            };
+            text.print(1, &footer, Align::Center, true);
+        }
+        Screen::CompetitorInfo => {
+            let name = s.solve.competitor_display.as_deref().unwrap_or("??????");
+            text.print(0, name, Align::Center, true);
+            if let Some(ref group) = s.solve.solve_group {
+                text.print(1, &group.name, Align::Center, true);
+            }
+        }
+        Screen::Inspection(start) => {
+            text.print(1, "Inspection", Align::Center, true);
+            text.print(
+                0,
+                &time_str(start.elapsed().as_millis()),
+                Align::Center,
+                true,
+            );
+            return Live::Inspection(start);
+        }
+        Screen::Timer => {
+            // keep the last value on re-render so unrelated state changes don't blank the time
+            if let Some(ms) = local.timer_ms {
+                text.print(0, &time_str(ms), Align::Center, true);
+            }
+            return Live::Timer;
+        }
+        Screen::Finished(fin) => {
+            let time = if fin.time > 0 {
+                time_str(fin.time)
             } else {
                 heapless::String::new()
             };
-
-            let inspection_time =
-                match (current_state.inspection_start, current_state.inspection_end) {
-                    (Some(start), Some(end)) => {
-                        Some(end.saturating_duration_since(start).as_millis())
-                    }
-                    _ => None,
-                };
-
-            if current_state.use_inspection()
-                && inspection_time.unwrap_or(0) > INSPECTION_TIME_PLUS2
-            {
-                let inspections_seconds = inspection_time.unwrap_or(0) / 1000;
-                lcd_driver
-                    .print(
-                        0,
-                        &alloc::format!("{time_str} ({inspections_seconds}s)"),
-                        PrintAlign::Left,
-                        true,
-                    )
-                    .ok()?;
-            } else {
-                lcd_driver
-                    .print(0, &time_str, PrintAlign::Left, true)
-                    .ok()?;
-            }
-
-            let penalty = current_state.penalty.unwrap_or(0);
-            let penalty_str = match penalty {
-                -2 => "DNS",
-                -1 => "DNF",
-                1.. => &alloc::format!("+{penalty}"),
-                _ => "",
+            _ = match fin.inspection {
+                Some(ms) => write!(line, "{time} ({}s)", ms / 1000),
+                None => write!(line, "{time}"),
             };
+            text.print(0, &line, Align::Left, true);
 
-            lcd_driver
-                .print(0, penalty_str, PrintAlign::Right, false)
-                .ok()?;
+            line.clear();
+            _ = match fin.penalty {
+                -2 => write!(line, "DNS"),
+                -1 => write!(line, "DNF"),
+                p @ 1.. => write!(line, "+{p}"),
+                _ => Ok(()),
+            };
+            text.print(0, &line, Align::Right, false);
 
-            if !current_state.time_confirmed {
-                lcd_driver
-                    .print(
-                        1,
-                        &get_translation(TranslationKey::CONFIRM_TIME),
-                        PrintAlign::Right,
-                        true,
-                    )
-                    .ok()?;
-            } else if current_state.current_judge.is_none() {
-                lcd_driver
-                    .print(
-                        1,
-                        &get_translation(TranslationKey::SCAN_JUDGE_CARD),
-                        PrintAlign::Right,
-                        true,
-                    )
-                    .ok()?;
-            } else if current_state.current_competitor.is_some()
-                && current_state.current_judge.is_some()
-            {
-                lcd_driver
-                    .print(
-                        1,
-                        &get_translation(TranslationKey::SCAN_COMPETITOR_CARD),
-                        PrintAlign::Right,
-                        true,
-                    )
-                    .ok()?;
+            if let Some(status) = fin.status {
+                text.print(1, &get_translation(status), Align::Right, true);
             }
         }
-        Scene::Update => {
-            _ = lcd_driver.print(0, "Updating...", PrintAlign::Center, true);
-            loop {
-                let progress = global_state.update_progress.wait().await;
-                _ = lcd_driver.print(1, &alloc::format!("{progress}%"), PrintAlign::Center, true);
-
-                lcd_driver.display_on_lcd(lcd).await;
+        Screen::Update => {
+            text.print(0, "Updating...", Align::Center, true);
+            if let Some(p) = local.progress {
+                _ = write!(line, "{p}%");
+                text.print(1, &line, Align::Center, true);
             }
+            return Live::Update;
         }
     }
 
-    Some(())
-}
-
-async fn process_lcd_overwrite(
-    current_state: &SignaledGlobalStateInner,
-    _global_state: &GlobalState,
-    lcd_driver: &mut LcdAbstract<80, 16, 2, 3>,
-) -> bool {
-    if !current_state.scene.can_be_lcd_overwritten() {
-        return false;
-    }
-
-    if current_state.server_connected == Some(false) {
-        if current_state.wifi_connected == Some(false) {
-            // TODO: maybe add to this translation
-            _ = lcd_driver.print(0, "Wi-Fi", PrintAlign::Center, true);
-            _ = lcd_driver.print(1, "Connection lost", PrintAlign::Center, true);
-        } else {
-            _ = lcd_driver.print(
-                0,
-                &get_translation(TranslationKey::SERVER_DISCONNECTED_HEADER),
-                PrintAlign::Center,
-                true,
-            );
-            _ = lcd_driver.print(
-                1,
-                &get_translation(TranslationKey::SERVER_DISCONNECTED_FOOTER),
-                PrintAlign::Center,
-                true,
-            );
-        }
-    } else if current_state.device_added == Some(false) {
-        #[cfg(not(feature = "e2e"))]
-        let lines = (
-            &get_translation(TranslationKey::DEVICE_NOT_ADDED_HEADER),
-            &get_translation(TranslationKey::DEVICE_NOT_ADDED_FOOTER),
-        );
-
-        #[cfg(feature = "e2e")]
-        let lines = ("Press submit", "To start HIL");
-
-        _ = lcd_driver.print(0, lines.0, PrintAlign::Center, true);
-        _ = lcd_driver.print(1, lines.1, PrintAlign::Center, true);
-    } else if current_state.stackmat_connected == Some(false) {
-        _ = lcd_driver.print(
-            0,
-            &get_translation(TranslationKey::STACKMAT_DISCONNECTED_HEADER),
-            PrintAlign::Center,
-            true,
-        );
-        _ = lcd_driver.print(
-            1,
-            &get_translation(TranslationKey::STACKMAT_DISCONNECTED_FOOTER),
-            PrintAlign::Center,
-            true,
-        );
-    } else {
-        return false;
-    }
-
-    true
+    Live::Idle
 }

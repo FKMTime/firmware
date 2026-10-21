@@ -1,85 +1,131 @@
 #[cfg(all(feature = "v3", feature = "timer-func"))]
 compile_error!("feature `timer-func` is not supported in v3");
 
+use crate::watchdog::{TaskId, heartbeat};
 use crate::{
     consts::{INSPECTION_TIME_DNF, INSPECTION_TIME_PLUS2},
-    state::{GlobalState, Scene},
+    state::{GlobalState, Scene, Solve},
 };
-use alloc::string::ToString;
-use embassy_time::{Instant, Timer};
+use embassy_time::{Duration, Instant, Timer, with_timeout};
+
+/// Publishes the running time to the display, the BLE display and the logger.
+fn show_time(global_state: &GlobalState, ms: u64) {
+    global_state.timer.sender().send(ms);
+}
+
+/// Inspection → timer for a solve that started at `started` (no-op if it already has a time).
+fn start_timer(s: &mut Solve, started: Instant) -> bool {
+    if s.scene > Scene::Inspection || s.solve_time.is_some() {
+        return false;
+    }
+    if s.use_inspection() {
+        s.inspection_end = Some(started);
+    }
+    s.scene = Scene::Timer;
+    true
+}
 
 #[cfg(feature = "timer-func")]
+type Pads = (esp_hal::gpio::Input<'static>, esp_hal::gpio::Input<'static>);
+
+/// Pads timer: starts when a hand leaves the held pads, stops when both are touched again.
+/// Edge-triggered, so start/stop instants are exact to the interrupt latency.
+#[cfg(feature = "timer-func")]
 #[embassy_executor::task]
-pub async fn stackmat_task(
-    global_state: GlobalState,
-    mut pads: (esp_hal::gpio::Input<'static>, esp_hal::gpio::Input<'static>),
-) {
-    {
-        let mut state = global_state.state.lock().await;
-        state.stackmat_connected = Some(true);
-    }
+pub async fn stackmat_task(global_state: GlobalState, mut pads: Pads) {
+    use embassy_futures::select::{Either, select};
+
+    global_state
+        .status
+        .update(|s| s.stackmat_connected = Some(true));
+    // QA: the first touch of both pads stands in for "stackmat connected"
+    #[cfg(feature = "qa")]
+    let mut qa_touched = false;
 
     loop {
-        if pads.0.is_high() && pads.1.is_high() {
-            embassy_futures::select::select(pads.0.wait_for_low(), pads.1.wait_for_low()).await;
-            let timer_start = Instant::now();
-            global_state.timer_stop_signal.reset();
-
-            let mut state = global_state.state.lock().await;
-            if state.scene <= Scene::Inspection && state.solve_time.is_none() {
-                if state.use_inspection() {
-                    state.inspection_end = Some(Instant::now());
-                }
-
-                state.scene = Scene::Timer;
-                drop(state);
-
-                loop {
-                    let time = timer_start.elapsed().as_millis();
-
-                    if global_state.timer_stop_signal.signaled() {
-                        global_state.timer_stop_signal.wait().await;
-                        break;
-                    }
-
-                    let time_limit = unsafe { crate::state::GROUP_LIMIT };
-                    if let Some(limit) = time_limit
-                        && time > limit
-                    {
-                        global_state.timer_signal.signal(limit);
-                        global_state.bt_display_signal.signal(limit);
-                        unsafe {
-                            crate::state::CURRENT_TIME = Some(limit);
-                        }
-                        time_end(limit, true, &mut None, &global_state).await;
-                        break;
-                    } else {
-                        global_state.timer_signal.signal(time);
-                        global_state.bt_display_signal.signal(time);
-                        unsafe {
-                            crate::state::CURRENT_TIME = Some(time);
-                        }
-
-                        if pads.0.is_high() && pads.1.is_high() {
-                            time_end(time, false, &mut None, &global_state).await;
-                            embassy_futures::select::select(
-                                pads.0.wait_for_low(),
-                                pads.1.wait_for_low(),
-                            )
-                            .await;
-
-                            break;
-                        }
-                    }
-
-                    Timer::after_millis(1000 / 30).await;
-                }
-            } else {
-                drop(state);
-            }
+        heartbeat(TaskId::Stackmat);
+        if with_timeout(Duration::from_secs(10), both_pressed(&mut pads))
+            .await
+            .is_err()
+        {
+            continue;
         }
+        #[cfg(feature = "qa")]
+        if !core::mem::replace(&mut qa_touched, true) {
+            crate::qa::send_qa_resp(crate::qa::QaSignal::StackmatConnected);
+        }
+        // a hand lifted before the timer armed (or contact bounce): wait for a fresh touch
+        let early_release = select(pads.0.wait_for_low(), pads.1.wait_for_low());
+        let arm = Duration::from_millis(crate::consts::PADS_ARM_MS);
+        if with_timeout(arm, early_release).await.is_ok() {
+            continue;
+        }
+        wait_pad_release(&mut pads).await;
+        let timer_start = Instant::now();
+        global_state.timer_stop_signal.reset();
+        if !global_state.solve.update(|s| start_timer(s, timer_start)) {
+            continue;
+        }
+        crate::bench!(PADS_EVENT, timer_start.elapsed().as_micros());
 
-        Timer::after_millis(10).await;
+        loop {
+            heartbeat(TaskId::Stackmat);
+            let tick = select(Timer::after_millis(1000 / 30), both_pressed(&mut pads)).await;
+            let now = Instant::now();
+            let time = now.saturating_duration_since(timer_start).as_millis();
+            let limit = global_state.solve.read(Solve::time_limit);
+
+            if let Either::Second(()) = tick {
+                let (time, dnf) = match limit {
+                    Some(limit) if time > limit => (limit, true),
+                    _ => (time, false),
+                };
+                time_end(time, dnf, &global_state).await;
+                crate::bench!(PADS_EVENT, now.elapsed().as_micros());
+                show_time(&global_state, time);
+                wait_pad_release(&mut pads).await;
+                break;
+            }
+            if global_state.timer_stop_signal.try_take().is_some() {
+                break;
+            }
+            if let Some(limit) = limit
+                && time > limit
+            {
+                show_time(&global_state, limit);
+                time_end(limit, true, &global_state).await;
+                break;
+            }
+            show_time(&global_state, time);
+        }
+    }
+}
+
+/// Both pads touched (returns right away if they already are).
+#[cfg(feature = "timer-func")]
+async fn both_pressed(pads: &mut Pads) {
+    loop {
+        pads.0.wait_for_high().await;
+        pads.1.wait_for_high().await;
+        if pads.0.is_high() {
+            return;
+        }
+    }
+}
+
+/// Waits until a hand leaves the pads, beating the watchdog meanwhile.
+#[cfg(feature = "timer-func")]
+async fn wait_pad_release(pads: &mut Pads) {
+    use embassy_futures::select::select;
+    loop {
+        heartbeat(TaskId::Stackmat);
+        let released = select(pads.0.wait_for_low(), pads.1.wait_for_low());
+        if with_timeout(Duration::from_secs(10), released)
+            .await
+            .is_ok()
+        {
+            return;
+        }
     }
 }
 
@@ -90,301 +136,201 @@ pub async fn stackmat_task(
     uart_pin: esp_hal::gpio::AnyPin<'static>,
     global_state: GlobalState,
 ) {
-    use crate::{
-        state::sleep_state,
-        utils::stackmat::{StackmatTimerState, parse_stackmat_data},
-    };
-    use esp_hal::uart::UartRx;
+    use crate::utils::stackmat::{BYTE_US, Event, FRAME_RX_DELAY_US, Parser, Tracker};
+    use esp_hal::uart::{Config, RxConfig, UartRx};
 
-    let serial_config = esp_hal::uart::Config::default().with_baudrate(1200);
-    let Ok(mut uart) = UartRx::new(uart, serial_config).map(|u| u.with_rx(uart_pin)) else {
+    // threshold 1: every byte wakes the task, so it gets an exact timestamp
+    let config = Config::default()
+        .with_baudrate(1200)
+        .with_rx(RxConfig::default().with_fifo_full_threshold(1));
+    let Ok(uart) = UartRx::new(uart, config) else {
         log::error!("Stackmat task error while creating UartRx instance!");
         crate::utils::error_log::add_error(
             crate::utils::error_log::codes::STACKMAT_UART_INIT_FAILED,
-        )
-        .await;
+        );
         return;
     };
+    let mut uart = uart.with_rx(uart_pin).into_async();
 
-    #[cfg(feature = "e2e")]
-    let mut e2e_data = (StackmatTimerState::Reset, 0, esp_hal::time::Instant::now());
+    let mut parser = Parser::default();
+    let mut tracker = Tracker::new(FRAME_RX_DELAY_US);
+    let mut connected: Option<bool> = None;
+    let mut buf = [0u8; 16];
 
-    let mut buf = [0; 8];
-    let mut read_buf = [0; 8];
-    let mut last_read = esp_hal::time::Instant::now();
-    let mut last_time: Option<(Instant, u64)> = None;
-    let mut last_state = None;
-    let mut last_stackmat_state = StackmatTimerState::Unknown;
     loop {
-        if sleep_state() {
-            loop {
-                let n = uart.read_buffered(&mut read_buf);
-                if n.is_err() || n == Ok(0) {
-                    break;
-                }
+        heartbeat(TaskId::Stackmat);
+        let sleeping = crate::power::is_sleeping();
+        let now = Instant::now().as_micros();
+        let extrapolating = connected == Some(false) && tracker.running_ms(now).is_some();
+        let wait = match (sleeping, extrapolating) {
+            (true, _) => 500,
+            (_, true) => 1000 / 30,
+            _ => 100,
+        };
+
+        let n = match with_timeout(Duration::from_millis(wait), uart.read_async(&mut buf)).await {
+            Ok(Ok(n)) => n,
+            Ok(Err(e)) => {
+                log::debug!("stackmat uart: {e:?}");
+                Timer::after_millis(10).await;
+                0
+            }
+            Err(_) => 0,
+        };
+
+        if sleeping {
+            continue;
+        }
+        crate::bench!(STACKMAT_LOOP);
+
+        let now = Instant::now().as_micros();
+        for (i, &byte) in buf[..n].iter().enumerate() {
+            let Some(frame) = parser.push(byte) else {
+                continue;
+            };
+            // bytes read together arrived back to back
+            let at = now.saturating_sub((n - 1 - i) as u64 * BYTE_US);
+            if connected != Some(true) {
+                connected = Some(true);
+                global_state
+                    .status
+                    .update(|s| s.stackmat_connected = Some(true));
+                #[cfg(feature = "qa")]
+                crate::qa::send_qa_resp(crate::qa::QaSignal::StackmatConnected);
             }
 
-            Timer::after_millis(500).await;
+            if let Some(limit) = global_state.solve.read(Solve::time_limit)
+                && frame.1 > limit
+            {
+                show_time(&global_state, frame.1);
+                time_end(limit, true, &global_state).await;
+                tracker.end_solve();
+                global_state.solve.write(|s| s.limit_armed = false);
+                continue;
+            }
+
+            match tracker.frame(at, frame) {
+                Some(Event::Start { at }) => {
+                    if global_state
+                        .solve
+                        .update(|s| start_timer(s, Instant::from_micros(at)))
+                    {
+                        global_state.timer_stop_signal.reset();
+                    }
+                }
+                Some(Event::Stop(ms)) => time_end(ms, false, &global_state).await,
+                Some(Event::Reset) => global_state.solve.update(reset_from_timer),
+                None => {}
+            }
+
+            show_time(&global_state, frame.1);
+            crate::bench!(FRAME_PUBLISH, Instant::now().as_micros().saturating_sub(at));
+        }
+
+        if tracker.connected(now) {
             continue;
         }
 
-        if (esp_hal::time::Instant::now() - last_read).as_millis() > 500
-            && last_state != Some(false)
-        {
-            last_state = Some(false);
-            global_state.timer_stop_signal.reset();
-            if last_time.is_none() {
-                let mut state = global_state.state.lock().await;
-                state.stackmat_connected = Some(false);
-
-                if state.scene == Scene::Timer {
-                    if state.current_competitor.is_some() {
-                        state.scene = Scene::CompetitorInfo;
-                    } else {
-                        state.scene = Scene::WaitingForCompetitor;
-                    }
-                }
-            }
-        }
-
-        if last_state == Some(false)
-            && let Some((last_at, last_ms)) = last_time
-        {
-            let time_interpolated = last_ms + last_at.elapsed().as_millis();
-            let time_limit = unsafe { crate::state::GROUP_LIMIT };
-            if let Some(limit) = time_limit
-                && time_interpolated > limit
+        // no valid frame for a while: a running solve keeps going (button can stop it)
+        if let Some(ms) = tracker.running_ms(now) {
+            connected = Some(false);
+            if let Some(limit) = global_state.solve.read(Solve::time_limit)
+                && ms > limit
             {
-                global_state.timer_signal.signal(limit);
-                global_state.bt_display_signal.signal(limit);
-                unsafe {
-                    crate::state::CURRENT_TIME = Some(limit);
-                }
-                time_end(limit, true, &mut last_time, &global_state).await;
+                show_time(&global_state, limit);
+                time_end(limit, true, &global_state).await;
+                tracker.end_solve();
             } else {
-                global_state.timer_signal.signal(time_interpolated);
-                global_state.bt_display_signal.signal(time_interpolated);
-                unsafe {
-                    crate::state::CURRENT_TIME = Some(time_interpolated);
-                }
-
-                if global_state.timer_stop_signal.signaled() {
-                    time_end(time_interpolated, false, &mut last_time, &global_state).await;
+                show_time(&global_state, ms);
+                if global_state.timer_stop_signal.try_take().is_some() {
+                    time_end(ms, false, &global_state).await;
+                    tracker.end_solve();
                 }
             }
+        } else if connected != Some(false) {
+            connected = Some(false);
+            global_state.timer_stop_signal.reset();
+            global_state
+                .status
+                .update(|s| s.stackmat_connected = Some(false));
+            global_state.solve.update(|s| {
+                if s.scene == Scene::Timer {
+                    s.scene = match s.current_competitor {
+                        Some(_) => Scene::CompetitorInfo,
+                        None => Scene::WaitingForCompetitor,
+                    };
+                }
+            });
         }
-
-        Timer::after_millis(10).await;
-
-        #[cfg(feature = "e2e")]
-        let mut send_ack = false;
-
-        #[cfg(feature = "e2e")]
-        let n = {
-            if global_state.e2e.stackmat_sig.signaled() {
-                let data = global_state.e2e.stackmat_sig.wait().await;
-                e2e_data.0 = data.0;
-                e2e_data.1 = data.1;
-                e2e_data.2 = esp_hal::time::Instant::now();
-            }
-
-            let timer_ms = match e2e_data.0 {
-                StackmatTimerState::Unknown => 0,
-                StackmatTimerState::Reset => 0,
-                StackmatTimerState::Running => {
-                    let mut time = (esp_hal::time::Instant::now() - e2e_data.2).as_millis();
-                    if time >= e2e_data.1 {
-                        time = e2e_data.1;
-                        e2e_data.0 = StackmatTimerState::Stopped;
-                        send_ack = true;
-                    }
-
-                    time
-                }
-                StackmatTimerState::Stopped => e2e_data.1,
-            };
-
-            read_buf.copy_from_slice(&crate::utils::stackmat::generate_stackmat_data(
-                &e2e_data.0,
-                timer_ms,
-            ));
-
-            8
-        };
-
-        #[cfg(not(feature = "e2e"))]
-        let n = {
-            let n = uart.read_buffered(&mut read_buf);
-            let n = match n {
-                Ok(n) => n,
-                Err(e) => {
-                    #[cfg(not(feature = "release_build"))]
-                    {
-                        log::error!("uart: read_bytes err {e:?}");
-                    }
-
-                    continue;
-                }
-            };
-
-            if n == 0 {
-                continue;
-            }
-
-            n
-        };
-
-        for &r in &read_buf[..n] {
-            if n == 0 || r == 0 || r == b'\r' {
-                continue;
-            }
-
-            unsafe {
-                core::ptr::copy(buf.as_ptr().offset(1), buf.as_mut_ptr(), 7);
-            }
-
-            buf[7] = r;
-            if let Ok(parsed) = parse_stackmat_data(&buf) {
-                if last_state != Some(true) {
-                    global_state.state.lock().await.stackmat_connected = Some(true);
-                    last_state = Some(true);
-
-                    #[cfg(feature = "qa")]
-                    crate::qa::send_qa_resp(crate::qa::QaSignal::StackmatConnected);
-                }
-
-                unsafe {
-                    crate::state::CURRENT_TIME = Some(parsed.1);
-                }
-
-                let time_limit = unsafe { crate::state::GROUP_LIMIT };
-                if let Some(limit) = time_limit
-                    && parsed.1 > limit
-                {
-                    time_end(limit, true, &mut last_time, &global_state).await;
-                    unsafe {
-                        crate::state::GROUP_LIMIT = None;
-                    }
-                    continue;
-                }
-                last_time = Some((Instant::now(), parsed.1));
-
-                if parsed.0 != last_stackmat_state && parsed.0 != StackmatTimerState::Unknown {
-                    if parsed.0 == StackmatTimerState::Running {
-                        let mut state = global_state.state.lock().await;
-                        if state.scene <= Scene::Inspection && state.solve_time.is_none() {
-                            if state.use_inspection() {
-                                state.inspection_end = Some(Instant::now());
-                            }
-
-                            state.scene = Scene::Timer;
-                            global_state.timer_stop_signal.reset();
-                        }
-                    } else if parsed.0 == StackmatTimerState::Stopped {
-                        time_end(parsed.1, false, &mut last_time, &global_state).await;
-                    } else if parsed.0 == StackmatTimerState::Reset {
-                        let mut state = global_state.state.lock().await;
-                        if state.current_competitor.is_none()
-                            && state.penalty.is_none()
-                            && (state.scene == Scene::Timer
-                                || state.scene == Scene::WaitingForCompetitor)
-                        {
-                            state.scene = Scene::WaitingForCompetitor;
-                            state.solve_time = None;
-                            state.penalty = None;
-                            state.inspection_start = None;
-                            state.inspection_end = None;
-                            last_time = None;
-                        } else if state.current_competitor.is_some() && state.scene == Scene::Timer
-                        {
-                            state.scene = Scene::Finished;
-                            state.solve_time = Some(0);
-                            state.penalty = Some(-1);
-
-                            if state.session_id.is_none() {
-                                state.session_id = Some(uuid::Uuid::new_v4().to_string());
-                                unsafe {
-                                    crate::state::CURRENT_SESSION_ID = state.session_id.clone();
-                                }
-                            }
-
-                            state.time_confirmed = true;
-                            last_time = None;
-                        }
-                    }
-
-                    last_stackmat_state = parsed.0;
-                }
-
-                #[cfg(feature = "e2e")]
-                if send_ack {
-                    crate::ws::send_test_ack(&global_state).await;
-                }
-
-                global_state.timer_signal.signal(parsed.1);
-                global_state.bt_display_signal.signal(parsed.1);
-            }
-        }
-
-        last_read = esp_hal::time::Instant::now();
     }
 }
 
-async fn time_end(
-    time: u64,
-    dnf: bool,
-    last_time: &mut Option<(Instant, u64)>,
-    global_state: &GlobalState,
-) {
-    let mut state = global_state.state.lock().await;
-    let inspection_time = state
-        .inspection_end
-        .zip(state.inspection_start)
-        .map(|(end, start)| (end - start).as_millis())
-        .unwrap_or(0);
+/// The timer was reset: clears an anonymous attempt, or DNFs a running one of a competitor.
+#[cfg(not(feature = "timer-func"))]
+fn reset_from_timer(s: &mut Solve) {
+    if s.current_competitor.is_none()
+        && s.penalty.is_none()
+        && (s.scene == Scene::Timer || s.scene == Scene::WaitingForCompetitor)
+    {
+        s.scene = Scene::WaitingForCompetitor;
+        s.solve_time = None;
+        s.inspection_start = None;
+        s.inspection_end = None;
+    } else if s.current_competitor.is_some() && s.scene == Scene::Timer {
+        s.scene = Scene::Finished;
+        s.solve_time = Some(0);
+        s.penalty = Some(-1);
+        s.session_id
+            .get_or_insert_with(crate::state::new_session_id);
+        s.time_confirmed = true;
+    }
+}
 
-    log::info!(
-        "Timer stopped: {}ms (inspection: {inspection_time}ms)",
-        time
-    );
-    if state.solve_time.is_none() {
-        state.delegate_used = false;
-        state.solve_time = Some(time);
-        state.penalty = if inspection_time >= INSPECTION_TIME_DNF || dnf {
+async fn time_end(time: u64, dnf: bool, global_state: &GlobalState) {
+    // `None` = this attempt already had a time; `Some(saved copy)` = new time recorded
+    let recorded = global_state.solve.update(|s| {
+        let inspection_time = s.inspection_end.and(s.inspection_ms()).unwrap_or(0);
+        log::info!("Timer stopped: {time}ms (inspection: {inspection_time}ms)");
+
+        if s.solve_time.is_some() {
+            if s.scene == Scene::Timer {
+                s.scene = Scene::WaitingForCompetitor;
+            }
+            return None;
+        }
+
+        s.delegate_used = false;
+        s.solve_time = Some(time);
+        s.penalty = if inspection_time >= INSPECTION_TIME_DNF || dnf {
             Some(-1)
         } else if inspection_time >= INSPECTION_TIME_PLUS2 {
             Some(2)
         } else {
             None
         };
+        s.session_id
+            .get_or_insert_with(crate::state::new_session_id);
 
-        if state.session_id.is_none() {
-            state.session_id = Some(uuid::Uuid::new_v4().to_string());
-            unsafe {
-                crate::state::CURRENT_SESSION_ID = state.session_id.clone();
-            }
-        }
-
-        if state.current_competitor.is_some() {
-            if state.possible_groups.len() > 1 && state.solve_group.is_none() {
-                state.scene = Scene::GroupSelect;
+        if s.current_competitor.is_some() {
+            s.scene = if s.possible_groups.len() > 1 && s.solve_group.is_none() {
+                Scene::GroupSelect
             } else {
-                state.scene = Scene::Finished;
-            }
-        } else if state.scene >= Scene::WaitingForCompetitor {
-            state.scene = Scene::WaitingForCompetitor;
+                Scene::Finished
+            };
+        } else if s.scene >= Scene::WaitingForCompetitor {
+            s.scene = Scene::WaitingForCompetitor;
         }
 
-        #[cfg(not(feature = "qa"))]
-        if let Some(saved_state) = state.to_saved_global_state() {
-            saved_state.to_nvs(&global_state.nvs).await;
-        }
+        Some(s.to_saved())
+    });
 
-        #[cfg(feature = "qa")]
+    #[cfg(feature = "qa")]
+    if recorded.is_some() {
         crate::qa::send_qa_resp(crate::qa::QaSignal::Stackmat(time));
-    } else if state.scene == Scene::Timer {
-        state.scene = Scene::WaitingForCompetitor;
     }
 
-    *last_time = None;
+    // the flash write happens after the state is released
+    if let Some(Some(saved)) = recorded {
+        saved.to_nvs(global_state.nvs).await;
+    }
 }

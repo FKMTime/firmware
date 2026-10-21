@@ -1,0 +1,21 @@
+{"seed": 90109, "note": "cutoff missed: the next scan answers No attempts left and resets the device", "server": {"rounds": {"333-bf": {"attempts": 3, "cutoff": {"attempts": 1, "value": 100}}}}, "actions": [
+[500, "card", 3004425529],
+[10, "expect", "scene", "CompetitorInfo"],
+[1500, "stk", "start"],
+[10, "expect", "scene", "Timer"],
+[1500, "stk", "stop"],
+[10, "expect", "scene", "Finished"],
+[300, "btn", 3, 150],
+[10, "expect", "conf", 1],
+[500, "card", 1264825046],
+[10, "expect", "judge", 1264825046],
+[500, "card", 3004425529],
+[10, "expect", "comp", -1],
+[10, "expect", "scene", "WaitingForCompetitor"],
+[1000, "card", 3004425529],
+[10, "expect", "err", 1],
+[10, "expect", "comp", -1],
+[300, "btn", 3, 150],
+[10, "expect", "err", 0],
+[10, "expect_db", 3004425529, [{"status": "standard"}]]
+]}

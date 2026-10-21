@@ -1,0 +1,19 @@
+{"seed": 90102, "note": "delegate resolves without cards: the device goes back to idle", "actions": [
+[500, "card", 69420],
+[10, "expect", "scene", "CompetitorInfo"],
+[300, "btn", 1, 150],
+[10, "expect", "scene", "Inspection"],
+[1500, "stk", "start"],
+[10, "expect", "scene", "Timer"],
+[1500, "stk", "stop"],
+[10, "expect", "scene", "Finished"],
+[300, "btn", 2, 3600],
+[10, "expect", "held", 0],
+[10, "expect", "dhold", 3],
+[3000, "expect", "dhold", 3],
+[10, "resolve", {"status": "resolved", "noCards": true}],
+[10, "expect", "comp", -1],
+[10, "expect", "time", -1],
+[10, "expect", "dhold", -1],
+[10, "expect_db", 69420, [{"status": "standard"}, {"status": "resolved", "judgeId": null}]]
+]}

@@ -1,3 +1,5 @@
+cargo-features = ["profile-rustflags"]
+
 [package]
 name = "fkm-firmware"
 version = "0.1.0"
@@ -5,59 +7,49 @@ authors = ["filipton <filipton12@gmail.com>"]
 edition = "2024"
 
 [dependencies]
-esp-backtrace = { version = "0.19.0", features = [ "panic-handler", "println", "custom-pre-backtrace", "custom-halt", "esp32c3" ] }
-esp-hal = { version = "1.1.1", features = [ "esp32c3" ] }
-esp-println = { version = "0.17.0", features = ["log-04", "esp32c3"] }
-log = { version = "0.4.30" }
-esp-radio = { version = "1.0.0-beta.0", features = ["coex", "esp32c3"] }
-esp-rtos = { version = "0.3.0", features = ["esp32c3", "embassy", "esp-radio"] }
+esp-backtrace = { version = "0.20.0", features = [ "panic-handler", "println", "custom-pre-backtrace", "custom-halt", "esp32c3" ] }
+esp-hal = { version = "1.2.2", features = [ "esp32c3" ] }
+esp-println = { version = "0.18.0", features = ["log-04", "esp32c3"] }
+log = { version = "0.4.34", features = ["release_max_level_info"] }
+esp-radio = { version = "1.0.0-beta.1", features = ["coex", "esp32c3", "unstable"] }
+esp-rtos = { version = "0.4.0", features = ["esp32c3", "embassy", "esp-radio"] }
 embassy-executor = { version = "0.10.0", features = ["nightly"] }
 embassy-net = { version = "0.9.1", features = ["tcp", "udp", "multicast", "dhcpv4", "medium-ethernet", "proto-ipv4", "dns"] }
 embassy-time = { version = "0.5.1" }
-esp-storage = { version = "0.9.0", features = ["esp32c3"] }
-embedded-storage = "0.3.1"
+esp-storage = { version = "0.10.0", features = ["esp32c3", "embedded-storage"] }
 static_cell = { version = "2.1.1", features = ["nightly"] }
 heapless = { version = "0.9.3", default-features = false }
-esp-alloc = "0.10.0"
-#esp-hal-wifimanager = { version = "0.2.10", default-features = false, features = ["ap", "ble", "esp32c3", "ota", "custom_panel"] }
-esp-hal-wifimanager = { git = "https://github.com/filipton/esp-hal-wifimanager.git", default-features = false, features = ["ap", "ble", "esp32c3", "ota", "custom_panel"] }
-serde = { version = "1.0.228", features = ["alloc", "derive"], default-features = false }
-serde_json = { version = "1.0.150", default-features = false, features = ["alloc"] }
+esp-alloc = { version = "0.11.0", features = ["internal-heap-stats"] }
+
+esp-hal-wifimanager = { version = "0.6.4", default-features = false, features = ["ap", "ble", "esp32c3", "ota", "custom_panel"] }
+serde = { version = "1.0.229", features = ["alloc", "derive"], default-features = false }
+serde_json = { version = "1.0.154", default-features = false, features = ["alloc"] }
 adv-shift-registers = "0.2.5"
 embedded-hal = "1.0.0"
-esp-hal-mdns = "0.1.4"
-embedded-io-async = "0.7.0"
-macros = { path = "./macros" }
-nb = "1.1.0"
+esp-hal-mdns = { version = "0.2.0", features = ["embassy"] }
 embassy-futures = "0.1.2"
-embassy-sync = "0.7.2"
-ws-framer = { version = "0.3.2", default-features = false, features = ["alloc", "http", "getrandom02"] }
+embassy-sync = "0.8.0"
+ws-framer = { version = "0.4.0", default-features = false, features = ["http", "getrandom02"] }
+serde-json-core = { version = "0.7.0", default-features = false }
 embedded-hal-async = "1.0.0"
-portable-atomic = { version = "1.13.1", default-features = false }
-critical-section = "1.2.0"
+portable-atomic = { version = "1.15.0", default-features = false }
 getrandom = { version = "=0.2.15", features = ["custom"] }
 uuid = { version = "=1.12.1", default-features = false, features = ["v4"] }
-esp-hal-ota = { version = "0.5.7", features = ["esp32c3"] }
-esp32c3 = { version = "0.32.2" }
-anyhow = { version = "1.0.103", default-features = false }
+esp-hal-ota = { version = "0.7.1", features = ["esp32c3"] }
+esp32c3 = { version = "0.33.0" }
 embedded-hal-bus = { version = "0.3.0", features = ["async"] }
-#embedded-tls = { git = "https://github.com/drogue-iot/embedded-tls.git", default-features = false, features = ["alloc", "embedded-io-adapters", "log"] }
-embedded-tls = { git = "https://github.com/filipton/embedded-tls", default-features = false, features = ["alloc", "embedded-io-adapters", "log"] }
-rand_core = { version = "0.6.4", features = ["getrandom"] }
-esp-hal-mfrc522 = { version = "0.3.3", features = ["embassy-time"] }
-esp-bootloader-esp-idf = { version = "0.5.0", features = ["log-04", "esp32c3"] }
-trouble-host = { version = "0.6.0", features = ["scan", "security"] }
+embedded-tls = { git = "https://github.com/embassy-rs/embedded-tls", rev = "58126ee5c453147a5e00684075f001d7ef962ca3", default-features = false, features = ["log", "p256"] }
+# same embassy rev as embedded-tls uses
+embassy-crypto = { git = "https://github.com/embassy-rs/embassy", rev = "822a76ea91f2c0885c6eb0c65fe91181e31133e1" }
+embassy-crypto-rustcrypto = { git = "https://github.com/embassy-rs/embassy", rev = "822a76ea91f2c0885c6eb0c65fe91181e31133e1", features = ["embassy-crypto-sha256", "embassy-crypto-hmac-sha256", "embassy-crypto-aes128-gcm", "embassy-crypto-p256-arith", "embassy-crypto-p256-ecdh", "embassy-crypto-p256-ecdsa"] }
+esp-hal-mfrc522 = { version = "0.4.0", features = ["embassy-time"] }
+esp-bootloader-esp-idf = { version = "0.6.0", features = ["log-04", "esp32c3"] }
+trouble-host = { version = "0.7.0", features = ["scan", "security"] }
 
 # v4 only
-display-interface = { version = "0.5.0", optional = true }
-display-interface-i2c = { version = "0.5.0", optional = true }
 embedded-graphics = { version = "0.8.2", optional = true }
-embedded-graphics-framebuf = { version = "0.5.0", optional = true }
-oled_async = { version = "0.2.1", features = ["i2c"], optional = true }
-bq27441 = { version = "0.1.0", features = ["async", "embassy"], optional = true }
+bq27441 = { version = "0.3.0", features = ["async", "embassy"], optional = true }
 profont = { version = "0.7.0", optional = true }
-embedded-layout = { version = "0.4.2", optional = true }
-embedded-text = { version = "0.7.3", optional = true }
 qrcodegen-no-heap = { version = "1.8.1", optional = true }
 
 #v3 only
@@ -65,17 +57,19 @@ dyn-smooth = { version = "0.2.0", optional = true }
 ag-lcd-async = { git = "https://github.com/filipton/ag-lcd-async", features = [], optional = true }
 
 [features]
+# on-device timing stats (stackmat, pads, rfid, lcd), logged every 5 s: cargo build -r --features bench
+bench = []
+# esp-emu simulation build, see sim/README.md
+sim = ["auto_add"]
 default = ["sleep", "v4", "timer-func"]
-gen_version = []
 bat_dev_lcd = []
 release_build = ["sleep"]
-e2e = []
 qa = []
 timer-func = []
 sleep = []
 auto_add = []
 v3 = ["dep:dyn-smooth", "dep:ag-lcd-async"]
-v4 = ["dep:display-interface", "dep:display-interface-i2c", "dep:embedded-graphics", "dep:embedded-graphics-framebuf", "dep:oled_async", "dep:bq27441", "dep:profont", "dep:embedded-layout", "dep:embedded-text", "dep:qrcodegen-no-heap"]
+v4 = ["dep:embedded-graphics", "dep:bq27441", "dep:profont", "dep:qrcodegen-no-heap"]
 
 [profile.dev]
 opt-level = 3
@@ -86,8 +80,11 @@ debug = 2
 debug-assertions = false
 incremental = false
 lto = 'fat'
-opt-level = 's'
+# size first; the radio and HAL drivers (I2C/SPI used by the display) stay at speed below
+opt-level = 'z'
 overflow-checks = false
+# panics keep their message; crash reports use the backtrace addresses (addr2line), not file:line
+rustflags = ["-Zlocation-detail=none"]
 
 [profile.dev.package.esp-radio]
 opt-level = 3
@@ -103,3 +100,11 @@ opt-level = 3
 
 [build-dependencies]
 dotenvy = "0.15.7"
+serde_json = "1.0.154"
+
+# slimmer esp-nvs (sorted vec map instead of btreemap, same on-flash format)
+[patch.crates-io]
+esp-nvs = { git = "https://github.com/filipton/esp-nvs.git", rev = "af9a88793ada2496efb7420f26b96823e3b42842" }
+
+# Cache the detected flash size before ROM reads change SPI1 state (see vendor/README.md).
+esp-storage = { path = "vendor/esp-storage" }

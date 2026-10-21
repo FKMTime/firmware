@@ -1,26 +1,8 @@
-use crate::{
-    consts::BATTERY_SEND_INTERVAL_MS, state::sleep_state, utils::rolling_average::RollingAverage,
-};
+use crate::consts::BATTERY_SEND_INTERVAL_MS;
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 
 type AdcCal = esp_hal::analog::adc::AdcCalCurve<esp_hal::peripherals::ADC1<'static>>;
-
-const BATTERY_CURVE: [(f64, u8); 11] = [
-    (3350.0, 0),
-    (3400.0, 13),
-    (3450.0, 19),
-    (3500.0, 25),
-    (3550.0, 31),
-    (3600.0, 38),
-    (3700.0, 50),
-    (3800.0, 63),
-    (3900.0, 75),
-    (4000.0, 88),
-    (4100.0, 100),
-];
-const BAT_MIN: f64 = BATTERY_CURVE[0].0;
-const BAT_MAX: f64 = BATTERY_CURVE[BATTERY_CURVE.len() - 1].0;
 
 #[embassy_executor::task]
 pub async fn battery_read_task(
@@ -39,32 +21,28 @@ pub async fn battery_read_task(
     let sample_freq = 1000.0;
     let sensitivity = 0.5;
     let mut smoother = dyn_smooth::DynamicSmootherEcoF32::new(base_freq, sample_freq, sensitivity);
-    let mut avg = RollingAverage::<128>::new();
     let mut lcd_sent = false;
 
     let mut sample_rate_millis = 10;
     loop {
         Timer::after_millis(sample_rate_millis).await;
-        if sleep_state() {
+        if crate::power::is_sleeping() {
             Timer::after_millis(500).await;
             continue;
         }
 
         let read = adc.read_oneshot(&mut adc_pin).await;
         let read = smoother.tick(read as f32);
-        avg.push(read);
 
         #[cfg(feature = "bat_dev_lcd")]
-        {
-            let mut state = state.state.lock().await;
-            state.current_bat_read = Some(read);
-        }
+        state.battery.write(|b| b.current_read = Some(read));
 
         let now = Instant::now();
         if !lcd_sent && battery_start <= now {
-            state
-                .show_battery
-                .signal(bat_percentage(calculate(read as f64)));
+            let percent =
+                crate::utils::battery::percent(crate::utils::battery::adc_to_mv(read as f64));
+            state.battery.write(|b| b.percent = percent);
+            state.battery_ready.signal(());
 
             lcd_sent = true;
             sample_rate_millis = 100;
@@ -75,56 +53,21 @@ pub async fn battery_read_task(
         }
 
         battery_start = Instant::now();
-        let bat_calc_mv = calculate(read as f64);
-        let bat_percentage = bat_percentage(bat_calc_mv);
+        let bat_calc_mv = crate::utils::battery::adc_to_mv(read as f64);
+        let bat_percentage = crate::utils::battery::percent(bat_calc_mv);
 
-        if state.state.lock().await.server_connected == Some(true) {
-            crate::ws::send_packet(crate::structs::TimerPacket {
+        if state.status.read(|s| s.server_connected) == Some(true) {
+            _ = crate::ws::send(crate::structs::TimerPacket {
                 tag: None,
                 data: crate::structs::TimerPacketInner::Battery {
                     level: Some(bat_percentage as f64),
                     voltage: Some(bat_calc_mv / 1000.0),
                 },
-            })
-            .await;
+            });
         }
 
         log::info!("calc({read}): {bat_calc_mv}mV {bat_percentage}%");
         #[cfg(feature = "bat_dev_lcd")]
-        {
-            let mut state = state.state.lock().await;
-            state.avg_bat_read = avg.average();
-        }
+        state.battery.write(|b| b.avg_read = Some(read));
     }
-}
-
-fn interpolate(v1: f64, p1: u8, v2: f64, p2: u8, voltage: f64) -> u8 {
-    let percentage = p1 as f64 + (voltage - v1) * (p2 as f64 - p1 as f64) / (v2 - v1);
-    percentage as u8
-}
-
-fn bat_percentage(mv: f64) -> u8 {
-    if mv <= BAT_MIN {
-        return 0;
-    }
-    if mv >= BAT_MAX {
-        return 100;
-    }
-
-    // Find the two closest voltage points in our curve
-    for window in BATTERY_CURVE.windows(2) {
-        let (v1, p1) = window[0];
-        let (v2, p2) = window[1];
-
-        if mv >= v1 && mv <= v2 {
-            return interpolate(v1, p1, v2, p2, mv);
-        }
-    }
-
-    // Fallback to linear interpolation if something goes wrong
-    ((mv - BAT_MIN) / (BAT_MAX - BAT_MIN) * 100.0) as u8
-}
-
-fn calculate(x: f64) -> f64 {
-    1.69874 * x + 66.6103
 }
