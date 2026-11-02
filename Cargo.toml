@@ -108,3 +108,6 @@ esp-nvs = { git = "https://github.com/filipton/esp-nvs.git", rev = "af9a88793ada
 
 # Cache the detected flash size before ROM reads change SPI1 state (see vendor/README.md).
 esp-storage = { path = "vendor/esp-storage" }
+
+# valid BLE setup address; drop for the next esp-hal-wifimanager release (filipton/esp-hal-wifimanager#3)
+esp-hal-wifimanager = { git = "https://github.com/maxidragon/esp-hal-wifimanager", rev = "0bf60707a4a148ff748fdab82ad99d3cb3bdd053" }
