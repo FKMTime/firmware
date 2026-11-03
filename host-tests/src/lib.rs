@@ -27,6 +27,157 @@ pub mod structs;
 pub mod old_structs;
 #[path = "../../src/bluetooth/codec.rs"]
 pub mod ble_codec;
+#[path = "../../src/utils/live_header.rs"]
+pub mod live_header;
+#[path = "../../src/utils/live_send.rs"]
+pub mod live_send;
+
+#[cfg(test)]
+mod live_send_tests {
+    use crate::live_send::*;
+
+    #[test]
+    fn active_sends_every_second() {
+        assert!(!should_send(true, false, 999, false));
+        assert!(should_send(true, false, 1000, false));
+    }
+
+    #[test]
+    fn idle_sends_keep_alive_every_5_s() {
+        for ms in [1000, 2000, 4999] {
+            assert!(!should_send(false, false, ms, false));
+        }
+        assert!(should_send(false, false, 5000, false));
+        // a never-sent station sends at once
+        assert!(should_send(false, false, u64::MAX, false));
+    }
+
+    #[test]
+    fn idle_logs_still_go_every_second() {
+        assert!(!should_send(false, true, 999, false));
+        assert!(should_send(false, true, 1000, false));
+    }
+
+    #[test]
+    fn change_sends_at_once_but_rate_limited() {
+        for (active, has_logs) in [(false, false), (true, false), (false, true), (true, true)] {
+            assert!(!should_send(active, has_logs, 0, true));
+            assert!(!should_send(active, has_logs, 99, true));
+            assert!(should_send(active, has_logs, 100, true));
+            assert!(should_send(active, has_logs, 400, true));
+        }
+    }
+
+    #[test]
+    fn flapping_change_is_capped_at_10_per_second() {
+        // a change on every 10 ms tick for 1 s
+        let (mut last, mut sent) = (None::<u64>, 0);
+        for now in (0..1000).step_by(10) {
+            let since = last.map_or(u64::MAX, |l| now - l);
+            if should_send(false, false, since, true) {
+                last = Some(now);
+                sent += 1;
+            }
+        }
+        assert_eq!(sent, 10);
+    }
+}
+
+#[cfg(test)]
+mod live_header_tests {
+    use crate::live_header::*;
+
+    fn header(timer_running: bool, inspection_running: bool) -> LogsHeader<'static> {
+        LogsHeader {
+            current_time: Some(12_345),
+            inspection_time: None,
+            competitor: Some(7),
+            group_id: Some("333-r1-g2"),
+            session_id: Some("0b6a7d2e-1f4c-4f7e-9b1a-2c3d4e5f6a7b"),
+            timer_running,
+            inspection_running,
+        }
+    }
+
+    /// A batch with no log lines, written over stale bytes like the reused buffer half.
+    fn header_only(header: &LogsHeader) -> [u8; HEADER_LEN] {
+        let mut batch = [0xAA; HEADER_LEN];
+        init_batch(&mut batch);
+        write_header(&mut batch, header);
+        batch
+    }
+
+    #[test]
+    fn header_only_batch_layout() {
+        let batch = header_only(&header(true, false));
+        assert_eq!(batch.len(), 100);
+        assert_eq!(&batch[..2], b"L\x00");
+        assert_eq!(batch[2..10], 12_345u64.to_be_bytes());
+        assert_eq!(batch[10..18], u64::MAX.to_be_bytes());
+        assert_eq!(batch[18..26], 7u64.to_be_bytes());
+        assert_eq!(&batch[26..35], b"333-r1-g2");
+        assert!(batch[35..46].iter().all(|&b| b == 0));
+        assert_eq!(&batch[46..82], b"0b6a7d2e-1f4c-4f7e-9b1a-2c3d4e5f6a7b");
+        assert_eq!(&batch[82..84], b"LV");
+        assert_eq!(batch[84], 1);
+        assert_eq!(batch[85], 0b01);
+        assert!(batch[86..].iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn flags_follow_running_state() {
+        for (timer, inspection, flags) in [
+            (false, false, 0b00),
+            (true, false, 0b01),
+            (false, true, 0b10),
+            (true, true, 0b11),
+        ] {
+            assert_eq!(header_only(&header(timer, inspection))[85], flags);
+        }
+    }
+
+    #[test]
+    fn empty_state_is_none_and_zeroes() {
+        let batch = header_only(&LogsHeader {
+            current_time: None,
+            inspection_time: None,
+            competitor: None,
+            group_id: None,
+            session_id: None,
+            timer_running: false,
+            inspection_running: false,
+        });
+        for field in [2..10, 10..18, 18..26] {
+            assert_eq!(batch[field], u64::MAX.to_be_bytes());
+        }
+        assert!(batch[26..82].iter().all(|&b| b == 0));
+        assert_eq!(&batch[82..86], b"LV\x01\x00");
+    }
+
+    #[test]
+    fn header_keeps_truncated_flag_and_log_lines() {
+        let mut batch = [0u8; HEADER_LEN + 4];
+        init_batch(&mut batch);
+        batch[1] = 0x01; // set by the logger when the half filled up
+        batch[HEADER_LEN..].copy_from_slice(&[0, 2, b'I', b' ']);
+        write_header(&mut batch, &header(false, true));
+        assert_eq!(&batch[..2], b"L\x01");
+        assert_eq!(batch[85], 0b10);
+        assert_eq!(batch[HEADER_LEN..], [0, 2, b'I', b' ']);
+    }
+
+    #[test]
+    fn oversized_ids_are_left_empty() {
+        let long = "x".repeat(37);
+        let batch = header_only(&LogsHeader {
+            group_id: Some(&long[..21]),
+            session_id: Some(&long),
+            ..header(false, false)
+        });
+        assert!(batch[26..82].iter().all(|&b| b == 0));
+        assert_eq!(&batch[82..84], b"LV");
+    }
+}
 
 #[cfg(test)]
 mod ble_tests {

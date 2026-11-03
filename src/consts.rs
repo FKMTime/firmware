@@ -7,7 +7,9 @@ pub const SLEEP_AFTER_MS: u64 = 60000 * 5;
 pub const DEEPER_SLEEP_AFTER_MS: u64 = 60000 * 15;
 
 pub const PRINT_HEAP_INTERVAL_MS: u64 = 30000;
-pub const LOG_SEND_INTERVAL_MS: u64 = 1000;
+/// Sends tried right away for a start/stop or competitor change before it waits for the next
+/// interval (send intervals: `utils::live_send`).
+pub const LIVE_URGENT_TRIES: u8 = 5;
 
 pub const BATTERY_SEND_INTERVAL_MS: u64 = 60000;
 

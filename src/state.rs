@@ -31,6 +31,12 @@ pub fn notify() {
     CHANGED.signal(());
 }
 
+/// The attempt changed (may have started or stopped timing). Single consumer: the logger task,
+/// which sends live state right away if the running flags or the competitor differ from the
+/// last batch. Kept apart from [`CHANGED`] so it never counts as activity for the idle-sleep
+/// timer.
+pub static SOLVE_CHANGED: Signal<Cs, ()> = Signal::new();
+
 /// One domain of shared state. Access is synchronous (no `.await` inside the closure),
 /// so a lock can never be held across a network round trip.
 ///
@@ -40,27 +46,41 @@ pub fn notify() {
 /// `M = NoopRawMutex` (default) costs nothing and keeps interrupts on: every task runs on the
 /// one embassy executor and no interrupt handler touches these domains, so a closure can't be
 /// interrupted by another reader. Use `Cs` for statics read from interrupt-ish paths.
-pub struct Shared<T, M: RawMutex = NoopRawMutex>(BlockingMutex<M, RefCell<T>>);
+pub struct Shared<T, M: RawMutex = NoopRawMutex> {
+    value: BlockingMutex<M, RefCell<T>>,
+    /// Also signalled by [`Shared::update`] on a change.
+    on_change: Option<&'static Signal<Cs, ()>>,
+}
 
 impl<T, M: RawMutex> Shared<T, M> {
     pub const fn new(value: T) -> Self {
-        Self(BlockingMutex::new(RefCell::new(value)))
+        Self {
+            value: BlockingMutex::new(RefCell::new(value)),
+            on_change: None,
+        }
+    }
+
+    pub const fn with_on_change(value: T, on_change: &'static Signal<Cs, ()>) -> Self {
+        Self {
+            value: BlockingMutex::new(RefCell::new(value)),
+            on_change: Some(on_change),
+        }
     }
 
     pub fn read<R>(&self, f: impl FnOnce(&T) -> R) -> R {
-        self.0.lock(|v| f(&v.borrow()))
+        self.value.lock(|v| f(&v.borrow()))
     }
 
     /// Changes the value without waking the display (e.g. battery readings).
     pub fn write<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
-        self.0.lock(|v| f(&mut v.borrow_mut()))
+        self.value.lock(|v| f(&mut v.borrow_mut()))
     }
 }
 
 impl<T: Hash, M: RawMutex> Shared<T, M> {
     /// Changes the value and wakes the display if it actually changed.
     pub fn update<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
-        let (changed, r) = self.0.lock(|v| {
+        let (changed, r) = self.value.lock(|v| {
             let mut v = v.borrow_mut();
             let before = hash_of(&*v);
             let r = f(&mut v);
@@ -68,6 +88,9 @@ impl<T: Hash, M: RawMutex> Shared<T, M> {
         });
         if changed {
             notify();
+            if let Some(on_change) = self.on_change {
+                on_change.signal(());
+            }
         }
         r
     }
@@ -237,6 +260,18 @@ impl Solve {
 
     pub fn use_inspection(&self) -> bool {
         self.solve_group.as_ref().is_none_or(|g| g.use_inspection)
+    }
+
+    /// The solve timer is counting up now (started, no time recorded yet).
+    pub fn timer_running(&self) -> bool {
+        self.scene == Scene::Timer && self.solve_time.is_none()
+    }
+
+    /// Inspection is counting now (started, not yet ended by the timer start or a DNF).
+    pub fn inspection_running(&self) -> bool {
+        self.scene == Scene::Inspection
+            && self.inspection_start.is_some()
+            && self.inspection_end.is_none()
     }
 
     /// Inspection duration so far (running) or in total (ended).
@@ -429,7 +464,7 @@ pub struct GlobalStateInner {
 impl GlobalStateInner {
     pub fn new(nvs: &'static Nvs, aes: esp_hal::peripherals::AES<'static>) -> Self {
         Self {
-            solve: Shared::new(Solve::new()),
+            solve: Shared::with_on_change(Solve::new(), &SOLVE_CHANGED),
             ui: Shared::new(Ui::new()),
             status: Shared::new(Status::default()),
             battery: Shared::new(Battery::default()),

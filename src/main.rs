@@ -11,7 +11,6 @@ compile_error!("feature `bat_dev_lcd` is a v3 battery debug screen");
 extern crate alloc;
 use crate::consts::NVS_SIGN_KEY;
 use board::Board;
-use consts::LOG_SEND_INTERVAL_MS;
 use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
 use embassy_time::{Instant, Timer};
@@ -424,30 +423,93 @@ async fn restore_saved_state_task(global_state: GlobalState, nvs: &'static Nvs) 
     }
 }
 
+/// Live state of the attempt for a log batch header.
+fn live_header(s: &state::Solve, current_time: Option<u64>) -> utils::logger::LogsHeader<'_> {
+    utils::logger::LogsHeader {
+        current_time,
+        inspection_time: s.inspection_ms(),
+        competitor: s.current_competitor,
+        group_id: s.solve_group.as_ref().map(|g| g.group_id.as_str()),
+        session_id: s.session_id.as_deref(),
+        timer_running: s.timer_running(),
+        inspection_running: s.inspection_running(),
+    }
+}
+
+/// Sends the live state and the logs since the last batch: every second while a solve is
+/// active or log lines wait, every 5 s otherwise, and right away (at most every 100 ms) when
+/// the solve timer or inspection starts or stops or the competitor changes (`utils::live_send`).
 #[embassy_executor::task]
 async fn logger_task(global_state: GlobalState) {
+    use embassy_futures::select::{Either, select};
+    use embassy_time::Duration;
+    use utils::live_send::{MIN_GAP_MS, SEND_INTERVAL_MS, should_send};
+
+    let interval = Duration::from_millis(SEND_INTERVAL_MS);
+    let min_gap = Duration::from_millis(MIN_GAP_MS);
     let mut heap_start = Instant::now();
+    let mut next_tick = Instant::now() + interval;
+    let mut last_send = Instant::MIN;
+    // running flags and competitor of the last batch handed to the ws
+    let mut sent_key = (0, None);
+    // failed sends since the last one that went out; a change is retried only so often
+    // (the previous batch can be held while the ws is down), then waits for the interval
+    let mut failed: u8 = 0;
+
+    // (active, (flags, competitor)) of the attempt now
+    let live = || {
+        let current_time = global_state.timer.try_get();
+        global_state.solve.read(|s| {
+            let header = live_header(s, current_time);
+            let active =
+                header.competitor.is_some() || header.timer_running || header.inspection_running;
+            (active, (header.flags(), header.competitor))
+        })
+    };
 
     loop {
-        Timer::after_millis(LOG_SEND_INTERVAL_MS).await;
+        if live().1 != sent_key && failed < consts::LIVE_URGENT_TRIES {
+            Timer::at(last_send + min_gap).await;
+        } else if let Either::Second(()) =
+            select(Timer::at(next_tick), state::SOLVE_CHANGED.wait()).await
+        {
+            continue;
+        }
+
+        let now = Instant::now();
+        if now >= next_tick {
+            next_tick = now + interval;
+        }
+
+        let (active, key) = live();
+        let changed = key != sent_key && failed < consts::LIVE_URGENT_TRIES;
+        let since_last = now.saturating_duration_since(last_send).as_millis();
+        if !should_send(active, utils::logger::has_logs(), since_last, changed) {
+            continue;
+        }
+        // the interval counts from the last send, so a change doesn't make the next tick skip
+        last_send = now;
+        next_tick = now + interval;
 
         if crate::ws::ota_active() || crate::power::is_sleeping() {
+            failed = failed.saturating_add(1);
             continue;
         }
 
         let current_time = global_state.timer.try_get();
-        let logs = global_state.solve.read(|s| {
-            crate::utils::logger::take_ready(&crate::utils::logger::LogsHeader {
-                current_time,
-                inspection_time: s.inspection_ms(),
-                competitor: s.current_competitor,
-                group_id: s.solve_group.as_ref().map(|g| g.group_id.as_str()),
-                session_id: s.session_id.as_deref(),
-            })
+        let (logs, key) = global_state.solve.read(|s| {
+            let header = live_header(s, current_time);
+            let key = (header.flags(), header.competitor);
+            (utils::logger::take_ready(&header), key)
         });
 
-        if let Some(logs) = logs {
-            _ = ws::send_logs(logs);
+        match logs {
+            Some(logs) => {
+                _ = ws::send_logs(logs);
+                sent_key = key;
+                failed = 0;
+            }
+            None => failed = failed.saturating_add(1),
         }
 
         if heap_start.elapsed().as_millis() >= consts::PRINT_HEAP_INTERVAL_MS {
