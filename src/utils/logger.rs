@@ -1,12 +1,11 @@
 use super::UninitBuf;
+pub use super::live_header::LogsHeader;
+use super::live_header::{HEADER_LEN, init_batch, write_header};
 use core::cell::RefCell;
 use embassy_sync::blocking_mutex::{Mutex, raw::CriticalSectionRawMutex};
 use portable_atomic::{AtomicBool, Ordering};
 
 const HALF: usize = 4 * 1024;
-/// 'L' + truncated flag + u64 time + u64 inspection + u64 competitor + 20 B group id
-/// + 36 B session id + padding
-const HEADER_LEN: usize = 100;
 
 /// Two halves: the logger appends to the active one, the consumer sends the other.
 #[unsafe(link_section = ".dram2_uninit")]
@@ -26,15 +25,6 @@ static LOGS: Mutex<CriticalSectionRawMutex, RefCell<LogsState>> =
     }));
 static READY_TAKEN: AtomicBool = AtomicBool::new(false);
 
-/// Live values written into the header of a log batch.
-pub struct LogsHeader<'a> {
-    pub current_time: Option<u64>,
-    pub inspection_time: Option<u64>,
-    pub competitor: Option<u64>,
-    pub group_id: Option<&'a str>,
-    pub session_id: Option<&'a str>,
-}
-
 /// A finished log batch; the half stays reserved until this is dropped.
 pub struct ReadyLogs(&'static [u8]);
 
@@ -51,8 +41,8 @@ impl Drop for ReadyLogs {
     }
 }
 
-/// Swaps the halves and returns the finished batch (with `header` filled in), or
-/// `None` if nothing was logged or the previous batch is still held.
+/// Swaps the halves and returns the finished batch (with `header` filled in; header-only
+/// if nothing was logged), or `None` if the previous batch is still held.
 pub fn take_ready(header: &LogsHeader) -> Option<ReadyLogs> {
     if READY_TAKEN.swap(true, Ordering::Acquire) {
         return None;
@@ -60,11 +50,8 @@ pub fn take_ready(header: &LogsHeader) -> Option<ReadyLogs> {
 
     let ready = LOGS.lock(|state| {
         let mut state = state.try_borrow_mut().ok()?;
-        if state.pos == 0 {
-            return None;
-        }
-
-        let (half, len) = (state.active, state.pos);
+        let (half, len) = (state.active, state.pos.max(HEADER_LEN));
+        let header_only = state.pos == 0;
         state.active ^= 1;
         state.pos = 0;
 
@@ -72,6 +59,9 @@ pub fn take_ready(header: &LogsHeader) -> Option<ReadyLogs> {
         // after the next swap, which needs READY_TAKEN (held by the ReadyLogs).
         let buf = unsafe { LOGS_BUF.get(&mut state.initialized) };
         let batch = &mut buf[half * HALF..half * HALF + len];
+        if header_only {
+            init_batch(batch);
+        }
         write_header(batch, header);
 
         let ptr = batch.as_ptr();
@@ -88,21 +78,6 @@ pub fn take_ready(header: &LogsHeader) -> Option<ReadyLogs> {
     }
 }
 
-fn write_header(batch: &mut [u8], header: &LogsHeader) {
-    batch[2..10].copy_from_slice(&header.current_time.unwrap_or(u64::MAX).to_be_bytes());
-    batch[10..18].copy_from_slice(&header.inspection_time.unwrap_or(u64::MAX).to_be_bytes());
-    batch[18..26].copy_from_slice(&header.competitor.unwrap_or(u64::MAX).to_be_bytes());
-    batch[26..82].fill(0x00);
-
-    if let Some(group_id) = header.group_id.filter(|g| g.len() <= 20) {
-        batch[26..26 + group_id.len()].copy_from_slice(group_id.as_bytes());
-    }
-
-    if let Some(session_id) = header.session_id.filter(|s| s.len() <= 36) {
-        batch[46..46 + session_id.len()].copy_from_slice(session_id.as_bytes());
-    }
-}
-
 /// Appends one line record (u16 len + level + text) to the active half.
 fn append_line(level: &str, args: &core::fmt::Arguments) {
     LOGS.lock(|state| {
@@ -116,8 +91,7 @@ fn append_line(level: &str, args: &core::fmt::Arguments) {
         let half = &mut buf[state.active * HALF..(state.active + 1) * HALF];
 
         if state.pos == 0 {
-            half[0] = b'L';
-            half[1] = 0x00;
+            init_batch(half);
             state.pos = HEADER_LEN;
         }
 

@@ -5,6 +5,7 @@ pub mod battery;
 pub mod bounded;
 pub mod buttons;
 pub mod error_log;
+pub mod live_header;
 pub mod logger;
 pub mod ring_log;
 pub mod stack;

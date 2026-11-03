@@ -424,30 +424,75 @@ async fn restore_saved_state_task(global_state: GlobalState, nvs: &'static Nvs) 
     }
 }
 
+/// Live state of the attempt for a log batch header.
+fn live_header(s: &state::Solve, current_time: Option<u64>) -> utils::logger::LogsHeader<'_> {
+    utils::logger::LogsHeader {
+        current_time,
+        inspection_time: s.inspection_ms(),
+        competitor: s.current_competitor,
+        group_id: s.solve_group.as_ref().map(|g| g.group_id.as_str()),
+        session_id: s.session_id.as_deref(),
+        timer_running: s.timer_running(),
+        inspection_running: s.inspection_running(),
+    }
+}
+
+/// Sends the live state (and the logs since the last batch) every `LOG_SEND_INTERVAL_MS`, and
+/// right away when the solve timer or inspection starts or stops, at most every
+/// `LIVE_MIN_GAP_MS`.
 #[embassy_executor::task]
 async fn logger_task(global_state: GlobalState) {
+    use embassy_futures::select::{Either, select};
+    use embassy_time::Duration;
+
+    let interval = Duration::from_millis(LOG_SEND_INTERVAL_MS);
+    let min_gap = Duration::from_millis(consts::LIVE_MIN_GAP_MS);
     let mut heap_start = Instant::now();
+    let mut next_tick = Instant::now() + interval;
+    let mut last_send = Instant::MIN;
+    // running flags of the last batch handed to the ws
+    let mut sent_flags = 0;
+    // failed sends since the last one that went out; a start/stop is retried only so often
+    // (the previous batch can be held while the ws is down), then waits for the interval
+    let mut failed: u8 = 0;
 
     loop {
-        Timer::after_millis(LOG_SEND_INTERVAL_MS).await;
+        let current_time = global_state.timer.try_get();
+        let flags = global_state
+            .solve
+            .read(|s| live_header(s, current_time).flags());
+        if flags != sent_flags && failed < consts::LIVE_URGENT_TRIES {
+            Timer::at(last_send + min_gap).await;
+        } else if let Either::Second(()) =
+            select(Timer::at(next_tick), state::SOLVE_CHANGED.wait()).await
+        {
+            continue;
+        }
+
+        let now = Instant::now();
+        if now >= next_tick {
+            next_tick = now + interval;
+        }
+        last_send = now;
 
         if crate::ws::ota_active() || crate::power::is_sleeping() {
+            failed = failed.saturating_add(1);
             continue;
         }
 
         let current_time = global_state.timer.try_get();
-        let logs = global_state.solve.read(|s| {
-            crate::utils::logger::take_ready(&crate::utils::logger::LogsHeader {
-                current_time,
-                inspection_time: s.inspection_ms(),
-                competitor: s.current_competitor,
-                group_id: s.solve_group.as_ref().map(|g| g.group_id.as_str()),
-                session_id: s.session_id.as_deref(),
-            })
+        let (logs, flags) = global_state.solve.read(|s| {
+            let header = live_header(s, current_time);
+            (utils::logger::take_ready(&header), header.flags())
         });
 
-        if let Some(logs) = logs {
-            _ = ws::send_logs(logs);
+        match logs {
+            Some(logs) => {
+                _ = ws::send_logs(logs);
+                sent_flags = flags;
+                failed = 0;
+            }
+            None => failed = failed.saturating_add(1),
         }
 
         if heap_start.elapsed().as_millis() >= consts::PRINT_HEAP_INTERVAL_MS {
