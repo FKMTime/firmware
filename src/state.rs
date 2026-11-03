@@ -32,8 +32,9 @@ pub fn notify() {
 }
 
 /// The attempt changed (may have started or stopped timing). Single consumer: the logger task,
-/// which sends live state right away if the running flags differ from the last batch. Kept
-/// apart from [`CHANGED`] so it never counts as activity for the idle-sleep timer.
+/// which sends live state right away if the running flags or the competitor differ from the
+/// last batch. Kept apart from [`CHANGED`] so it never counts as activity for the idle-sleep
+/// timer.
 pub static SOLVE_CHANGED: Signal<Cs, ()> = Signal::new();
 
 /// One domain of shared state. Access is synchronous (no `.await` inside the closure),

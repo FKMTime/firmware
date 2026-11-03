@@ -78,6 +78,11 @@ pub fn take_ready(header: &LogsHeader) -> Option<ReadyLogs> {
     }
 }
 
+/// Log lines are waiting for the next batch.
+pub fn has_logs() -> bool {
+    LOGS.lock(|state| state.try_borrow().is_ok_and(|state| state.pos > 0))
+}
+
 /// Appends one line record (u16 len + level + text) to the active half.
 fn append_line(level: &str, args: &core::fmt::Arguments) {
     LOGS.lock(|state| {

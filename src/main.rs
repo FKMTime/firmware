@@ -11,7 +11,6 @@ compile_error!("feature `bat_dev_lcd` is a v3 battery debug screen");
 extern crate alloc;
 use crate::consts::NVS_SIGN_KEY;
 use board::Board;
-use consts::LOG_SEND_INTERVAL_MS;
 use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
 use embassy_time::{Instant, Timer};
@@ -437,31 +436,39 @@ fn live_header(s: &state::Solve, current_time: Option<u64>) -> utils::logger::Lo
     }
 }
 
-/// Sends the live state (and the logs since the last batch) every `LOG_SEND_INTERVAL_MS`, and
-/// right away when the solve timer or inspection starts or stops, at most every
-/// `LIVE_MIN_GAP_MS`.
+/// Sends the live state and the logs since the last batch: every second while a solve is
+/// active or log lines wait, every 5 s otherwise, and right away (at most every 100 ms) when
+/// the solve timer or inspection starts or stops or the competitor changes (`utils::live_send`).
 #[embassy_executor::task]
 async fn logger_task(global_state: GlobalState) {
     use embassy_futures::select::{Either, select};
     use embassy_time::Duration;
+    use utils::live_send::{MIN_GAP_MS, SEND_INTERVAL_MS, should_send};
 
-    let interval = Duration::from_millis(LOG_SEND_INTERVAL_MS);
-    let min_gap = Duration::from_millis(consts::LIVE_MIN_GAP_MS);
+    let interval = Duration::from_millis(SEND_INTERVAL_MS);
+    let min_gap = Duration::from_millis(MIN_GAP_MS);
     let mut heap_start = Instant::now();
     let mut next_tick = Instant::now() + interval;
     let mut last_send = Instant::MIN;
-    // running flags of the last batch handed to the ws
-    let mut sent_flags = 0;
-    // failed sends since the last one that went out; a start/stop is retried only so often
+    // running flags and competitor of the last batch handed to the ws
+    let mut sent_key = (0, None);
+    // failed sends since the last one that went out; a change is retried only so often
     // (the previous batch can be held while the ws is down), then waits for the interval
     let mut failed: u8 = 0;
 
-    loop {
+    // (active, (flags, competitor)) of the attempt now
+    let live = || {
         let current_time = global_state.timer.try_get();
-        let flags = global_state
-            .solve
-            .read(|s| live_header(s, current_time).flags());
-        if flags != sent_flags && failed < consts::LIVE_URGENT_TRIES {
+        global_state.solve.read(|s| {
+            let header = live_header(s, current_time);
+            let active =
+                header.competitor.is_some() || header.timer_running || header.inspection_running;
+            (active, (header.flags(), header.competitor))
+        })
+    };
+
+    loop {
+        if live().1 != sent_key && failed < consts::LIVE_URGENT_TRIES {
             Timer::at(last_send + min_gap).await;
         } else if let Either::Second(()) =
             select(Timer::at(next_tick), state::SOLVE_CHANGED.wait()).await
@@ -473,7 +480,16 @@ async fn logger_task(global_state: GlobalState) {
         if now >= next_tick {
             next_tick = now + interval;
         }
+
+        let (active, key) = live();
+        let changed = key != sent_key && failed < consts::LIVE_URGENT_TRIES;
+        let since_last = now.saturating_duration_since(last_send).as_millis();
+        if !should_send(active, utils::logger::has_logs(), since_last, changed) {
+            continue;
+        }
+        // the interval counts from the last send, so a change doesn't make the next tick skip
         last_send = now;
+        next_tick = now + interval;
 
         if crate::ws::ota_active() || crate::power::is_sleeping() {
             failed = failed.saturating_add(1);
@@ -481,15 +497,16 @@ async fn logger_task(global_state: GlobalState) {
         }
 
         let current_time = global_state.timer.try_get();
-        let (logs, flags) = global_state.solve.read(|s| {
+        let (logs, key) = global_state.solve.read(|s| {
             let header = live_header(s, current_time);
-            (utils::logger::take_ready(&header), header.flags())
+            let key = (header.flags(), header.competitor);
+            (utils::logger::take_ready(&header), key)
         });
 
         match logs {
             Some(logs) => {
                 _ = ws::send_logs(logs);
-                sent_flags = flags;
+                sent_key = key;
                 failed = 0;
             }
             None => failed = failed.saturating_add(1),

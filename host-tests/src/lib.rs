@@ -29,6 +29,59 @@ pub mod old_structs;
 pub mod ble_codec;
 #[path = "../../src/utils/live_header.rs"]
 pub mod live_header;
+#[path = "../../src/utils/live_send.rs"]
+pub mod live_send;
+
+#[cfg(test)]
+mod live_send_tests {
+    use crate::live_send::*;
+
+    #[test]
+    fn active_sends_every_second() {
+        assert!(!should_send(true, false, 999, false));
+        assert!(should_send(true, false, 1000, false));
+    }
+
+    #[test]
+    fn idle_sends_keep_alive_every_5_s() {
+        for ms in [1000, 2000, 4999] {
+            assert!(!should_send(false, false, ms, false));
+        }
+        assert!(should_send(false, false, 5000, false));
+        // a never-sent station sends at once
+        assert!(should_send(false, false, u64::MAX, false));
+    }
+
+    #[test]
+    fn idle_logs_still_go_every_second() {
+        assert!(!should_send(false, true, 999, false));
+        assert!(should_send(false, true, 1000, false));
+    }
+
+    #[test]
+    fn change_sends_at_once_but_rate_limited() {
+        for (active, has_logs) in [(false, false), (true, false), (false, true), (true, true)] {
+            assert!(!should_send(active, has_logs, 0, true));
+            assert!(!should_send(active, has_logs, 99, true));
+            assert!(should_send(active, has_logs, 100, true));
+            assert!(should_send(active, has_logs, 400, true));
+        }
+    }
+
+    #[test]
+    fn flapping_change_is_capped_at_10_per_second() {
+        // a change on every 10 ms tick for 1 s
+        let (mut last, mut sent) = (None::<u64>, 0);
+        for now in (0..1000).step_by(10) {
+            let since = last.map_or(u64::MAX, |l| now - l);
+            if should_send(false, false, since, true) {
+                last = Some(now);
+                sent += 1;
+            }
+        }
+        assert_eq!(sent, 10);
+    }
+}
 
 #[cfg(test)]
 mod live_header_tests {

@@ -7,10 +7,8 @@ pub const SLEEP_AFTER_MS: u64 = 60000 * 5;
 pub const DEEPER_SLEEP_AFTER_MS: u64 = 60000 * 15;
 
 pub const PRINT_HEAP_INTERVAL_MS: u64 = 30000;
-pub const LOG_SEND_INTERVAL_MS: u64 = 1000;
-/// A timer/inspection start or stop is sent right away, but no sooner than this after the last batch.
-pub const LIVE_MIN_GAP_MS: u64 = 100;
-/// Sends tried right away for a start/stop before it waits for the next interval.
+/// Sends tried right away for a start/stop or competitor change before it waits for the next
+/// interval (send intervals: `utils::live_send`).
 pub const LIVE_URGENT_TRIES: u8 = 5;
 
 pub const BATTERY_SEND_INTERVAL_MS: u64 = 60000;
