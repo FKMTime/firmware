@@ -1,0 +1,106 @@
+name: Release
+
+# Builds the STATION firmware for v3 and v4, publishes the GitHub release and uploads the merged
+# images to FKMTime/docs, like release.sh. Push a tag (`git tag v3.5.2 && git push origin v3.5.2`),
+# or run it by hand with a version: it then tags the commit it runs on.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. v3.5.2 (tags the selected branch's commit)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  ESPFLASH_VERSION: v4.7.0
+  VERSION: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Check version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ ! "$VERSION" =~ ^v[0-9A-Za-z.+-]+$ ]] || [ ${#VERSION} -gt 32 ]; then
+            echo "::error::Invalid version '$VERSION': expected v<version>, at most 32 characters"
+            exit 1
+          fi
+          if gh release view "$VERSION" > /dev/null 2>&1; then
+            echo "::error::Release $VERSION already exists"
+            exit 1
+          fi
+
+      - name: Setup Rust (riscv)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: riscv32imc-unknown-none-elf
+          toolchain: nightly
+          components: rust-src
+
+      - name: Enable caching
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install espflash
+        run: |
+          # append_metadata.sh needs xxd
+          command -v xxd > /dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq xxd; }
+          curl -fsSL -o /tmp/espflash.zip \
+            "https://github.com/esp-rs/espflash/releases/download/${ESPFLASH_VERSION}/espflash-x86_64-unknown-linux-gnu.zip"
+          sudo unzip -o -q /tmp/espflash.zip -d /usr/local/bin
+          sudo chmod +x /usr/local/bin/espflash
+          espflash --version
+
+      - name: Build firmware
+        run: |
+          EPOCH=$(date +%s)
+          ELF=target/riscv32imc-unknown-none-elf/release/fkm-firmware
+          mkdir -p build dist
+          for HW in v3 v4; do
+            RELEASE_BUILD="$VERSION" cargo build -r --locked --no-default-features --features "$HW,sleep"
+            espflash save-image --chip esp32c3 "$ELF" "build/${HW}_STATION_${VERSION}.bin"
+            ./append_metadata.sh "build/${HW}_STATION_${VERSION}.bin" "$VERSION" "STATION" "$HW" "$EPOCH"
+            cp "$ELF" "build/${HW}_STATION_${VERSION}"
+            espflash save-image --chip esp32c3 --merge --flash-size 4mb --partition-table partitions.csv \
+              "$ELF" "dist/${HW}_STATION_${VERSION}_MERGED.bin"
+          done
+          ls -la build dist
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$VERSION" --title "$VERSION" --target "$GITHUB_SHA" --generate-notes build/*
+
+      - name: Checkout docs
+        uses: actions/checkout@v6
+        with:
+          repository: FKMTime/docs
+          ssh-key: ${{ secrets.DOCS_DEPLOY_KEY }}
+          path: docs
+
+      - name: Upload merged images to docs
+        working-directory: docs
+        run: |
+          cp ../dist/*_MERGED.bin static/firmware/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add static/firmware
+          git commit -m "firmware upload"
+          git push
