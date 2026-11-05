@@ -104,3 +104,18 @@ jobs:
           git add static/firmware
           git commit -m "firmware upload"
           git push
+
+  notify:
+    name: Announce on Discord
+    needs: release
+    uses: FKMTime/.github/.github/workflows/discord-release.yml@main
+    with:
+      tag: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+    secrets: inherit
+
+  alert:
+    name: Alert on failure
+    needs: [release, notify]
+    if: failure()
+    uses: FKMTime/.github/.github/workflows/discord-alert.yml@main
+    secrets: inherit
