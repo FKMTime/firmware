@@ -266,8 +266,18 @@ async fn sleep_check(
     let idle_ms = last_update.elapsed().as_millis();
     let can_sleep = global_state.solve.read(|s| s.scene.can_sleep());
     if !power::is_sleeping() && idle_ms > SLEEP_AFTER_MS && can_sleep {
-        text.print(0, "Sleep", Align::Center, true);
-        text.print(1, "Press any key", Align::Center, true);
+        text.print(
+            0,
+            &get_translation(TranslationKey::SLEEP),
+            Align::Center,
+            true,
+        );
+        text.print(
+            1,
+            &get_translation(TranslationKey::PRESS_ANY_KEY),
+            Align::Center,
+            true,
+        );
         show(text, lcd).await;
         lcd.backlight_off();
 
@@ -283,8 +293,18 @@ async fn sleep_check(
         && !crate::power::is_deeper_sleeping()
         && idle_ms > DEEPER_SLEEP_AFTER_MS
     {
-        text.print(0, "Deep Sleep", Align::Center, true);
-        text.print(1, "Press any key", Align::Center, true);
+        text.print(
+            0,
+            &get_translation(TranslationKey::DEEP_SLEEP),
+            Align::Center,
+            true,
+        );
+        text.print(
+            1,
+            &get_translation(TranslationKey::PRESS_ANY_KEY),
+            Align::Center,
+            true,
+        );
         show(text, lcd).await;
         power::enter_deep_sleep();
     }
@@ -329,7 +349,12 @@ fn render(s: &View, text: &mut LcdText, local: &Local) -> Live {
         Screen::ConfigMenu(sel) => {
             text.print(0, "<", Align::Left, false);
             text.print(0, ">", Align::Right, false);
-            text.print(0, "Config Menu", Align::Center, false);
+            text.print(
+                0,
+                &get_translation(TranslationKey::CONFIG_MENU),
+                Align::Center,
+                false,
+            );
             let item = crate::structs::CONFIG_MENU_ITEMS
                 .get(sel)
                 .copied()
@@ -346,7 +371,12 @@ fn render(s: &View, text: &mut LcdText, local: &Local) -> Live {
                     let status = if ok { "Operation OK" } else { "Operation FAIL" };
                     text.print(1, status, Align::Center, true);
                 }
-                _ => text.print(1, "Scan the card", Align::Center, true),
+                _ => text.print(
+                    1,
+                    &get_translation(TranslationKey::SCAN_THE_CARD),
+                    Align::Center,
+                    true,
+                ),
             }
             return Live::Signing;
         }
@@ -358,8 +388,18 @@ fn render(s: &View, text: &mut LcdText, local: &Local) -> Live {
                     _ = write!(line, "{:x?}", dev.addr);
                     text.print(1, &line, Align::Center, true);
                 }
-                None if sel == devices.len() => text.print(0, "Unpair", Align::Center, true),
-                None => text.print(0, "Exit", Align::Center, true),
+                None if sel == devices.len() => text.print(
+                    0,
+                    &get_translation(TranslationKey::UNPAIR),
+                    Align::Center,
+                    true,
+                ),
+                None => text.print(
+                    0,
+                    &get_translation(TranslationKey::EXIT),
+                    Align::Center,
+                    true,
+                ),
             }
         }
         Screen::ErrorLogEntry { idx, .. } => match error_log::entry(idx) {

@@ -120,18 +120,19 @@ pub fn process_locale(locale: &str, records: &[TranslationRecord]) {
     });
 }
 
+/// Falls back to the built-in text when the server's locale lacks `key` (older backend).
 pub fn get_translation(key: usize) -> TranslationText {
-    with_locales(|l| match l.list.get(l.selected) {
-        Some(locale) => locale
-            .translations
-            .get(key)
-            .and_then(Clone::clone)
-            .unwrap_or_else(|| MISSING.into()),
-        None => FALLBACK_TRANSLATIONS
-            .get(key)
-            .copied()
-            .unwrap_or(MISSING)
-            .into(),
+    with_locales(|l| {
+        l.list
+            .get(l.selected)
+            .and_then(|locale| locale.translations.get(key).cloned().flatten())
+            .unwrap_or_else(|| {
+                FALLBACK_TRANSLATIONS
+                    .get(key)
+                    .copied()
+                    .unwrap_or(MISSING)
+                    .into()
+            })
     })
 }
 
