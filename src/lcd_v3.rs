@@ -488,7 +488,12 @@ fn render(s: &View, text: &mut LcdText, local: &Local) -> Live {
             }
         }
         Screen::Inspection(start) => {
-            text.print(1, "Inspection", Align::Center, true);
+            text.print(
+                1,
+                &get_translation(TranslationKey::INSPECTION),
+                Align::Center,
+                true,
+            );
             text.print(
                 0,
                 &time_str(start.elapsed().as_millis()),
