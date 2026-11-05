@@ -573,7 +573,8 @@ fn dnf(state: &GlobalState) -> bool {
     })
 }
 
-/// Fourth button release: cycle the +2 penalty (0 → +2 → … → +16 → 0) on an unconfirmed time.
+/// Fourth button release: cycle the +2 penalty (0 → +2 → … → event's max, +16 by default → 0)
+/// on an unconfirmed time.
 fn penalty(state: &GlobalState) {
     if state.should_skip_other_actions() {
         return;
@@ -582,7 +583,12 @@ fn penalty(state: &GlobalState) {
     state.solve.update(|s| {
         if s.scene == Scene::Finished && !s.time_confirmed {
             let old = s.penalty.unwrap_or(0);
-            s.penalty = Some(if old >= 16 || old == -1 { 0 } else { old + 2 });
+            let next = old + 2;
+            s.penalty = Some(if old == -1 || next > s.max_penalty() {
+                0
+            } else {
+                next
+            });
         }
     });
 }

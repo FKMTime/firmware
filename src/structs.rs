@@ -161,6 +161,9 @@ pub struct PossibleGroup {
     pub secondary_text: Option<ShortText>,
     pub use_inspection: bool,
     pub limit: Option<u64>,
+    /// Highest time penalty for the event, in seconds; `None` from backends that don't send it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_penalty: Option<u8>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

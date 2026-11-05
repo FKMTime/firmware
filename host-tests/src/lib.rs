@@ -303,6 +303,31 @@ mod tests {
         let new::TimerPacketInner::CardInfoResponse(r) = n.data else { panic!() };
         assert_eq!(r.possible_groups.len(), new::MAX_POSSIBLE_GROUPS);
     }
+
+    #[test]
+    fn max_penalty_is_optional_and_round_trips() {
+        let groups = |extra: &str| {
+            format!(
+                r#"{{"data":{{"card_info_response":{{"card_id":1,"display":"d","country_iso2":"pl","can_compete":true,"possible_groups":[{{"groupId":"clock-r1-g1","name":"Clock R1","secondaryText":null,"useInspection":true,"limit":null{extra}}}]}}}}}}"#
+            )
+        };
+        let parse = |json: &str| {
+            let n: new::TimerPacket = from_str(json).unwrap();
+            let new::TimerPacketInner::CardInfoResponse(r) = n.data else { panic!() };
+            r.possible_groups[0].clone()
+        };
+
+        let json = groups(r#","maxPenalty":14"#);
+        let g = parse(&json);
+        assert_eq!(g.max_penalty, Some(14));
+        assert_eq!(from_str::<Value>(&to_string(&g).unwrap()).unwrap()["maxPenalty"], 14);
+
+        assert_eq!(parse(&groups("")).max_penalty, None);
+        // older firmware still reads a group that carries the field
+        let o: old::TimerPacket = from_str(&json).unwrap();
+        let old::TimerPacketInner::CardInfoResponse(r) = o.data else { panic!() };
+        assert_eq!(r.possible_groups.len(), 1);
+    }
 }
 
 /// Outgoing packets are serialized with serde-json-core on the device; it must produce the
