@@ -36,6 +36,9 @@ pub const MDNS_RESEND_INTERVAL: u64 = 500;
 pub const INSPECTION_TIME_DNF: u64 = 17000;
 pub const INSPECTION_TIME_PLUS2: u64 = 15000;
 
+/// Highest +2 penalty for events the backend doesn't send their own cap for.
+pub const DEFAULT_MAX_PENALTY: i8 = 16;
+
 #[cfg(feature = "v4")]
 pub const NVS_BUZZER_VOLUME: esp_hal_wifimanager::Key =
     esp_hal_wifimanager::Key::from_str("BUZZER_VOLUME");

@@ -262,6 +262,15 @@ impl Solve {
         self.solve_group.as_ref().is_none_or(|g| g.use_inspection)
     }
 
+    /// Highest +2 penalty the judge can cycle to for the selected group.
+    pub fn max_penalty(&self) -> i8 {
+        self.solve_group
+            .as_ref()
+            .and_then(|g| g.max_penalty)
+            .and_then(|p| i8::try_from(p).ok())
+            .unwrap_or(crate::consts::DEFAULT_MAX_PENALTY)
+    }
+
     /// The solve timer is counting up now (started, no time recorded yet).
     pub fn timer_running(&self) -> bool {
         self.scene == Scene::Timer && self.solve_time.is_none()
