@@ -175,7 +175,11 @@ async fn sleep_check(
         && idle_ms > DEEPER_SLEEP_AFTER_MS
     {
         oled.frame.clear();
-        ui::centered_screen(&mut oled.frame, "Sleep", ui::SMALL_FONT);
+        ui::centered_screen(
+            &mut oled.frame,
+            &get_translation(TranslationKey::SLEEP),
+            ui::SMALL_FONT,
+        );
         flush(oled).await;
         power::enter_deep_sleep();
     }
@@ -184,7 +188,11 @@ async fn sleep_check(
 /// Sleep screen + connection flags.
 async fn enter_sleep(oled: &mut Ssd1309<SharedI2C>, global_state: GlobalState) {
     oled.frame.clear();
-    ui::centered_screen(&mut oled.frame, "Sleep", ui::SMALL_FONT);
+    ui::centered_screen(
+        &mut oled.frame,
+        &get_translation(TranslationKey::SLEEP),
+        ui::SMALL_FONT,
+    );
     flush(oled).await;
 
     global_state.status.update(|s| {
