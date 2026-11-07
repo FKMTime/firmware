@@ -316,15 +316,19 @@ async fn run(
         Socket::Raw(tcp)
     };
 
-    global_state.status.update(|s| {
-        s.server_connected = Some(true);
-        s.wifi_connected = Some(true);
-    });
+    global_state
+        .status
+        .update(|s| s.wifi_connected = Some(true));
     log::info!("connected!");
 
     let mut tx = WsTxFramer::new(true, &mut *bufs.ws_tx);
     let mut rx = WsRxFramer::new(&mut *bufs.ws_rx);
     handshake(global_state, url, &mut socket, &mut tx, &mut rx).await?;
+    // connected only once the handshake decided trust: a scan meanwhile is skipped as "not
+    // connected" instead of failing as "server not trusted"
+    global_state
+        .status
+        .update(|s| s.server_connected = Some(true));
 
     let mut ota = Ota::new(FlashStorage::new(unsafe {
         esp_hal::peripherals::FLASH::steal()
@@ -472,33 +476,36 @@ async fn handshake(
         }
     };
 
-    if let Some(random_signed) = random_signed {
-        let mut key = [0; 16];
-        key[..4].copy_from_slice(&crate::state::SETTINGS.read(|s| s.sign_key).to_be_bytes());
-        let mut block = random_signed.to_be_bytes();
+    let Some(random_signed) = random_signed else {
+        log::error!("[trust] no randomsigned header, server not trusted");
+        return Ok(());
+    };
+
+    let mut key = [0; 16];
+    key[..4].copy_from_slice(&crate::state::SETTINGS.read(|s| s.sign_key).to_be_bytes());
+    let mut block = random_signed.to_be_bytes();
+    global_state
+        .aes
+        .lock()
+        .await
+        .decrypt(&mut block, esp_hal::aes::Key::Key128(key));
+
+    let (recv_random, token) = block.split_at(8);
+    let recv_random = u64::from_be_bytes(recv_random.try_into().unwrap_or_default());
+    let fkm_token = i32::from_be_bytes(token[..4].try_into().unwrap_or_default());
+    log::debug!("[trust] random: {random}, recv_random: {recv_random} | fkm_token: {fkm_token}");
+
+    if random == recv_random {
+        log::info!("[trust] server trusted");
+        crate::state::SESSION.write(|s| {
+            s.trust_server = true;
+            s.fkm_token = fkm_token;
+        });
+    } else {
+        log::error!("[trust] randomsigned doesn't match the sign key, server not trusted");
         global_state
-            .aes
-            .lock()
-            .await
-            .decrypt(&mut block, esp_hal::aes::Key::Key128(key));
-
-        let (recv_random, token) = block.split_at(8);
-        let recv_random = u64::from_be_bytes(recv_random.try_into().unwrap_or_default());
-        let fkm_token = i32::from_be_bytes(token[..4].try_into().unwrap_or_default());
-        log::debug!(
-            "[trust] random: {random}, recv_random: {recv_random} | fkm_token: {fkm_token}"
-        );
-
-        if random == recv_random {
-            crate::state::SESSION.write(|s| {
-                s.trust_server = true;
-                s.fkm_token = fkm_token;
-            });
-        } else {
-            global_state
-                .ui
-                .update(|u| u.error_text = Some("Server Not Trusted!".into()));
-        }
+            .ui
+            .update(|u| u.error_text = Some("Server Not Trusted!".into()));
     }
 
     Ok(())
