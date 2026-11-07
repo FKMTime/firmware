@@ -501,6 +501,10 @@ async fn handshake(
             s.trust_server = true;
             s.fkm_token = fkm_token;
         });
+    } else if crate::state::SETTINGS.read(|s| s.sign_key) == 0 {
+        // no key since "Reset settings" while the server keeps the old one: expected, the
+        // station shows "device not added" and submit registers a new key (approved in the panel)
+        log::warn!("[trust] no sign key yet, waiting for the station to be added again");
     } else {
         log::error!("[trust] randomsigned doesn't match the sign key, server not trusted");
         global_state
@@ -615,12 +619,13 @@ async fn handle_packet(
             auto_setup,
             sound_enabled,
         } => {
-            global_state
-                .status
-                .update(|s| s.device_added = Some(*added));
+            // without a sign key (never added, or "Reset settings") the station can't be trusted,
+            // even if the server still knows it: it has to be added again with a new key
+            let added = *added && crate::state::SETTINGS.read(|s| s.sign_key) != 0;
+            global_state.status.update(|s| s.device_added = Some(added));
             // auto_add registers like a submit press would (fresh sign key, server trusted)
             #[cfg(feature = "auto_add")]
-            if !*added {
+            if !added {
                 crate::buttons::add_device(&global_state).await;
             }
             crate::translations::clear_locales();
