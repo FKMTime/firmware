@@ -12,18 +12,18 @@ use crate::{
 };
 use core::{cell::Cell, fmt::Write as _, str::FromStr};
 use embassy_crypto_rustcrypto as _;
-use embassy_futures::select::{Either, Either3, select, select3};
+use embassy_futures::select::{Either, Either4, select, select4};
 use embassy_net::{IpAddress, Stack, tcp::TcpSocket};
 use embassy_sync::{
     blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
     channel::Channel,
     signal::Signal,
 };
-use embassy_time::{Duration, Timer, WithTimeout};
+use embassy_time::{Duration, Instant, Timer, WithTimeout};
 use embedded_tls::{Aes128GcmSha256, InsecureNoVerify, TlsConfig, TlsConnection, TlsContext};
 use esp_hal_ota::Ota;
 use esp_storage::FlashStorage;
-use portable_atomic::{AtomicBool, AtomicU64, Ordering};
+use portable_atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use ws_framer::{WsFrame, WsRxError, WsRxFramer, WsTxFramer, WsUrl};
 
 const WS_BUF_SIZE: usize = 8192;
@@ -66,6 +66,13 @@ static SLOTS: [Slot; REQUEST_SLOTS] = [const {
         response: Signal::new(),
     }
 }; REQUEST_SLOTS];
+
+/// Id of the live connection (0 = none); a new id after every reconnect.
+static CONNECTION: AtomicU32 = AtomicU32::new(0);
+static LAST_CONNECTION: AtomicU32 = AtomicU32::new(0);
+/// Set by a request whose reply is late: the connection task pings and drops a link that
+/// stays silent (a dead Wi-Fi link otherwise shows only when the socket read times out).
+static PROBE: AtomicBool = AtomicBool::new(false);
 
 /// Tag of the pending delegate request: the server answers it with an untagged
 /// `DelegateResponse` push, routed to that request's slot (0 = none).
@@ -148,6 +155,60 @@ pub async fn request<T: FromPacket>(
         .await
         .map_err(|_| timeout_error())?;
     T::from_packet(response)
+}
+
+/// Like [`request`], for a request safe to send twice (read-only): a late reply gets the link
+/// checked, and a request the link lost on the way is sent again (same tag) once the station
+/// is reconnected, all within `timeout`.
+pub async fn request_resending<T: FromPacket>(
+    packet: TimerPacketInner,
+    timeout: Duration,
+) -> Result<T, ApiError> {
+    let tag = crate::utils::get_random_u64().max(1);
+    let slot = claim_slot(tag)?;
+    let response = async {
+        loop {
+            let conn = wait_connected().await;
+            send(TimerPacket {
+                tag: Some(tag),
+                data: packet.clone(),
+            })
+            .map_err(|_| api_error("Channel full"))?;
+            match select(slot.0.response.wait(), connection_lost(conn)).await {
+                Either::First(response) => return Ok(response),
+                Either::Second(()) => log::warn!("Connection lost before the reply, sending again"),
+            }
+        }
+    }
+    .with_timeout(timeout)
+    .await
+    .map_err(|_| timeout_error())??;
+    T::from_packet(response)
+}
+
+/// Id of the live connection, once there is one.
+async fn wait_connected() -> u32 {
+    loop {
+        let conn = CONNECTION.load(Ordering::Acquire);
+        if conn != 0 {
+            return conn;
+        }
+        Timer::after_millis(100).await;
+    }
+}
+
+/// Returns once connection `conn` is gone; asks for a probe when no reply came in time.
+async fn connection_lost(conn: u32) {
+    let late = Instant::now() + Duration::from_millis(crate::consts::WS_REPLY_LATE_MS);
+    let mut probed = false;
+    while CONNECTION.load(Ordering::Acquire) == conn {
+        if !probed && Instant::now() >= late {
+            probed = true;
+            PROBE.store(true, Ordering::Release);
+            WAKE.signal(());
+        }
+        Timer::after_millis(100).await;
+    }
 }
 
 #[cfg_attr(feature = "qa", allow(dead_code))]
@@ -240,6 +301,7 @@ pub async fn ws_task(
             Either::Second(false) => {}
         }
 
+        CONNECTION.store(0, Ordering::Release);
         global_state
             .status
             .update(|s| s.server_connected = Some(false));
@@ -274,6 +336,8 @@ enum WsError {
     Upgrade(u16),
     Closed,
     WifiDisconnected,
+    /// Nothing came back to a probe ping (see [`PROBE`])
+    Unresponsive,
     Ota(esp_hal_ota::Error),
 }
 
@@ -324,6 +388,13 @@ async fn run(
     let mut tx = WsTxFramer::new(true, &mut *bufs.ws_tx);
     let mut rx = WsRxFramer::new(&mut *bufs.ws_rx);
     handshake(global_state, url, &mut socket, &mut tx, &mut rx).await?;
+    let conn = LAST_CONNECTION
+        .fetch_add(1, Ordering::AcqRel)
+        .wrapping_add(1)
+        .max(1);
+    CONNECTION.store(conn, Ordering::Release);
+    // a probe asked for on the old link is answered by this one connecting
+    PROBE.store(false, Ordering::Release);
     // connected only once the handshake decided trust: a scan meanwhile is skipped as "not
     // connected" instead of failing as "server not trusted"
     global_state
@@ -339,26 +410,47 @@ async fn run(
         ..Owed::default()
     };
 
+    // a ping sent for a late reply: the link is dropped unless something arrives by then
+    let mut probe_deadline: Option<Instant> = None;
     loop {
         // socket reads time out after 15 s, so this beats well within the watchdog window
         crate::watchdog::heartbeat(crate::watchdog::TaskId::Ws);
+        if PROBE.swap(false, Ordering::AcqRel) && probe_deadline.is_none() {
+            owed.ping = true;
+            probe_deadline =
+                Some(Instant::now() + Duration::from_millis(crate::consts::WS_PROBE_TIMEOUT_MS));
+        }
         flush(&mut socket, &mut tx, &mut owed).await?;
 
-        match select3(
+        let probe_expired = async {
+            match probe_deadline {
+                Some(deadline) => Timer::at(deadline).await,
+                None => core::future::pending().await,
+            }
+        };
+        match select4(
             socket.read(rx.read_buf()),
             WAKE.wait(),
             wifi_conn_sig.wait(),
+            probe_expired,
         )
         .await
         {
-            Either3::First(Ok(0) | Err(_)) => return Err(WsError::Socket),
-            Either3::First(Ok(n)) => rx.advance(n),
-            Either3::Second(()) | Either3::Third(true) => continue,
-            Either3::Third(false) => {
+            Either4::First(Ok(0) | Err(_)) => return Err(WsError::Socket),
+            Either4::First(Ok(n)) => {
+                rx.advance(n);
+                probe_deadline = None;
+            }
+            Either4::Second(()) | Either4::Third(true) => continue,
+            Either4::Third(false) => {
                 global_state
                     .status
                     .update(|s| s.wifi_connected = Some(false));
                 return Err(WsError::WifiDisconnected);
+            }
+            Either4::Fourth(()) => {
+                log::warn!("No reply to the probe ping, dropping the connection");
+                return Err(WsError::Unresponsive);
             }
         }
 

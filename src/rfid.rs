@@ -320,14 +320,15 @@ async fn handle_card<I: Interface>(
     // not hit the competitor's confirming tap (e.g. of a last attempt a delegate resolved)
     let is_competitor = global_state.solve.read(|s| s.current_competitor.is_none());
 
-    let resp = crate::ws::request::<CardInfoResponsePacket>(
+    // read-only, so a Wi-Fi drop doesn't lose the scan: it is sent again after the reconnect
+    let resp = crate::ws::request_resending::<CardInfoResponsePacket>(
         crate::structs::TimerPacketInner::CardInfoRequest {
             card_id: card_uid as u64,
             is_competitor,
             attendance_device: None,
             sign_key: crate::state::SETTINGS.read(|s| s.sign_key),
         },
-        Duration::from_millis(crate::consts::WS_REQUEST_TIMEOUT_MS),
+        Duration::from_millis(crate::consts::WS_RESEND_TIMEOUT_MS),
     )
     .await;
 
