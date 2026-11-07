@@ -134,5 +134,13 @@
       {
         "key": "exit",
         "translation": "Exit"
+      },
+      {
+        "key": "resetAttemptHeader",
+        "translation": "Reset attempt?"
+      },
+      {
+        "key": "resetAttemptFooter",
+        "translation": "Submit = confirm"
       }
 ]

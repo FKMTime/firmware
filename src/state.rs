@@ -336,6 +336,8 @@ pub struct Ui {
     pub selected_bluetooth_item: usize,
     pub error_text: Option<MessageText>,
     pub custom_message: Option<(DisplayText, DisplayText)>,
+    /// The reset hold asks first when it would throw away a recorded time.
+    pub confirm_reset: bool,
 }
 
 impl Ui {
@@ -351,6 +353,7 @@ impl Ui {
             selected_bluetooth_item: 0,
             error_text: None,
             custom_message: None,
+            confirm_reset: false,
         }
     }
 }
@@ -492,6 +495,7 @@ impl GlobalStateInner {
     /// Back to waiting for a competitor: clears the attempt, the saved copy and the locale.
     pub async fn reset_solve(&self, clear_saved: bool) {
         self.solve.update(Solve::reset);
+        self.ui.update(|u| u.confirm_reset = false);
         self.timer.sender().clear();
         if clear_saved {
             SavedGlobalState::clear_saved_global_state(self.nvs).await;
@@ -504,7 +508,7 @@ impl GlobalStateInner {
         log::error!("Request error ({}): {:?}", e.should_reset_time, e.error);
         self.ui.update(|u| u.error_text = Some(e.error));
         if e.should_reset_time {
-            self.reset_solve(false).await;
+            self.reset_solve(true).await;
         }
     }
 
@@ -523,10 +527,12 @@ impl GlobalStateInner {
         })
     }
 
-    /// Buttons/cards are ignored while an error, a lost connection, a setup scene or a pending
-    /// delegate call is shown.
+    /// Buttons/cards are ignored while an error, a reset confirmation, a lost connection, a setup
+    /// scene or a pending delegate call is shown.
     pub fn should_skip_other_actions(&self) -> bool {
-        if self.ui.read(|u| u.error_text.is_some()) || crate::buttons::delegate_pending() {
+        if self.ui.read(|u| u.error_text.is_some() || u.confirm_reset)
+            || crate::buttons::delegate_pending()
+        {
             return true;
         }
 
