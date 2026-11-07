@@ -612,6 +612,11 @@ fn delegate_send(state: &GlobalState) {
         return;
     }
 
+    // trust is only known once connected (card scans are skipped meanwhile too)
+    if state.status.read(|s| s.server_connected) != Some(true) {
+        log::error!("Skipping delegate hold. Server not connected!");
+        return;
+    }
     if !crate::state::SESSION.read(|s| s.trust_server) {
         log::error!("Skipping delegate hold. Server not trusted!");
         return;

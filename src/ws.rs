@@ -380,10 +380,9 @@ async fn run(
         Socket::Raw(tcp)
     };
 
-    global_state.status.update(|s| {
-        s.server_connected = Some(true);
-        s.wifi_connected = Some(true);
-    });
+    global_state
+        .status
+        .update(|s| s.wifi_connected = Some(true));
     log::info!("connected!");
 
     let mut tx = WsTxFramer::new(true, &mut *bufs.ws_tx);
@@ -396,6 +395,11 @@ async fn run(
     CONNECTION.store(conn, Ordering::Release);
     // a probe asked for on the old link is answered by this one connecting
     PROBE.store(false, Ordering::Release);
+    // connected only once the handshake decided trust: a scan meanwhile is skipped as "not
+    // connected" instead of failing as "server not trusted"
+    global_state
+        .status
+        .update(|s| s.server_connected = Some(true));
 
     let mut ota = Ota::new(FlashStorage::new(unsafe {
         esp_hal::peripherals::FLASH::steal()
@@ -564,33 +568,40 @@ async fn handshake(
         }
     };
 
-    if let Some(random_signed) = random_signed {
-        let mut key = [0; 16];
-        key[..4].copy_from_slice(&crate::state::SETTINGS.read(|s| s.sign_key).to_be_bytes());
-        let mut block = random_signed.to_be_bytes();
+    let Some(random_signed) = random_signed else {
+        log::error!("[trust] no randomsigned header, server not trusted");
+        return Ok(());
+    };
+
+    let mut key = [0; 16];
+    key[..4].copy_from_slice(&crate::state::SETTINGS.read(|s| s.sign_key).to_be_bytes());
+    let mut block = random_signed.to_be_bytes();
+    global_state
+        .aes
+        .lock()
+        .await
+        .decrypt(&mut block, esp_hal::aes::Key::Key128(key));
+
+    let (recv_random, token) = block.split_at(8);
+    let recv_random = u64::from_be_bytes(recv_random.try_into().unwrap_or_default());
+    let fkm_token = i32::from_be_bytes(token[..4].try_into().unwrap_or_default());
+    log::debug!("[trust] random: {random}, recv_random: {recv_random} | fkm_token: {fkm_token}");
+
+    if random == recv_random {
+        log::info!("[trust] server trusted");
+        crate::state::SESSION.write(|s| {
+            s.trust_server = true;
+            s.fkm_token = fkm_token;
+        });
+    } else if crate::state::SETTINGS.read(|s| s.sign_key) == 0 {
+        // no key since "Reset settings" while the server keeps the old one: expected, the
+        // station shows "device not added" and submit registers a new key (approved in the panel)
+        log::warn!("[trust] no sign key yet, waiting for the station to be added again");
+    } else {
+        log::error!("[trust] randomsigned doesn't match the sign key, server not trusted");
         global_state
-            .aes
-            .lock()
-            .await
-            .decrypt(&mut block, esp_hal::aes::Key::Key128(key));
-
-        let (recv_random, token) = block.split_at(8);
-        let recv_random = u64::from_be_bytes(recv_random.try_into().unwrap_or_default());
-        let fkm_token = i32::from_be_bytes(token[..4].try_into().unwrap_or_default());
-        log::debug!(
-            "[trust] random: {random}, recv_random: {recv_random} | fkm_token: {fkm_token}"
-        );
-
-        if random == recv_random {
-            crate::state::SESSION.write(|s| {
-                s.trust_server = true;
-                s.fkm_token = fkm_token;
-            });
-        } else {
-            global_state
-                .ui
-                .update(|u| u.error_text = Some("Server Not Trusted!".into()));
-        }
+            .ui
+            .update(|u| u.error_text = Some("Server Not Trusted!".into()));
     }
 
     Ok(())
@@ -700,12 +711,13 @@ async fn handle_packet(
             auto_setup,
             sound_enabled,
         } => {
-            global_state
-                .status
-                .update(|s| s.device_added = Some(*added));
+            // without a sign key (never added, or "Reset settings") the station can't be trusted,
+            // even if the server still knows it: it has to be added again with a new key
+            let added = *added && crate::state::SETTINGS.read(|s| s.sign_key) != 0;
+            global_state.status.update(|s| s.device_added = Some(added));
             // auto_add registers like a submit press would (fresh sign key, server trusted)
             #[cfg(feature = "auto_add")]
-            if !*added {
+            if !added {
                 crate::buttons::add_device(&global_state).await;
             }
             crate::translations::clear_locales();
