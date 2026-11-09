@@ -1,6 +1,6 @@
-# FKM firmware
+# FKMTime firmware
 
-Rust firmware for the FKM timer stations (ESP32-C3), boards v3 and v4.
+Rust firmware for the FKMTime timer stations (ESP32-C3), boards v3 and v4.
 
 ## Checks
 
@@ -15,6 +15,18 @@ cargo build --no-default-features --features v4 --target=riscv32imc-unknown-none
 ```
 
 Host tests live in `host-tests/` and the esp-emu simulator in `sim/` (see `sim/README.md`).
+
+## Naming
+
+The brand is "FKMTime": one word, exactly that capitalisation, in comments, docs, UI text and
+commits. Never "FKM", "FKM Time" or "Fkmtime" in prose.
+
+Keep these as they are; other parts of the system depend on them:
+
+- the device name `FKM-<efuse id>` (Wi-Fi AP, BLE advertisement, screen): `micro-connector` and the
+  simulator find stations by the `FKM-` prefix;
+- the crate and binary name `fkm-firmware`, and `/tmp/fkm-build`, which `micro-connector` watches
+  for new builds.
 
 ## Commits
 

@@ -1,4 +1,4 @@
-//! BLE link to an FKM display: pick a display from a scan, pair once (the display only accepts
+//! BLE link to an FKMTime display: pick a display from a scan, pair once (the display only accepts
 //! its bonded timer), then stream every timer value as a GATT write.
 
 mod codec;
@@ -369,7 +369,7 @@ async fn stream(
     streaming.get()
 }
 
-/// Lists FKM displays in the menu while a scan runs.
+/// Lists FKMTime displays in the menu while a scan runs.
 struct Discovery {
     state: GlobalState,
     scanning: Cell<bool>,
