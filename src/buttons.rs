@@ -5,19 +5,22 @@ use crate::bluetooth::BleAction;
 use crate::{
     consts::{NVS_BONDING_KEY, NVS_ERROR_LOG, NVS_SIGN_KEY},
     state::{ErrorLogEntryStage, GlobalState, MenuScene, Scene, Ui, current_epoch},
+    translations::get_translation,
     utils::buttons::{Button, ButtonInputs},
     watchdog::{TaskId, heartbeat},
 };
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal::gpio::Input;
-use portable_atomic::{AtomicBool, Ordering};
+use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 const INSPECTION_STOP_HOLD_MS: u64 = 1000;
 const DNF_HOLD_MS: u64 = 1000;
 const RESET_COMPETITOR_HOLD_MS: u64 = 3000;
 const CONFIG_MENU_HOLD_MS: u64 = 10000;
 const DELEGATE_HOLD_MS: u64 = 3000;
+/// How long a hint (why a press did nothing) stays on screen.
+const HINT_MS: u64 = 3000;
 
 #[cfg(feature = "v3")]
 const CONFIG_MENU_ERROR_LOG_IDX: usize = 4;
@@ -31,6 +34,8 @@ const CONFIG_MENU_ERROR_LOG_IDX: usize = 5;
 static DELEGATE_REQUEST: Signal<CriticalSectionRawMutex, crate::structs::TimerPacketInner> =
     Signal::new();
 static DELEGATE_PENDING: AtomicBool = AtomicBool::new(false);
+/// When the shown hint goes away (ticks, 0 = none); the button loop clears it.
+static HINT_UNTIL: AtomicU64 = AtomicU64::new(0);
 
 /// A delegate call waits for its answer: the attempt shows "waiting for delegate" and takes no
 /// input until then, so the answer can't meet a changed (or the next) attempt.
@@ -88,6 +93,11 @@ async fn button_loop(state: GlobalState, mut inputs: ButtonInputs) {
             } else if let Some(p) = press.take() {
                 on_up(&state, p.button).await;
             }
+        }
+
+        let hint_until = HINT_UNTIL.load(Ordering::Relaxed);
+        if hint_until != 0 && Instant::now().as_ticks() >= hint_until {
+            clear_hint(&state);
         }
 
         if let Some(p) = press.as_mut() {
@@ -511,21 +521,53 @@ fn inspection_start(state: &GlobalState) -> bool {
         return false;
     }
 
+    let can_start = |s: &crate::state::Solve| {
+        s.scene < Scene::Inspection && s.inspection_start.is_none() && s.solve_time.is_none()
+    };
+    if !state.solve.read(can_start) {
+        return false;
+    }
+
     // a stackmat must be reset (showing 0) first; the pads have no display of their own to reset
     #[cfg(not(feature = "timer-func"))]
     if state.timer.try_get() != Some(0) {
         log::warn!("Skipping inspection start because current timer time is not 0");
+        show_hint(
+            state,
+            crate::translations::TranslationKey::RESET_TIMER_HEADER,
+            crate::translations::TranslationKey::RESET_TIMER_FOOTER,
+        );
         return false;
     }
 
-    state.solve.update(|s| {
-        if s.scene < Scene::Inspection && s.inspection_start.is_none() && s.solve_time.is_none() {
+    let started = state.solve.update(|s| {
+        if can_start(s) {
             s.inspection_start = Some(Instant::now());
             s.scene = Scene::Inspection;
             return true;
         }
         false
-    })
+    });
+    // the hint would otherwise cover the inspection that just started
+    if started {
+        clear_hint(state);
+    }
+    started
+}
+
+/// Shows why a press did nothing, for [`HINT_MS`] (cleared by the button loop).
+#[cfg_attr(feature = "timer-func", allow(dead_code))]
+fn show_hint(state: &GlobalState, header: usize, footer: usize) {
+    let message = (get_translation(header), get_translation(footer));
+    state.ui.update(|u| u.custom_message = Some(message));
+    let until = Instant::now() + Duration::from_millis(HINT_MS);
+    HINT_UNTIL.store(until.as_ticks(), Ordering::Relaxed);
+}
+
+fn clear_hint(state: &GlobalState) {
+    if HINT_UNTIL.swap(0, Ordering::Relaxed) != 0 {
+        state.ui.update(|u| u.custom_message = None);
+    }
 }
 
 fn inspection_hold_stop(state: &GlobalState) -> bool {
