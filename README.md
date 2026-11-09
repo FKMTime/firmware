@@ -1,4 +1,4 @@
-# FKMTime Timer
+# FKMTime firmware
 
 ## Main Pinout
 
