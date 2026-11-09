@@ -3,7 +3,7 @@
 
 use crate::bluetooth::BleAction;
 use crate::{
-    consts::{NVS_BONDING_KEY, NVS_ERROR_LOG, NVS_SIGN_KEY},
+    consts::{NVS_BONDING_KEY, NVS_ERROR_LOG, NVS_SAVED_STATE, NVS_SIGN_KEY},
     state::{ErrorLogEntryStage, GlobalState, MenuScene, Scene, Ui, current_epoch},
     translations::get_translation,
     utils::buttons::{Button, ButtonInputs},
@@ -49,6 +49,8 @@ struct Press {
     button: Button,
     since: Instant,
     last_ms: u64,
+    /// The reset hold acted (reset or asked to confirm): the release must not also submit.
+    reset_held: bool,
 }
 
 #[embassy_executor::task]
@@ -91,7 +93,7 @@ async fn button_loop(state: GlobalState, mut inputs: ButtonInputs) {
             if prev == 0 {
                 press = on_down(&state, Button::from_mask(next));
             } else if let Some(p) = press.take() {
-                on_up(&state, p.button).await;
+                on_up(&state, p).await;
             }
         }
 
@@ -102,7 +104,7 @@ async fn button_loop(state: GlobalState, mut inputs: ButtonInputs) {
 
         if let Some(p) = press.as_mut() {
             let ms = p.since.elapsed().as_millis();
-            let consumed = on_hold(&state, p.button, p.last_ms, ms).await;
+            let consumed = on_hold(&state, p, ms).await;
             p.last_ms = ms;
             if consumed {
                 press = None;
@@ -113,14 +115,19 @@ async fn button_loop(state: GlobalState, mut inputs: ButtonInputs) {
     }
 }
 
-/// Returns the press to track, or `None` if the press was consumed (wake-up, list navigation,
-/// inspection start) or more than one button is down.
+/// Returns the press to track, or `None` if the press was consumed (wake-up, cancelling a reset
+/// confirmation, list navigation, inspection start) or more than one button is down.
 fn on_down(state: &GlobalState, button: Option<Button>) -> Option<Press> {
     if wake_up() {
         return None;
     }
 
     let button = button?;
+    // any other button keeps the attempt; submit confirms the reset on release
+    if button != Button::Third && state.ui.update(|u| core::mem::take(&mut u.confirm_reset)) {
+        return None;
+    }
+
     let consumed = match button {
         Button::First => select_step(state, false) || inspection_start(state),
         Button::Fourth => select_step(state, true),
@@ -131,21 +138,29 @@ fn on_down(state: &GlobalState, button: Option<Button>) -> Option<Press> {
         button,
         since: Instant::now(),
         last_ms: 0,
+        reset_held: false,
     })
 }
 
-/// Called every loop tick while `button` is held for `ms` (`prev_ms` at the last tick).
+/// Called every loop tick while `press` is held for `ms` (`press.last_ms` at the last tick).
 /// Returns true if the press was consumed.
-async fn on_hold(state: &GlobalState, button: Button, prev_ms: u64, ms: u64) -> bool {
+async fn on_hold(state: &GlobalState, press: &mut Press, ms: u64) -> bool {
+    let prev_ms = press.last_ms;
     let crossed = |threshold: u64| prev_ms <= threshold && ms > threshold;
 
-    match button {
+    match press.button {
         Button::First if crossed(INSPECTION_STOP_HOLD_MS) => inspection_hold_stop(state),
         Button::Fourth if crossed(DNF_HOLD_MS) => dnf(state),
         Button::Third if crossed(RESET_COMPETITOR_HOLD_MS) => {
             if !state.should_skip_other_actions() {
-                state.timer_stop_signal.signal(());
-                state.reset_solve(false).await;
+                press.reset_held = true;
+                // a recorded time is only thrown away once the judge confirms
+                if state.solve.read(|s| s.solve_time.is_some()) {
+                    state.ui.update(|u| u.confirm_reset = true);
+                } else {
+                    state.timer_stop_signal.signal(());
+                    state.reset_solve(true).await;
+                }
             }
             false
         }
@@ -153,6 +168,7 @@ async fn on_hold(state: &GlobalState, button: Button, prev_ms: u64, ms: u64) -> 
             // consumed: releasing the button must not also submit. Inside a menu (which is
             // part of the config menu) it stays put, so both are never shown at once.
             state.ui.update(|u| {
+                u.confirm_reset = false;
                 if u.menu_scene.is_none() {
                     u.selected_config_menu = Some(0);
                 }
@@ -173,12 +189,21 @@ async fn on_hold(state: &GlobalState, button: Button, prev_ms: u64, ms: u64) -> 
     }
 }
 
-async fn on_up(state: &GlobalState, button: Button) {
+async fn on_up(state: &GlobalState, press: Press) {
     if wake_up() {
         return;
     }
 
-    match button {
+    match press.button {
+        Button::Third if press.reset_held => {}
+        // an error shown on top is dismissed first (by `submit`)
+        Button::Third
+            if state
+                .ui
+                .update(|u| u.error_text.is_none() && core::mem::take(&mut u.confirm_reset)) =>
+        {
+            state.reset_solve(true).await;
+        }
         Button::Third => submit(state).await,
         Button::Fourth => penalty(state),
         // a sent call keeps its "waiting for delegate" screen until the answer
@@ -488,6 +513,7 @@ async fn submit_config_item(state: &GlobalState, sel: usize) {
             _ = state.nvs.delete(&NVS_SIGN_KEY).await;
             _ = state.nvs.delete(&NVS_BONDING_KEY).await;
             _ = state.nvs.delete(&NVS_ERROR_LOG).await;
+            _ = state.nvs.delete(&NVS_SAVED_STATE).await;
 
             Timer::after_millis(250).await;
             esp_hal::system::software_reset();
