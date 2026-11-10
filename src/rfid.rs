@@ -321,20 +321,30 @@ async fn handle_card<I: Interface>(
     // not hit the competitor's confirming tap (e.g. of a last attempt a delegate resolved)
     let is_competitor = global_state.solve.read(|s| s.current_competitor.is_none());
 
+    // the competitor's confirming tap, which goes on to submit the attempt: only it shows
+    // "Sending..." when slow (other scans just move on once answered)
+    let submits = global_state.solve.read(|s| {
+        s.scene == Scene::Finished
+            && s.time_confirmed
+            && s.current_judge.is_some()
+            && s.current_competitor == Some(card_uid as u64)
+    });
+
     // read-only, so a Wi-Fi drop doesn't lose the scan: it is sent again after the reconnect
-    let resp = show_sending_when_slow(
-        global_state,
-        crate::ws::request_resending::<CardInfoResponsePacket>(
-            crate::structs::TimerPacketInner::CardInfoRequest {
-                card_id: card_uid as u64,
-                is_competitor,
-                attendance_device: None,
-                sign_key: crate::state::SETTINGS.read(|s| s.sign_key),
-            },
-            Duration::from_millis(crate::consts::WS_RESEND_TIMEOUT_MS),
-        ),
-    )
-    .await;
+    let request = crate::ws::request_resending::<CardInfoResponsePacket>(
+        crate::structs::TimerPacketInner::CardInfoRequest {
+            card_id: card_uid as u64,
+            is_competitor,
+            attendance_device: None,
+            sign_key: crate::state::SETTINGS.read(|s| s.sign_key),
+        },
+        Duration::from_millis(crate::consts::WS_RESEND_TIMEOUT_MS),
+    );
+    let resp = if submits {
+        show_sending_when_slow(global_state, request).await
+    } else {
+        request.await
+    };
 
     match resp {
         Ok(resp) => process_card_info_response(resp, global_state).await,
@@ -502,9 +512,9 @@ async fn process_card_info_response(resp: CardInfoResponsePacket, global_state: 
     }
 }
 
-/// Waits for `request`, showing "Sending..." once it takes longer than
-/// [`SENDING_SHOW_AFTER_MS`](crate::consts::SENDING_SHOW_AFTER_MS): a slow answer (a reconnect,
-/// up to 30 s) then doesn't look like a missed scan, and a normal one doesn't flash the screen.
+/// Waits for a request of the tap that submits an attempt, showing "Sending..." once it takes
+/// longer than [`SENDING_SHOW_AFTER_MS`](crate::consts::SENDING_SHOW_AFTER_MS): a slow answer (a
+/// reconnect, up to 30 s) then doesn't look like a missed tap, and a normal one doesn't flash.
 /// [`handle_card`] hides it again once the card is handled.
 async fn show_sending_when_slow<F: core::future::Future>(
     global_state: &GlobalState,

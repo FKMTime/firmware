@@ -22,7 +22,7 @@ pub const RFID_RETRY_INIT_MS: u64 = 1500;
 pub const WS_RETRY_MS: u64 = 1000;
 /// A request waits this long across reconnects (a Wi-Fi drop lasts 10-25 s).
 pub const WS_RESEND_TIMEOUT_MS: u64 = 30_000;
-/// A card scan shows "Sending..." only when the server takes longer than this to answer.
+/// The tap submitting an attempt shows "Sending..." only when the server takes longer than this.
 pub const SENDING_SHOW_AFTER_MS: u64 = 1_000;
 /// A reply this late gets the link probed with a ping (the server answers in ~0.1 s, 4 s at worst).
 pub const WS_REPLY_LATE_MS: u64 = 2_000;
