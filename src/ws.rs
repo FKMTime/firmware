@@ -141,25 +141,10 @@ fn send_request(data: TimerPacketInner) -> Result<SlotGuard, ApiError> {
     Ok(slot)
 }
 
-/// Sends `packet` and waits (at most `timeout` in total) for the tagged response.
-pub async fn request<T: FromPacket>(
-    packet: TimerPacketInner,
-    timeout: Duration,
-) -> Result<T, ApiError> {
-    let slot = send_request(packet)?;
-    let response = slot
-        .0
-        .response
-        .wait()
-        .with_timeout(timeout)
-        .await
-        .map_err(|_| timeout_error())?;
-    T::from_packet(response)
-}
-
-/// Like [`request`], for a request safe to send twice (read-only): a late reply gets the link
-/// checked, and a request the link lost on the way is sent again (same tag) once the station
-/// is reconnected, all within `timeout`.
+/// Sends `packet` and waits (at most `timeout` in total) for the tagged response. For a request
+/// safe to send twice (read-only, or one the server recognises as a duplicate): a late reply gets
+/// the link checked, and a request the link lost on the way is sent again (same tag) once the
+/// station is reconnected.
 pub async fn request_resending<T: FromPacket>(
     packet: TimerPacketInner,
     timeout: Duration,

@@ -20,9 +20,7 @@ pub const LCD_INSPECTION_FRAME_TIME: u64 = 1000 / 30;
 
 pub const RFID_RETRY_INIT_MS: u64 = 1500;
 pub const WS_RETRY_MS: u64 = 1000;
-/// Total time for a request (send + tagged response); was 5 s send + 5 s response.
-pub const WS_REQUEST_TIMEOUT_MS: u64 = 10_000;
-/// A read-only request waits this long across reconnects (a Wi-Fi drop lasts 10-25 s).
+/// A request waits this long across reconnects (a Wi-Fi drop lasts 10-25 s).
 pub const WS_RESEND_TIMEOUT_MS: u64 = 30_000;
 /// A reply this late gets the link probed with a ping (the server answers in ~0.1 s, 4 s at worst).
 pub const WS_REPLY_LATE_MS: u64 = 2_000;

@@ -457,9 +457,11 @@ async fn process_card_info_response(resp: CardInfoResponsePacket, global_state: 
                 }
                 _ => None,
             };
-            let resp = crate::ws::request::<SolveConfirmPacket>(
+            // sent again after a Wi-Fi drop: the server knows the attempt by its session id, and
+            // answers a copy it already has with "already entered", which drops it here
+            let resp = crate::ws::request_resending::<SolveConfirmPacket>(
                 packet,
-                Duration::from_millis(crate::consts::WS_REQUEST_TIMEOUT_MS),
+                Duration::from_millis(crate::consts::WS_RESEND_TIMEOUT_MS),
             )
             .await;
             // the solve may have been reset meanwhile (e.g. competitor reset hold)
