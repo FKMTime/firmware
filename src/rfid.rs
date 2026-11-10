@@ -4,6 +4,7 @@ use crate::{
     structs::{CardInfoResponsePacket, SolveConfirmPacket},
     translations::{TranslationKey, get_translation},
 };
+use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal_mfrc522::{Interface, Key, KeyType, Mfrc522, Uid};
 
@@ -320,19 +321,18 @@ async fn handle_card<I: Interface>(
     // not hit the competitor's confirming tap (e.g. of a last attempt a delegate resolved)
     let is_competitor = global_state.solve.read(|s| s.current_competitor.is_none());
 
-    // shown until the server has answered (also the attempt submit a confirming tap sends), so a
-    // tap is visibly taken even without a beep, and a reconnect doesn't look like a missed scan
-    global_state.ui.update(|u| u.sending = true);
-
     // read-only, so a Wi-Fi drop doesn't lose the scan: it is sent again after the reconnect
-    let resp = crate::ws::request_resending::<CardInfoResponsePacket>(
-        crate::structs::TimerPacketInner::CardInfoRequest {
-            card_id: card_uid as u64,
-            is_competitor,
-            attendance_device: None,
-            sign_key: crate::state::SETTINGS.read(|s| s.sign_key),
-        },
-        Duration::from_millis(crate::consts::WS_RESEND_TIMEOUT_MS),
+    let resp = show_sending_when_slow(
+        global_state,
+        crate::ws::request_resending::<CardInfoResponsePacket>(
+            crate::structs::TimerPacketInner::CardInfoRequest {
+                card_id: card_uid as u64,
+                is_competitor,
+                attendance_device: None,
+                sign_key: crate::state::SETTINGS.read(|s| s.sign_key),
+            },
+            Duration::from_millis(crate::consts::WS_RESEND_TIMEOUT_MS),
+        ),
     )
     .await;
 
@@ -465,9 +465,12 @@ async fn process_card_info_response(resp: CardInfoResponsePacket, global_state: 
             };
             // sent again after a Wi-Fi drop: the server knows the attempt by its session id, and
             // answers a copy it already has with "already entered", which drops it here
-            let resp = crate::ws::request_resending::<SolveConfirmPacket>(
-                packet,
-                Duration::from_millis(crate::consts::WS_RESEND_TIMEOUT_MS),
+            let resp = show_sending_when_slow(
+                global_state,
+                crate::ws::request_resending::<SolveConfirmPacket>(
+                    packet,
+                    Duration::from_millis(crate::consts::WS_RESEND_TIMEOUT_MS),
+                ),
             )
             .await;
             // the solve may have been reset meanwhile (e.g. competitor reset hold)
@@ -495,6 +498,25 @@ async fn process_card_info_response(resp: CardInfoResponsePacket, global_state: 
                 get_translation(TranslationKey::CARDS_CANNOT_BE_THE_SAME_FOOTER),
             );
             show_message(global_state, message, 8000).await;
+        }
+    }
+}
+
+/// Waits for `request`, showing "Sending..." once it takes longer than
+/// [`SENDING_SHOW_AFTER_MS`](crate::consts::SENDING_SHOW_AFTER_MS): a slow answer (a reconnect,
+/// up to 30 s) then doesn't look like a missed scan, and a normal one doesn't flash the screen.
+/// [`handle_card`] hides it again once the card is handled.
+async fn show_sending_when_slow<F: core::future::Future>(
+    global_state: &GlobalState,
+    request: F,
+) -> F::Output {
+    let mut request = core::pin::pin!(request);
+    let show_after = Timer::after_millis(crate::consts::SENDING_SHOW_AFTER_MS);
+    match select(request.as_mut(), show_after).await {
+        Either::First(out) => out,
+        Either::Second(()) => {
+            global_state.ui.update(|u| u.sending = true);
+            request.await
         }
     }
 }
