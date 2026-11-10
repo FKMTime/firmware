@@ -413,6 +413,8 @@ impl Session {
 #[derive(Debug, Clone, Copy)]
 pub struct Settings {
     pub sign_key: u32,
+    /// The sign key hasn't matched a server yet: a mismatch means it was never accepted.
+    pub sign_key_pending: bool,
     pub sound_enabled: bool,
     #[cfg(feature = "v4")]
     pub buzzer_volume: u8,
@@ -422,6 +424,7 @@ impl Settings {
     const fn new() -> Self {
         Self {
             sign_key: 0,
+            sign_key_pending: false,
             sound_enabled: true,
             #[cfg(feature = "v4")]
             buzzer_volume: crate::consts::BUZZER_VOLUME_DEFAULT,

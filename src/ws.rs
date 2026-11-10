@@ -587,13 +587,35 @@ async fn handshake(
     let fkm_token = i32::from_be_bytes(token[..4].try_into().unwrap_or_default());
     log::debug!("[trust] random: {random}, recv_random: {recv_random} | fkm_token: {fkm_token}");
 
+    let (sign_key, pending) = crate::state::SETTINGS.read(|s| (s.sign_key, s.sign_key_pending));
     if random == recv_random {
         log::info!("[trust] server trusted");
         crate::state::SESSION.write(|s| {
             s.trust_server = true;
             s.fkm_token = fkm_token;
         });
-    } else if crate::state::SETTINGS.read(|s| s.sign_key) == 0 {
+        if pending {
+            // the server accepted the key: from now on a mismatch is a real trust failure
+            _ = global_state
+                .nvs
+                .delete(&crate::consts::NVS_SIGN_KEY_PENDING)
+                .await;
+            crate::state::SETTINGS.write(|s| s.sign_key_pending = false);
+        }
+    } else if pending {
+        // a key from a submit that the server never accepted (rejected, not approved, or an old
+        // backend): drop it, so the station shows "device not added" and can be added again
+        log::warn!("[trust] the server never accepted the sign key, dropping it to be added again");
+        _ = global_state.nvs.delete(&crate::consts::NVS_SIGN_KEY).await;
+        _ = global_state
+            .nvs
+            .delete(&crate::consts::NVS_SIGN_KEY_PENDING)
+            .await;
+        crate::state::SETTINGS.write(|s| {
+            s.sign_key = 0;
+            s.sign_key_pending = false;
+        });
+    } else if sign_key == 0 {
         // no key since "Reset settings" while the server keeps the old one: expected, the
         // station shows "device not added" and submit registers a new key (approved in the panel)
         log::warn!("[trust] no sign key yet, waiting for the station to be added again");
