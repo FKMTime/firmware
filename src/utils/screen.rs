@@ -13,6 +13,7 @@ use embassy_time::{Duration, Instant, Timer};
 pub enum Screen<'a> {
     Error(&'a str),
     Custom(&'a str, &'a str),
+    Sending,
     ConfirmReset,
     ConfigMenu(usize),
     #[cfg(feature = "v4")]
@@ -56,7 +57,7 @@ pub struct Finished {
     pub status: Option<usize>,
 }
 
-/// The priority chain: error > custom message > reset confirmation > config menu > menu scene > connection
+/// The priority chain: error > custom message > sending > reset confirmation > config menu > menu scene > connection
 /// overwrites > delegate > scene.
 pub fn screen<'a>(s: &'a Solve, ui: &'a Ui, status: &Status) -> Screen<'a> {
     if let Some(ref error) = ui.error_text {
@@ -64,6 +65,9 @@ pub fn screen<'a>(s: &'a Solve, ui: &'a Ui, status: &Status) -> Screen<'a> {
     }
     if let Some((ref l1, ref l2)) = ui.custom_message {
         return Screen::Custom(l1, l2);
+    }
+    if ui.sending {
+        return Screen::Sending;
     }
     if ui.confirm_reset {
         return Screen::ConfirmReset;

@@ -4,6 +4,7 @@ use crate::{
     structs::{CardInfoResponsePacket, SolveConfirmPacket},
     translations::{TranslationKey, get_translation},
 };
+use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal_mfrc522::{Interface, Key, KeyType, Mfrc522, Uid};
 
@@ -320,8 +321,17 @@ async fn handle_card<I: Interface>(
     // not hit the competitor's confirming tap (e.g. of a last attempt a delegate resolved)
     let is_competitor = global_state.solve.read(|s| s.current_competitor.is_none());
 
+    // the competitor's confirming tap, which goes on to submit the attempt: only it shows
+    // "Sending..." when slow (other scans just move on once answered)
+    let submits = global_state.solve.read(|s| {
+        s.scene == Scene::Finished
+            && s.time_confirmed
+            && s.current_judge.is_some()
+            && s.current_competitor == Some(card_uid as u64)
+    });
+
     // read-only, so a Wi-Fi drop doesn't lose the scan: it is sent again after the reconnect
-    let resp = crate::ws::request_resending::<CardInfoResponsePacket>(
+    let request = crate::ws::request_resending::<CardInfoResponsePacket>(
         crate::structs::TimerPacketInner::CardInfoRequest {
             card_id: card_uid as u64,
             is_competitor,
@@ -329,13 +339,19 @@ async fn handle_card<I: Interface>(
             sign_key: crate::state::SETTINGS.read(|s| s.sign_key),
         },
         Duration::from_millis(crate::consts::WS_RESEND_TIMEOUT_MS),
-    )
-    .await;
+    );
+    let resp = if submits {
+        show_sending_when_slow(global_state, request).await
+    } else {
+        request.await
+    };
 
     match resp {
         Ok(resp) => process_card_info_response(resp, global_state).await,
         Err(e) => global_state.show_api_error(e).await,
     }
+    // an error or a message drawn meanwhile ranks above it on screen, so it can go only now
+    global_state.ui.update(|u| u.sending = false);
 
     if card.selected.is_some() {
         _ = mfrc522.halt().await;
@@ -457,9 +473,14 @@ async fn process_card_info_response(resp: CardInfoResponsePacket, global_state: 
                 }
                 _ => None,
             };
-            let resp = crate::ws::request::<SolveConfirmPacket>(
-                packet,
-                Duration::from_millis(crate::consts::WS_REQUEST_TIMEOUT_MS),
+            // sent again after a Wi-Fi drop: the server knows the attempt by its session id, and
+            // answers a copy it already has with "already entered", which drops it here
+            let resp = show_sending_when_slow(
+                global_state,
+                crate::ws::request_resending::<SolveConfirmPacket>(
+                    packet,
+                    Duration::from_millis(crate::consts::WS_RESEND_TIMEOUT_MS),
+                ),
             )
             .await;
             // the solve may have been reset meanwhile (e.g. competitor reset hold)
@@ -487,6 +508,25 @@ async fn process_card_info_response(resp: CardInfoResponsePacket, global_state: 
                 get_translation(TranslationKey::CARDS_CANNOT_BE_THE_SAME_FOOTER),
             );
             show_message(global_state, message, 8000).await;
+        }
+    }
+}
+
+/// Waits for a request of the tap that submits an attempt, showing "Sending..." once it takes
+/// longer than [`SENDING_SHOW_AFTER_MS`](crate::consts::SENDING_SHOW_AFTER_MS): a slow answer (a
+/// reconnect, up to 30 s) then doesn't look like a missed tap, and a normal one doesn't flash.
+/// [`handle_card`] hides it again once the card is handled.
+async fn show_sending_when_slow<F: core::future::Future>(
+    global_state: &GlobalState,
+    request: F,
+) -> F::Output {
+    let mut request = core::pin::pin!(request);
+    let show_after = Timer::after_millis(crate::consts::SENDING_SHOW_AFTER_MS);
+    match select(request.as_mut(), show_after).await {
+        Either::First(out) => out,
+        Either::Second(()) => {
+            global_state.ui.update(|u| u.sending = true);
+            request.await
         }
     }
 }
