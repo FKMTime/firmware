@@ -346,6 +346,11 @@ fn render(s: &View, text: &mut LcdText, local: &Local) -> Live {
             text.print(0, l1, Align::Center, true);
             text.print(1, l2, Align::Center, true);
         }
+        Screen::Sending => tr(
+            text,
+            TranslationKey::SENDING_HEADER,
+            TranslationKey::SENDING_FOOTER,
+        ),
         Screen::ConfirmReset => tr(
             text,
             TranslationKey::RESET_ATTEMPT_HEADER,

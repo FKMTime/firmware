@@ -320,6 +320,10 @@ async fn handle_card<I: Interface>(
     // not hit the competitor's confirming tap (e.g. of a last attempt a delegate resolved)
     let is_competitor = global_state.solve.read(|s| s.current_competitor.is_none());
 
+    // shown until the server has answered (also the attempt submit a confirming tap sends), so a
+    // tap is visibly taken even without a beep, and a reconnect doesn't look like a missed scan
+    global_state.ui.update(|u| u.sending = true);
+
     // read-only, so a Wi-Fi drop doesn't lose the scan: it is sent again after the reconnect
     let resp = crate::ws::request_resending::<CardInfoResponsePacket>(
         crate::structs::TimerPacketInner::CardInfoRequest {
@@ -336,6 +340,8 @@ async fn handle_card<I: Interface>(
         Ok(resp) => process_card_info_response(resp, global_state).await,
         Err(e) => global_state.show_api_error(e).await,
     }
+    // an error or a message drawn meanwhile ranks above it on screen, so it can go only now
+    global_state.ui.update(|u| u.sending = false);
 
     if card.selected.is_some() {
         _ = mfrc522.halt().await;

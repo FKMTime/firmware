@@ -136,6 +136,14 @@
         "translation": "Exit"
       },
       {
+        "key": "sendingHeader",
+        "translation": "Sending..."
+      },
+      {
+        "key": "sendingFooter",
+        "translation": "Please wait"
+      },
+      {
         "key": "resetAttemptHeader",
         "translation": "Reset attempt?"
       },

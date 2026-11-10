@@ -338,6 +338,8 @@ pub struct Ui {
     pub custom_message: Option<(DisplayText, DisplayText)>,
     /// The reset hold asks first when it would throw away a recorded time.
     pub confirm_reset: bool,
+    /// A scanned card waits for the server's answer (a reconnect can stretch it to 30 s).
+    pub sending: bool,
 }
 
 impl Ui {
@@ -354,6 +356,7 @@ impl Ui {
             error_text: None,
             custom_message: None,
             confirm_reset: false,
+            sending: false,
         }
     }
 }

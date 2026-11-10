@@ -274,6 +274,13 @@ fn render(s: &View, f: &mut Frame, local: &Local) -> Live {
             &two_lines(&get_translation(TranslationKey::ERROR_HEADER), error),
         ),
         Screen::Custom(l1, l2) => ui::text_main(f, &two_lines(l1, l2)),
+        Screen::Sending => ui::text_main(
+            f,
+            &tr_lines(
+                TranslationKey::SENDING_HEADER,
+                TranslationKey::SENDING_FOOTER,
+            ),
+        ),
         Screen::ConfirmReset => ui::text_main(
             f,
             &tr_lines(
