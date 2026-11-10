@@ -62,6 +62,9 @@ pub const PADS_ARM_MS: u64 = 550;
 pub const NVS_BONDING_KEY: esp_hal_wifimanager::Key =
     esp_hal_wifimanager::Key::from_str("BONDING_KEY");
 pub const NVS_SIGN_KEY: esp_hal_wifimanager::Key = esp_hal_wifimanager::Key::from_str("SIGN_KEY");
+/// Set while the sign key hasn't matched a server yet (created by a submit, not yet accepted).
+pub const NVS_SIGN_KEY_PENDING: esp_hal_wifimanager::Key =
+    esp_hal_wifimanager::Key::from_str("SIGN_PENDING");
 pub const NVS_SAVED_STATE: esp_hal_wifimanager::Key =
     esp_hal_wifimanager::Key::from_str("SAVED_STATE");
 pub const NVS_ERROR_LOG: esp_hal_wifimanager::Key = esp_hal_wifimanager::Key::from_str("ERROR_LOG");

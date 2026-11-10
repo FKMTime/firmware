@@ -146,6 +146,13 @@ async fn main(spawner: Spawner) {
     if let Ok(sign_key) = nvs.get::<u32>(&NVS_SIGN_KEY).await {
         crate::state::SETTINGS.write(|s| s.sign_key = sign_key);
     }
+    if nvs
+        .get::<u8>(&crate::consts::NVS_SIGN_KEY_PENDING)
+        .await
+        .is_ok()
+    {
+        crate::state::SETTINGS.write(|s| s.sign_key_pending = true);
+    }
     #[cfg(feature = "v4")]
     if let Ok(saved_volume) = nvs.get::<u8>(&crate::consts::NVS_BUZZER_VOLUME).await {
         if (crate::consts::BUZZER_VOLUME_MIN..=crate::consts::BUZZER_VOLUME_MAX)

@@ -3,7 +3,7 @@
 
 use crate::bluetooth::BleAction;
 use crate::{
-    consts::{NVS_BONDING_KEY, NVS_ERROR_LOG, NVS_SAVED_STATE, NVS_SIGN_KEY},
+    consts::{NVS_BONDING_KEY, NVS_ERROR_LOG, NVS_SAVED_STATE, NVS_SIGN_KEY, NVS_SIGN_KEY_PENDING},
     state::{ErrorLogEntryStage, GlobalState, MenuScene, Scene, Ui, current_epoch},
     translations::get_translation,
     utils::buttons::{Button, ButtonInputs},
@@ -478,7 +478,12 @@ pub async fn add_device(state: &GlobalState) {
         sign_key = (u32::from_be_bytes(bytes) >> 1).max(1);
 
         _ = state.nvs.set(&NVS_SIGN_KEY, sign_key).await;
-        crate::state::SETTINGS.write(|s| s.sign_key = sign_key);
+        // pending until a handshake matches it: a key the server never accepts is dropped then
+        _ = state.nvs.set(&NVS_SIGN_KEY_PENDING, 1u8).await;
+        crate::state::SETTINGS.write(|s| {
+            s.sign_key = sign_key;
+            s.sign_key_pending = true;
+        });
     }
     crate::state::SESSION.write(|s| s.trust_server = true);
 
@@ -511,6 +516,7 @@ async fn submit_config_item(state: &GlobalState, sel: usize) {
             log::warn!("Reset settings: rebooting");
             _ = state.nvs.delete(&esp_hal_wifimanager::WIFI_NVS_KEY).await;
             _ = state.nvs.delete(&NVS_SIGN_KEY).await;
+            _ = state.nvs.delete(&NVS_SIGN_KEY_PENDING).await;
             _ = state.nvs.delete(&NVS_BONDING_KEY).await;
             _ = state.nvs.delete(&NVS_ERROR_LOG).await;
             _ = state.nvs.delete(&NVS_SAVED_STATE).await;
