@@ -1,7 +1,8 @@
 //! Header of a log batch: the station's live state, sent every interval (no deps, host-tested).
 //!
 //! `L`, truncated flag, u64 BE time, inspection and competitor (`u64::MAX` = none),
-//! 20 B group id, 36 B session id, `LV` marker, version, flags, zero padding to [`HEADER_LEN`].
+//! 20 B group id, 36 B session id, `LV` marker, version, flags, Wi-Fi RSSI (i8 dBm, `0` = unknown)
+//! at 86, zero padding to [`HEADER_LEN`].
 
 pub const HEADER_LEN: usize = 100;
 /// At 82..84: says version and flags follow (older firmware left 82..100 unset).
@@ -9,6 +10,8 @@ pub const LIVE_MARKER: &[u8; 2] = b"LV";
 pub const LIVE_VERSION: u8 = 1;
 pub const FLAG_TIMER_RUNNING: u8 = 1 << 0;
 pub const FLAG_INSPECTION_RUNNING: u8 = 1 << 1;
+/// At 86, outside the 82..86 block the connector checks, so [`LIVE_VERSION`] stays 1.
+pub const RSSI_OFFSET: usize = 86;
 
 /// Live values written into the header of a log batch.
 pub struct LogsHeader<'a> {
@@ -19,6 +22,8 @@ pub struct LogsHeader<'a> {
     pub session_id: Option<&'a str>,
     pub timer_running: bool,
     pub inspection_running: bool,
+    /// Signal of the connected AP in dBm; `None` while unknown.
+    pub rssi: Option<i8>,
 }
 
 impl LogsHeader<'_> {
@@ -58,4 +63,6 @@ pub fn write_header(batch: &mut [u8], header: &LogsHeader) {
     batch[82..84].copy_from_slice(LIVE_MARKER);
     batch[84] = LIVE_VERSION;
     batch[85] = header.flags();
+    // a real reading is always negative; 0 or above can't be told from "unknown"
+    batch[RSSI_OFFSET] = header.rssi.filter(|&r| r < 0).map_or(0, |r| r as u8);
 }

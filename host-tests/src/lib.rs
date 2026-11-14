@@ -96,6 +96,7 @@ mod live_header_tests {
             session_id: Some("0b6a7d2e-1f4c-4f7e-9b1a-2c3d4e5f6a7b"),
             timer_running,
             inspection_running,
+            rssi: None,
         }
     }
 
@@ -146,12 +147,52 @@ mod live_header_tests {
             session_id: None,
             timer_running: false,
             inspection_running: false,
+            rssi: None,
         });
         for field in [2..10, 10..18, 18..26] {
             assert_eq!(batch[field], u64::MAX.to_be_bytes());
         }
         assert!(batch[26..82].iter().all(|&b| b == 0));
         assert_eq!(&batch[82..86], b"LV\x01\x00");
+        assert_eq!(batch[RSSI_OFFSET], 0);
+    }
+
+    #[test]
+    fn rssi_is_written_at_86_as_twos_complement() {
+        let batch = header_only(&LogsHeader {
+            rssi: Some(-67),
+            ..header(true, false)
+        });
+        assert_eq!(RSSI_OFFSET, 86);
+        assert_eq!(batch[86], 0xBD);
+        assert_eq!(batch[86] as i8, -67);
+        // the block the connector checks is unchanged, so older connectors still accept it
+        assert_eq!(&batch[82..86], b"LV\x01\x01");
+        assert!(batch[87..].iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn rssi_extremes_round_trip() {
+        for rssi in [-1i8, -30, -90, -127, i8::MIN] {
+            let batch = header_only(&LogsHeader {
+                rssi: Some(rssi),
+                ..header(false, false)
+            });
+            assert_eq!(batch[86] as i8, rssi);
+        }
+    }
+
+    #[test]
+    fn unknown_or_non_negative_rssi_writes_zero() {
+        for rssi in [None, Some(0), Some(1), Some(i8::MAX)] {
+            let batch = header_only(&LogsHeader {
+                rssi,
+                ..header(false, false)
+            });
+            assert_eq!(batch[86], 0, "rssi {rssi:?}");
+            assert_eq!(&batch[82..86], b"LV\x01\x00");
+            assert!(batch[87..].iter().all(|&b| b == 0));
+        }
     }
 
     #[test]
