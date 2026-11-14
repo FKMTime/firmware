@@ -414,6 +414,11 @@ async fn main(spawner: Spawner) {
         }
 
         power.tick();
+        // the logger task can't hold the WifiManager, so it reads this copy
+        WIFI_RSSI.store(
+            wifi_res.rssi().unwrap_or(0),
+            portable_atomic::Ordering::Relaxed,
+        );
     }
 }
 
@@ -430,6 +435,10 @@ async fn restore_saved_state_task(global_state: GlobalState, nvs: &'static Nvs) 
     }
 }
 
+/// Signal of the connected AP in dBm from `WifiManager::rssi`, `0` while unknown; refreshed by the
+/// main loop every 100 ms (the driver samples it every 2 s).
+static WIFI_RSSI: portable_atomic::AtomicI8 = portable_atomic::AtomicI8::new(0);
+
 /// Live state of the attempt for a log batch header.
 fn live_header(s: &state::Solve, current_time: Option<u64>) -> utils::logger::LogsHeader<'_> {
     utils::logger::LogsHeader {
@@ -440,6 +449,7 @@ fn live_header(s: &state::Solve, current_time: Option<u64>) -> utils::logger::Lo
         session_id: s.session_id.as_deref(),
         timer_running: s.timer_running(),
         inspection_running: s.inspection_running(),
+        rssi: Some(WIFI_RSSI.load(portable_atomic::Ordering::Relaxed)).filter(|&r| r < 0),
     }
 }
 
