@@ -713,7 +713,9 @@ class Station(M.Run):
             raise Mismatch(f"after confirming: {brief(s)}, expected {exp_time} ({pen})")
 
         if "competitor_before_judge" in sl:
-            self.scan(C, lambda s: s.get("msg") == "1", "competitor first: 'cards the same' message")
+            self.scan(C, lambda s: s.get("err") == "1", "competitor first: 'cards the same' error")
+            self.press_check(3, 120, lambda s: s.get("err") == "0" and s.get("conf") == "1",
+                             "submit dismisses 'cards the same', the solve stays")
         if "wrong_judge_card" in sl:
             X = sl["wrong_judge_card"]
             self.scan(X, lambda s: s.get("judge") == str(X), "wrong judge card taken as judge")

@@ -4,6 +4,7 @@ use crate::{
     structs::{CardInfoResponsePacket, SolveConfirmPacket},
     translations::{TranslationKey, get_translation},
 };
+use core::fmt::Write;
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Instant, Timer};
 use esp_hal_mfrc522::{Interface, Key, KeyType, Mfrc522, Uid};
@@ -502,12 +503,16 @@ async fn process_card_info_response(resp: CardInfoResponsePacket, global_state: 
             let (first, second) = split_after_two_words(&resp.message).unwrap_or(("Solve", "sent"));
             show_message(global_state, (first.into(), second.into()), 3000).await;
         }
+        // an error like any other: submit (or the judge's card) dismisses it
         CardAction::SameCards => {
-            let message = (
+            let mut error = crate::structs::MessageText::default();
+            _ = write!(
+                error,
+                "{} {}",
                 get_translation(TranslationKey::CARDS_CANNOT_BE_THE_SAME_HEADER),
                 get_translation(TranslationKey::CARDS_CANNOT_BE_THE_SAME_FOOTER),
             );
-            show_message(global_state, message, 8000).await;
+            global_state.ui.update(|u| u.error_text = Some(error));
         }
     }
 }
