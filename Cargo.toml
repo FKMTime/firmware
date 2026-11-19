@@ -5,6 +5,7 @@ name = "fkm-firmware"
 version = "0.1.0"
 authors = ["filipton <filipton12@gmail.com>"]
 edition = "2024"
+license = "PolyForm-Strict-1.0.0"
 
 [dependencies]
 esp-backtrace = { version = "0.20.0", features = [ "panic-handler", "println", "custom-pre-backtrace", "custom-halt", "esp32c3" ] }

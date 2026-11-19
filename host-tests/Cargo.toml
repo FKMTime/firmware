@@ -2,6 +2,7 @@
 name = "fkm-host-tests"
 version = "0.0.0"
 edition = "2024"
+license = "PolyForm-Strict-1.0.0"
 publish = false
 
 [dependencies]
