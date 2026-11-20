@@ -1,6 +1,6 @@
 # FKMTime firmware
 
-Rust firmware for the FKMTime timer stations (ESP32-C3), boards v3 and v4.
+Rust firmware for the FKMTime timer stations (ESP32-C3), boards v3, v4 and v5.
 
 ## Checks
 
@@ -10,8 +10,10 @@ What CI runs; all must pass before committing:
 cargo fmt --all -- --check
 cargo clippy --no-default-features --features v3 --target=riscv32imc-unknown-none-elf --workspace -- -D warnings
 cargo clippy --no-default-features --features v4 --target=riscv32imc-unknown-none-elf --workspace -- -D warnings
+cargo clippy --no-default-features --features v5 --target=riscv32imc-unknown-none-elf --workspace -- -D warnings
 cargo build --no-default-features --features v3 --target=riscv32imc-unknown-none-elf --release
 cargo build --no-default-features --features v4 --target=riscv32imc-unknown-none-elf --release
+cargo build --no-default-features --features v5 --target=riscv32imc-unknown-none-elf --release
 ```
 
 Host tests live in `host-tests/` and the esp-emu simulator in `sim/` (see `sim/README.md`).

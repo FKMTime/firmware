@@ -41,8 +41,14 @@ espflash save-image --chip esp32c3 ./target/riscv32imc-unknown-none-elf/release/
 cp ./target/riscv32imc-unknown-none-elf/release/fkm-firmware /tmp/fkm-build/"v4_STATION_${RELEASE_VERSION}"
 espflash save-image --chip esp32c3 --merge --flash-size 4mb --partition-table partitions.csv target/riscv32imc-unknown-none-elf/release/fkm-firmware dist/"v4_STATION_${RELEASE_VERSION}_MERGED.bin"
 
+RELEASE_BUILD="$RELEASE_VERSION" cargo build -r --no-default-features --features v5,sleep
+espflash save-image --chip esp32c3 ./target/riscv32imc-unknown-none-elf/release/fkm-firmware "/tmp/fkm-build/v5_STATION_${RELEASE_VERSION}.bin"
+./append_metadata.sh "/tmp/fkm-build/v5_STATION_${RELEASE_VERSION}.bin" "$RELEASE_VERSION" "STATION" "v5" "$EPOCH"
+cp ./target/riscv32imc-unknown-none-elf/release/fkm-firmware /tmp/fkm-build/"v5_STATION_${RELEASE_VERSION}"
+espflash save-image --chip esp32c3 --merge --flash-size 4mb --partition-table partitions.csv target/riscv32imc-unknown-none-elf/release/fkm-firmware dist/"v5_STATION_${RELEASE_VERSION}_MERGED.bin"
+
 gh repo clone https://github.com/FKMTime/docs /tmp/fkmdocs
-cp dist/"v3_STATION_${RELEASE_VERSION}_MERGED.bin" dist/"v4_STATION_${RELEASE_VERSION}_MERGED.bin" /tmp/fkmdocs/static/firmware
+cp dist/"v3_STATION_${RELEASE_VERSION}_MERGED.bin" dist/"v4_STATION_${RELEASE_VERSION}_MERGED.bin" dist/"v5_STATION_${RELEASE_VERSION}_MERGED.bin" /tmp/fkmdocs/static/firmware
 cd /tmp/fkmdocs
 git add .
 git commit -am "firmware upload"

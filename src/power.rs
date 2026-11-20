@@ -34,7 +34,8 @@ pub fn wake() {
     SLEEPING.store(false, Ordering::Relaxed);
 }
 
-/// Powers the chip down until one of the four buttons is pressed (wake = reset).
+/// Powers the chip down until one of the four buttons is pressed (wake = reset). On v5 the
+/// power key (AXP2101 IRQ on IO5, low) wakes it too.
 #[cfg(feature = "v4")]
 pub fn enter_deep_sleep() -> ! {
     use esp_hal::gpio::{Event, Input, InputConfig, Pin, Pull, WakeupConfig};
@@ -64,7 +65,40 @@ pub fn enter_deep_sleep() -> ! {
         pin.listen(Event::HighLevel);
     }
 
+    #[cfg(feature = "v5")]
+    let _pmic_irq = pmic_irq_wakeup(&wakeup_config);
+
     LowPower::new(lpwr).sleep_deep(RtcSleepConfig::deep())
+}
+
+/// v5 "off": deep sleep that only the power key ends (AXP2101 IRQ on IO5 going low). The PMIC
+/// stays on: a real power-off drops VCC, which pulls the IRQ line low through R4 and can turn
+/// the PMIC straight back on (`pcbs/v5.md`).
+#[cfg(feature = "v5")]
+pub fn enter_soft_off() -> ! {
+    use esp_hal::gpio::WakeupConfig;
+    use esp_hal::rtc_cntl::sleep::{LowPower, RtcSleepConfig};
+
+    // SAFETY: called right before deep sleep; nothing else uses the peripheral afterwards
+    let lpwr = unsafe { esp_hal::peripherals::LPWR::steal() };
+    let _pmic_irq = pmic_irq_wakeup(&WakeupConfig::default().with_low_power_path(true));
+    LowPower::new(lpwr).sleep_deep(RtcSleepConfig::deep())
+}
+
+/// Arms IO5 (AXP2101 IRQ, active low, R4 pull-up) to wake the chip from deep sleep.
+#[cfg(feature = "v5")]
+fn pmic_irq_wakeup(wakeup_config: &esp_hal::gpio::WakeupConfig) -> esp_hal::gpio::Input<'static> {
+    use esp_hal::gpio::{Event, Input, InputConfig, Pull};
+
+    // SAFETY: called right before deep sleep; the pmic task never runs again
+    let pin = unsafe { esp_hal::peripherals::GPIO5::steal() };
+    // external pull-up only, as in `Board::init`
+    let mut pin = Input::new(pin, InputConfig::default().with_pull(Pull::None));
+    if let Err(e) = pin.apply_wakeup_config(wakeup_config) {
+        log::error!("Wakeup pin config failed: {e:?}");
+    }
+    pin.listen(Event::LowLevel);
+    pin
 }
 
 /// v3 has no wakeable deep sleep: the cpu clock drops to 10 MHz until the next reset.

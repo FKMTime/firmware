@@ -7,6 +7,7 @@
 #   SIM_WIFIMANAGER=~/projects/esp-hal-wifimanager sim/run.sh   local wifimanager checkout
 #   SIM_BLE=tcp:localhost:9544 sim/run.sh   BLE through a Bumble controller (sim/ble_*.py)
 #   SIM_HW=v3 sim/run.sh       v3 hardware (HD44780 behind the shift registers) instead of v4
+#   SIM_HW=v5 sim/run.sh       v5 hardware (AXP2101 PMIC instead of the BQ27441 gauge)
 #   SIM_CLIPPY=1 sim/run.sh   clippy the sim build (it needs the patched esp-hal)
 #   SIM_BUILD_ONLY=1, SIM_HTTP_PORT/SIM_UART1_PORT/SIM_CONTROL_PORT/SIM_TAP_PORT: ports
 # Extra arguments go to esp-emu (e.g. --timeout 60s).
@@ -14,7 +15,7 @@ set -eu
 cd "$(dirname "$0")/.."
 
 HW="${SIM_HW:-v4}"
-case "$HW" in v3) T=target/sim-v3 ;; v4) T=target/sim ;; *) echo "SIM_HW must be v3 or v4" >&2; exit 2 ;; esac
+case "$HW" in v3 | v5) T=target/sim-$HW ;; v4) T=target/sim ;; *) echo "SIM_HW must be v3, v4 or v5" >&2; exit 2 ;; esac
 mkdir -p "$T"
 PATCHES=""
 locked() { grep -A1 "^name = \"$1\"\$" Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p'; }

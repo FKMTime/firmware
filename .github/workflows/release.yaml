@@ -1,6 +1,6 @@
 name: Release
 
-# Builds the STATION firmware for v3 and v4, publishes the GitHub release and uploads the merged
+# Builds the STATION firmware for v3, v4 and v5, publishes the GitHub release and uploads the merged
 # images to FKMTime/docs, like release.sh. Push a tag (`git tag v3.5.2 && git push origin v3.5.2`),
 # or run it by hand with a version: it then tags the commit it runs on.
 
@@ -72,7 +72,7 @@ jobs:
           EPOCH=$(date +%s)
           ELF=target/riscv32imc-unknown-none-elf/release/fkm-firmware
           mkdir -p build dist
-          for HW in v3 v4; do
+          for HW in v3 v4 v5; do
             RELEASE_BUILD="$VERSION" cargo build -r --locked --no-default-features --features "$HW,sleep"
             espflash save-image --chip esp32c3 "$ELF" "build/${HW}_STATION_${VERSION}.bin"
             ./append_metadata.sh "build/${HW}_STATION_${VERSION}.bin" "$VERSION" "STATION" "$HW" "$EPOCH"

@@ -914,7 +914,7 @@ def brief(s):
 class Day:
     def __init__(self, seed, day, job, args, image):
         self.seed, self.day, self.args = seed, day, args
-        self.dir = M.OUT / f"comp{'-v3' if args.hw == 'v3' else ''}-d{day['devices']}" / str(seed)
+        self.dir = M.OUT / f"comp{'' if args.hw == 'v4' else '-' + args.hw}-d{day['devices']}" / str(seed)
         if self.dir.exists():
             shutil.rmtree(self.dir)
         self.dir.mkdir(parents=True)
@@ -1149,7 +1149,7 @@ def main(args):
         print(f"  delegate: {', '.join(f'{k} {v}' for k, v in sorted(s['decisions'].items())) or '-'}")
         for m in s["mismatches"] + s["failures"]:
             print(f"  ! {m}")
-    print(f"\n{len(results) - bad}/{len(results)} days clean (logs: sim/out/comp{'-v3' if args.hw == 'v3' else ''}-d{work[0][1]['devices']}/<seed>/)")
+    print(f"\n{len(results) - bad}/{len(results)} days clean (logs: sim/out/comp{'' if args.hw == 'v4' else '-' + args.hw}-d{work[0][1]['devices']}/<seed>/)")
     return 1 if bad else 0
 
 

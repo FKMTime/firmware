@@ -76,6 +76,9 @@ pub mod codes {
     pub const BATTERY_INIT_FAILED: u8 = 10;
     #[cfg(feature = "v4")]
     pub const BATTERY_I2C_TIMEOUT: u8 = 11;
+    /// v5: the AXP2101 PMIC did not answer or could not be configured.
+    #[cfg(feature = "v5")]
+    pub const PMIC_INIT_FAILED: u8 = 12;
 
     // LCD / Display (20-29)
     #[cfg(feature = "v4")]

@@ -203,6 +203,43 @@ class BQ27441:
         return bytes(out)
 
 
+# ── AXP2101 PMIC (v5) ───────────────────────────────────────────────────────────────────────
+
+class AXP2101:
+    """Register file with what the firmware reads: chip id, status (cell present, no USB),
+    the gauge's percent, the 14-bit ADCs. IRQ status (0x48..0x4A) is write-1-to-clear."""
+
+    def __init__(self):
+        self.percent, self.ptr = 100, 0
+        self.regs = bytearray(256)
+        self.regs[0x03] = 0x4A
+        self.regs[0x00] = 0x08  # battery present, VBUS absent
+        self.regs[0x01] = 0x45  # discharging, not charging
+
+    def mv(self):
+        return 3350 + self.percent * 7.5
+
+    def adc(self, reg, value):
+        self.regs[reg], self.regs[reg + 1] = int(value) >> 8 & 0x3F, int(value) & 0xFF
+
+    def write(self, b: bytes):
+        self.ptr = b[0]
+        for i, v in enumerate(b[1:]):
+            r = (self.ptr + i) & 0xFF
+            if 0x48 <= r <= 0x4A:
+                self.regs[r] &= ~v & 0xFF
+            else:
+                self.regs[r] = v
+
+    def read(self, n: int) -> bytes:
+        self.regs[0xA4] = self.percent
+        self.adc(0x34, self.mv())
+        self.adc(0x36, 1000)  # TS 500 mV: 25 °C
+        self.adc(0x38, 0)
+        self.adc(0x3A, self.mv())
+        return bytes(self.regs[(self.ptr + i) & 0xFF] for i in range(n))
+
+
 # ── MFRC522 reader + MIFARE Classic 1K cards ────────────────────────────────────────────────
 
 def crc_a(data) -> bytes:
@@ -447,4 +484,14 @@ if __name__ == "__main__":
     # a 7-byte UID through both cascade levels (CL1 starts with the cascade tag)
     c = Card(3319564424)
     assert len(c.uid) == 7 and c.level(0x93)[0][0] == 0x88 and int.from_bytes(c.uid, "little") == 3319564424
+    pmic = AXP2101()
+    pmic.write(b"\x03")
+    assert pmic.read(1) == b"\x4a"
+    pmic.percent = 50
+    pmic.write(b"\x34")
+    h, l = pmic.read(2)
+    assert (h & 0x3F) << 8 | l == int(pmic.mv())
+    pmic.regs[0x49] = 0x0C
+    pmic.write(b"\x48\x00\x08\x00")
+    assert pmic.regs[0x49] == 0x04
     print("devices self-check ok")

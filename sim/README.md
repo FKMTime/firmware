@@ -4,7 +4,7 @@
 ESP32-C3 image with Wi-Fi. The firmware runs its real drivers: the bus tap in the patched esp-hal
 (`sim/patches/`, `ESP_SIM_TAP=1`) hands every GPIO, I2C, SPI and ADC access to the host over
 esp-emu's UART0 socket, where `sim/bus.py` wires the device models of `sim/devices.py` like the
-PCB does (`SIM_HW=v3|v4`, `--hw v3|v4`; v4 is the default):
+PCB does (`SIM_HW=v3|v4|v5`, `--hw v3|v4|v5`; v4 is the default, v5 is v4 with the AXP2101):
 
 | Real device | Model on the host |
 |---|---|
@@ -12,7 +12,7 @@ PCB does (`SIM_HW=v3|v4`, `--hw v3|v4`; v4 is the default):
 | v3 LCD | 74HC595 chain decoded from the GPIO10/21/1 (data/clock/latch) edges → HD44780 on the second register (RS, E, DB4–7, backlight): 8-bit power-on state, 4-bit nibble pairing, DDRAM/CGRAM, entry mode/shift; a transfer starting within the busy time (37/41 µs, 1.52 ms for clear/home) is lost. Printed as a 16×2 box |
 | RFID | MFRC522 register model (v4: I2C 0x28, v3: SPI with CS from the shift register) answering the real esp-hal-mfrc522 driver: REQA/anticollision/select/HLTA, MFAuthent against the card's sector trailer, MIFARE read/write. `card <uid>` holds a 1K card in the field for 3 s; what is written to a card stays on it |
 | Buttons | `btn <1-4> [ms]` (1 inspect, 2 delegate, 3 submit, 4 penalty). v4: GPIO0–3 pulses, timed in emulated time by the tap; v3: the matrix (shift register row × GPIO3) answered per scan |
-| Battery | `bat <0-100>` (starts at 100). v4: BQ27441 on I2C 0x55; v3: ADC1 channel 2 through the divider |
+| Battery | `bat <0-100>` (starts at 100). v4: BQ27441 on I2C 0x55; v5: AXP2101 on I2C 0x34 (cell present, no USB, IRQ line never asserted); v3: ADC1 channel 2 through the divider |
 | Stackmat | the real UART1 driver; `sim/stackmat.py` plays the timer |
 | Wi-Fi setup | the host writes Wi-Fi + server url into the image's NVS partition (`bus.py nvs`, esp-nvs-partition-tool); the firmware also adds itself to the server (`auto_add`) |
 | BLE | starts (patched esp-radio), but esp-emu never answers its HCI commands: no BLE flows yet |

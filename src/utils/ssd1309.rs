@@ -35,6 +35,12 @@ pub struct Ssd1309<I> {
 }
 
 impl<I: I2c> Ssd1309<I> {
+    /// The display's bus (shared with other chips).
+    #[cfg_attr(not(feature = "v5"), allow(dead_code))]
+    pub fn i2c(&self) -> &I {
+        &self.i2c
+    }
+
     pub const fn new(i2c: I) -> Self {
         Self {
             i2c,

@@ -33,7 +33,9 @@ fn main() {
         format!("D{epoch}")
     };
 
-    let hw = if cfg!(feature = "v4") {
+    let hw = if cfg!(feature = "v5") {
+        "v5"
+    } else if cfg!(feature = "v4") {
         "v4"
     } else if cfg!(feature = "v3") {
         "v3"

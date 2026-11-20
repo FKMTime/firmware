@@ -7,6 +7,10 @@
 
 #[cfg(all(feature = "bat_dev_lcd", not(feature = "v3")))]
 compile_error!("feature `bat_dev_lcd` is a v3 battery debug screen");
+#[cfg(all(feature = "v5", feature = "timer-func"))]
+compile_error!("feature `timer-func` needs IO5, which is the AXP2101 IRQ on v5");
+#[cfg(all(feature = "v3", feature = "v4"))]
+compile_error!("pick one board: v3, v4 or v5 (with --no-default-features)");
 
 extern crate alloc;
 use crate::consts::NVS_SIGN_KEY;
@@ -45,10 +49,13 @@ mod battery_v3;
 #[cfg(feature = "v3")]
 mod lcd_v3;
 
-#[cfg(feature = "v4")]
+#[cfg(all(feature = "v4", not(feature = "v5")))]
 mod battery_v4;
 #[cfg(feature = "v4")]
 mod lcd_v4;
+
+#[cfg(feature = "v5")]
+mod pmic_v5;
 
 #[cfg(feature = "qa")]
 mod qa;
@@ -104,6 +111,10 @@ async fn main(spawner: Spawner) {
 
     #[cfg(feature = "qa")]
     log::info!("This firmware is in QA mode!");
+
+    // before anything else uses the bus: ALDO3 powers the MFRC522
+    #[cfg(feature = "v5")]
+    pmic_v5::init(board.i2c).await;
 
     let Ok(nvs) = Nvs::new(unsafe { board.flash.clone_unchecked() }).inspect_err(|error| {
         log::error!("NVS initialization failed: {error:?}");
@@ -194,11 +205,17 @@ async fn main(spawner: Spawner) {
         "sim::command_task",
         sim::command_task(global_state),
     );
-    #[cfg(feature = "v4")]
+    #[cfg(all(feature = "v4", not(feature = "v5")))]
     spawn_task(
         &spawner,
         "battery_v4::battery_read_task",
         battery_v4::battery_read_task(board.i2c, global_state),
+    );
+    #[cfg(feature = "v5")]
+    spawn_task(
+        &spawner,
+        "pmic_v5::pmic_task",
+        pmic_v5::pmic_task(board.i2c, board.pmic_irq, global_state),
     );
 
     spawn_task(

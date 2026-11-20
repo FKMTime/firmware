@@ -47,7 +47,7 @@ esp-hal-mfrc522 = { version = "0.4.0", features = ["embassy-time"] }
 esp-bootloader-esp-idf = { version = "0.6.0", features = ["log-04", "esp32c3"] }
 trouble-host = { version = "0.7.0", features = ["scan", "security"] }
 
-# v4 only
+# v4 and v5
 embedded-graphics = { version = "0.8.2", optional = true }
 bq27441 = { version = "0.3.0", features = ["async", "embassy"], optional = true }
 profont = { version = "0.7.0", optional = true }
@@ -71,6 +71,8 @@ sleep = []
 auto_add = []
 v3 = ["dep:dyn-smooth", "dep:ag-lcd-async"]
 v4 = ["dep:embedded-graphics", "dep:bq27441", "dep:profont", "dep:qrcodegen-no-heap"]
+# v4 peripherals (OLED, I2C RFID, GPIO keys, buzzer) with an AXP2101 PMIC instead of the BQ27441
+v5 = ["v4"]
 
 [profile.dev]
 opt-level = 3

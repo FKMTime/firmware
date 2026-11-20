@@ -52,6 +52,10 @@ pub struct Board {
     #[cfg(all(feature = "v4", feature = "timer-func"))]
     pub pads: (Input<'static>, Input<'static>),
 
+    /// AXP2101 IRQ (open drain, active low, R4 pull-up)
+    #[cfg(feature = "v5")]
+    pub pmic_irq: Input<'static>,
+
     #[cfg(feature = "v3")]
     pub battery: esp_hal::peripherals::GPIO2<'static>,
     #[cfg(feature = "v3")]
@@ -125,6 +129,14 @@ impl Board {
             Input::new(peripherals.GPIO6, pull_down),
         );
 
+        // R4 pulls it up; no internal pull, which would hold the line high through the 100 kΩ
+        // series resistor of the IRQ mod (`pcbs/v5.md`)
+        #[cfg(feature = "v5")]
+        let pmic_irq = Input::new(
+            peripherals.GPIO5,
+            InputConfig::default().with_pull(Pull::None),
+        );
+
         let i2c = esp_hal::i2c::master::I2c::new(
             peripherals.I2C0,
             esp_hal::i2c::master::Config::default()
@@ -163,6 +175,8 @@ impl Board {
             buttons,
             #[cfg(feature = "timer-func")]
             pads,
+            #[cfg(feature = "v5")]
+            pmic_irq,
         }
     }
 }

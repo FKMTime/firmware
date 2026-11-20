@@ -33,7 +33,7 @@ EXTRA_FEATURES=""
 for arg in "$@"; do
     IFS=',' read -ra parts <<< "$arg"
     for part in "${parts[@]}"; do
-        if [ "$part" != "v3" ] && [ "$part" != "v4" ] && [ -n "$part" ]; then
+        if [ "$part" != "v3" ] && [ "$part" != "v4" ] && [ "$part" != "v5" ] && [ -n "$part" ]; then
             EXTRA_FEATURES="${EXTRA_FEATURES:+$EXTRA_FEATURES,}$part"
         fi
     done
@@ -42,7 +42,7 @@ done
 EPOCH=$(date +%s)
 mkdir -p /tmp/fkm-build
 
-for HW_FEATURE in v3 v4; do
+for HW_FEATURE in v3 v4 v5; do
     FEATURES="$HW_FEATURE${EXTRA_FEATURES:+,$EXTRA_FEATURES}"
     echo "=== Building $FEATURES ==="
 

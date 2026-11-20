@@ -181,6 +181,12 @@ async fn sleep_check(
             ui::SMALL_FONT,
         );
         flush(oled).await;
+        #[cfg(feature = "v5")]
+        if let Some(pmic) = crate::pmic_v5::get(*oled.i2c())
+            && let Err(e) = pmic.prepare_deep_sleep().await
+        {
+            log::error!("AXP2101 deep sleep prep failed: {e:?}");
+        }
         power::enter_deep_sleep();
     }
 }

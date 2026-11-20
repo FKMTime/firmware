@@ -23,7 +23,7 @@ import threading
 import time
 from pathlib import Path
 
-from devices import BQ27441, MFRC522, SSD1309, Card, Chain595, HD44780
+from devices import AXP2101, BQ27441, MFRC522, SSD1309, Card, Chain595, HD44780
 
 ROOT = Path(__file__).resolve().parent.parent
 EMU = shutil.which("esp-emu") or str(Path.home() / ".local/bin/esp-emu")
@@ -56,15 +56,15 @@ class Board:
             # in between) `cpu`× closer, as fast as a real C3 bit-bangs them
             self.cpu, self.lcd_t, self.last_t = 1, 0.0, 0
         else:
-            self.oled, self.gauge = SSD1309(), BQ27441()
+            self.oled, self.gauge = SSD1309(), AXP2101() if hw == "v5" else BQ27441()
 
     def saw_time(self, us: int):
         self.emu_us = us
 
     def held_mask(self):
         """Buttons still held as the firmware sees it (v3: by its clock in the last frame;
-        v4: pulses it hasn't reported over)."""
-        if self.hw == "v4":
+        v4/v5: pulses it hasn't reported over)."""
+        if self.hw != "v3":
             return sum(1 << (b - 1) for b in self.held)
         return sum(1 << (b - 1) for b, (s, e) in self.held.items() if s <= self.emu_us < e)
 
@@ -128,7 +128,8 @@ class Board:
         if self.nack.get(addr):
             self.nack[addr] -= 1
             return 1, b""
-        dev = {0x3C: "oled", 0x55: "gauge", 0x28: "rfid"}.get(addr) if self.hw == "v4" else None
+        gauge = 0x34 if self.hw == "v5" else 0x55  # AXP2101 / BQ27441
+        dev = {0x3C: "oled", gauge: "gauge", 0x28: "rfid"}.get(addr) if self.hw != "v3" else None
         if dev is None:
             return 1, b""
         out, pending = bytearray(), bytearray()
@@ -168,7 +169,7 @@ class Board:
         num = lambda i, d=None: int(w[i], 0) if len(w) > i and w[i].lstrip("-").isdigit() else d
         if w[0] == "btn" and num(1) in (1, 2, 3, 4):
             b, ms = num(1), num(2, 150)
-            if self.hw == "v4":  # GPIO0..3 high while pressed, timed by the tap
+            if self.hw != "v3":  # GPIO0..3 high while pressed, timed by the tap
                 if ms:
                     self.held[b] = None
                 else:
@@ -184,7 +185,7 @@ class Board:
             self.card_since = time.monotonic()
         elif w[0] == "bat" and num(1) is not None and 0 <= num(1) <= 100:
             self.battery = num(1)
-            if self.hw == "v4":
+            if self.hw != "v3":
                 self.gauge.percent = num(1)
         elif w[0] == "screen":
             self.print_display(force=True)
@@ -239,7 +240,7 @@ class Board:
         if f == self.printed and not force:
             return
         self.printed, self.last_print = f, now
-        if self.hw == "v4":
+        if self.hw != "v3":
             if self.raw:
                 return self.emit("@oled " + f.hex())
             self.emit("┌" + "─" * 128 + "┐")
@@ -533,7 +534,7 @@ def main():
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run")
-    r.add_argument("--hw", choices=["v3", "v4"], default="v4")
+    r.add_argument("--hw", choices=["v3", "v4", "v5"], default="v4")
     r.add_argument("--bin", required=True)
     r.add_argument("--elf", required=True)
     r.add_argument("--http", type=int, default=18080)

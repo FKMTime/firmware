@@ -595,11 +595,11 @@ class Run:
 
 def out_dir(seed, hw: str) -> Path:
     """Logs of one run: sim/out/<seed> (v4), sim/out/v3-<seed>."""
-    return OUT / (f"v3-{seed}" if hw == "v3" else str(seed))
+    return OUT / (str(seed) if hw == "v4" else f"{hw}-{seed}")
 
 
 def target(hw: str) -> Path:
-    return ROOT / ("target/sim-v3" if hw == "v3" else "target/sim")
+    return ROOT / ("target/sim" if hw == "v4" else f"target/sim-{hw}")
 
 
 def build(port: int, hw: str = "v4") -> tuple:
@@ -655,7 +655,7 @@ def main():
                    help="fuzz duration; replay files always run every step")
     p.add_argument("--actions", type=int, default=400)
     p.add_argument("--chunk", type=int, default=40, help="recovery probe every N actions")
-    p.add_argument("--hw", choices=["v3", "v4"], default=os.environ.get("SIM_HW", "v4"))
+    p.add_argument("--hw", choices=["v3", "v4", "v5"], default=os.environ.get("SIM_HW", "v4"))
     p.add_argument("--cfg-exit", type=int, help="index of Exit in the config menu (v3: 5, v4: 6)")
     p.add_argument("--mc", default="~/projects/micro-connector",
                    help="micro-connector checkout with its fake FKMTime binary built")

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The sim device in a browser: display, buttons, cards, stackmat, battery, Wi-Fi/server/power.
 
-    python3 sim/web.py [--hw v3|v4] [--job N] [--mc ~/projects/micro-connector] [--no-server] [--port 8000]
+    python3 sim/web.py [--hw v3|v4|v5] [--job N] [--mc ~/projects/micro-connector] [--no-server] [--port 8000]
 
 Builds the sim image, starts esp-emu, the fake stackmat and (unless --no-server) a local
 micro-connector, then serves http://127.0.0.1:8000. Stdlib only: events go out as SSE,
@@ -63,7 +63,7 @@ def main():
     p.add_argument("--mc", default="~/projects/micro-connector")
     p.add_argument("--no-server", action="store_true")
     p.add_argument("--port", type=int, default=8000)
-    p.add_argument("--hw", choices=["v3", "v4"], default="v4")
+    p.add_argument("--hw", choices=["v3", "v4", "v5"], default="v4")
     p.add_argument("--job", type=int, default=JOB, help="port block, as monkey.py's --job-base")
     args = p.parse_args()
 
