@@ -41,7 +41,7 @@ async fn init(i2c: SharedI2C, mut display_rst: Output<'static>) -> Ssd1309<Share
         log::error!("Disp init error: {e:?} (but continuing i guess)");
         error_log::add_error(codes::LCD_INIT_FAILED);
     }
-    flush(&mut oled).await; // clear the panel's power-up content
+    flush(&mut oled).await; // retries the blank frame if init could not send it
     oled
 }
 

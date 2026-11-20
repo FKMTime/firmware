@@ -1,5 +1,6 @@
 //! Minimal async SSD1309 (128×64, I2C) driver: sends only the changed span of each page.
-//! Init sequence and rotation are the ones oled_async 0.2.1 used (Ssd1309_128_64, Rotate180).
+//! Init sequence and rotation are the ones oled_async 0.2.1 used (Ssd1309_128_64, Rotate180),
+//! except that the display goes on only once the RAM holds the first frame.
 
 use super::oled_ui::Frame;
 use embassy_time::Timer;
@@ -21,13 +22,13 @@ const INIT: &[u8] = &[
     0xDB, 0x40, // vcomh auto
     0xA4, // resume from RAM
     0xA6, // normal (not inverted)
-    0xAF, // display on
     0xD3, 0x00, // display offset 0
 ];
 const INIT2: &[u8] = &[
     CMD, 0xDA, 0x12, // alternative COM pins
     0xA0, 0xC0, // Rotate180: segment remap off, COM scan normal
 ];
+const DISPLAY_ON: &[u8] = &[CMD, 0xAF];
 
 pub struct Ssd1309<I> {
     i2c: I,
@@ -57,8 +58,13 @@ impl<I: I2c> Ssd1309<I> {
 
         self.i2c.write(ADDR, INIT).await?;
         self.i2c.write(ADDR, INIT2).await?;
+        // the RAM holds random data after power-up: write the frame (blank at boot) before the
+        // display goes on, or the panel flashes that data
         self.frame.invalidate();
-        Ok(())
+        let cleared = self.flush().await;
+        // on even if that failed (the next flush resends the whole frame)
+        self.i2c.write(ADDR, DISPLAY_ON).await?;
+        cleared
     }
 
     /// Sends what changed since the last flush (nothing if the frame is unchanged).
