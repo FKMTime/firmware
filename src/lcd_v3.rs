@@ -242,6 +242,8 @@ pub async fn lcd_task(
                     .solve
                     .update(|s| s.scene = Scene::AutoSetupWait);
             }
+            // the sleep screen stays until a real wake
+            Event::Redraw => rerender = !power::is_sleeping(),
             Event::Tick => {
                 text.scroll_step();
                 update(&lcd_shifter, &mut text, &mut lcd, &mut healed).await;

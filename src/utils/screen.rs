@@ -6,7 +6,7 @@ use crate::{
     state::{CHANGED, Cs, ErrorLogEntryStage, GlobalState, MenuScene, Scene, Solve, Status, Ui},
     translations::TranslationKey,
 };
-use embassy_futures::select::{Either, Either3, select, select3};
+use embassy_futures::select::{Either3, select3};
 use embassy_sync::{signal::Signal, watch::Receiver};
 use embassy_time::{Duration, Instant, Timer};
 
@@ -190,6 +190,8 @@ pub enum Event {
     WifiSetup,
     /// `idle_tick` elapsed (text scrolling, sleep check)
     Tick,
+    /// [`crate::state::REDRAW`]: redraw, but not activity
+    Redraw,
 }
 
 /// The next thing the display has to react to: a state change, or the live update of the
@@ -242,8 +244,9 @@ pub async fn next_event(
         }
     };
 
-    match select(CHANGED.wait(), other).await {
-        Either::First(()) => Event::State,
-        Either::Second(event) => event,
+    match select3(CHANGED.wait(), crate::state::REDRAW.wait(), other).await {
+        Either3::First(()) => Event::State,
+        Either3::Second(()) => Event::Redraw,
+        Either3::Third(event) => event,
     }
 }

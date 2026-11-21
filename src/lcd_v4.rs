@@ -150,6 +150,8 @@ pub async fn lcd_task(
                     .update(|s| s.scene = Scene::AutoSetupWait);
             }
             Event::Tick => sleep_check(&mut oled, global_state, last_update).await,
+            // the sleep screen stays until a real wake
+            Event::Redraw => rerender = !power::is_sleeping(),
         }
     }
 }
@@ -181,11 +183,16 @@ async fn sleep_check(
             ui::SMALL_FONT,
         );
         flush(oled).await;
+        // v5: off like the power key (only SW1 turns it on again); wake from deep sleep is a
+        // reboot anyway, and the PMIC off draws next to nothing
         #[cfg(feature = "v5")]
-        if let Some(pmic) = crate::pmic_v5::get(*oled.i2c())
-            && let Err(e) = pmic.prepare_deep_sleep().await
-        {
-            log::error!("AXP2101 deep sleep prep failed: {e:?}");
+        if let Some(pmic) = crate::pmic_v5::get(*oled.i2c()) {
+            log::warn!("Idle for {DEEPER_SLEEP_AFTER_MS} ms");
+            crate::pmic_v5::turn_off(pmic).await;
+            // still here: the PMIC did not take it, deep sleep instead
+            if let Err(e) = pmic.prepare_deep_sleep().await {
+                log::error!("AXP2101 deep sleep prep failed: {e:?}");
+            }
         }
         power::enter_deep_sleep();
     }

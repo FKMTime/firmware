@@ -65,6 +65,7 @@ pub async fn battery_read_task(i2c: SharedI2C, state: crate::state::GlobalState)
                 b.charging = charging;
             });
             state.battery_ready.signal(());
+            crate::state::REDRAW.signal(());
             last_soc = soc;
             last_charging = charging;
         }

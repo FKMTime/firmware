@@ -77,6 +77,13 @@ const CV_4V2: u8 = 0b011;
 const ICC_500MA: u8 = 11;
 /// The PMIC turns off below VSYS 2.6 V + n × 0.1 V → 3.0 V (no protection IC on the cell).
 const VSYS_OFF_3V0: u8 = 4;
+/// While off, the PMIC ignores SW1 until VSYS is somewhat above this threshold (about 3.24 V
+/// at 3.0 V) and powers on by itself once it rises above it again. A power-off we chose puts
+/// it back to 2.6 V so SW1 works at any cell voltage; after an undervoltage power-off it stays
+/// at 3.0 V, so a sagging cell cannot restart the station in a loop.
+const VSYS_OFF_2V6: u8 = 0;
+/// REG 20H: the only power-on source was a cell being connected.
+const PWRON_BATTERY_INSERT: u8 = 1 << 4;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Reading {
@@ -193,7 +200,23 @@ impl Axp2101 {
     /// the IRQ pull-up R4 goes to VCC, which dies here; the IRQ line then falls and can turn the
     /// PMIC straight back on (`pcbs/v5.md`), see [`SOFT_OFF`].
     async fn power_off(&self) -> Result<(), Error> {
+        self.modify(reg::VSYS_OFF, 0b111, VSYS_OFF_2V6).await?;
         self.modify(reg::COMMON, 1 << 0, 1 << 0).await
+    }
+
+    /// The efuse powers the station on when a cell is connected (REG 20H bit 4), and no register
+    /// turns that off. Without USB, power straight back off so only SW1 turns it on.
+    async fn stay_off_after_battery_insert(&self) -> Result<(), Error> {
+        let on = self.read(reg::PWRON_STATUS).await?;
+        let vbus_good = self.read(reg::STATUS1).await? & (1 << 5) != 0;
+        if on != PWRON_BATTERY_INSERT || vbus_good {
+            return Ok(());
+        }
+        log::warn!("AXP2101: powered on by a battery insert, powering off");
+        self.power_off().await?;
+        loop {
+            core::hint::spin_loop();
+        }
     }
 
     async fn configure(&self) -> Result<(), Error> {
@@ -269,6 +292,7 @@ pub async fn init(i2c: SharedI2C) -> Option<Axp2101> {
             log::warn!("AXP2101: unexpected chip id {id:#04x} (expected {CHIP_ID:#04x})");
         }
         pmic.log_registers().await?;
+        pmic.stay_off_after_battery_insert().await?;
         pmic.configure().await?;
         pmic.log_registers().await
     };
@@ -317,8 +341,12 @@ pub async fn pmic_task(
             // disabled events set their status bits too
             let irqs = irqs & irq::ENABLED;
             if irqs != 0 {
-                key.handle(pmic, irqs, started).await;
+                key.handle(irqs, started);
             }
+        }
+        if key.off_at().is_some_and(|at| Instant::now() >= at) {
+            log::warn!("Power key held");
+            turn_off(pmic).await;
         }
 
         let Ok(Ok(r)) = with_timeout(Duration::from_secs(3), pmic.reading()).await else {
@@ -363,6 +391,7 @@ pub async fn pmic_task(
                 b.charging = charging;
             });
             state.battery_ready.signal(());
+            crate::state::REDRAW.signal(());
             last = Some((percent, charging));
         }
 
@@ -396,8 +425,11 @@ pub async fn pmic_task(
             last_sent = Some(Instant::now());
         }
 
-        // edge-triggered, so an IRQ that stays asserted can't spin this loop
-        select(irq_pin.wait_for_falling_edge(), Timer::after(READ_INTERVAL)).await;
+        // edge-triggered, so an IRQ that stays asserted can't spin this loop; a held power key
+        // wakes it when the hold is long enough
+        let next = Instant::now() + READ_INTERVAL;
+        let next = key.off_at().map_or(next, |at| at.min(next));
+        select(irq_pin.wait_for_falling_edge(), Timer::at(next)).await;
     }
 }
 
@@ -405,7 +437,7 @@ pub async fn pmic_task(
 /// see `power::enter_soft_off`): display off, PMIC asleep with the RFID supply off, ESP32 in
 /// deep sleep until SW1.
 async fn soft_off(pmic: Axp2101) -> ! {
-    log::warn!("Power key held, soft off (deep sleep until SW1)");
+    log::warn!("Soft off (deep sleep until SW1)");
     // let the log line out before USB goes away
     Timer::after_millis(300).await;
     // SSD1309 display off: the panel's 12.5 V boost runs from VSYS whatever we do
@@ -424,11 +456,24 @@ async fn soft_off(pmic: Axp2101) -> ! {
 /// or the station can turn itself straight back on).
 const SOFT_OFF: bool = false;
 
+/// Turns the station off (power key, idle timeout): soft off or a real power-off, see
+/// [`SOFT_OFF`]. Returns only if the PMIC could not be turned off.
+pub async fn turn_off(pmic: Axp2101) {
+    if SOFT_OFF {
+        soft_off(pmic).await;
+    }
+    power_off(pmic).await;
+}
+
 /// Real power-off: every rail goes down, SW1 turns the station back on (a cold boot).
 async fn power_off(pmic: Axp2101) {
-    log::warn!("Power key held, powering off");
+    // dark at once: the finger can come off the key
+    if let Err(e) = pmic.bus().write(OLED_ADDR, &[0x00, 0xAE]).await {
+        log::error!("OLED off failed: {e:?}");
+    }
+    log::warn!("Powering off");
     // let the log line out before the rails go down
-    Timer::after_millis(300).await;
+    Timer::after_millis(100).await;
     if let Err(e) = pmic.power_off().await {
         log::error!("AXP2101 power off failed: {e:?}");
     }
@@ -437,44 +482,40 @@ async fn power_off(pmic: Axp2101) {
 const OLED_ADDR: u8 = 0x3C;
 const RFID_ADDR: u8 = 0x28;
 
-/// SW1, the AXP2101's power key. Holding it [`POWER_OFF_HOLD`] turns the station off (see
-/// [`SOFT_OFF`]) on release; a shorter press only wakes a sleeping display. When off, a press wakes it.
+/// SW1, the AXP2101's power key. Held for [`POWER_OFF_HOLD`], it turns the station off at once
+/// (see [`SOFT_OFF`]), so the screen goes dark while the finger is still on it; a shorter press
+/// wakes a sleeping display. When off, a press turns it on.
 #[derive(Default)]
 struct PowerKey {
-    /// When the key went down, if after [`KEY_SETTLE`].
+    /// When the key went down, while it is down (and only after [`KEY_SETTLE`]).
     pressed_at: Option<Instant>,
 }
 
-const POWER_OFF_HOLD: Duration = Duration::from_millis(500);
+const POWER_OFF_HOLD: Duration = Duration::from_millis(750);
 /// Key events this soon after boot belong to the press that turned the station on, which must
 /// not power it straight back off.
 const KEY_SETTLE: Duration = Duration::from_millis(1500);
 
 impl PowerKey {
-    async fn handle(&mut self, pmic: Axp2101, irqs: u32, started: Instant) {
+    fn handle(&mut self, irqs: u32, started: Instant) {
         log::info!("AXP2101 IRQ {irqs:#08x}");
         if started.elapsed() < KEY_SETTLE {
             return;
         }
-        // press and release in one batch: a tap the task saw late, never a hold
-        let pressed_at = self.pressed_at.take();
-        if irqs & irq::KEY_RELEASE == 0 {
-            if irqs & irq::KEY_PRESS != 0 {
-                self.pressed_at = Some(Instant::now());
+        if irqs & irq::KEY_RELEASE != 0 {
+            // also a press and its release in one batch: a tap the task saw late
+            self.pressed_at = None;
+            if crate::power::is_sleeping() {
+                // like any other key: wake the display (the press is consumed)
+                crate::state::notify();
             }
-            return;
+        } else if irqs & irq::KEY_PRESS != 0 {
+            self.pressed_at = Some(Instant::now());
         }
-        let held = pressed_at.map(|t| t.elapsed());
-        if crate::power::is_sleeping() {
-            // like any other key: wake the display (the press is consumed)
-            crate::state::notify();
-            return;
-        }
-        if held.is_some_and(|held| held >= POWER_OFF_HOLD) {
-            if SOFT_OFF {
-                soft_off(pmic).await;
-            }
-            power_off(pmic).await;
-        }
+    }
+
+    /// When the hold turns the station off, while the key is down.
+    fn off_at(&self) -> Option<Instant> {
+        self.pressed_at.map(|at| at + POWER_OFF_HOLD)
     }
 }

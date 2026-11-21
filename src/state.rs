@@ -31,6 +31,10 @@ pub fn notify() {
     CHANGED.signal(());
 }
 
+/// Redraws without counting as activity (battery readings): a sleeping display stays asleep
+/// and the idle-sleep timer runs on. Single consumer: the lcd task.
+pub static REDRAW: Signal<Cs, ()> = Signal::new();
+
 /// The attempt changed (may have started or stopped timing). Single consumer: the logger task,
 /// which sends live state right away if the running flags or the competitor differ from the
 /// last batch. Kept apart from [`CHANGED`] so it never counts as activity for the idle-sleep
