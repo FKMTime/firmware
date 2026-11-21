@@ -22,6 +22,11 @@ type Text = heapless::String<256>;
 const EVENT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Idle redraw-free tick: the sleep check.
 const IDLE_TICK: Duration = Duration::from_secs(1);
+/// The idle screen dims after this long without a state change (saves panel current).
+const DIM_AFTER: Duration = Duration::from_secs(30);
+/// Contrast of the init sequence, and the dimmed one.
+const CONTRAST: u8 = 0x80;
+const DIM_CONTRAST: u8 = 0x10;
 
 async fn flush(oled: &mut Ssd1309<SharedI2C>) {
     match with_timeout(Duration::from_millis(1500), oled.flush()).await {
@@ -31,6 +36,17 @@ async fn flush(oled: &mut Ssd1309<SharedI2C>) {
             oled.frame.invalidate();
             log::error!("OLED FLUSH TIMEOUT");
             error_log::add_error(codes::LCD_FLUSH_TIMEOUT);
+        }
+    }
+}
+
+/// Whether the panel took the new contrast.
+async fn set_contrast(oled: &mut Ssd1309<SharedI2C>, contrast: u8) -> bool {
+    match with_timeout(Duration::from_millis(500), oled.set_contrast(contrast)).await {
+        Ok(Ok(())) => true,
+        _ => {
+            log::error!("OLED contrast {contrast:#04x} not set");
+            false
         }
     }
 }
@@ -83,11 +99,15 @@ pub async fn lcd_task(
     let mut live = Live::Idle;
     let mut last_update = Instant::now();
     let (mut state_changed, mut rerender) = (true, true);
+    let mut dimmed = false;
     loop {
         if state_changed {
             state_changed = false;
             rerender = true;
             last_update = Instant::now();
+            if dimmed {
+                dimmed = !set_contrast(&mut oled, CONTRAST).await;
+            }
             if power::is_sleeping() {
                 power::wake();
                 log::warn!("Sleep wakeup!");
@@ -149,7 +169,12 @@ pub async fn lcd_task(
                     .solve
                     .update(|s| s.scene = Scene::AutoSetupWait);
             }
-            Event::Tick => sleep_check(&mut oled, global_state, last_update).await,
+            Event::Tick => {
+                if !dimmed && live == Live::Idle && last_update.elapsed() >= DIM_AFTER {
+                    dimmed = set_contrast(&mut oled, DIM_CONTRAST).await;
+                }
+                sleep_check(&mut oled, global_state, last_update).await;
+            }
             // the sleep screen stays until a real wake
             Event::Redraw => rerender = !power::is_sleeping(),
         }

@@ -67,6 +67,11 @@ impl<I: I2c> Ssd1309<I> {
         cleared
     }
 
+    /// 0x00..=0xFF; the panel's current follows it.
+    pub async fn set_contrast(&mut self, contrast: u8) -> Result<(), I::Error> {
+        self.i2c.write(ADDR, &[CMD, 0x81, contrast]).await
+    }
+
     /// Sends what changed since the last flush (nothing if the frame is unchanged).
     pub async fn flush(&mut self) -> Result<(), I::Error> {
         let mut data = [0u8; 129];
