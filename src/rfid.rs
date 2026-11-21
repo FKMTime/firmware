@@ -7,7 +7,7 @@ use crate::{
 use core::fmt::Write;
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Instant, Timer};
-use esp_hal_mfrc522::{Interface, Key, KeyType, Mfrc522, Uid};
+use esp_hal_mfrc522::{AntennaGain, Interface, Key, KeyType, Mfrc522, Uid};
 
 #[cfg(feature = "v3")]
 use esp_hal::time::Rate;
@@ -176,6 +176,9 @@ async fn init_until_ready<I: Interface>(mfrc522: &mut Mfrc522<I>) {
     loop {
         _ = mfrc522.init().await;
         if matches!(mfrc522.is_initialized().await, Ok(true)) {
+            // receiver gain (the soft reset in `init` puts it back to 33 dB): longer read range,
+            // the field and its current stay the same
+            _ = mfrc522.set_antenna_gain(AntennaGain::Db48).await;
             return;
         }
 
