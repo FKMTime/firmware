@@ -8,7 +8,11 @@ use crate::{
     consts::WS_RETRY_MS,
     state::{GlobalState, Scene},
     structs::{ApiError, DelegateResponsePacket, FromPacket, TimerPacket, TimerPacketInner},
-    utils::{error_log::codes, logger::ReadyLogs},
+    utils::{
+        error_log::codes,
+        logger::ReadyLogs,
+        trust::{self, Signature, Trust},
+    },
 };
 use core::{cell::Cell, fmt::Write as _, str::FromStr};
 use embassy_crypto_rustcrypto as _;
@@ -323,6 +327,8 @@ enum WsError {
     WifiDisconnected,
     /// Nothing came back to a probe ping (see [`PROBE`])
     Unresponsive,
+    /// Reconnecting on purpose, so the handshake checks a pending sign key again
+    Recheck,
     Ota(esp_hal_ota::Error),
 }
 
@@ -553,62 +559,72 @@ async fn handshake(
         }
     };
 
-    let Some(random_signed) = random_signed else {
-        log::error!("[trust] no randomsigned header, server not trusted");
-        return Ok(());
+    let (sign_key, pending) = crate::state::SETTINGS.read(|s| (s.sign_key, s.sign_key_pending));
+    let (signature, fkm_token) = match random_signed {
+        None => (Signature::Missing, 0),
+        Some(random_signed) => {
+            let mut key = [0; 16];
+            key[..4].copy_from_slice(&sign_key.to_be_bytes());
+            let mut block = random_signed.to_be_bytes();
+            global_state
+                .aes
+                .lock()
+                .await
+                .decrypt(&mut block, esp_hal::aes::Key::Key128(key));
+
+            let (recv_random, token) = block.split_at(8);
+            let recv_random = u64::from_be_bytes(recv_random.try_into().unwrap_or_default());
+            let fkm_token = i32::from_be_bytes(token[..4].try_into().unwrap_or_default());
+            log::debug!(
+                "[trust] random: {random}, recv_random: {recv_random} | fkm_token: {fkm_token}"
+            );
+            let signature = if random == recv_random {
+                Signature::Ours
+            } else {
+                Signature::Other
+            };
+            (signature, fkm_token)
+        }
     };
 
-    let mut key = [0; 16];
-    key[..4].copy_from_slice(&crate::state::SETTINGS.read(|s| s.sign_key).to_be_bytes());
-    let mut block = random_signed.to_be_bytes();
-    global_state
-        .aes
-        .lock()
-        .await
-        .decrypt(&mut block, esp_hal::aes::Key::Key128(key));
-
-    let (recv_random, token) = block.split_at(8);
-    let recv_random = u64::from_be_bytes(recv_random.try_into().unwrap_or_default());
-    let fkm_token = i32::from_be_bytes(token[..4].try_into().unwrap_or_default());
-    log::debug!("[trust] random: {random}, recv_random: {recv_random} | fkm_token: {fkm_token}");
-
-    let (sign_key, pending) = crate::state::SETTINGS.read(|s| (s.sign_key, s.sign_key_pending));
-    if random == recv_random {
-        log::info!("[trust] server trusted");
-        crate::state::SESSION.write(|s| {
-            s.trust_server = true;
+    let trust = trust::decide(signature, sign_key, pending);
+    crate::state::SESSION.write(|s| {
+        s.trust_server = matches!(trust, Trust::Trusted { .. });
+        if s.trust_server {
             s.fkm_token = fkm_token;
-        });
-        if pending {
-            // the server accepted the key: from now on a mismatch is a real trust failure
-            _ = global_state
-                .nvs
-                .delete(&crate::consts::NVS_SIGN_KEY_PENDING)
-                .await;
-            crate::state::SETTINGS.write(|s| s.sign_key_pending = false);
         }
-    } else if pending {
-        // a key from a submit that the server never accepted (rejected, not approved, or an old
-        // backend): drop it, so the station shows "device not added" and can be added again
-        log::warn!("[trust] the server never accepted the sign key, dropping it to be added again");
-        _ = global_state.nvs.delete(&crate::consts::NVS_SIGN_KEY).await;
-        _ = global_state
-            .nvs
-            .delete(&crate::consts::NVS_SIGN_KEY_PENDING)
-            .await;
-        crate::state::SETTINGS.write(|s| {
-            s.sign_key = 0;
-            s.sign_key_pending = false;
-        });
-    } else if sign_key == 0 {
+    });
+    match trust {
+        Trust::Trusted { confirms_pending } => {
+            log::info!("[trust] server trusted");
+            if confirms_pending {
+                // the server accepted the key: from now on a mismatch is a real trust failure
+                _ = global_state
+                    .nvs
+                    .delete(&crate::consts::NVS_SIGN_KEY_PENDING)
+                    .await;
+                crate::state::SETTINGS.write(|s| s.sign_key_pending = false);
+            }
+        }
+        Trust::Unsigned => log::error!("[trust] no randomsigned header, server not trusted"),
+        // the key is kept: the request may be accepted while the link is down, and the server
+        // would then store a key the station had thrown away
+        Trust::AwaitingApproval => {
+            log::warn!(
+                "[trust] the server doesn't sign with the new sign key yet, waiting for it to be accepted"
+            )
+        }
         // no key since "Reset settings" while the server keeps the old one: expected, the
         // station shows "device not added" and submit registers a new key (approved in the panel)
-        log::warn!("[trust] no sign key yet, waiting for the station to be added again");
-    } else {
-        log::error!("[trust] randomsigned doesn't match the sign key, server not trusted");
-        global_state
-            .ui
-            .update(|u| u.error_text = Some("Server Not Trusted!".into()));
+        Trust::NoKey => {
+            log::warn!("[trust] no sign key yet, waiting for the station to be added again")
+        }
+        Trust::Untrusted => {
+            log::error!("[trust] randomsigned doesn't match the sign key, server not trusted");
+            global_state
+                .ui
+                .update(|u| u.error_text = Some("Server Not Trusted!".into()));
+        }
     }
 
     Ok(())
@@ -718,9 +734,24 @@ async fn handle_packet(
             auto_setup,
             sound_enabled,
         } => {
+            let (sign_key, pending) =
+                crate::state::SETTINGS.read(|s| (s.sign_key, s.sign_key_pending));
+            let (trusted, first_settings) = crate::state::SESSION.write(|s| {
+                (
+                    s.trust_server,
+                    !core::mem::replace(&mut s.settings_received, true),
+                )
+            });
+            if trust::recheck_on_settings(pending, trusted, first_settings) {
+                log::info!(
+                    "[trust] device list changed while the sign key waits, reconnecting to check it"
+                );
+                return Err(WsError::Recheck);
+            }
             // without a sign key (never added, or "Reset settings") the station can't be trusted,
-            // even if the server still knows it: it has to be added again with a new key
-            let added = *added && crate::state::SETTINGS.read(|s| s.sign_key) != 0;
+            // even if the server still knows it: it has to be added again with a new key. A key
+            // the server hasn't accepted yet counts as not added too: submit asks again with it
+            let added = *added && sign_key != 0 && !trust::awaiting_approval(pending, trusted);
             global_state.status.update(|s| s.device_added = Some(added));
             // auto_add registers like a submit press would (fresh sign key, server trusted)
             #[cfg(feature = "auto_add")]

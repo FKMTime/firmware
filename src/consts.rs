@@ -63,6 +63,7 @@ pub const NVS_BONDING_KEY: esp_hal_wifimanager::Key =
     esp_hal_wifimanager::Key::from_str("BONDING_KEY");
 pub const NVS_SIGN_KEY: esp_hal_wifimanager::Key = esp_hal_wifimanager::Key::from_str("SIGN_KEY");
 /// Set while the sign key hasn't matched a server yet (created by a submit, not yet accepted).
+/// Kept across power cycles: the request in the panel waits for that key, not for a new one.
 pub const NVS_SIGN_KEY_PENDING: esp_hal_wifimanager::Key =
     esp_hal_wifimanager::Key::from_str("SIGN_PENDING");
 pub const NVS_SAVED_STATE: esp_hal_wifimanager::Key =
