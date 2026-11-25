@@ -8,29 +8,123 @@ extern crate alloc;
 pub mod battery;
 #[path = "../../src/utils/bounded.rs"]
 pub mod bounded;
-#[path = "../../src/utils/ring_log.rs"]
-pub mod ring_log;
-#[path = "../../src/utils/text.rs"]
-pub mod text;
 #[path = "../../src/utils/lcd_text.rs"]
 pub mod lcd_text;
 #[path = "../../src/utils/oled_ui.rs"]
 pub mod oled_ui;
+#[path = "../../src/utils/ring_log.rs"]
+pub mod ring_log;
 #[path = "../../src/utils/stackmat.rs"]
 pub mod stackmat;
+#[path = "../../src/utils/text.rs"]
+pub mod text;
 pub mod utils {
     pub use crate::{bounded, text};
 }
-#[path = "../../src/structs.rs"]
-pub mod structs;
-#[path = "old_structs.rs"]
-pub mod old_structs;
 #[path = "../../src/bluetooth/codec.rs"]
 pub mod ble_codec;
 #[path = "../../src/utils/live_header.rs"]
 pub mod live_header;
 #[path = "../../src/utils/live_send.rs"]
 pub mod live_send;
+#[path = "old_structs.rs"]
+pub mod old_structs;
+#[path = "../../src/structs.rs"]
+pub mod structs;
+#[path = "../../src/utils/trust.rs"]
+pub mod trust;
+
+#[cfg(test)]
+mod trust_tests {
+    use crate::trust::*;
+
+    const KEY: u32 = 0x1234_5678;
+
+    #[test]
+    fn our_signature_trusts_and_confirms_a_pending_key() {
+        assert_eq!(
+            decide(Signature::Ours, KEY, true),
+            Trust::Trusted {
+                confirms_pending: true
+            }
+        );
+        assert_eq!(
+            decide(Signature::Ours, KEY, false),
+            Trust::Trusted {
+                confirms_pending: false
+            }
+        );
+    }
+
+    #[test]
+    fn another_key_while_pending_keeps_waiting_for_approval() {
+        // submit, the link drops, the reconnect is signed with the server's old key: the key
+        // the admin is about to accept must survive
+        assert_eq!(decide(Signature::Other, KEY, true), Trust::AwaitingApproval);
+    }
+
+    #[test]
+    fn another_key_after_acceptance_is_a_trust_failure() {
+        assert_eq!(decide(Signature::Other, KEY, false), Trust::Untrusted);
+    }
+
+    #[test]
+    fn no_signature_is_never_trusted_and_keeps_the_key() {
+        for (key, pending) in [(KEY, true), (KEY, false), (0, false)] {
+            assert_eq!(decide(Signature::Missing, key, pending), Trust::Unsigned);
+        }
+    }
+
+    #[test]
+    fn without_a_key_nothing_is_trusted() {
+        // a server signing with the all-zero key proves nothing about a station that has no key
+        assert_eq!(decide(Signature::Ours, 0, false), Trust::NoKey);
+        assert_eq!(decide(Signature::Other, 0, false), Trust::NoKey);
+    }
+
+    #[test]
+    fn a_pending_key_not_confirmed_on_this_connection_counts_as_not_added() {
+        assert!(awaiting_approval(true, false));
+        assert!(!awaiting_approval(true, true)); // right after the submit, or confirmed
+        assert!(!awaiting_approval(false, false));
+    }
+
+    #[test]
+    fn settings_pushed_while_waiting_trigger_a_new_handshake() {
+        // the first settings of a connection come with it: reconnecting then would loop
+        assert!(!recheck_on_settings(true, false, true));
+        // a later push (the approval changes the device list) re-checks the signature
+        assert!(recheck_on_settings(true, false, false));
+        assert!(!recheck_on_settings(true, true, false));
+        assert!(!recheck_on_settings(false, false, false));
+    }
+
+    /// The whole reported sequence, as the station sees it.
+    #[test]
+    fn approval_after_a_reconnect_ends_trusted() {
+        let (key, mut pending) = (KEY, true); // submit created it
+        // reconnect before approval: the server signs with the old key
+        assert_eq!(
+            decide(Signature::Other, key, pending),
+            Trust::AwaitingApproval
+        );
+        let trusted = false;
+        assert!(!recheck_on_settings(pending, trusted, true));
+        // the admin accepts: the settings push makes the station reconnect
+        assert!(recheck_on_settings(pending, trusted, false));
+        // the new handshake is signed with the accepted key
+        let trust = decide(Signature::Ours, key, pending);
+        assert_eq!(
+            trust,
+            Trust::Trusted {
+                confirms_pending: true
+            }
+        );
+        pending = false;
+        // from now on another key is a real failure
+        assert_eq!(decide(Signature::Other, key, pending), Trust::Untrusted);
+    }
+}
 
 #[cfg(test)]
 mod live_send_tests {
@@ -289,7 +383,7 @@ mod ble_tests {
 #[cfg(test)]
 mod tests {
     use crate::{old_structs as old, structs as new};
-    use serde_json::{from_str, to_string, Value};
+    use serde_json::{Value, from_str, to_string};
 
     // every variant the firmware sends or receives, with realistic values
     const PACKETS: &[&str] = &[
@@ -319,18 +413,22 @@ mod tests {
             let n: new::TimerPacket = from_str(json).unwrap_or_else(|e| panic!("new {json}: {e}"));
             let (os, ns) = (to_string(&o).unwrap(), to_string(&n).unwrap());
             assert_eq!(os, ns, "serialization differs for {json}");
-            assert_eq!(from_str::<Value>(&ns).unwrap(), from_str::<Value>(json).unwrap());
+            assert_eq!(
+                from_str::<Value>(&ns).unwrap(),
+                from_str::<Value>(json).unwrap()
+            );
         }
     }
 
     #[test]
     fn oversized_input_is_truncated_not_rejected() {
         let long = "x".repeat(500);
-        let json = format!(
-            r#"{{"data":{{"api_error":{{"error":"{long}","should_reset_time":false}}}}}}"#
-        );
+        let json =
+            format!(r#"{{"data":{{"api_error":{{"error":"{long}","should_reset_time":false}}}}}}"#);
         let n: new::TimerPacket = from_str(&json).unwrap();
-        let new::TimerPacketInner::ApiError(e) = n.data else { panic!() };
+        let new::TimerPacketInner::ApiError(e) = n.data else {
+            panic!()
+        };
         assert_eq!(e.error.len(), 128);
 
         let groups = (0..20)
@@ -341,7 +439,9 @@ mod tests {
             r#"{{"data":{{"card_info_response":{{"card_id":1,"display":"d","country_iso2":"pl","can_compete":true,"possible_groups":[{groups}]}}}}}}"#
         );
         let n: new::TimerPacket = from_str(&json).unwrap();
-        let new::TimerPacketInner::CardInfoResponse(r) = n.data else { panic!() };
+        let new::TimerPacketInner::CardInfoResponse(r) = n.data else {
+            panic!()
+        };
         assert_eq!(r.possible_groups.len(), new::MAX_POSSIBLE_GROUPS);
     }
 
@@ -354,19 +454,26 @@ mod tests {
         };
         let parse = |json: &str| {
             let n: new::TimerPacket = from_str(json).unwrap();
-            let new::TimerPacketInner::CardInfoResponse(r) = n.data else { panic!() };
+            let new::TimerPacketInner::CardInfoResponse(r) = n.data else {
+                panic!()
+            };
             r.possible_groups[0].clone()
         };
 
         let json = groups(r#","maxPenalty":14"#);
         let g = parse(&json);
         assert_eq!(g.max_penalty, Some(14));
-        assert_eq!(from_str::<Value>(&to_string(&g).unwrap()).unwrap()["maxPenalty"], 14);
+        assert_eq!(
+            from_str::<Value>(&to_string(&g).unwrap()).unwrap()["maxPenalty"],
+            14
+        );
 
         assert_eq!(parse(&groups("")).max_penalty, None);
         // older firmware still reads a group that carries the field
         let o: old::TimerPacket = from_str(&json).unwrap();
-        let old::TimerPacketInner::CardInfoResponse(r) = o.data else { panic!() };
+        let old::TimerPacketInner::CardInfoResponse(r) = o.data else {
+            panic!()
+        };
         assert_eq!(r.possible_groups.len(), 1);
     }
 }
@@ -380,7 +487,10 @@ mod outgoing_json {
     fn same(p: &TimerPacket) {
         let mut buf = [0u8; 1024];
         let n = serde_json_core::to_slice(p, &mut buf).expect("serde-json-core");
-        assert_eq!(core::str::from_utf8(&buf[..n]).unwrap(), serde_json::to_string(p).unwrap());
+        assert_eq!(
+            core::str::from_utf8(&buf[..n]).unwrap(),
+            serde_json::to_string(p).unwrap()
+        );
     }
 
     #[test]
@@ -398,17 +508,48 @@ mod outgoing_json {
                 group_id: "333-r1-g2 \"q\" \\ ż".into(),
                 sign_key: u32::MAX,
             },
-            TimerPacketInner::CardInfoRequest { card_id: u64::MAX, is_competitor: true, attendance_device: None, sign_key: 5 },
-            TimerPacketInner::CardInfoRequest { card_id: 1, is_competitor: false, attendance_device: Some(true), sign_key: 5 },
-            TimerPacketInner::Battery { level: Some(87.5), voltage: Some(3.91) },
-            TimerPacketInner::Battery { level: Some(0.1), voltage: Some(4.123456789) },
-            TimerPacketInner::Battery { level: Some(100.0), voltage: Some(1e-7) },
-            TimerPacketInner::Battery { level: None, voltage: None },
-            TimerPacketInner::Add { firmware: "STATION".into(), sign_key: 77 },
+            TimerPacketInner::CardInfoRequest {
+                card_id: u64::MAX,
+                is_competitor: true,
+                attendance_device: None,
+                sign_key: 5,
+            },
+            TimerPacketInner::CardInfoRequest {
+                card_id: 1,
+                is_competitor: false,
+                attendance_device: Some(true),
+                sign_key: 5,
+            },
+            TimerPacketInner::Battery {
+                level: Some(87.5),
+                voltage: Some(3.91),
+            },
+            TimerPacketInner::Battery {
+                level: Some(0.1),
+                voltage: Some(4.123456789),
+            },
+            TimerPacketInner::Battery {
+                level: Some(100.0),
+                voltage: Some(1e-7),
+            },
+            TimerPacketInner::Battery {
+                level: None,
+                voltage: None,
+            },
+            TimerPacketInner::Add {
+                firmware: "STATION".into(),
+                sign_key: 77,
+            },
         ];
         for data in packets {
-            same(&TimerPacket { tag: None, data: data.clone() });
-            same(&TimerPacket { tag: Some(u64::MAX), data });
+            same(&TimerPacket {
+                tag: None,
+                data: data.clone(),
+            });
+            same(&TimerPacket {
+                tag: Some(u64::MAX),
+                data,
+            });
         }
     }
 }

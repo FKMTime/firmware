@@ -12,6 +12,7 @@ pub mod ring_log;
 pub mod stack;
 pub mod stackmat;
 pub mod text;
+pub mod trust;
 
 /// A buffer for a `#[link_section = ".dram2_uninit"]` static (that region is not
 /// zeroed at boot, so `StaticCell`/`Mutex` state can't live there). Callers must

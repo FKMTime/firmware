@@ -389,6 +389,8 @@ pub struct Session {
     pub fkm_token: i32,
     pub secure_rfid: bool,
     pub auto_setup: bool,
+    /// The server sent its device settings on this connection; later ones are pushes.
+    pub settings_received: bool,
     /// Server epoch minus uptime (seconds); 0 = server didn't send EpochTime yet.
     pub epoch_base: u64,
 }
@@ -407,6 +409,7 @@ impl Session {
             fkm_token: 0,
             secure_rfid: false,
             auto_setup: false,
+            settings_received: false,
             epoch_base: 0,
         }
     }
@@ -416,7 +419,8 @@ impl Session {
 #[derive(Debug, Clone, Copy)]
 pub struct Settings {
     pub sign_key: u32,
-    /// The sign key hasn't matched a server yet: a mismatch means it was never accepted.
+    /// The sign key hasn't matched a server yet: until it does, a server signing with another key
+    /// hasn't accepted it yet (see [`crate::utils::trust`]).
     pub sign_key_pending: bool,
     pub sound_enabled: bool,
     #[cfg(feature = "v4")]

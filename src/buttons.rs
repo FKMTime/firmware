@@ -470,22 +470,32 @@ async fn submit(state: &GlobalState) {
 /// An existing key is kept: the server ignores an `Add` for a device it already knows, so a
 /// second `Add` with a new key (submit pressed twice, or a stale "not added" push that crossed
 /// the first `Add`) would leave the device with a key the server rejects.
+///
+/// A key still waiting for approval is sent again as it is. The server just signed with another
+/// key, so the station doesn't trust it on the strength of this `Add`: it reconnects and checks
+/// once the approval arrives.
 pub async fn add_device(state: &GlobalState) {
-    let mut sign_key = crate::state::SETTINGS.read(|s| s.sign_key);
+    let (mut sign_key, pending) = crate::state::SETTINGS.read(|s| (s.sign_key, s.sign_key_pending));
+    let awaiting = crate::utils::trust::awaiting_approval(
+        pending,
+        crate::state::SESSION.read(|s| s.trust_server),
+    );
     if sign_key == 0 {
         let mut bytes = [0; 4];
         _ = getrandom::getrandom(&mut bytes);
         sign_key = (u32::from_be_bytes(bytes) >> 1).max(1);
 
         _ = state.nvs.set(&NVS_SIGN_KEY, sign_key).await;
-        // pending until a handshake matches it: a key the server never accepts is dropped then
+        // pending until a handshake matches it
         _ = state.nvs.set(&NVS_SIGN_KEY_PENDING, 1u8).await;
         crate::state::SETTINGS.write(|s| {
             s.sign_key = sign_key;
             s.sign_key_pending = true;
         });
     }
-    crate::state::SESSION.write(|s| s.trust_server = true);
+    if !awaiting {
+        crate::state::SESSION.write(|s| s.trust_server = true);
+    }
 
     let packet = crate::structs::TimerPacket {
         tag: None,
